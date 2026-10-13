@@ -34,7 +34,7 @@ in
       settings = {
         font.normal = {
           family = "Anthropic Sans";
-          size = 11;
+          size = 12; # Tom, 2026-10-12: "make the font larger than 11 (12 or 14, need to decide, start at 12)"
         };
         telemetry.system_info = false;
         tray.enabled = false; # Search Tray still hosts other applications' tray menus.
@@ -60,6 +60,13 @@ in
           };
         };
         providers = {
+          # Vicinae's own "Report Vicinae Bug" and "Donate to Vicinae" root
+          # items, hidden (Tom, 2026-10-12). Ids from the pinned source:
+          # provider "core", entrypoints "report-bug" and "sponsor".
+          core.entrypoints = {
+            report-bug.enabled = false;
+            sponsor.enabled = false;
+          };
           clipboard.preferences = {
             monitoring = true;
             ignorePasswords = true;
@@ -91,6 +98,15 @@ in
     xdg.configFile."google-chrome/NativeMessagingHosts/com.vicinae.vicinae.json".source =
       "${package}/etc/chromium/native-messaging-hosts/com.vicinae.vicinae.json";
     xdg.configFile."xdg-terminals.list".text = "kitty.desktop\n";
+    # asusd stays (it holds the Zenbook's Quiet profile and charge limit); only
+    # its ROG Control Center launcher entry is hidden (Tom, 2026-10-12).
+    xdg.dataFile."applications/rog-control-center.desktop".text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=ROG Control Center
+      NoDisplay=true
+      Hidden=true
+    '';
 
     services.mako = {
       enable = true;

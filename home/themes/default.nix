@@ -149,12 +149,14 @@ let
     output * bg #000000 solid_color
   '';
 
+  # mako's progress bar takes Vicinae's selection blue (Tom, 2026-10-12: "the
+  # blue color is not the same as the vicinae launcher. i prefer the latter's").
   mako = t: ''
     ${header t "#"}
     background-color=${t.ground.raised}
     text-color=${t.fg}
     border-color=${t.border.active}
-    progress-color=over ${t.accent}
+    progress-color=over ${t.selection.bg}
     [urgency=low]
     border-color=${t.border.inactive}
     [urgency=high]

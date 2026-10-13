@@ -520,7 +520,7 @@
       test -f $out/share/glib-2.0/schemas/gschemas.compiled
     '')
     git
-    vim
+    neovim # Tom, 2026-10-12: "i ONLY use neovim (nvim)"; no vim, so no GVim entry
     wl-clipboard
     age
     # sox provides `rec`/`play` — Claude Code's /voice records through sox on

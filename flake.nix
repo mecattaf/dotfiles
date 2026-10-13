@@ -1446,17 +1446,33 @@
           assert nixpkgs.lib.getName pkgs.sway == "sway";
           assert (cfgOf "client").myDisplay.enable;
           assert !(cfgOf "strix").myDisplay.enable;
+          # No Claude Desktop or ChatGPT apps and no Chrome --app launcher
+          # entries on any host (Tom, 2026-10-12).
           assert builtins.all
             (
               h:
-              builtins.elem pkgs.llm-agents.claude-desktop
-                (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
-              &&
-                builtins.elem pkgs.llm-agents.chatgpt
-                  (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
+              let
+                hm = self.nixosConfigurations.${h}.config.home-manager.users.tom;
+              in
+              !(builtins.elem pkgs.llm-agents.claude-desktop hm.home.packages)
+              && !(builtins.elem pkgs.llm-agents.chatgpt hm.home.packages)
+              && !(builtins.any (n: hm.xdg.desktopEntries ? ${n}) [
+                "chatgpt"
+                "claude"
+                "gcloud"
+                "github"
+                "open-webui"
+                "perplexity"
+                "photos"
+                "railway"
+                "soundcloud"
+                "whatsapp"
+                "youtube-music"
+              ])
             )
             [
               "client"
+              "strix"
             ];
 
           assert !(cfgOf "nas").myDisplay.enable;

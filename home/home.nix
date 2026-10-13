@@ -98,17 +98,6 @@ let
     ]
   );
 
-  # Chrome PWAs via google-chrome-stable --app. pwaIcon lets the entry name differ
-  # from the icon filename (chatgpt→openai, claude→anthropic, gcloud→drive,
-  # photos→images) so it references an icon that exists in dot_local/share/icons/.
-  chrome = "${pkgs.google-chrome}/bin/google-chrome-stable";
-  pwaIcon = name: icon: url: {
-    inherit name;
-    exec = "${chrome} --profile-directory=Default --app=${url}";
-    icon = config.lib.rawDotfiles.path "dot_local/share/icons/${icon}.png";
-    categories = [ "Network" ];
-  };
-  pwa = name: pwaIcon name name;
 in
 {
   imports = [
@@ -343,22 +332,8 @@ in
   # triggers there.
   home.file.".agents/skills".source = link "dot_claude/skills";
 
-  # ---------------------------------------------------------------------------
-  # PWA launchers (TYPED via xdg.desktopEntries; google-chrome, not flatpak).
-  # ---------------------------------------------------------------------------
-  xdg.desktopEntries = {
-    chatgpt = pwaIcon "chatgpt" "openai" "https://chat.openai.com/";
-    claude = pwaIcon "claude" "anthropic" "https://claude.ai/";
-    gcloud = pwaIcon "gcloud" "drive" "https://drive.google.com/drive/u/0/";
-    github = pwa "github" "https://github.com/mecattaf";
-    "open-webui" = pwa "open-webui" "http://localhost:8080/";
-    perplexity = pwa "perplexity" "https://perplexity.ai/";
-    photos = pwaIcon "photos" "images" "https://photos.google.com/";
-    railway = pwa "railway" "https://railway.app/dashboard";
-    soundcloud = pwa "soundcloud" "https://soundcloud.com";
-    whatsapp = pwa "whatsapp" "https://web.whatsapp.com/";
-    "youtube-music" = pwa "youtube-music" "https://music.youtube.com";
-  };
+  # No Chrome --app launcher entries on any host (Tom, 2026-10-12: "i do not
+  # want th e chrome shortcuts neither. this goes for cross-nixosfleet").
 
   # ---------------------------------------------------------------------------
   # git — the one typed config.

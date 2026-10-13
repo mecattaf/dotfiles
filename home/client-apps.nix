@@ -17,19 +17,7 @@ in
     # Speech queue playback and voice sessions (speech-wake and Parakeet were
     # removed on 2026-09-30).
     pkgs.speech-session
-    # Claude Desktop — Tom's nice-to-have on the seat. Unofficial repack of the
-    # vendor's Electron app from the llm-agents catalog (flake input, overlay
-    # `pkgs.llm-agents`), FHS-wrapped with bubblewrap. Its portal/sandbox
-    # behaviour under niri has never been exercised — the fleet has not had a
-    # seat with it until now — so it is a nice-to-have in the literal sense:
-    # if it misbehaves on the metal, the PWA at home.nix:312 is the fallback
-    # and this line comes out.
-    pkgs.llm-agents.claude-desktop
-
-    # ChatGPT's desktop application, from the same catalog and on the same
-    # terms (`meta.available` is true for x86_64-linux on the pinned rev;
-    # it carries Codex too). Same fallback: the `chatgpt` PWA at home.nix:311.
-    pkgs.llm-agents.chatgpt
-
+    # No Claude Desktop or ChatGPT desktop apps (Tom, 2026-10-12: "installed
+    # chatgp and claude apps must also be gone").
   ];
 }
