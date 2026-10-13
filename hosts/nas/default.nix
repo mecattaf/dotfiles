@@ -79,7 +79,6 @@
   #
   # The NAS is the sole official Tailscale subnet router (2026-10-08).
 
-
   # Preserve graphics/VA-API for headless Immich video transcoding. This does
   # not install or start a display server, compositor, or graphical login.
   hardware.graphics.enable = true;
