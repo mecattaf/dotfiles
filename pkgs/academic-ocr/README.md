@@ -100,14 +100,15 @@ retained chunks when rebuilding them.
 
 The cheap tier is `pdftotext` plus `mutool`, both of which exit nonzero for
 empty or near-empty extraction. The standard tier is the fleet's one inference
-server, Halogen Flash on the worker, addressed as protocol and model id
-`halogen-qwen3.8-flash-next` through its OpenAI-compatible
-`/v1/chat/completions` with `image_url` content parts and temperature zero.
+server, the local model on the strix (lib/local-model.nix), addressed as protocol and model id
+`qwen3.8-flash-next` through its OpenAI-compatible
+`/v1/chat/completions` with `image_url` content parts, temperature zero and
+thinking off (`chat_template_kwargs.enable_thinking=false`).
 The base URL defaults to `http://strix:8731` and is overridable through
-`ACADEMIC_OCR_INFERENCE_URL`. Halogen's token budget covers its reasoning as
+`ACADEMIC_OCR_INFERENCE_URL`. The server's token budget would cover reasoning as
 well as the transcription, so the per-page cap is 16384 tokens.
 
-Halogen serves no `/v1/embeddings`. The embed node names `qwen3-embedding-8b`,
+The local server serves no `/v1/embeddings` (it answers 501). The embed node names `qwen3-embedding-8b`,
 served by hand by an operator with `llama-server`. Its GGUF
 (`qwen3-embedding-8b-q8-0`) left the catalogue and the NAS Library on
 2026-09-30 (sweep F1), so an operator who wants embeddings fetches it again from

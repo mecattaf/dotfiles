@@ -109,7 +109,7 @@ while IFS= read -r entry; do
     --argjson run "$MIN_RUN" --arg embeddingsUrl "${ACADEMIC_OCR_EMBEDDINGS_URL:-}" \
     '.tools=$tools | .bash=$bash | .dataRoot=$dr | .tableMinNumericRun=$run
      | del(.refineModel)
-     | .ocrModel="halogen-qwen3.8-flash-next" | .embedModel="qwen3-embedding-8b"
+     | .ocrModel="qwen3.8-flash-next" | .embedModel="qwen3-embedding-8b"
      | .embeddingsUrl=(if $embeddingsUrl == "" then null else $embeddingsUrl end)' \
     "$src_args" > "$args_file"
   pages=$("$JQ" -r .pageCount "$args_file")
