@@ -1,6 +1,6 @@
 ---
 name: print
-description: Put a Markdown document on paper by dropping it into ~/Paper/intake/ on the strix; paper-daemon renders, validates, prints during working hours and writes a receipt from the printer itself. Use when the user asks to print, make a paper copy, or turn Markdown into a document for physical reading.
+description: Put a Markdown document or an existing PDF on paper by dropping it into ~/Paper/intake/ on the strix; paper-daemon renders the Markdown (a PDF is printed as it is), validates, prints during working hours and writes a receipt from the printer itself. Use when the user asks to print, make a paper copy, print a PDF such as an invoice or a form, or turn Markdown into a document for physical reading.
 ---
 
 # Print
@@ -38,6 +38,28 @@ Set `page_slack: 0` only for a one-pager or when the user said "exactly".
 Leave typography to the daemon unless the user named a face or layout.
 Never set `force` for convenience.
 
+## An existing PDF
+
+An invoice, a receipt or a form that already exists as a PDF is dropped the
+same way and printed as it is:
+
+    ~/Paper/intake/.<slug>.pdf.tmp   →   ~/Paper/intake/<slug>.pdf
+
+Never rasterize a PDF, embed it as an image, or transcribe it into Markdown
+to get it printed: the user wants the original document. The daemon reads
+the page count from the file, so `target_pages` does not apply. A malformed
+or encrypted PDF is rejected. Pages that are not A4 (a Letter invoice) are
+scaled to fit A4, and the receipt says `fit_to_page: true`.
+
+By default a 1 or 2 page PDF prints one-sided and a longer one duplex. Only
+when the user asked for something else, write a sidecar **before** the
+rename, `~/Paper/intake/<slug>.pdf.json`:
+
+    {"sides": "duplex", "force": true}
+
+`sides` is one-sided, duplex or short-edge; `force` follows the rule above.
+Nothing else is accepted there.
+
 ## Where the outcome appears
 
 Everything lands in `~/Paper/<state>/<slug>/` (a repeated slug gets a
@@ -45,9 +67,9 @@ timestamp suffix):
 
 | directory | meaning |
 |---|---|
-| `printed/<slug>/receipt.json` | paper is out: the printer reported the job completed with `impressions_completed` equal to the rendered pages |
+| `printed/<slug>/receipt.json` | paper is out: the printer reported the job completed with `impressions_completed` equal to the rendered pages (for a PDF, its own pages) |
 | `outbox/<slug>/` | it is 00:00–06:00; it prints at 06:05 |
-| `rejected/<slug>/reason.json` | the render fell outside `target_pages` ± `page_slack` (or the front matter was invalid); nothing was printed. Revise and drop again |
+| `rejected/<slug>/reason.json` | the render fell outside `target_pages` ± `page_slack`, the front matter or sidecar was invalid, or the PDF was malformed or encrypted; nothing was printed. Revise and drop again |
 | `failed/<slug>/failure.json` | something went wrong at the queue or the printer; the evidence is beside it and paper-daemon.service is left failed for the fleet's failure markers |
 
 Report to the user what the directory says, and only that. A drop with no

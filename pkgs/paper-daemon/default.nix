@@ -9,7 +9,8 @@
 }:
 
 # paper-daemon (dotfiles#384): the print loop owned end to end. An agent drops
-# ~/Paper/intake/<slug>.md; this renders, validates, holds for quiet hours,
+# ~/Paper/intake/<slug>.md (or <slug>.pdf, printed as it is, #501); this
+# renders the Markdown, validates, holds for quiet hours,
 # checks the queue is the pinned driverless one, submits, and writes a receipt
 # only when the PRINTER (not cupsd) reports the job completed with every
 # impression. Units: home/paper.nix. Replaces pkgs/paper-intake, whose one
