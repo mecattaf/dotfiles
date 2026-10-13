@@ -15,21 +15,7 @@ args = sys.argv[1:]
 root = Path(os.environ['FIXTURE'])
 with (root / 'calls').open('a') as f:
     f.write(json.dumps([name, *args]) + '\n')
-if name == 'niri':
-    if args == ['msg', '-j', 'focused-window']:
-        print(json.dumps({'app_id': os.environ.get('FOCUSED_APP', 'herdr-projector'), 'pid': 100}))
-    elif args == ['msg', '-j', 'workspaces']:
-        print(json.dumps([{'output': 'eDP-1', 'is_focused': True, 'idx': 1}, {'output': 'eDP-1', 'is_focused': False, 'idx': 4}]))
-    elif args[:3] == ['msg', 'action', 'spawn']:
-        (root / 'spawned').touch()
-    elif args == ['msg', '-j', 'windows']:
-        rows = [{'app_id': 'herdr-projector', 'id': 1, 'pid': 100}]
-        if (root / 'spawned').exists():
-            rows.append({'app_id': 'herdr-projector', 'id': 2, 'pid': 200})
-        print(json.dumps(rows))
-elif name == 'kitten' and args[-1] == 'ls':
-    print(json.dumps([{'tabs': [{'windows': [{'foreground_processes': [{'cmdline': ['/bin/herdr', 'client'], 'pid': 300}]}]}]}]))
-elif name == 'systemctl':
+if name == 'systemctl':
     sys.exit(int(os.environ.get('UNIT_STATUS', '0')))
 elif name == 'ssh':
     print(os.environ.get('SSH_OUTPUT', ''), file=sys.stderr)
@@ -46,15 +32,12 @@ class Launchers(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.bin = self.root / 'bin'
         self.bin.mkdir()
-        for name in ('niri', 'kitten', 'ssh', 'sleep', 'herdr', 'systemctl'):
+        for name in ('ssh', 'sleep', 'herdr', 'systemctl', 'herdr-picker'):
             p = self.bin / name
             p.write_text('#!' + os.sys.executable + '\n' + MOCK)
             p.chmod(0o755)
-        log = self.root / 'client.log'
-        log.write_text('herdr starting version=fixture pid=300\nendpoint handshake succeeded\n')
         self.env = dict(os.environ, FIXTURE=str(self.root), PATH=f'{self.bin}:{os.environ["PATH"]}',
-                        HERDR_CLIENT_LOG=str(log), TMPDIR=str(self.root), HERDR_CHORD_TIMEOUT='2',
-                        HERDR_CHORD_WM='niri')
+                        TMPDIR=str(self.root))
 
     def run_script(self, name, *args, **env):
         return subprocess.run(['bash', str(ROOT / name), *args], env=self.env | env,
@@ -74,35 +57,25 @@ class Launchers(unittest.TestCase):
         self.assertIn('refusing to start', p.stderr)
         self.assertEqual(len(self.calls()), 1)
 
-    def test_new_preserves_focused_projector(self):
-        p = self.run_script('herdr-chord', 'new')
-        self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertTrue((self.root / 'spawned').exists())
-        calls = self.calls()
-        self.assertIn(['niri', 'msg', 'action', 'focus-workspace', '4'], calls)
-        keys = [x for x in calls if 'send-key' in x]
-        self.assertEqual(len(keys), 2)
-        self.assertTrue(all('unix:@kitty-200' in x for x in keys))
-        self.assertEqual(keys[-1][-1], 'shift+n')
+    def run_chord(self, *args):
+        # herdr-chord execs the herdr-picker beside it, so run a copy next to the mock.
+        chord = self.bin / 'herdr-chord'
+        chord.write_text((ROOT / 'herdr-chord').read_text())
+        return subprocess.run(['bash', str(chord), *args], env=self.env,
+                              capture_output=True, text=True, timeout=5)
 
-    def test_sidebar_opens_another_window(self):
-        p = self.run_script('herdr-chord', 'sidebar')
-        self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertTrue((self.root / 'spawned').exists())
-        self.assertEqual([x for x in self.calls() if 'send-key' in x][-1][-1], 'b')
+    def test_chords_hand_off_to_herdr_picker(self):
+        for verb in ('new', 'sidebar', 'rename'):
+            with self.subTest(verb=verb):
+                p = self.run_chord(verb)
+                self.assertEqual(p.returncode, 0, p.stderr)
+                self.assertEqual(self.calls()[-1], ['herdr-picker', '--chord', verb])
 
-    def test_rename_targets_existing_window(self):
-        p = self.run_script('herdr-chord', 'rename')
-        self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertFalse((self.root / 'spawned').exists())
-        keys = [x for x in self.calls() if 'send-key' in x]
-        self.assertTrue(all('unix:@kitty-100' in x for x in keys))
-        self.assertEqual(keys[-1][-1], 'shift+w')
-
-    def test_rename_outside_projector_is_noop(self):
-        p = self.run_script('herdr-chord', 'rename', FOCUSED_APP='other')
-        self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertFalse(any('send-key' in x for x in self.calls()))
+    def test_unknown_chord_is_rejected(self):
+        p = self.run_chord('bogus')
+        self.assertEqual(p.returncode, 2)
+        self.assertIn('usage', p.stderr)
+        self.assertFalse((self.root / 'calls').exists())
 
     def test_projector_diagnoses_failures_without_starting_unmanaged_server(self):
         cases = [

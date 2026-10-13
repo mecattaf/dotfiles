@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 # screenshot -- save a PNG, copy it to the clipboard, then offer Satty
 # Bound to Mod+S (screen), Mod+Shift+S (area) and Mod+Alt+S (window) in
-# sway/binds.conf and niri/binds.kdl. Screen and area are grim (+ slurp),
-# superseding niri's screenshot UI (2026-09-15), so the area picker is the
-# same slurp crosshair Mod+Ctrl+S (bin/screen-ocr-area) uses. Files keep
-# niri's former naming.
+# sway/binds.conf. Screen and area are grim (+ slurp), so the area picker is
+# the same slurp crosshair Mod+Ctrl+S (bin/screen-ocr-area) uses. Files keep
+# the "Screenshot from <date>" naming.
 #
-# Window, on Sway (2026-10-08): the focused container's content box from
+# Window (2026-10-08): the focused container's content box from Sway's
 # get_tree (rect + window_rect, so borders and title bars are excluded),
-# captured with grim -g. On niri (the rollback) window stays niri's
-# screenshot-window: niri's IPC reports no on-screen position for a tiled
-# window. The compositor is Sway when SWAYSOCK is set; the scroll path
-# (scrollmsg, grim -T) went with scroll and is no longer here.
+# captured with grim -g. The niri and scroll paths went with those
+# compositors (retired 2026-10-13).
 #
 # Area and window then open the capture in Satty for last-minute annotation.
 # The plain capture is already saved and on the clipboard, so Esc just closes
@@ -109,15 +106,9 @@ annotate() {
         --disable-notifications 8>&-
 }
 
-on_sway() { [ -n "${SWAYSOCK:-}" ]; }
-
 case "${1:-}" in
     screen)
-        if on_sway; then
-            output="$(swaymsg -r -t get_outputs | jq -er 'map(select(.focused))[0].name')"
-        else
-            output="$(niri msg -j focused-output | jq -er .name)"
-        fi
+        output="$(swaymsg -r -t get_outputs | jq -er 'map(select(.focused))[0].name')"
         mkdir -p "$dir"
         grim -o "$output" "$file"
         wl-copy --type image/png < "$file" 8>&-
@@ -130,23 +121,12 @@ case "${1:-}" in
         annotate
         ;;
     window)
-        if on_sway; then
-            geometry="$(swaymsg -r -t get_tree | jq -er 'first(.. | objects
-                | select(.focused? == true and .window_rect? != null))
-                | "\(.rect.x + .window_rect.x),\(.rect.y + .window_rect.y) \(.window_rect.width)x\(.window_rect.height)"')"
-            mkdir -p "$dir"
-            grim -g "$geometry" "$file"
-            wl-copy --type image/png < "$file" 8>&-
-            annotate
-            exit 0
-        fi
-        # niri encodes and writes the file on a thread: wait for its
-        # ScreenshotCaptured event for this path, not for the file to appear.
-        # The stream's first line (initial state) proves it is subscribed.
-        exec {events}< <(timeout 10 niri msg -j event-stream)
-        read -r -u "$events" _
-        niri msg action screenshot-window --path "$file"
-        jq -en --arg path "$file" 'first(inputs | select(.ScreenshotCaptured.path? == $path))' <&"$events" > /dev/null
+        geometry="$(swaymsg -r -t get_tree | jq -er 'first(.. | objects
+            | select(.focused? == true and .window_rect? != null))
+            | "\(.rect.x + .window_rect.x),\(.rect.y + .window_rect.y) \(.window_rect.width)x\(.window_rect.height)"')"
+        mkdir -p "$dir"
+        grim -g "$geometry" "$file"
+        wl-copy --type image/png < "$file" 8>&-
         annotate
         ;;
     *)

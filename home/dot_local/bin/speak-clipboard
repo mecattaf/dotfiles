@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # speak-clipboard -- queue the clipboard's text for reading aloud
-# Bound to Mod+Ctrl+R (niri/binds.kdl), on the client. Publishes one Markdown
+# Bound to Mod+Ctrl+R (sway/binds.conf), on the client. Publishes one Markdown
 # file into the strix's ~/Speech/intake exactly as the /speak skill does:
 # a hidden .md.tmp, renamed to a visible .md only once fully written. The
 # speech-queue daemon owns synthesis, working hours (06:00-24:00), playback
