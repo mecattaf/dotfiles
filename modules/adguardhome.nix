@@ -14,6 +14,8 @@ let
     "photos.internal"
     "music.internal"
     "videos.internal"
+    # Paperless left on 2026-10-13; the name stays until the next DNS change,
+    # because editing this list restarts AdGuard and dnsmasq on the router.
     "paperless.internal"
     "browser.internal"
     "handwriting.internal"

@@ -41,7 +41,6 @@
     ./models.nix # the model Library: weights forever-collection + static cache
     ./attic.nix # ws5  fleet binary cache, served directly (executed 2026-08-21)
     ./update-center.nix # nightly fleet builds -> attic (the App Store model)
-    ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate ON 2026-09-13
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
@@ -79,14 +78,6 @@
   # printer, strix — through one node.
   #
   # The NAS is the sole official Tailscale subnet router (2026-10-08).
-
-  # #136 gate flip (2026-09-13), paired with the strix's
-  # myNasClient.relayPaperless in the same commit (flake.nix nas-topology
-  # asserts the pair). Pre-flip: runbook dirs created, documents snapshotted
-  # read-only as .snapshots/documents.pre-paperless-20260913T2241, input
-  # bumped to 3.1.3 while the database is empty. Bulk admission stays a
-  # manual start (there is no bulk timer since 2026-09-30).
-  myNas.paperless.enable = true;
 
   # Preserve graphics/VA-API for headless Immich video transcoding. This does
   # not install or start a display server, compositor, or graphical login.

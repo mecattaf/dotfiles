@@ -1,5 +1,16 @@
 # DECISIONS
 
+2026-10-13 Paperless is REMOVED from the fleet: the NAS service and its
+database, the paperless-bridge, the strix relay and paperless.internal, the
+pinned nixpkgs-paperless input, its flake checks and its LaCie mirror rules.
+Measured before removal: Paperless held only the 2026-09-14 canary (3
+documents, 1 tag, 1 machine-written note); all 3 originals were hardlinks to
+files already in /mnt/nas/documents, so nothing is lost with it. Parakeet's
+Library bytes are retired in the same pass (#481).
+
+Tom, 2026-09-29: "i m removing paperless fully btw so no need to worry about
+that one."
+
 2026-10-13 ax is RETIRED from the fleet: k3s, Agent Substrate, the image
 registry and its weekly timer, the network guard, the strix port 8099 proxy,
 kubectl and the ax binaries, the NAS floor-to-ax bridge and the ax-conwip

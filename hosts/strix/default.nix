@@ -138,9 +138,6 @@
   myCoordinatorMedia.enable = false;
   myNasClient.useRemoteStorage = true;
   myNasClient.relayMedia = true;
-  # #136: the tailnet front door (paperless.internal) for the NAS Paperless
-  # backend; flips with the NAS's myNas.paperless.enable (2026-09-13).
-  myNasClient.relayPaperless = true;
 
   services.caddy.virtualHosts."http://drain.internal".extraConfig = ''
     reverse_proxy 127.0.0.1:8740
