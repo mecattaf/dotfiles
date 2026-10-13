@@ -16,7 +16,9 @@
 # on this box when the mic first goes silent.
 #
 # Diagnosed 2026-08-04 after /voice reported "No audio detected from
-# microphone". Two independent faults, both invisible from the PipeWire side:
+# microphone": two independent capture faults, both invisible from the PipeWire
+# side. A third, on the OUTPUT side, joined them on 2026-10-14; its repair lives
+# in bin/audio-route, not in this file:
 #
 #  1. The webcam's *hardware* capture gain (ALSA `Mic Capture Volume` on card
 #     `Pro`, range 0-4096) sat at 0, so the USB endpoint streamed digital
@@ -36,6 +38,32 @@
 #     WirePlumber fell back to whatever won on priority, which is why the
 #     default input drifted between the webcam, the INZONE Buds and the unused
 #     analog jack across reboots.
+#
+#  3. (2026-10-14, "INZONE earphones not playing sound".) The Sony INZONE Buds
+#     sink was the running default, Chrome's stream was linked (S16LE 2ch
+#     48 kHz, 0 xruns) and `wpctl get-volume` said 0.24: inaudible at listening
+#     level, not digital silence. wpctl and the F7/F8 OSD print the CUBIC
+#     (perceptual) number on every device, so a displayed 24 % is a linear gain
+#     of 0.24^3 = 0.0138, about -37 dB, and the OSD's "24%" looks fine.
+#     `volume down` (F7 on the Glove80, the Duo's XF86AudioLowerVolume key)
+#     had walked it there in 3 % steps. WirePlumber persists that gain per route
+#     under `alsa_card.usb-Sony_INZONE_Buds-00:output:analog-output` in
+#     ~/.local/state/wireplumber/default-routes and re-applies it whenever the
+#     route becomes active again (replug, boot, profile change; a bare
+#     `wpctl set-default` selects no route, the stored value is simply already
+#     live then), so the level survives unplugs. All that is specific to the
+#     Buds is that the dongle has no ALSA volume element (`amixer -c <Buds>`
+#     shows only `PCM Playback Switch` booleans; node Props carry
+#     channelVolumes == softVolumes), so the whole attenuation is software gain
+#     applied before S16_LE output and there is no hardware control to lift.
+#     Repaired live with `wpctl set-volume <buds sink id> 0.5`, which is what
+#     F8 does; bin/audio-route now lifts a picked sink below 0.30 to 0.50 and
+#     says so, which catches the route-switch recurrence only: walking the live
+#     default down with `volume down` again still shows nothing but the OSD
+#     number. For the next reader, `wpctl get-volume` exits 0 on "not found" and
+#     "does not support volume" (wpctl 0.5.15), so the parsed stdout, not the
+#     rc, is the check (bin/volume's level() still trusts the rc and parses $2
+#     blind; it has not been touched here).
 #
 # The rule below fixes (2) properly: giving the webcam node a session priority
 # well above every other capture device makes it win the election outright, so
