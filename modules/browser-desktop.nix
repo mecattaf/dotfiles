@@ -51,7 +51,7 @@ in
         StartLimitIntervalSec = 0;
       };
     };
-    # On a physical seat the physical session (Sway, niri on rollback) owns
+    # On a physical seat the physical Sway session owns
     # the normal user portals. These headless-only
     # overrides must never bind them to the optional Sway service.
     # D-Bus activates portals through the user manager, which intentionally

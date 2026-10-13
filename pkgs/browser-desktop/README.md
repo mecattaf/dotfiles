@@ -27,7 +27,7 @@ or URLs.
 
 The human entrance is `https://browser.internal` on BE550, using the existing
 Caddy and AdGuard conventions. `modules/browser-desktop.nix` declares the
-strix service. The physical Niri/greetd stack remains disabled.
+strix service. The physical Sway/greetd stack remains disabled on the strix.
 
 The lightweight menu service starts at boot. Sway and WayVNC start only when the
 human opens the viewer or uses the Chrome menu. The service waits for WayVNC

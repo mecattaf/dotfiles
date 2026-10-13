@@ -10,14 +10,14 @@
 # (github.com/herdrdev/herdr), pinned in flake.lock at 0.9.1. This file IS the
 # module: herdr ships packages.<sys>.herdr and nothing else — no NixOS module,
 # no home-manager module — so package + user service + config live here, the
-# way home/piri.nix does the same job for piri.
+# way the other home/*.nix modules do for their tools.
 #
 # TOPOLOGY (ruling B5). ONE server, strix only. Every host with an
 # interactive profile gets the BINARY, because the client is how you reach a
 # server at all: on the strix `herdr` attaches to the local one, and off
 # it `herdr --remote strix` attaches over the tailnet — on the client
 # as ~/.local/bin/herdr-projector, the window every herdr chord there targets
-# (home/dot_config/niri/binds.kdl, #385), and `desk` in
+# (home/dot_config/sway/binds.conf, #385), and `desk` in
 # home/dot_config/fish/conf.d/remote.fish. herdr-kitten (`hk`) was removed
 # fleet-wide on 2026-09-13: it could not cross the ssh boundary. The NAS is
 # not in this picture — it stops at NixOS with no home-manager, so nothing
@@ -25,7 +25,7 @@
 #
 # LIFECYCLE (ruling B6). Deliberately NOT PartOf=graphical-session.target. The
 # whole point of the server is that the PTYs outlive the surfaces attached to
-# them: restart niri, log out, close the laptop lid on another host, and the
+# them: restart Sway, log out, close the laptop lid on another host, and the
 # panes are still running when a client comes back. Binding it to the graphical
 # session would kill every session on a compositor restart, which is exactly
 # the failure the deleted home-grown tier had. `loginctl enable-linger tom`
@@ -85,12 +85,12 @@ in
     xdg.configFile."herdr/config.toml".source = link "dot_config/herdr/config.toml";
     # UI-only configuration for new Sway projectors. The running server keeps
     # its original config and socket; no reload or server replacement occurs.
-    xdg.configFile."herdr/sway-client.toml" = lib.mkIf (osConfig.myDisplay.session == "sway") {
+    xdg.configFile."herdr/sway-client.toml" = {
       text = builtins.replaceStrings [ "[ui]\n" ] [ "[ui]\nprompt_new_workspace_name = true\n" ] (
         builtins.readFile ./dot_config/herdr/config.toml
       );
     };
-    home.sessionVariables = lib.mkIf (osConfig.myDisplay.session == "sway") {
+    home.sessionVariables = {
       HERDR_SWAY_LOCAL = if hostName == "strix" && osConfig.myDisplay.enable then "1" else "0";
       HERDR_SWAY_SEAT = hostName;
     };

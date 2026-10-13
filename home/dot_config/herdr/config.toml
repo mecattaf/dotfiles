@@ -95,7 +95,7 @@ manifest_check = true
 # ("{hostname}: {workspace}") would fight the terminal for it.
 window_title = ""
 # The workspaces sidebar is off by default and toggled on demand with
-# prefix+b: niri is the layout authority here, and a persistent panel just
+# prefix+b: the compositor is the layout authority here, and a persistent panel just
 # spends columns.
 sidebar_start_collapsed = true
 # Collapsed means GONE, not a compact rail (upstream default: "compact").

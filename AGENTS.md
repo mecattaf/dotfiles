@@ -164,7 +164,7 @@ loaned copy, and only when the set it computed has not changed underneath it.
 bytes are listed in `/mnt/nas/models/weights/RETIRED-<date>.tsv`.
 
 **Shared browser desktop (2026-09-12).** Strix keeps `myDisplay.enable =
-false`: no physical Niri/greetd session. `modules/browser-desktop.nix` supplies a
+false`: no physical Sway/greetd session. `modules/browser-desktop.nix` supplies a
 separate on-demand headless Sway seat with WayVNC on loopback and stock noVNC
 served by Caddy at `https://browser.internal` on BE550. The lightweight launcher
 starts at boot; Sway, WayVNC and Chrome do not. Sessions stop five minutes

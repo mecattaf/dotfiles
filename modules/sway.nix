@@ -48,28 +48,28 @@ let
       exec "$SHELL" -l -c "exec $0 -l"
     fi
 
-    for unit in sway-physical.service niri.service; do
-      if ${pkgs.systemd}/bin/systemctl --user -q is-active "$unit"; then
-        echo "A physical desktop is already running ($unit). Log out before starting Sway." >&2
-        exit 1
-      fi
-    done
+    if ${pkgs.systemd}/bin/systemctl --user -q is-active sway-physical.service; then
+      echo "A physical desktop is already running (sway-physical.service). Log out before starting Sway." >&2
+      exit 1
+    fi
 
     # Raw fish config does not source HM's POSIX session fragment. Set the
     # declared values here so compositor children and activation agree.
-    ${lib.concatStringsSep "\n" (lib.mapAttrsToList
-      (name: value: "export ${name}=${lib.escapeShellArg value}")
-      config.home-manager.users.tom.home.sessionVariables)}
+    ${lib.concatStringsSep "\n" (
+      lib.mapAttrsToList (
+        name: value: "export ${name}=${lib.escapeShellArg value}"
+      ) config.home-manager.users.tom.home.sessionVariables
+    )}
     export XDG_CURRENT_DESKTOP=sway-physical
     export XDG_SESSION_DESKTOP=sway XDG_SESSION_TYPE=wayland
     # Nix keeps these schemas outside the ordinary profile share directory.
     # Plain gsettings, GTK clients and manager-launched apps need the same path.
     export XDG_DATA_DIRS="${schemaDirs}:''${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-    unset SWAYSOCK I3SOCK NIRI_SOCKET WAYLAND_DISPLAY DISPLAY
+    unset SWAYSOCK I3SOCK WAYLAND_DISPLAY DISPLAY
     # Physical seats own the user's ordinary portals. The optional headless
     # browser compositor keeps its private display environment in its service.
     # Never clear failures globally or restart the manager / Herdr here.
-    ${pkgs.systemd}/bin/systemctl --user unset-environment SWAYSOCK I3SOCK NIRI_SOCKET WAYLAND_DISPLAY DISPLAY
+    ${pkgs.systemd}/bin/systemctl --user unset-environment SWAYSOCK I3SOCK WAYLAND_DISPLAY DISPLAY
     # Import declared session settings (Qt, Chrome, Home Manager), without
     # copying arbitrary shell secrets or stale compositor variables.
     present=()

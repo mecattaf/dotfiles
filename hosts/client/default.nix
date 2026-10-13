@@ -18,12 +18,12 @@
 # the NetworkManager profiles all stay, and the Omarchy generation stays in
 # the boot menu as the rollback.
 #
-# WHAT IT IS, in one line: a thin client. It shows Tom niri, kitty, Chrome and
+# WHAT IT IS, in one line: a thin client. It shows Tom Sway, kitty, Chrome and
 # the dock's peripherals, and everything that thinks runs on the strix
 # (herdr server, the Claude/Codex/pi seats, tally, the artifact and microVM
 # planes) or the worker (Halogen). Mod+Return on this box is a herdr window
 # INTO the strix (~/.local/bin/herdr-projector, `herdr --remote
-# strix`, driven by herdr-chord from binds.kdl, #385); `desk` is the fish
+# strix`, driven by herdr-chord from sway/binds.conf, #385); `desk` is the fish
 # spelling of the same thing.
 #
 # WHAT IT IS NOT:
@@ -68,15 +68,15 @@
 # hosts/zenbook-duo/hardware.nix merged with 77eac406^'s host module; each
 # omission is recorded where it would have gone.
 {
-  # Shared Sway + Vicinae desktop; hardware stays host-specific.
-  myDisplay.session = "sway";
+  # Sway + Vicinae desktop (myDisplay.enable defaults to true); hardware
+  # stays host-specific.
 
   imports = [
     ../../modules/local-models.nix
     ./hardware.nix
     ./disko.nix
     ./audio.nix # pins the iContact webcam mic (on the dock) as the default source
-    ./lid.nix # the lid does nothing to logind; niri (per-host slot) owns the backlight half
+    ./lid.nix # the lid does nothing to logind; Sway (sway-local.conf) owns the backlight half
     ./strix-reachability.nix
     ./trackpad.nix
     ./huion.nix # the Huion Note X10 paper inbox: patched bluetoothd, hid-generic unbind
@@ -222,7 +222,7 @@
   # i915 is the bound driver (xe loaded but idle); eDP PSR flicker.
   # nvme_core.default_ps_max_latency_us=0: APST off on the WD PC SN560. Its
   # kernel log carries "nvme … timeout, completion polled" (10 and 11 in two
-  # earlier boots, one on 2026-09-14 that stalled niri past its start limit),
+  # earlier boots, one on 2026-09-14 that stalled the compositor past its start limit),
   # the lost-interrupt signature of a drive failing to leave a deep power
   # state. The cost is idle power on a machine that lives on its dock.
   boot.kernelParams = [
@@ -249,14 +249,6 @@
       };
     })
   ];
-
-  # jul5 dual-eDP niri startup hang mitigation: niri.service is Type=notify and
-  # was SIGKILLed before signalling ready. 120 s was not enough on 2026-09-14:
-  # niri started 08:54:44, stalled behind a kernel "nvme … timeout, completion
-  # polled" at 08:56:14, hit the 120 s limit at 08:56:44 and was killed — greetd
-  # fell back to its login prompt, and it was rendering 10 s later. A slow start
-  # must never cost the session; a true deadlock still ends at 5 minutes.
-  systemd.user.services.niri.serviceConfig.TimeoutStartSec = lib.mkForce "300";
 
   # Linux 7.2 like the rest of the fleet (Tom, 2026-09-14), sourced exactly as
   # modules/strix.nix and hosts/nas/kernel.nix do: the versioned attr moves only

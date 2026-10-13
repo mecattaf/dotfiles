@@ -6,8 +6,8 @@
 }:
 # Ensure tom's dotfiles checkout exists at ~/mecattaf/dotfiles before the graphical
 # session starts. home-manager deploys ~/.config/* and ~/.local/bin as OUT-OF-STORE
-# symlinks into that path (home/home.nix `mkOutOfStoreSymlink`, for niri hot-reload);
-# on a fresh flash the checkout is absent so every config dangles and niri boots on
+# symlinks into that path (home/home.nix `mkOutOfStoreSymlink`, for hot-reload);
+# on a fresh flash the checkout is absent so every config dangles and the compositor boots on
 # defaults (the jul5 duo bug). Two layers deliver it:
 #
 #   PRIMARY  — the flash operator stages a full clone into the nixos-anywhere
@@ -16,7 +16,7 @@
 #   FALLBACK — this oneshot. It only fires when the primary was skipped/failed
 #              (ConditionPathExists gate → "skipped", not "failed", when .git exists),
 #              e.g. a rebuilt VM or a flash that forgot the flag. Ordered before greetd
-#              so niri sees the config; soft network-online + non-fatal so a network-
+#              so Sway sees the config; soft network-online + non-fatal so a network-
 #              less boot degrades to default config instead of a hung login screen.
 #
 # Clone-to-temp + atomic mv means an interrupted clone never leaves a half-populated
@@ -76,7 +76,7 @@ lib.mkIf (!config.myHeadless.enable && !inStore) {
     };
   };
 
-  # greetd waits for the checkout to land (so niri reads the real config on first
+  # greetd waits for the checkout to land (so Sway reads the real config on first
   # boot), but softly: Wants, not Requires, and a skipped/failed bootstrap still lets
   # the login proceed rather than wedging the greeter. Gated on the greeter itself:
   # unconditional, this block alone materialised a bodyless greetd.service on every

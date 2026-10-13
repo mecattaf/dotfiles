@@ -212,23 +212,16 @@
   # path at all.
   security.sudo.wheelNeedsPassword = false;
 
-  # --- session: greetd → the selected physical compositor ---
-  # All derive from myDisplay (./display.nix): enable (default true) says a
-  # human sits here; session (default "sway") says which
-  # compositor greetd starts; keepNiri keeps niri installed beside it for
-  # rollback. A host without a seat gets no compositor and no greeter. The
-  # greetd settings below stay unconditional — the module ignores them when
-  # the service is off — so a host only ever flips the options.
-  programs.swayPhysical.enable = config.myDisplay.enable && config.myDisplay.session == "sway";
-  programs.niri.enable =
-    config.myDisplay.enable && (config.myDisplay.session == "niri" || config.myDisplay.keepNiri);
+  # --- session: greetd → Sway ---
+  # Both derive from myDisplay.enable (./display.nix, default true): a human
+  # sits here, so greetd starts Sway. A host without a seat gets no
+  # compositor and no greeter. The greetd settings below stay unconditional
+  # (the module ignores them when the service is off), so a host only ever
+  # flips the option.
+  programs.swayPhysical.enable = config.myDisplay.enable;
   services.greetd =
     let
-      sessionCommand =
-        if config.myDisplay.session == "sway" then
-          "${config.programs.swayPhysical.sessionPackage}/bin/sway-physical-session"
-        else
-          "${config.programs.niri.package}/bin/niri-session";
+      sessionCommand = "${config.programs.swayPhysical.sessionPackage}/bin/sway-physical-session";
     in
     {
       enable = config.myDisplay.enable;
@@ -352,7 +345,7 @@
   # `mkIf (!myHeadless.enable) [ 5900 ]`, which read as a fleet posture but
   # resolved to two hosts: the strix, which wanted it, and the worker,
   # which has no tailscale0 for it to land on — and no compositor at all
-  # (hosts/worker/default.nix forces the greetd→niri session below off), so
+  # (hosts/worker/default.nix forced the greetd session below off), so
   # the strix is the only host this session block actually lights. The
   # NAS's own :5900 was never this line's.
   services.resolved.enable = true;
@@ -482,7 +475,7 @@
   environment.sessionVariables = {
     QT_QPA_PLATFORMTHEME = "qt6ct";
     # GTK_THEME is gone (2026-09-17). It pinned MacTahoe-Dark-grey for every GTK
-    # app because niri has no settings daemon — but GTK3's Wayland backend reads
+    # app because the compositor has no settings daemon — but GTK3's Wayland backend reads
     # org.gnome.desktop.interface straight from gsettings/dconf and follows it
     # LIVE, provided the schema is installed; it never was (no gschemas.compiled
     # with that schema anywhere on XDG_DATA_DIRS), which is the actual reason
@@ -491,7 +484,7 @@
     # color-scheme per theme. An env var cannot change under a running session,
     # so it had to go for the theme switcher to work without a re-login.
     # Chromium/Electron (google-chrome + PWA launchers) only run native Wayland
-    # under niri with this set; otherwise they fall back to X11 and blur/fail.
+    # under Sway with this set; otherwise they fall back to X11 and blur/fail.
     NIXOS_OZONE_WL = "1";
     # Moved here from fish/config.fish's pre-`status is-interactive` guard
     # block (#236): with bash as tom's login shell those `export`/`set -gx`

@@ -15,9 +15,9 @@
 # confuse HM's link step. Switching a theme therefore needs no rebuild; only
 # adding a theme or changing a palette value does.
 #
-# The two precedents this copies: kitty-scrollback-nix.conf and niri-local.kdl
+# The precedent this copies: kitty-scrollback-nix.conf and sway-local.conf
 # (home.nix), generated files at a neutral ~/.config path pulled in by an
-# absolute include from inside a whole-dir RAW symlink.
+# include from inside a whole-dir RAW symlink.
 let
   themes = import ./themes { inherit lib; };
   cfgHome = config.xdg.configHome;
@@ -52,7 +52,9 @@ in
   # covers noir's; the claude variants ride along here).
   # (unique on the attr NAMES: lib.unique on derivations compares attrsets and
   # recurses forever.)
-  home.packages = map (n: pkgs.${n}) (lib.unique (lib.mapAttrsToList (_: t: t.gtk.package) themes.checked));
+  home.packages = map (n: pkgs.${n}) (
+    lib.unique (lib.mapAttrsToList (_: t: t.gtk.package) themes.checked)
+  );
 
   # Bootstrap and self-heal the pointer, never override a choice:
   #  - missing or dangling  → noir

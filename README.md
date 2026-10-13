@@ -23,7 +23,7 @@ flake.nix        three NixOS hosts wired through one mkHost
 modules/         common.nix (every host) + strix.nix (AMD Strix Halo compute host)
 hosts/           one module per machine
 home/            home-manager: typed nix (home.nix, nvim.nix) + RAW out-of-store
-                 configs (niri KDL, kitty, fish, nvim lua) linked via mkOutOfStoreSymlink
+                 configs (sway, kitty, fish, nvim lua) linked via mkOutOfStoreSymlink
 overlays/ pkgs/  custom packages (mactahoe themes, …)
 docs/local-ai/  the halogen server, the model catalogue and per-host wanted sets
 docs/old/       archival stub indexing retired docs in Git history

@@ -17,9 +17,9 @@
 #
 # Input settings are unchanged. The kernel's magicmouse driver binds it
 # over uhid like it did over USB, libinput reports it as a touchpad
-# (bluetooth:004c:0265, pointer+gesture), so niri's `touchpad {}` block in
-# home/dot_config/niri/input.kdl (tap, natural-scroll, clickfinger) applies
-# as before. There never was a per-device niri block. The battery shows up as
+# (bluetooth:004c:0265, pointer+gesture), so Sway's `input type:touchpad`
+# block in home/dot_config/sway/input.conf (tap, natural scroll) applies as
+# before. There is no per-device block. The battery shows up as
 # /sys/class/power_supply/hid-c0:95:6d:05:4a:4e-battery-*.
 {
   # Page scan in interlaced mode, so the click that wakes a sleeping trackpad

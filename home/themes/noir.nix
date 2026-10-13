@@ -16,7 +16,7 @@
     base = "#000000"; # terminal / editor background
     dim = "#000000"; # tab bar, one step below base
     raised = "#000000"; # popups, one step above base
-    desktop = "#000000"; # niri background-color + overview backdrop
+    desktop = "#000000"; # desktop background
   };
 
   fg = "#EAECF0"; # Claude Dark `fg`

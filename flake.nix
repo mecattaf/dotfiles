@@ -146,21 +146,6 @@
       inputs.utils.follows = "flake-utils";
     };
 
-    # piri — niri IPC extension daemon (github.com/Asthestarsfalll/piri): one
-    # Rust daemon that tails niri's event stream and layers plugins on top —
-    # scratchpads, marks, window/workspace rules. We use it for the "music"
-    # auto-scratchpad (Mod+M toggles a right-side SoundCloud pane).
-    # Third-party but consumed exactly like tally: flake input pinned in
-    # flake.lock, follows nixpkgs so the Rust build resolves against our one pin.
-    # piri ships packages.default + a NixOS module, but NOT a home-manager
-    # module, so home/piri.nix does the module work: package + user service, with
-    # piri.toml delivered RAW through the niri whole-dir symlink for hot-reload.
-    # `nix flake update piri` bumps to the latest pushed commit.
-    piri = {
-      url = "github:Asthestarsfalll/piri";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     # Client desktop pilot: package and Home Manager module from one release.
     # Keep upstream's nixpkgs so its signed binary cache remains usable.
     vicinae.url = "github:vicinaehq/vicinae/v0.29.1";
@@ -458,7 +443,7 @@
         # tenure here; `zenbook-duo` left on 2026-08-30 and came back from
         # omarchy-fleet under this name). Plain mkHost: it rides the unstable
         # pin like the twins and keeps Home Manager, because it is the box Tom
-        # sits at — niri, kitty and Chrome are real here, nothing else is.
+        # sits at — Sway, kitty and Chrome are real here, nothing else is.
         client = mkHost { hostModule = ./hosts/client; };
       };
 
@@ -1089,7 +1074,7 @@
             # modules/display.nix) is either listed here on purpose or its
             # absence is visible at eval. The list is the roll call, not a
             # claim that all four have displays: what is asserted per host is
-            # the EQUALITY niri == greetd == myDisplay, plus the three
+            # the EQUALITY greetd == Sway == myDisplay, plus the three
             # topology facts below that never flip.
             displayHosts = [
               "strix"
@@ -1127,23 +1112,10 @@
           assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") strixHome.home.packages);
           assert !(strixHome.xdg.configFile ? "kitty-herdr-nix.conf");
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr") strixHome.home.packages;
-          # The client's herdr chords live in the RAW, hot-reloaded binds.kdl,
+          # The client's herdr chords live in Sway's RAW, hot-reloaded binds.conf,
           # which no generation renders, so they are asserted here by content
           # (precedent: the readFile assert on dot_claude/settings.json below).
           # Each one goes through herdr-chord into ONE projector window.
-          assert nixpkgs.lib.hasInfix ''spawn-sh "~/.local/bin/herdr-chord new"'' (
-            builtins.readFile ./home/dot_config/niri/binds.kdl
-          );
-          assert nixpkgs.lib.hasInfix ''spawn-sh "~/.local/bin/herdr-chord sidebar"'' (
-            builtins.readFile ./home/dot_config/niri/binds.kdl
-          );
-          assert nixpkgs.lib.hasInfix ''spawn-sh "~/.local/bin/herdr-chord rename"'' (
-            builtins.readFile ./home/dot_config/niri/binds.kdl
-          );
-          assert nixpkgs.lib.hasInfix
-            ''Mod+Shift+Return hotkey-overlay-title="Terminal (plain)" { spawn "kitty" "-e" "fish"; }''
-            (builtins.readFile ./home/dot_config/niri/binds.kdl);
-          # The same chords in Sway's RAW binds.conf, where the seats read them.
           # Whole lines, so a commented-out or re-targeted bind fails here.
           # (Mod+Shift+N moves a window on Sway, #538, so rename is not here.)
           assert
@@ -1194,8 +1166,8 @@
           # the tree. The browser-only Sway service added on 2026-09-12 is
           # separate from that retired physical-session integration.
           #
-          # Physical Niri and optional browser Sway are independent. Restoring
-          # the strix seat must not resurrect physical-session VNC.
+          # The physical seat and the optional browser Sway are independent.
+          # Restoring a strix seat must not resurrect physical-session VNC.
           # The separate browser-only Sway desktop is a strix user service.
           assert (cfgOf "strix").systemd.user.services ? browser-desktop;
           assert (cfgOf "strix").systemd.user.services.browser-desktop.wantedBy == [ ];
@@ -1208,13 +1180,8 @@
           assert hasChromeStream "strix";
 
           assert !(strixHome.systemd.user.services ? wayvnc);
-          assert (strixHome.systemd.user.services ? piri) == (cfgOf "strix").myDisplay.enable;
-          assert clientHome.systemd.user.services ? piri;
-          # piri is niri-only: on a Sway seat it must be skipped, not crash-loop.
-          assert clientHome.systemd.user.services.piri.Unit.ConditionEnvironment == "NIRI_SOCKET";
-          # The seat EQUALITIES: greetd == myDisplay; the selected compositor is
-          # on exactly when there is a seat; niri is on for its own session or as
-          # the kept rollback; greetd starts the selected session's launcher.
+          # The seat EQUALITIES: greetd == Sway == myDisplay, greetd starts the
+          # Sway session launcher, and niri (retired 2026-10-13) is on nowhere.
           assert builtins.all (
             h:
             let
@@ -1222,18 +1189,15 @@
               d = c.myDisplay;
             in
             c.services.greetd.enable == d.enable
-            && c.programs.swayPhysical.enable == (d.enable && d.session == "sway")
-            && c.programs.niri.enable == (d.enable && (d.session == "niri" || d.keepNiri))
+            && c.programs.swayPhysical.enable == d.enable
+            && !c.programs.niri.enable
             && (
               !d.enable
-              || nixpkgs.lib.hasSuffix (
-                if d.session == "sway" then "/bin/sway-physical-session" else "/bin/niri-session"
-              ) c.services.greetd.settings.initial_session.command
+              || nixpkgs.lib.hasSuffix "/bin/sway-physical-session" c.services.greetd.settings.initial_session.command
             )
           ) displayHosts;
-          # Both physical seats share Sway; the Herdr server remains independent.
-          assert (cfgOf "client").myDisplay.session == "sway";
-          assert (cfgOf "strix").myDisplay.session == "sway";
+          # The client is the Sway seat; the Herdr server remains independent.
+          assert (cfgOf "client").myDisplay.enable;
           assert (cfgOf "client").programs.sway.enable;
           assert clientHome.programs.vicinae.enable;
           assert clientHome.services.mako.enable;
@@ -1253,47 +1217,6 @@
           assert clientHome.programs.vicinae.settings.font.normal.family == "Anthropic Sans";
           assert clientHome.services.mako.settings.font == "Anthropic Sans 11";
           assert clientHome.xdg.configFile ? "sway-local.conf";
-          # niri is never dropped without a decision: each seat either runs
-          # niri or keeps it installed beside Sway (myDisplay.keepNiri), so a
-          # rollback to session = "niri" keeps these checks green.
-          assert builtins.all (h: (cfgOf h).myDisplay.keepNiri || (cfgOf h).myDisplay.session == "niri") [
-            "strix"
-            "client"
-          ];
-          # The niri rollback, evaluated in memory (never switched): with
-          # session = "niri" each seat gets exactly the niri desktop main had —
-          # greetd starts niri-session, niri's portal table is the one the Sway
-          # default carries for it, piri's service and
-          # xwayland-satellite are installed.
-          assert builtins.all
-            (
-              h:
-              let
-                c = cfgOf h;
-                r =
-                  (self.nixosConfigurations.${h}.extendModules {
-                    modules = [
-                      {
-                        myDisplay.session = nixpkgs.lib.mkForce "niri";
-                        myDisplay.enable = nixpkgs.lib.mkForce true;
-                      }
-                    ];
-                  }).config;
-                rh = r.home-manager.users.tom;
-              in
-              r.programs.niri.enable
-              && nixpkgs.lib.hasSuffix "/bin/niri-session" r.services.greetd.settings.initial_session.command
-              && r.xdg.portal.config.niri == c.xdg.portal.config.niri
-              && rh.systemd.user.services ? piri
-              && rh.systemd.user.services.piri.Unit.ConditionEnvironment == "NIRI_SOCKET"
-              && builtins.any (p: nixpkgs.lib.getName p == "xwayland-satellite") rh.home.packages
-              && builtins.any (p: nixpkgs.lib.getName p == "piri") rh.home.packages
-              && rh.gtk.enable
-              && rh.xdg.configFile ? "niri-local.kdl"
-            )
-            [
-              "client"
-            ];
           # MacTahoe on every session (non-negotiable): Home Manager's gtk
           # block keeps MacTahoe for GTK3 and its icons, and GTK4's gtk.css,
           # gtk-dark.css and assets point through ~/.config/theme at the
@@ -1352,20 +1275,19 @@
             ];
 
           assert !(cfgOf "nas").myDisplay.enable;
-          # The thin client (2026-09-11): Tom's seat, so niri and greetd are
+          # The thin client (2026-09-11): Tom's seat, so Sway and greetd are
           # ON and the whole strix-gated tier is OFF — no tally, no
           # voxtype, no herdr SERVER (the binary is here: Mod+Return is
           # herdr-chord into a local `herdr --remote strix` projector,
-          # #385 — asserted above on the RAW binds.kdl, and below as the
-          # generated niri-local.kdl overriding none of those chords), no
+          # #385 — asserted above on the RAW sway/binds.conf, and below as the
+          # generated sway-local.conf overriding none of those chords), no
           # wayvnc SERVER (while the strix
           # had a display the client VIEWED it through a `strix (VNC)`
           # Remmina profile — asserted below as an equality, absent since the
           # 2026-09-11 flip — and no
           # `client (VNC)` profile ever exists on the strix, in either
           # direction of the flip), no :5900 door, no
-          # seat-feeder clocks. Touch is mapped globally to
-          # eDP-1 on stock niri (PR #1856 accepted as a defect, no fork).
+          # seat-feeder clocks. Touch is mapped to eDP-1 in sway-local.conf.
           assert clientHome.home.username == "tom";
           # The client's home stays clean by construction (2026-10-11): every
           # file Home Manager places there is hidden, no XDG user dir but
@@ -1424,16 +1346,7 @@
               self.nixosConfigurations.client.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
                 or [ ]
             );
-          assert nixpkgs.lib.hasInfix "map-to-output \"eDP-1\""
-            clientHome.xdg.configFile."niri-local.kdl".text;
-          # The client's generated slot overrides none of binds.kdl's herdr
-          # chords: an override there would shadow herdr-chord (#385).
-          assert !(nixpkgs.lib.hasInfix "Mod+Return " clientHome.xdg.configFile."niri-local.kdl".text);
-          assert
-            !(nixpkgs.lib.hasInfix "Mod+Ctrl+Shift+Return " clientHome.xdg.configFile."niri-local.kdl".text);
-          assert !(nixpkgs.lib.hasInfix "Mod+Shift+N " clientHome.xdg.configFile."niri-local.kdl".text);
-          assert !(nixpkgs.lib.hasInfix "binds" strixHome.xdg.configFile."niri-local.kdl".text);
-          # Sway twins of the slot asserts: touch mapped, the lid handled by
+          # The client's generated slot: touch mapped, the lid handled by
           # bindswitch (hosts/client/lid.nix relies on the compositor for the
           # panel), and no override of the herdr chords.
           assert nixpkgs.lib.hasInfix "input type:touch map_to_output eDP-1"

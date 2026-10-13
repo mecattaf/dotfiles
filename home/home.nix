@@ -64,7 +64,6 @@ let
   # Whole-dir RAW config dirs, one per ~/.config/<name>.
   configDirs = [
     "sway" # shared physical desktop
-    "niri" # kept beside Sway for rollback until niri retirement (myDisplay.keepNiri)
     "kitty"
     "ghostty" # kitty.conf's twin, read by libghostty in cmux Browser's panes
     "fish"
@@ -74,8 +73,8 @@ let
     "qt6ct"
   ];
 
-  # Python interpreter backing the niri helper bin/ scripts (wifi-menu, fzf-nmcli, …).
-  pythonForNiri = pkgs.python3.withPackages (
+  # Python interpreter backing the helper bin/ scripts (wifi-menu, fzf-nmcli, …).
+  pythonForScripts = pkgs.python3.withPackages (
     ps:
     with ps;
     [
@@ -109,7 +108,6 @@ in
     ./nvim.nix
     ./paper.nix
     ./pi.nix
-    ./piri.nix
     ./raw-dotfiles-guard.nix
     ./ssh.nix
     ./theme.nix
@@ -120,7 +118,7 @@ in
   home.homeDirectory = "/home/tom";
   programs.home-manager.enable = true;
 
-  # Every home.packages tool must be on the SESSION PATH so niri spawns and
+  # Every home.packages tool must be on the SESSION PATH so Sway's exec and
   # kitty-daemon `kitty @ launch` children find Nix-provided binaries.
   home.sessionPath = [
     "$HOME/.nix-profile/bin"
@@ -169,73 +167,6 @@ in
           bindsym --locked XF86AudioMicMute exec ~/.local/bin/volume micmute
         '';
 
-      # Per-HOST niri config — the real per-host slot niri/local.kdl never had (that
-      # file is shared by the whole-dir symlink). Emitted at a neutral ~/.config path
-      # (niri/ is a whole-dir symlink, can't nest a generated file inside) and pulled
-      # in by an ABSOLUTE include in niri/config.kdl (niri expands neither ~ nor $HOME).
-      # Written on EVERY host (no `optional` include on the pinned niri). The
-      # strix gets an inert file. The client — the ASUS Zenbook Duo, back
-      # on 2026-09-11 — gets the ONLY per-host niri content in the fleet, and
-      # this slot is the only place such content may live: niri/ itself is a
-      # whole-dir RAW symlink shared by every host, so binds.kdl carries over
-      # in full and the two chords that mean something different on a thin
-      # client are OVERRIDDEN here. That works because config.kdl includes
-      # this file last and niri's includes are positional: "binds will
-      # override previously-defined conflicting keys" (niri wiki,
-      # Configuration:-Include). NB: store-managed (read-only, re-emitted on
-      # switch), not hot-reload RAW like the rest of niri/.
-      #
-      # Touch: stock niri maps every touch device to ONE output; per-device
-      # mapping needs the unmerged PR #1856 and its fork build, which left the
-      # tree with the old `zenbook-duo` host and does NOT come back (Tom's
-      # ruling 2026-09-11: accepted defect, no fork, no ntm, no rotation). The
-      # top panel is the working surface, so it gets the touch; the bottom
-      # panel's touch lands on the top one until #1856 merges.
-      #
-      # Mod+Return / Mod+Ctrl+Shift+Return are NOT overridden here any more
-      # (#385, 2026-09-13): binds.kdl's own chords call ~/.local/bin/herdr-chord,
-      # which targets the strix through a local `herdr --remote`
-      # projector, so the RAW file is already right on the client and nothing
-      # needs a rebuild to re-cut them. The ssh-tty spellings that lived here
-      # (`hk-new-inplace`, `hk-resume-agents`) ran the herdr client ON the
-      # strix, where no clipboard image can ever be read.
-      #
-      # F10: binds.kdl's "sleep monitors" popup (power-off-monitors behind an
-      # fzf prompt) becomes a popup-free BACKLIGHT toggle — brightness to zero
-      # on intel_backlight, which the dock daemon copies to eDP-2 within
-      # 500 ms, so one write darkens both panels; the next F10 restores the
-      # saved level (or 50% if the save file under /tmp is gone). The logic
-      # lives in bin/brightness (off/restore/toggle, since M-3), not inline
-      # here, so the script and the key cannot drift apart. Keys keep
-      # working throughout, so there is no lockout; Mod+Shift+P keeps DPMS-all.
-      #
-      # XF86 twins: the daemon re-emits the Duo keyboard's Fn keys as
-      # XF86MonBrightnessDown/Up and XF86AudioMicMute, none of which binds.kdl
-      # binds (it binds plain F-keys for the Glove80). Bound here so the
-      # laptop's own keys are not dead.
-      "niri-local.kdl".text =
-        if hostName == "client" then
-          ''
-            // GENERATED per-host (home.nix). client — ASUS Zenbook Duo UX8406MA.
-            input {
-                touch {
-                    map-to-output "eDP-1"
-                }
-            }
-
-            binds {
-                F10 hotkey-overlay-title="Backlight off / restore" { spawn-sh "~/.local/bin/brightness toggle"; }
-                XF86MonBrightnessDown allow-when-locked=true { spawn-sh "~/.local/bin/brightness down"; }
-                XF86MonBrightnessUp allow-when-locked=true { spawn-sh "~/.local/bin/brightness up"; }
-                Shift+XF86MonBrightnessDown allow-when-locked=true { spawn-sh "~/.local/bin/brightness down 2%"; }
-                Shift+XF86MonBrightnessUp allow-when-locked=true { spawn-sh "~/.local/bin/brightness up 2%"; }
-                XF86AudioMicMute allow-when-locked=true { spawn-sh "~/.local/bin/volume micmute"; }
-            }
-          ''
-        else
-          ''
-            // GENERATED per-host (home.nix). No host-specific niri config on ${hostName}.
-          '';
     };
   # (The gtk-4.0/{gtk.css,gtk-dark.css,assets} links that used to sit here — a
   # store symlink of MacTahoe-Dark-grey's gtk-4.0 — moved to home/theme.nix,
@@ -509,12 +440,9 @@ in
     yq-go
     glow
 
-    # wayland desktop tooling. xwayland-satellite: niri's X11 path — X11 apps
-    # and Chrome fallbacks need it on the session PATH under niri; Sway has
-    # native Xwayland. Kept while niri is the rollback (myDisplay.keepNiri).
-    xwayland-satellite
-    # bin/monitors-off: sway-family compositors do not wake outputs
-    # on input, so a one-shot swayidle resume does it (niri's power-off-monitors).
+    # wayland desktop tooling (Sway has native Xwayland).
+    # bin/monitors-off: Sway does not wake outputs on input, so a one-shot
+    # swayidle resume does it.
     swayidle
     acpi
     brightnessctl
@@ -539,8 +467,8 @@ in
     pavucontrol
     nwg-look
 
-    # the python interpreter the niri helper scripts need
-    pythonForNiri
+    # the python interpreter the helper scripts need
+    pythonForScripts
 
     # media / viewers
     yt-dlp
