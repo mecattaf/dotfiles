@@ -14,8 +14,8 @@ skill (the CLI refuses `--tom` there).
 ## Know what exists
 
 Run `project list` once, early. It names each project with its goal and what
-is waiting, and ends with the desk rulings that bind every project; follow
-them. Load nothing more until Tom's words need a project: "get situated", a
+is waiting. The desk's MEMORY.md holds the rulings that bind every project:
+read it once (`project memory show desk`) and follow them. Load nothing more until Tom's words need a project: "get situated", a
 greeting or "what is the status?" is answered from `project list` and
 `project overview`, never by showing every project.
 
