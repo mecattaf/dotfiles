@@ -105,6 +105,7 @@ in
     ./client-apps.nix
     ./harness-records.nix
     ./herdr.nix
+    ./herdr-context.nix
     ./nvim.nix
     ./paper.nix
     ./pi.nix
