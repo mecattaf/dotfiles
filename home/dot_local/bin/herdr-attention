@@ -69,13 +69,13 @@ class Attention:
             owner = context.get('label')
             session = agent.get('agent_session') or {}
             identity = [agent.get('terminal_id'), session.get('agent'), session.get('kind'), session.get('value')]
-            if previous.get('owner') != owner or previous.get('identity', identity) != identity:
-                previous = {}
             sequence = agent.get('state_change_seq')
             old_sequence = previous.get('state_change_seq')
             sequenced = isinstance(sequence, int) and isinstance(old_sequence, int)
             changed = sequenced and sequence != old_sequence
             restarted = sequenced and sequence < old_sequence
+            if previous.get('owner') != owner or previous.get('identity', identity) != identity:
+                previous = {}
             waiting = agent.get('agent_status') == 'blocked'
             # Herdr increments this sequence only on effective state changes
             # (pinned src/app/actions.rs). It catches blocked→working→blocked
