@@ -157,16 +157,18 @@ def collect(root, snapshot, records):
     return result, errors
 
 
-def inspect(*, require_snapshot=False):
+def inspect(*, require_snapshot=False, local_only=False):
     root = picker.tree()
     records = registry()
     error = None
-    try:
-        snapshot = picker.remote_snapshot()
-    except (Error, OSError, ValueError) as exc:
-        if require_snapshot:
-            raise
-        snapshot, error = None, str(exc)
+    snapshot = None
+    if not local_only:
+        try:
+            snapshot = picker.remote_snapshot()
+        except (Error, OSError, ValueError) as exc:
+            if require_snapshot:
+                raise
+            error = str(exc)
     contexts, errors = collect(root, snapshot, records)
     if error:
         errors.append('Herdr snapshot unavailable: ' + error)
@@ -505,7 +507,7 @@ def show_existing(row, records, kind, *, pane=None):
 
 def focus_pair(view_id, *, terminal=False):
     """Picker integration; caller already holds the shared desktop lock."""
-    _, records, snapshot, contexts, _ = inspect()
+    _, records, snapshot, contexts, _ = inspect(local_only=True)
     matches = [r for r in contexts if view_id in (r['terminal_id'], r['chat_id'])]
     if not matches:
         return False
@@ -522,7 +524,7 @@ def focus_pair(view_id, *, terminal=False):
 
 def park_current():
     """Park both views, preserving the last view. Return IDs picker must skip."""
-    root, records, _, contexts, _ = inspect()
+    root, records, _, contexts, _ = inspect(local_only=True)
     current = picker.focused_workspace(root)
     matches = [r for r in contexts if r['slot'] == current.get('num') and r['representative_id']]
     if not matches:
@@ -581,6 +583,25 @@ def main():
         print(json.dumps(payload) if args.json else '\n'.join(f'{r["slot"]}: {r["label"]} ({r["workspace_id"]}) — {r["view"] or "parked"}' for r in contexts) + ('\n' + '\n'.join(errors) if errors else ''))
         return
     with picker.desktop_lock():
+        # Revealing an already identified local view never waits on SSH. The
+        # same marked Kitty is safe to return to even while Herdr is offline.
+        if args.command in ('show', 'toggle', 'activate') and not args.pane and not args.choose_pane:
+            local_root, local_records, _, local_contexts, _ = inspect(local_only=True)
+            try:
+                local = pick_context(local_root, local_contexts, args.workspace)
+            except Error:
+                local = None
+            if local:
+                local_kind = None
+                if args.command == 'show' and args.view == 'terminal':
+                    local_kind = 'terminal'
+                elif args.command == 'toggle' and local['view'] == 'chat':
+                    local_kind = 'terminal'
+                elif args.command == 'activate':
+                    local_kind = local['view'] or local['last_view']
+                if local_kind and local['_' + local_kind]:
+                    show_existing(local, local_records, local_kind)
+                    return
         root, records, snapshot, contexts, errors = inspect()
         if args.command == 'reconcile':
             for row in contexts:
