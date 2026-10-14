@@ -2441,6 +2441,8 @@
                 ${./home/dot_local/bin/runtime-test}
               python3 ${./tests/herdr/test_launchers.py}
               python3 ${./tests/herdr/test_sway_picker.py}
+              python3 ${./tests/herdr/test_context.py}
+              python3 ${./tests/herdr/test_attention.py}
               touch "$out"
             '';
 
