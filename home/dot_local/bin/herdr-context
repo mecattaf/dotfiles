@@ -486,7 +486,16 @@ def show_existing(row, records, kind, *, pane=None):
         raise Error('Both companion views became visible; refusing an ambiguous swap.')
     if visible and visible[0][0]['id'] != target['id']:
         current = visible[0][0]
-        picker.ipc(f'[con_id={current["id"]}] swap container with con_id {target["id"]}')
+        # Sway temporarily shows the scratchpad target before it captures the
+        # source fullscreen mode. That can clear fullscreen first, so preserve
+        # the observed mode ourselves and apply it within the same IPC batch.
+        mode = current.get('fullscreen_mode', 0)
+        if mode not in (0, 1, 2):
+            raise Error('Unexpected Sway fullscreen mode; refusing to change this tile.')
+        fullscreen = 'disable' if mode == 0 else 'enable global' if mode == 2 else 'enable'
+        picker.ipc(f'[con_id={current["id"]}] swap container with con_id {target["id"]}; '
+                   f'[con_id={current["id"]}] fullscreen disable; '
+                   f'[con_id={target["id"]}] fullscreen {fullscreen}')
     elif not visible:
         # Parked pair restoration: use a live numbered workspace if renamed.
         names = [n['name'] for n, _ in picker.walk(picker.tree()) if n.get('type') == 'workspace' and n.get('num') == row['slot']]
