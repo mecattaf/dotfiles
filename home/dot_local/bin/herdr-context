@@ -267,20 +267,27 @@ def own_browser(node):
     return any(p.get('type') == 'browser' and p.get('id') == pid for p in processes)
 
 
-def browser_port():
+def browser_endpoint():
     lines = (profile_dir() / 'DevToolsActivePort').read_text().splitlines()
+    if len(lines) != 2 or not re.fullmatch(r'/devtools/browser/[A-Za-z0-9-]+', lines[1]):
+        # Chrome may still be publishing its port file during startup. Callers
+        # waiting for the browser retry this bounded, explicit parse failure.
+        raise ValueError('Dedicated Chrome debugging endpoint is incomplete or invalid.')
     port = int(lines[0])
     if not 1 <= port <= 65535:
-        raise Error('Invalid dedicated Chrome debugging port.')
-    return port
+        raise ValueError('Invalid dedicated Chrome debugging port.')
+    return port, lines[1]
+
+
+def browser_port():
+    return browser_endpoint()[0]
 
 
 def http_json(path):
     opener = build_opener(ProxyHandler({}))
-    port = browser_port()
+    port, expected = browser_endpoint()
     # An old port file must never let us attach to another browser after port
     # reuse. Chrome records a random browser endpoint alongside the port.
-    expected = (profile_dir() / 'DevToolsActivePort').read_text().splitlines()[1]
     with opener.open(f'http://127.0.0.1:{port}/json/version', timeout=3) as response:
         version = json.load(response)
     if urlsplit(version.get('webSocketDebuggerUrl', '')).path != expected:
