@@ -1,0 +1,426 @@
+#!/usr/bin/env python3
+"""Project Herdr blocked transitions onto the physical Sway workspace.
+
+Read-only Herdr snapshots arrive through herdr-context every three seconds.
+Sway focus events acknowledge attention independently of the agent's waiting
+state. No terminal input, Herdr focus mutation, or server lifecycle operation.
+The pinned Herdr API's explicit `blocked` state is the only attention trigger;
+`idle` and `done` are deliberately not treated as unanswered questions.
+"""
+import argparse
+import fcntl
+import html
+import json
+import os
+from pathlib import Path
+import queue
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+
+def log(message):
+    print(f'herdr-attention: {message}', file=sys.stderr, flush=True)
+
+
+def run(argv, timeout=12):
+    result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    if result.returncode:
+        raise RuntimeError((result.stderr or result.stdout or f'{argv[0]} failed').strip()[:400])
+    return result.stdout
+
+
+def clean(value):
+    return ' '.join(str(value or '').split())[:160]
+
+
+def pane_key(workspace, pane):
+    return f'{workspace}/{pane}'
+
+
+class Attention:
+    """Pure transition state; desktop effects are returned to the caller."""
+    def __init__(self, records=None):
+        self.records = records or {}
+        self.contexts = {}
+        self.connected = False
+
+    def update(self, status):
+        self.contexts = {c['workspace_id']: c for c in status.get('contexts', [])
+                         if isinstance(c, dict) and isinstance(c.get('workspace_id'), str)}
+        agents = status.get('agents')
+        if not isinstance(agents, list):
+            self.connected = False
+            self.acknowledge_focused()
+            return []
+        notifications = {}
+        current = {}
+        for agent in agents:
+            workspace, pane = agent.get('workspace_id'), agent.get('pane_id')
+            context = self.contexts.get(workspace)
+            if not context or not isinstance(pane, str):
+                continue
+            key = pane_key(workspace, pane)
+            previous = self.records.get(key, {})
+            # A stable label distinguishes a recreated Herdr workspace whose ID
+            # was reused. Do not inherit acknowledgement from a different owner.
+            owner = context.get('label')
+            session = agent.get('agent_session') or {}
+            identity = [agent.get('terminal_id'), session.get('agent'), session.get('kind'), session.get('value')]
+            if previous.get('owner') != owner or previous.get('identity', identity) != identity:
+                previous = {}
+            sequence = agent.get('state_change_seq')
+            old_sequence = previous.get('state_change_seq')
+            sequenced = isinstance(sequence, int) and isinstance(old_sequence, int)
+            changed = sequenced and sequence != old_sequence
+            restarted = sequenced and sequence < old_sequence
+            waiting = agent.get('agent_status') == 'blocked'
+            # Herdr increments this sequence only on effective state changes
+            # (pinned src/app/actions.rs). It catches blocked→working→blocked
+            # between snapshots; a reset is resynchronization, not a new alert.
+            new_episode = waiting and (not previous.get('waiting') or changed)
+            seen = bool(previous.get('seen')) if previous.get('waiting') and waiting and not new_episode else False
+            if context.get('focused'):
+                seen = True
+            record = {'workspace_id': workspace, 'pane_id': pane, 'owner': owner,
+                      'waiting': waiting, 'seen': seen,
+                      'identity': identity, 'state_change_seq': sequence,
+                      'episode': previous.get('episode', 0) + int(new_episode)}
+            current[key] = record
+            if (new_episode and not seen and self.connected and not restarted
+                    and not context.get('closed') and context.get('representative_id')):
+                # One notification per workspace in a sample, even if several
+                # panes become blocked together. Every pane retains its state.
+                notifications.setdefault(workspace, (context, record, agent))
+        self.records = current
+        self.connected = True
+        return list(notifications.values())
+
+    def acknowledge(self, workspace):
+        for record in self.records.values():
+            if record.get('workspace_id') == workspace and record.get('waiting'):
+                record['seen'] = True
+
+    def acknowledge_focused(self):
+        for workspace, context in self.contexts.items():
+            if context.get('focused'):
+                self.acknowledge(workspace)
+
+    def pending(self, workspace):
+        return any(r.get('workspace_id') == workspace and r.get('waiting') and not r.get('seen')
+                   for r in self.records.values())
+
+
+class Bridge:
+    def __init__(self, interval):
+        self.interval = interval
+        self.stop = threading.Event()
+        self.events = queue.Queue(maxsize=256)
+        self.state_path = Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state'))) / 'herdr-context/attention.json'
+        records = {}
+        try:
+            saved = json.loads(self.state_path.read_text())
+            if saved.get('version') == 1 and isinstance(saved.get('records'), dict):
+                records = {k: v for k, v in saved['records'].items() if isinstance(v, dict)}
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, AttributeError) as error:
+            log(f'ignoring unreadable attention state: {error}')
+        self.model = Attention(records)
+        self.last_saved = None
+        self.last_error = None
+        self.owned_urgency = set()
+        self.notifications = {}
+        self.sway_process = None
+        self.fetching = False
+        self.repair_pending = True
+
+    def enqueue(self, kind, data):
+        try:
+            self.events.put_nowait((kind, data))
+        except queue.Full:
+            # Periodic snapshots reconcile dropped window events. A full queue
+            # must not hold a Sway subscriber or notification process open.
+            pass
+
+    def save(self):
+        data = json.dumps({'version': 1, 'records': self.model.records}, sort_keys=True) + '\n'
+        if data == self.last_saved:
+            return
+        self.state_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        temporary = self.state_path.with_name(f'.attention-{os.getpid()}.tmp')
+        with temporary.open('w') as stream:
+            os.chmod(temporary, 0o600)
+            stream.write(data)
+        temporary.replace(self.state_path)
+        self.last_saved = data
+
+    def watch_sway(self):
+        delay = 1
+        while not self.stop.is_set():
+            process = None
+            try:
+                process = subprocess.Popen(['swaymsg', '-m', '-r', '-t', 'subscribe',
+                                            '["workspace","window","shutdown"]'],
+                                           stdout=subprocess.PIPE, text=True)
+                self.sway_process = process
+                for line in process.stdout:
+                    if self.stop.is_set():
+                        break
+                    frame = json.loads(line)
+                    if 'success' in frame:
+                        if not frame['success']:
+                            raise RuntimeError('Sway rejected event subscription')
+                        delay = 1
+                        continue
+                    # Marking urgency generates window/workspace urgent events.
+                    # Titles can stream continuously while an agent works.
+                    if frame.get('change') in ('urgent', 'title'):
+                        continue
+                    self.enqueue('sway', frame)
+                if not self.stop.is_set():
+                    log('Sway event connection closed; reconnecting')
+            except (OSError, ValueError, RuntimeError) as error:
+                log(f'Sway event subscription: {error}')
+            finally:
+                if process:
+                    if process.poll() is None:
+                        process.terminate()
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    if process.stdout:
+                        process.stdout.close()
+                self.sway_process = None
+            self.stop.wait(delay)
+            delay = min(delay * 2, 30)
+
+    def set_urgent(self, container, enabled):
+        if not isinstance(container, int) or isinstance(container, bool) or container <= 0:
+            return False
+        command = f'[con_id={container}] urgent {"enable" if enabled else "disable"}'
+        replies = json.loads(run(['swaymsg', '-r', '--', command], timeout=3))
+        if not replies or any(not reply.get('success') for reply in replies):
+            raise RuntimeError(f'Sway refused urgency for container {container}')
+        return True
+
+    def reconcile_urgency(self):
+        root = json.loads(run(['swaymsg', '-r', '-t', 'get_tree'], timeout=3))
+        live = {}
+        locations = {}
+        def walk(node, workspace=None):
+            if node.get('type') == 'workspace':
+                workspace = node.get('name')
+            live[node['id']] = node
+            locations[node['id']] = workspace
+            for child in node.get('nodes', []) + node.get('floating_nodes', []):
+                walk(child, workspace)
+        walk(root)
+        desired = {c['representative_id'] for workspace, c in self.model.contexts.items()
+                   if not c.get('closed') and not c.get('focused') and c.get('representative_id')
+                   and locations.get(c['representative_id']) == c.get('sway_workspace')
+                   and self.model.pending(workspace)}
+        desired.intersection_update(live)
+        managed = {c[key] for c in self.model.contexts.values() for key in ('terminal_id', 'chat_id')
+                   if isinstance(c.get(key), int)}
+        # Clear a previously visible representative before enabling its companion.
+        # Inspect actual urgency so daemon restarts and removed windows converge,
+        # and a hidden companion never carries urgency into the scratchpad.
+        for container in (self.owned_urgency | managed) - desired:
+            if container in live and live[container].get('urgent'):
+                self.set_urgent(container, False)
+        self.owned_urgency = desired
+        for container in desired:
+            if not live[container].get('urgent'):
+                self.set_urgent(container, True)
+
+    def notify(self, context, record, agent):
+        workspace = record['workspace_id']
+        existing = self.notifications.get(workspace)
+        if existing and existing.poll() is None:
+            existing.terminate()
+        title = clean(agent.get('title') or agent.get('terminal_title_stripped') or record['pane_id'])
+        summary = f'Herdr · {clean(context.get("sway_workspace") or workspace)}'
+        body = html.escape(f'{title} is waiting for your answer or approval.')
+        try:
+            process = subprocess.Popen(['notify-send', '--app-name=Herdr', '--urgency=normal',
+                                        '--expire-time=15000', '--action=default=Open', '--wait',
+                                        '--', summary, body], stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, text=True)
+        except OSError as error:
+            log(f'notification unavailable: {error}')
+            return
+        self.notifications[workspace] = process
+        def wait_for_action():
+            try:
+                output, error = process.communicate(timeout=120)
+                if process.returncode not in (0, -signal.SIGTERM):
+                    log(f'notification failed: {clean(error)}')
+                if process.returncode == 0 and output.strip() == 'default':
+                    self.enqueue('activate', dict(record))
+            except subprocess.TimeoutExpired:
+                process.terminate()
+                try:
+                    process.communicate(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.communicate()
+        threading.Thread(target=wait_for_action, daemon=True).start()
+
+    def request_refresh(self):
+        self.fetching = True
+        repair = self.repair_pending
+        self.repair_pending = False
+        def fetch():
+            if repair:
+                try:
+                    # Restore a parked companion after its visible view closes,
+                    # or carry the pairing when that view changes workspace.
+                    # Reconcile is idempotent and never mutates the Herdr server.
+                    run(['herdr-context', 'reconcile'])
+                except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+                    log(f'companion reconciliation: {error}')
+            try:
+                status = json.loads(run(['herdr-context', 'status', '--json']))
+                item = ('status', status)
+            except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+                item = ('status-error', str(error))
+            # Unlike coalescible Sway events, completion must never be dropped:
+            # it releases the single in-flight status request.
+            while not self.stop.is_set():
+                try:
+                    self.events.put(item, timeout=.5)
+                    break
+                except queue.Full:
+                    continue
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def refresh(self, status):
+        try:
+            if not isinstance(status, dict) or not isinstance(status.get('contexts'), list):
+                raise RuntimeError('invalid herdr-context status')
+            # The remote snapshot may take seconds. Use current desktop focus,
+            # not the focus observed before that SSH call started.
+            workspaces = json.loads(run(['swaymsg', '-r', '-t', 'get_workspaces'], timeout=3))
+            focused = next((w.get('name') for w in workspaces if w.get('focused')), None)
+            for context in status['contexts']:
+                context['focused'] = focused is not None and context.get('sway_workspace') == focused
+            for context, record, agent in self.model.update(status):
+                self.notify(context, record, agent)
+            self.reconcile_urgency()
+            self.save()
+            errors = status.get('errors', [])
+            message = '; '.join(clean(error) for error in errors) if errors else None
+            if message and message != self.last_error:
+                log(message)
+            elif not message and self.last_error:
+                log('context connection restored')
+            self.last_error = message
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+            self.model.connected = False
+            message = str(error)
+            if message != self.last_error:
+                log(message)
+            self.last_error = message
+
+    def event(self, kind, data):
+        if kind in ('status', 'status-error'):
+            self.fetching = False
+            if kind == 'status':
+                self.refresh(data)
+            else:
+                self.model.connected = False
+                if data != self.last_error:
+                    log(data)
+                self.last_error = data
+            return
+        if kind == 'activate':
+            record = self.model.records.get(pane_key(data['workspace_id'], data['pane_id']))
+            if (record and record.get('waiting') and record.get('owner') == data.get('owner')
+                    and record.get('episode') == data.get('episode')
+                    and record.get('identity') == data.get('identity')
+                    and record.get('state_change_seq') == data.get('state_change_seq')):
+                run(['herdr-context', 'activate', '--workspace', data['workspace_id'],
+                     '--pane', data['pane_id']], timeout=25)
+            return
+        if data.get('change') in ('close', 'move'):
+            self.repair_pending = True
+        if data.get('change') == 'focus' and isinstance(data.get('current'), dict):
+            current = data['current'].get('name')
+            for workspace, context in self.model.contexts.items():
+                focused = context.get('sway_workspace') == current
+                context['focused'] = focused
+                if focused:
+                    self.model.acknowledge(workspace)
+            self.reconcile_urgency()
+            self.save()
+
+    def main(self):
+        watcher = threading.Thread(target=self.watch_sway, daemon=True)
+        watcher.start()
+        next_refresh = 0
+        try:
+            while not self.stop.is_set():
+                if time.monotonic() >= next_refresh:
+                    if not self.fetching:
+                        self.request_refresh()
+                    next_refresh = time.monotonic() + self.interval
+                try:
+                    kind, data = self.events.get(timeout=min(.5, max(0, next_refresh - time.monotonic())))
+                except queue.Empty:
+                    continue
+                try:
+                    self.event(kind, data)
+                except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+                    log(f'desktop action: {error}')
+                # Coalesce bursts. Never run a remote snapshot for each event.
+                if kind not in ('status', 'status-error'):
+                    next_refresh = min(next_refresh, time.monotonic() + .3)
+        finally:
+            self.stop.set()
+            if self.sway_process and self.sway_process.poll() is None:
+                self.sway_process.terminate()
+            for process in self.notifications.values():
+                if process.poll() is None:
+                    process.terminate()
+            watcher.join(timeout=3)
+            for container in self.owned_urgency:
+                try:
+                    self.set_urgent(container, False)
+                except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+                    log(f'clearing attention on exit: {error}')
+            self.save()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--interval', type=float, default=os.environ.get('HERDR_ATTENTION_INTERVAL', '3'),
+                        help='seconds between read-only snapshots (1–60, default 3)')
+    args = parser.parse_args()
+    if not 1 <= args.interval <= 60:
+        parser.error('--interval must be between 1 and 60 seconds')
+    if not os.environ.get('SWAYSOCK') or not os.environ.get('XDG_RUNTIME_DIR'):
+        parser.error('run inside the physical Sway session with XDG_RUNTIME_DIR')
+    # The physical-session user service is the normal single owner. This lock
+    # also protects a hand-run instance from duplicate alerts.
+    with (Path(os.environ['XDG_RUNTIME_DIR']) / 'herdr-attention.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        bridge = Bridge(args.interval)
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(signum, lambda _number, _frame: bridge.stop.set())
+        bridge.main()
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError) as error:
+        log(error)
+        sys.exit(1)
