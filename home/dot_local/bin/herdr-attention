@@ -230,13 +230,20 @@ class Bridge:
         # Clear a previously visible representative before enabling its companion.
         # Inspect actual urgency so daemon restarts and removed windows converge,
         # and a hidden companion never carries urgency into the scratchpad.
+        def apply(container, enabled):
+            try:
+                self.set_urgent(container, enabled)
+            except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+                # A view can close after get_tree. Report the failure and still
+                # reconcile the other contexts; the next tree drops dead IDs.
+                log(f'urgency: {error}')
         for container in (self.owned_urgency | managed) - desired:
             if container in live and live[container].get('urgent'):
-                self.set_urgent(container, False)
+                apply(container, False)
         self.owned_urgency = desired
         for container in desired:
             if not live[container].get('urgent'):
-                self.set_urgent(container, True)
+                apply(container, True)
 
     def notify(self, context, record, agent):
         workspace = record['workspace_id']
