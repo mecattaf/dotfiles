@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import shlex
 import signal
 import subprocess
 import sys
@@ -351,8 +352,16 @@ class Bridge:
                     and record.get('episode') == data.get('episode')
                     and record.get('identity') == data.get('identity')
                     and record.get('state_change_seq') == data.get('state_change_seq')):
-                run(['herdr-context', 'activate', '--workspace', data['workspace_id'],
-                     '--pane', data['pane_id']], timeout=25)
+                # Launch in the compositor's desktop cgroup, like a binding.
+                # A browser first opened by an action must survive restarting
+                # this attention service; setsid alone does not escape a cgroup.
+                command = 'exec ' + shlex.join([
+                    str(Path(__file__).resolve().with_name('herdr-context')),
+                    'activate', '--workspace', data['workspace_id'], '--pane', data['pane_id'],
+                ])
+                replies = json.loads(run(['swaymsg', '-r', '--', command], timeout=3))
+                if not replies or any(not reply.get('success') for reply in replies):
+                    raise RuntimeError('Sway refused the notification action')
             return
         if data.get('change') in ('close', 'move'):
             self.repair_pending = True

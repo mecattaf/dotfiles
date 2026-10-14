@@ -10,6 +10,8 @@ deep link and the web UI sidebar hidden. Later switches exchange the two
 windows at the same tile. This is the web chat, not the browser's xterm terminal.
 Chrome uses a separate profile for all Herdr companions, so its first use may
 require pairing/sign-in once; it does not take over a personal browser window.
+Returning to an already paired Kitty uses only local Sway state, so a lost
+Herdr connection cannot delay that switch.
 
 Herdr attention follows the same association. A newly waiting agent makes the
 visible representative urgent and sends a desktop notification. Activating the
@@ -18,12 +20,18 @@ never switch workspaces. Visiting acknowledges attention; it does not answer an
 agent or make a waiting request disappear from Herdr. The daemon deduplicates
 notifications across polling cycles.
 
+Only Herdr's `blocked` state requests attention; `idle` and `done` do not.
+Snapshots are read every three seconds, with Sway events updating desktop focus
+between snapshots. Reconnecting establishes the current state without replaying
+old notifications. This is a session daemon, not a scheduled job.
+
 ## Commands
 
 ```sh
 herdr-context toggle
 herdr-context show terminal
 herdr-context show chat
+herdr-context show chat --choose-pane
 herdr-context activate --workspace w1 --pane p1
 herdr-context status --json
 herdr-context reconcile
@@ -69,14 +77,28 @@ using out-of-store links must have this branch in `~/mecattaf/dotfiles` before a
 normal deployment. Implementation and tests do not deploy or reload the live
 desktop.
 
+The server configuration sets `ui.window_title = "{hostname}: {workspace}"` so
+each projector reports its own workspace identity. After a future deployment,
+an already-running Herdr server needs `herdr server reload-config` on Strix to
+read that setting. This is a configuration reload, not a server restart. Without
+the identifying title the bridge refuses to guess from stale window marks.
+
 ## Boundaries and acceptance
 
 One Kitty must remain associated with one Herdr workspace. Duplicate projectors
 and ambiguous identities should produce a diagnostic instead of selecting an
-arbitrary terminal. A workspace with several panes still needs a particular pane
-for Chat; the selected pane/deep link is the finer-grained context. Chrome page
-navigation stays within the web UI's existing routing support; unsupported
+arbitrary terminal. Herdr's public snapshot does not expose each Kitty client's
+selected pane. A single agent in a workspace is unambiguous; with several agents,
+the bridge offers a chooser restricted to that workspace. A notification already
+names the requesting pane and needs no chooser. It never guesses from another
+client's global focus. Chrome page navigation stays within the web UI's existing
+routing support; unsupported
 agent transcripts cannot become a rich chat through a Sway command.
+
+Closing Chat restores its Kitty. The existing explicit workspace detach command
+closes both local companions while preserving the Herdr server session. If Kitty
+is killed directly, its Chat is preserved and reported as an orphan; reopen a
+projector for the same Herdr workspace to recover the pair.
 
 Testing happens after the complete implementation. All compositor experiments
 and runtime-sensitive tests must use `~/.local/bin/runtime-test -- ...`, including

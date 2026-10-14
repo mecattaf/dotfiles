@@ -1606,7 +1606,12 @@
               "nightly-record"
             ];
 
-          assert (homeOf "client").rawDotfiles.programs == [ ];
+          assert (homeOf "client").rawDotfiles.programs == [ "herdr-attention" ];
+          assert !(homeOf "strix").systemd.user.services ? herdr-attention;
+          assert
+            (homeOf "client").systemd.user.services.herdr-attention.Unit.PartOf == [
+              "sway-physical-session.target"
+            ];
           # The client carries no checkout (2026-10-11): its raw dotfiles come
           # from the store, so it has no guard to run, no bootstrap clone and
           # not one home file linked into ~/mecattaf. The strix keeps the

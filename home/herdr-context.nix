@@ -45,7 +45,16 @@ in
         Restart = "on-failure";
         RestartSec = 5;
         Environment = [
-          "PATH=${lib.makeBinPath [ pkgs.python3 pkgs.sway pkgs.openssh pkgs.libnotify pkgs.google-chrome pkgs.kitty ]}:%h/.local/bin:/etc/profiles/per-user/${config.home.username}/bin:/run/current-system/sw/bin"
+          "PATH=${
+            lib.makeBinPath [
+              pkgs.python3
+              pkgs.sway
+              pkgs.openssh
+              pkgs.libnotify
+              pkgs.google-chrome
+              pkgs.kitty
+            ]
+          }:%h/.local/bin:/etc/profiles/per-user/${config.home.username}/bin:/run/current-system/sw/bin"
           "HERDR_SWAY_LOCAL=${if osConfig.networking.hostName == "strix" then "1" else "0"}"
         ];
       };
