@@ -2441,6 +2441,7 @@
                 ${./home/dot_local/bin/runtime-test}
               python3 ${./tests/herdr/test_launchers.py}
               python3 ${./tests/herdr/test_sway_picker.py}
+              python3 -m unittest discover -s ${./tests/workspace-switcher} -p 'test_*.py'
               touch "$out"
             '';
 
