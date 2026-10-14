@@ -252,21 +252,17 @@ def profile_dir():
 
 
 def own_browser(node):
-    """Validate process ancestry, never accept a normal browser by its title."""
+    """Match Sway's process to the dedicated browser's own process roster.
+
+    Chrome rewrites argv and can relocate/sanitize its original environment;
+    /proc parsing is therefore not an ownership oracle. The private random
+    DevTools endpoint identifies our browser and reports its actual OS PID.
+    """
     pid = node.get('pid')
-    profile_arg = '--user-data-dir=' + str(profile_dir())
-    seen = set()
-    while isinstance(pid, int) and pid > 1 and pid not in seen:
-        seen.add(pid)
-        try:
-            args = Path(f'/proc/{pid}/cmdline').read_bytes().decode().split('\0')
-            if profile_arg in args and '--class=' + BROWSER_CLASS in args:
-                return True
-            status = Path(f'/proc/{pid}/status').read_text()
-            pid = int(re.search(r'^PPid:\s+(\d+)$', status, re.M).group(1))
-        except (OSError, ValueError, AttributeError, UnicodeError):
-            return False
-    return False
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    processes = cdp(http_json('/json/version'), 'SystemInfo.getProcessInfo', {}).get('processInfo', [])
+    return any(p.get('type') == 'browser' and p.get('id') == pid for p in processes)
 
 
 def browser_port():
@@ -431,11 +427,14 @@ def ensure_chat(row, pane):
         executable = os.environ.get('HERDR_CONTEXT_BROWSER', 'google-chrome-stable')
         args = [executable, '--ozone-platform=wayland', '--class=' + BROWSER_CLASS,
                 '--user-data-dir=' + str(profile_dir()), '--remote-debugging-address=127.0.0.1',
+                '--profile-directory=HerdrSwayContext',
                 '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check',
                 '--app=' + chat_url(row, pane)]
         log = state_dir() / 'chrome.log'
         with log.open('ab') as stream:
-            subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=stream, stderr=stream, start_new_session=True)
+            environment = dict(os.environ, HERDR_CONTEXT_BROWSER_PROFILE=str(profile_dir()))
+            subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=stream, stderr=stream,
+                             start_new_session=True, env=environment)
 
         def ready():
             try:

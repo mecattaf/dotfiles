@@ -91,9 +91,10 @@ version_check = false
 manifest_check = true
 
 [ui]
-# kitty owns the window title. Empty leaves it alone; herdr's default
-# ("{hostname}: {workspace}") would fight the terminal for it.
-window_title = ""
+# The Sway context bridge verifies the client-local workspace from this title.
+# Herdr renders against the foreground client's target, not global API focus.
+# Existing servers can apply this with `herdr server reload-config`; no restart.
+window_title = "{hostname}: {workspace}"
 # The workspaces sidebar is off by default and toggled on demand with
 # prefix+b: the compositor is the layout authority here, and a persistent panel just
 # spends columns.
