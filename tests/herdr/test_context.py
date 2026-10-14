@@ -1,5 +1,6 @@
 """Context identity and navigation behavior, using inert desktop fixtures."""
 import copy
+from contextlib import nullcontext
 import importlib.machinery
 import importlib.util
 import os
@@ -107,6 +108,20 @@ class Identity(unittest.TestCase):
 
 
 class Navigation(unittest.TestCase):
+    def test_terminal_return_does_not_wait_for_remote_snapshot(self):
+        tree = root(workspace(1, [window(20, 'chat', focused=True)]),
+                    workspace(-1, [window(10)], '__i3_scratch'))
+        for argv in [['herdr-context', 'show', 'terminal'], ['herdr-context', 'toggle']]:
+            with self.subTest(argv=argv), patch.object(context.sys, 'argv', argv), \
+                 patch.object(context.picker, 'tree', return_value=tree), \
+                 patch.object(context, 'registry', return_value={'wA': {'label': 'client-slot-1-abcdef'}}), \
+                 patch.object(context.picker, 'desktop_lock', return_value=nullcontext()), \
+                 patch.object(context.picker, 'remote_snapshot', side_effect=AssertionError('Must not contact Herdr')), \
+                 patch.object(context, 'show_existing') as reveal:
+                context.main()
+                self.assertEqual(reveal.call_args.args[0]['workspace_id'], 'wA')
+                self.assertEqual(reveal.call_args.args[2], 'terminal')
+
     def test_one_agent_is_unambiguous_even_with_utility_shell(self):
         snap = snapshot()
         snap['panes'].append({'workspace_id': 'wA', 'pane_id': 'wA:p2'})

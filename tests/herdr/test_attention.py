@@ -8,6 +8,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import shlex
 from pathlib import Path
 import tempfile
 import unittest
@@ -164,9 +165,10 @@ class DesktopEffects(unittest.TestCase):
 
     def test_notification_action_matches_owner_pane_and_episode(self):
         record = copy.deepcopy(self.bridge.model.records['wA/wA:p1'])
-        with patch.object(attention, 'run') as run:
+        with patch.object(attention, 'run', return_value='[{"success":true}]') as run:
             self.bridge.event('activate', record)
-            run.assert_called_once_with(['herdr-context', 'activate', '--workspace', 'wA', '--pane', 'wA:p1'], timeout=25)
+            expected = 'exec ' + shlex.join([str(SOURCE.resolve().with_name('herdr-context')), 'activate', '--workspace', 'wA', '--pane', 'wA:p1'])
+            run.assert_called_once_with(['swaymsg', '-r', '--', expected], timeout=3)
         for altered in [dict(record, owner='different'), dict(record, episode=0), dict(record, pane_id='missing')]:
             with patch.object(attention, 'run') as run:
                 self.bridge.event('activate', altered)

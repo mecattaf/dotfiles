@@ -9,6 +9,7 @@ import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
+import re
 from pathlib import Path
 import runpy
 import shutil
@@ -68,11 +69,11 @@ default_border pixel 1
 default_floating_border pixel 1
 workspace_layout default
 ''' + '\n'.join(line for line in (ROOT / 'home/dot_config/sway/rules.conf').read_text().splitlines()
-                    if 'herdr-context' in line) + '\n')
+                    if 'herdr-context' in line or 'HerdrSwayContext' in line) + '\n')
     (directory / 'mako.conf').write_text('default-timeout=0\nignore-timeout=1\nmax-visible=10\n')
     # No activation/service dirs: neither bus can start a user's service.
     (directory / 'dbus.conf').write_text('''<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
-<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>
+<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen><policy context="default"><allow send_destination="*"/><allow send_type="error" send_requested_reply="false"/><allow receive_sender="*"/><allow receive_type="error" receive_requested_reply="false"/><allow own="*"/></policy></busconfig>
 ''')
     for name in ['herdr-context', 'herdr-picker', 'herdr-attention']:
         (directory / 'bin' / name).symlink_to(SCRIPTS / name)
@@ -206,7 +207,7 @@ window.addEventListener('popstate',()=>{window.popstates++;route()});route();</s
         wait(lambda: window(chat_id)[0]['focused'], 'Chat receives keyboard focus')
         assert window(chat_id)[0]['rect'] == before, ('Chat changed tile geometry', before, window(chat_id)[0]['rect'])
         assert window(neighbor)[0]['rect'] == neighbor_before, 'Neighbor geometry changed'
-        assert window(chat_id)[0]['app_id'] == 'herdr-context', window(chat_id)[0]
+        assert re.fullmatch(r'chrome-.*-HerdrSwayContext', window(chat_id)[0]['app_id']), window(chat_id)[0]
         assert window(chat_id)[0]['border'] in ('pixel', 'none'), 'Unexpected title bar'
         assert not visible(terminal_id), 'Inactive Kitty is not hidden'
         core = runpy.run_path(str(SCRIPTS / 'herdr-context'))
@@ -220,8 +221,21 @@ window.addEventListener('popstate',()=>{window.popstates++;route()});route();</s
             assert visible(chat_id, 1) and not visible(terminal_id)
             assert evaluate('document.getElementById("draft").value') == 'Unsent draft survives'
             assert evaluate('window.pageIdentity') == page_identity
-        assert len([n for n, _ in windows() if n.get('app_id') == 'herdr-context']) == 1
+        assert len([n for n, _ in windows() if re.fullmatch(r'chrome-.*-HerdrSwayContext', n.get('app_id', ''))]) == 1
         receipts.append('Real Wayland Chrome app_id, exact tile/neighbor geometry, focus, pixel borders, hidden companion, one browser window and preserved draft across six swaps.')
+        for mode, command in [(1, 'fullscreen enable'), (2, 'fullscreen enable global')]:
+            action('show', 'terminal')
+            ipc(f'[con_id={terminal_id}] {command}')
+            action('toggle')
+            assert window(chat_id)[0]['fullscreen_mode'] == mode, ('Chat lost fullscreen tile state', mode)
+            assert window(terminal_id)[0]['fullscreen_mode'] == 0, 'Hidden terminal retained fullscreen'
+            action('toggle')
+            assert window(terminal_id)[0]['fullscreen_mode'] == mode, ('Terminal lost fullscreen tile state', mode)
+            assert window(chat_id)[0]['fullscreen_mode'] == 0, 'Hidden Chat retained fullscreen'
+            ipc(f'[con_id={terminal_id}] fullscreen disable')
+        action('show', 'chat')
+        assert window(chat_id)[0]['rect'] == before
+        receipts.append('Per-output and global fullscreen follow the visible view through round trips and normal tile geometry restores afterwards.')
 
         snapshot['panes'].append({'workspace_id': 'wA', 'pane_id': 'wA:p2'})
         save_snapshot()
@@ -243,8 +257,10 @@ window.addEventListener('popstate',()=>{window.popstates++;route()});route();</s
         action('show', 'chat')
         row_b = context('wB')
         assert row_b['chat_id'] != chat_id
-        assert len(core['http_json']('/json/list')) == 2, 'Companions did not share exactly two dedicated targets'
-        assert len([n for n, _ in windows() if n.get('app_id') == 'herdr-context']) == 2
+        targets = [target for target in core['http_json']('/json/list') if target.get('type') == 'page' and target.get('url', '').startswith(os.environ['HERDR_WEB_URL'])]
+        assert len(targets) == 2, ('Expected exactly two dedicated Chat pages', targets)
+        assert window(row_b['chat_id'])[0]['pid'] == window(chat_id)[0]['pid'], 'Companions use different browser processes'
+        assert len([n for n, _ in windows() if re.fullmatch(r'chrome-.*-HerdrSwayContext', n.get('app_id', ''))]) == 2
         action('activate', '--workspace', 'wA')
         run([SCRIPTS / 'herdr-picker', '--workspace', 'close'])
         assert not visible(terminal_id) and not visible(chat_id)
@@ -262,7 +278,7 @@ window.addEventListener('popstate',()=>{window.popstates++;route()});route();</s
         snapshot['agents'][0].update(agent_status='blocked', state_change_seq=2)
         save_snapshot()
         wait(lambda: window(chat_id)[0]['urgent'], 'Chat represents waiting urgency')
-        notifications = wait(lambda: (text if 'Fixture task A' in (text := run([paths['makoctl'], 'list'])) else None), 'waiting notification')
+        notifications = wait(lambda: (text if 'Herdr' in (text := run([paths['makoctl'], 'list'])) and '1: Writing' in text else None), 'waiting notification')
         assert next(w for w in query('get_workspaces') if w['focused'])['num'] == 2, 'Notification stole focus'
         assert not window(terminal_id)[0]['urgent'], 'Hidden Kitty carries urgency'
         time.sleep(2.2)
@@ -270,7 +286,7 @@ window.addEventListener('popstate',()=>{window.popstates++;route()});route();</s
         run([paths['makoctl'], 'invoke'])
         wait(lambda: window(chat_id)[0]['focused'], 'notification activation reveals exact workspace chat')
         wait(lambda: not window(chat_id)[0]['urgent'], 'visit acknowledges urgency')
-        saved = json.loads(attention_file.read_text())['records']['wA/wA:p1']
+        saved = wait(lambda: (record if (record := json.loads(attention_file.read_text())['records']['wA/wA:p1']).get('seen') else None), 'attention acknowledgement persisted')
         assert saved['waiting'] and saved['seen'], 'Visit must not answer the question'
         assert evaluate('document.getElementById("pane").textContent') == 'wA:p1'
         receipts.append('Real Mako notification and Sway urgency fire once, do not steal focus, target the visible companion, and activate the right workspace/pane; visiting acknowledges without answering.')
@@ -297,9 +313,29 @@ window.addEventListener('popstate',()=>{window.popstates++;route()});route();</s
         action('show', 'chat')
         new_chat = context()['chat_id']
         assert new_chat != chat_id
-        assert len([n for n, _ in windows() if n.get('app_id') == 'herdr-context']) == 2
+        assert len([n for n, _ in windows() if re.fullmatch(r'chrome-.*-HerdrSwayContext', n.get('app_id', ''))]) == 2
         assert sway.poll() is None and mako.poll() is None and daemon.poll() is None
         receipts.append('Offline terminal return preserves sessions; reconnect preserves the browser draft; closing Chat restores Kitty and one replacement app opens on demand.')
+        run([paths['makoctl'], 'dismiss', '--all'])
+        old_browser_pid = window(new_chat)[0]['pid']
+        core['cdp'](core['http_json']('/json/version'), 'Browser.close', {})
+        wait(lambda: not any(re.fullmatch(r'chrome-.*-HerdrSwayContext', n.get('app_id', '')) for n, _ in windows()), 'dedicated browser closes completely')
+        wait(lambda: visible(terminal_id, 1) and visible(terminal_b, 2), 'both terminals restore after browser exit', timeout=20)
+        ipc(f'[con_id={terminal_id}] focus')
+        snapshot['agents'][1].update(agent_status='blocked', state_change_seq=2)
+        save_snapshot()
+        wait(lambda: window(terminal_b)[0]['urgent'], 'terminal urgency with no browser')
+        wait(lambda: 'Herdr' in run([paths['makoctl'], 'list']), 'notification with no browser')
+        run([paths['makoctl'], 'invoke'])
+        reopened = wait(lambda: next((n for n, _ in windows() if 'herdr-context-wB-chat' in n.get('marks', []) and n.get('focused')), None), 'notification launches first dedicated browser', timeout=25)
+        assert reopened['pid'] != old_browser_pid
+        assert evaluate('document.getElementById("pane").textContent', 'wB') == 'wB:p1'
+        daemon.terminate()
+        assert daemon.wait(timeout=6) == 0
+        daemon = start('attention-after-action', [SCRIPTS / 'herdr-attention', '--interval', '1'])
+        time.sleep(1.5)
+        assert visible(reopened['id'], 2) and daemon.poll() is None
+        receipts.append('With the entire dedicated browser stopped, a notification launches the correct first Chat via Sway; that browser survives an attention-daemon restart.')
         (directory / 'final-tree.json').write_text(json.dumps(query(), indent=2))
         (directory / 'results.json').write_text(json.dumps(receipts, indent=2))
         print('\n'.join(receipts), flush=True)
@@ -312,15 +348,33 @@ window.addEventListener('popstate',()=>{window.popstates++;route()});route();</s
                     pid = node.get('pid')
                     while pid and pid > 1 and pid not in processes:
                         proc = Path('/proc') / str(pid)
-                        processes[pid] = (proc / 'cmdline').read_bytes().decode().split('\0')
+                        try:
+                            environment = [entry.decode() for entry in (proc / 'environ').read_bytes().split(b'\0') if entry.startswith(b'HERDR_CONTEXT_BROWSER_PROFILE=')]
+                        except OSError as error:
+                            environment = str(error)
+                        processes[pid] = {'args': (proc / 'cmdline').read_bytes().decode().split('\0'),
+                                          'profile_environment': environment,
+                                          'owns_browser': core['own_browser']({'pid': pid}) if core else None}
                         parent = next(line for line in (proc / 'status').read_text().splitlines() if line.startswith('PPid:'))
                         pid = int(parent.split()[1])
                 (directory / 'exit-processes.json').write_text(json.dumps(processes, indent=2))
             except (OSError, AssertionError, StopIteration) as error:
                 print(f'Desktop exit diagnostics: {error}', file=sys.stderr)
+        # Stop the attention owner while its windows still exist, so normal
+        # shutdown clears urgency before closing the dedicated browser.
+        for name, child in children:
+            if name.startswith('attention') and child.poll() is None:
+                child.terminate()
+                child.wait(timeout=6)
         if core:
             try:
+                browser = core['http_json']('/json/version')
+                (directory / 'browser-processes.json').write_text(json.dumps(core['cdp'](browser, 'SystemInfo.getProcessInfo', {}), indent=2))
+            except (OSError, ValueError, core['Error']) as error:
+                print(f'Chrome process diagnostics: {error}', file=sys.stderr)
+            try:
                 targets = core['http_json']('/json/list')
+                (directory / 'browser-targets.json').write_text(json.dumps(targets, indent=2))
                 if targets:
                     core['cdp'](targets[0], 'Browser.close', {})
             except (OSError, ValueError, core['Error']) as error:

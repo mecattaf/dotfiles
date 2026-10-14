@@ -7,6 +7,7 @@ launcher tests exercise cleanup and inherited shell state.
 ```sh
 ~/.local/bin/runtime-test -- python3 -m unittest discover -s tests/herdr -p 'test_*.py' -v
 python3 tests/herdr/smoke_context.py
+python3 tests/herdr/smoke_titles.py
 ```
 
 `smoke_context.py` invokes `runtime-test` itself, then adds a private network
@@ -22,10 +23,20 @@ namespace bounds detached Chrome subprocesses.
 
 The smoke checks native app identification, exact geometry with a neighboring
 tile, focus, pixel borders, hidden companions, repeated toggles, unsent browser
-draft preservation, SPA pane navigation without reload, two contexts using a
-single dedicated profile, rename/output moves, pair close/restore, real urgency,
+draft preservation, fullscreen round trips, SPA pane navigation without reload,
+two contexts using a single dedicated profile, rename/output moves, pair
+close/restore, real urgency,
 real notification deduplication and actions, seen versus waiting state,
-offline Terminal access, and Chat-close recovery/recreation.
+offline Terminal access, Chat-close recovery/recreation, notification launch with
+the entire dedicated browser initially stopped, and browser survival across an
+attention-daemon restart. This private process test verifies restart behavior and
+the Sway launch route; it does not emulate a complete systemd user cgroup tree.
+
+`smoke_titles.py` independently starts a private real Herdr server and two real
+Kitty clients through `runtime-test`. It verifies the actual workspace-only
+window-title format identifies each client independently, follows navigation,
+and survives a supported configuration reload. Its private HOME/config/runtime
+contain no credentials or live sessions.
 
 The local chat fixture establishes the window/route/draft contract. It does not
 prove production authentication, production web UI transcript rendering, or the
