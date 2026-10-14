@@ -19,7 +19,7 @@ def window(cid, kind='terminal', wid='wA', marked=True, focused=False):
     return {'id': cid, 'type': 'con', 'pid': 1000 + cid, 'focused': focused,
             'app_id': 'herdr-projector' if kind == 'terminal' else 'herdr-context',
             'name': 'strix: client-slot-1-abcdef' if kind == 'terminal' else 'Chat',
-            'marks': [f'herdr-context-{wid}-{kind}', 'herdr-slot-1'] if marked else [],
+            'marks': ([f'herdr-context-{wid}-{kind}'] + (['herdr-slot-1'] if kind == 'terminal' else [])) if marked else [],
             'nodes': [], 'floating_nodes': []}
 
 

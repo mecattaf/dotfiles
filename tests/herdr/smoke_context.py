@@ -199,6 +199,7 @@ window.addEventListener('popstate',()=>{window.popstates++;route()});route();</s
         ipc(f'[con_id={terminal_id}] focus')
         before = window(terminal_id)[0]['rect']
         neighbor_before = window(neighbor)[0]['rect']
+        core = runpy.run_path(str(SCRIPTS / 'herdr-context'))
         action('show', 'chat')
         row = context()
         chat_id = row['chat_id']
@@ -275,11 +276,22 @@ window.addEventListener('popstate',()=>{window.popstates++;route()});route();</s
         receipts.append('Real Mako notification and Sway urgency fire once, do not steal focus, target the visible companion, and activate the right workspace/pane; visiting acknowledges without answering.')
 
         (directory / 'offline').touch()
+        wait(lambda: 'snapshot unavailable' in (directory / 'logs/attention.log').read_text(), 'daemon observes Herdr disconnect')
         action('show', 'terminal')
         assert visible(terminal_id, 1)
         (directory / 'offline').unlink()
+        wait(lambda: 'connection restored' in (directory / 'logs/attention.log').read_text(), 'daemon reconnects')
         action('show', 'chat')
         assert evaluate('document.getElementById("draft").value') == 'Unsent draft survives'
+        action('activate', '--workspace', 'wB')
+        before_restart = run([paths['makoctl'], 'list'])
+        daemon.terminate()
+        assert daemon.wait(timeout=6) == 0
+        daemon = start('attention-restarted', [SCRIPTS / 'herdr-attention', '--interval', '1'])
+        time.sleep(2.2)
+        assert not window(chat_id)[0]['urgent'], 'Seen waiting request became urgent after daemon restart'
+        assert run([paths['makoctl'], 'list']) == before_restart, 'Daemon restart replayed a seen notification'
+        action('activate', '--workspace', 'wA')
         ipc(f'[con_id={chat_id}] kill')
         wait(lambda: visible(terminal_id, 1), 'closing Chat automatically restores Kitty', timeout=20)
         action('show', 'chat')
@@ -292,6 +304,20 @@ window.addEventListener('popstate',()=>{window.popstates++;route()});route();</s
         (directory / 'results.json').write_text(json.dumps(receipts, indent=2))
         print('\n'.join(receipts), flush=True)
     finally:
+        if os.environ.get('SWAYSOCK'):
+            try:
+                (directory / 'exit-tree.json').write_text(json.dumps(query(), indent=2))
+                processes = {}
+                for node, _ in windows():
+                    pid = node.get('pid')
+                    while pid and pid > 1 and pid not in processes:
+                        proc = Path('/proc') / str(pid)
+                        processes[pid] = (proc / 'cmdline').read_bytes().decode().split('\0')
+                        parent = next(line for line in (proc / 'status').read_text().splitlines() if line.startswith('PPid:'))
+                        pid = int(parent.split()[1])
+                (directory / 'exit-processes.json').write_text(json.dumps(processes, indent=2))
+            except (OSError, AssertionError, StopIteration) as error:
+                print(f'Desktop exit diagnostics: {error}', file=sys.stderr)
         if core:
             try:
                 targets = core['http_json']('/json/list')
