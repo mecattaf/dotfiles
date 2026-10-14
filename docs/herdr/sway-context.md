@@ -115,3 +115,6 @@ must cover:
 
 Record what the isolated tests actually establish. A live session must not be
 restarted, reloaded, or deployed merely to complete this checklist.
+
+See the [2026-10-14 validation receipt](sway-context-validation.md) for completed
+checks, retained evidence, and fixture limitations.
