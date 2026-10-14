@@ -8,6 +8,8 @@ status. Never infer current identity from the server's global focus.
 import argparse
 from contextlib import contextmanager
 import fcntl
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
 import json
 import os
 from pathlib import Path
@@ -80,6 +82,21 @@ def slot_of(node, ws):
     return marks[0] if len(marks) == 1 else None
 
 
+def context_bridge():
+    """Load the companion helper only for paired views; no subprocess/lock race."""
+    loader = SourceFileLoader('herdr_picker_context', str(Path(__file__).resolve().with_name('herdr-context')))
+    module = module_from_spec(spec_from_loader(loader.name, loader))
+    loader.exec_module(module)
+    # Share this error class with callers that import the picker as a module.
+    module.Error = BridgeError
+    module.picker.BridgeError = BridgeError
+    return module
+
+
+def context_marks(node):
+    return [m for m in node.get('marks', []) if re.fullmatch(r'herdr-context-w[A-Za-z0-9]+-(?:terminal|chat)', m)]
+
+
 def projectors(root):
     return [(n, w) for n, w in views(root) if n.get('app_id') == CLASS]
 
@@ -99,6 +116,7 @@ def focused_workspace(root):
 def available_slot(root):
     occupied = {w.get('num') for n, w in walk(root) if n.get('type') == 'workspace' and w}
     occupied.update(slot_of(n, w) for n, w in projectors(root))
+    occupied.update(slot_of(n, w) for n, w in views(root) if context_marks(n))
     for slot in range(1, 10):
         if slot not in occupied:
             return slot
@@ -132,6 +150,10 @@ def focus_view(view_id, expected=None):
     node, ws = match
     if expected and any(node.get(k) != expected.get(k) for k in ('pid', 'app_id')):
         raise BridgeError('That window identity changed. Open the picker again.')
+    if context_marks(node):
+        if not context_bridge().focus_pair(view_id):
+            raise BridgeError('The companion identity is unresolved. Inspect herdr-context status before focusing this pair.')
+        return
     if ws and ws.get('name') == '__i3_scratch':
         slot = slot_of(node, ws)
         if slot is None:
@@ -337,7 +359,21 @@ def workspace_form_input(screen):
 
 def ensure_projector(*, create_workspace=True):
     root = tree()
+    contexts = []
+    # A visible Chat can have moved slots while its terminal is parked. Bring
+    # live ownership marks up to date before deciding to launch another Kitty.
+    if any(context_marks(n) for n, _ in views(root)):
+        bridge = context_bridge()
+        _, records, snapshot, contexts, errors = bridge.inspect()
+        for row in contexts:
+            bridge.mark(row)
+            bridge.remember(row, records, last_view=row['view'] or row['last_view'], closed=row['closed'])
+        root = tree()
     ws = focused_workspace(root)
+    managed_here = [n for n, w in views(root) if w and w.get('id') == ws.get('id') and context_marks(n)]
+    resolved = {cid for row in contexts for cid in (row['terminal_id'], row['chat_id']) if cid}
+    if any(n['id'] not in resolved for n in managed_here):
+        raise BridgeError('This workspace has an unresolved companion; inspect herdr-context status before opening another projector.')
     slot = ws.get('num', -1)
     if not 1 <= slot <= 9:
         slot = available_slot(root)
@@ -348,7 +384,11 @@ def ensure_projector(*, create_workspace=True):
     if existing:
         node = existing[0][0]
         ipc(f'[con_id={int(node["id"])}] mark --add herdr-slot-{slot}')
-        focus_view(node['id'])
+        if context_marks(node):
+            if not context_bridge().focus_pair(node['id'], terminal=True):
+                raise BridgeError('The companion identity is unresolved; no new projector was launched.')
+        else:
+            focus_view(node['id'])
         return node, False
     previous = {n['id'] for n, _ in projectors(root)}
     projector = os.environ.get('HERDR_PROJECTOR', str(Path.home() / '.local/bin/herdr-sway-projector'))
@@ -437,12 +477,18 @@ def workspace_action(action):
         focused = next((n for n, _ in views(root) if n.get('focused')), None)
         if focused:
             # Closing Kitty detaches the remote client; never close the server pane.
-            ipc(f'[con_id={int(focused["id"])}] kill')
+            if context_marks(focused):
+                context_bridge().detach_pair(focused['id'])
+            else:
+                ipc(f'[con_id={int(focused["id"])}] kill')
     elif action == 'close':
         slot = ws.get('num', -1)
+        parked_ids = context_bridge().park_current() if any(context_marks(n) for n, _ in views(root)) else set()
         members = [(n, w) for n, w in views(root) if w and w.get('id') == ws.get('id')]
         for node, current in members:
             cid = int(node['id'])
+            if cid in parked_ids:
+                continue
             if node.get('app_id') == CLASS:
                 if not 1 <= slot <= 9:
                     raise BridgeError('Move this projector to a dedicated workspace 1–9 before parking it.')
@@ -465,6 +511,13 @@ def workspace_action(action):
 
 def picker_rows(root, snapshot, error=None):
     rows = []
+    paired = {}
+    if any(context_marks(n) for n, _ in views(root)):
+        bridge = context_bridge()
+        contexts, context_errors = bridge.collect(root, snapshot if snapshot else None, bridge.registry())
+        paired = {row['terminal_id']: row for row in contexts}
+        if context_errors:
+            error = '; '.join(filter(None, [error, *context_errors]))
     for node, ws in sorted(projectors(root), key=lambda nw: (slot_of(*nw) or 99, nw[0]['id'])):
         slot = slot_of(node, ws)
         state = identity(node, snapshot)
@@ -475,13 +528,19 @@ def picker_rows(root, snapshot, error=None):
         status = state.get('agent_status', 'unknown') if state else 'unknown'
         parked = (ws or {}).get('name') == '__i3_scratch'
         location = f'{slot or "?"}' if parked else clean((ws or {}).get('name', '?'))
+        pair = paired.get(node['id'])
+        if pair:
+            parked = pair['closed'] or pair['representative_id'] is None
+            location = clean(pair['sway_workspace'])
         label = clean(state.get('label')) if state else clean(node.get('name'))
         action = 'Reopen' if parked else 'Focus'
         scope = 'assigned ' if assigned else ''
         text = f'{action} {location} · {scope}{status} · {label or "Herdr"} · view {node["id"]}'
+        if pair:
+            text = f'{action} {location} · {scope}{status} · {label or "Herdr"} · {pair["view"] or pair["last_view"]}'
         rows.append((text, ('view', node['id'])))
     for node, ws in views(root):
-        if node.get('app_id') == CLASS or (ws or {}).get('name') == '__i3_scratch':
+        if node.get('app_id') == CLASS or context_marks(node) or (ws or {}).get('name') == '__i3_scratch':
             continue
         rows.append((f'Window {clean((ws or {}).get("name", "?"))} · {clean(node.get("name"))} · view {node["id"]}', ('view', node['id'])))
     for agent in snapshot.get('agents', []):

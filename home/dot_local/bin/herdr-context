@@ -1,0 +1,621 @@
+#!/usr/bin/env python3
+"""One Herdr workspace, one Sway workspace, persistent Terminal and Chat views.
+
+The inactive companion lives in Sway's scratchpad; swapping exchanges its tile
+and fullscreen state without a tab bar. Herdr APIs are read-only. Never use the
+server's global focus to guess which pane a particular Kitty client displays.
+"""
+import argparse
+import base64
+import hashlib
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import socket
+import struct
+import subprocess
+import sys
+import time
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
+from urllib.request import build_opener, ProxyHandler
+
+
+def load_picker():
+    loader = SourceFileLoader('herdr_context_picker', str(Path(__file__).resolve().with_name('herdr-picker')))
+    module = module_from_spec(spec_from_loader(loader.name, loader))
+    loader.exec_module(module)
+    return module
+
+
+picker = load_picker()
+Error = picker.BridgeError
+MARK = re.compile(r'^herdr-context-(w[A-Za-z0-9]+)-(terminal|chat)$')
+WSID = re.compile(r'^w[A-Za-z0-9]+$')
+BROWSER_CLASS = 'herdr-context'
+
+
+class Cancelled(Exception):
+    pass
+
+
+def state_dir():
+    return Path(os.environ.get('HERDR_CONTEXT_STATE_DIR', str(Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state')) / 'herdr-context')))
+
+
+def registry():
+    path = state_dir() / 'contexts.json'
+    if not path.exists():
+        return {}
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict) or value.get('version') != 1 or not isinstance(value.get('contexts'), dict):
+        raise Error('Invalid Herdr context registry; preserve it for diagnosis: ' + str(path))
+    return value['contexts']
+
+
+def save(rows):
+    directory = state_dir()
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = directory / ('contexts.' + secrets.token_hex(6) + '.tmp')
+    try:
+        with path.open('x') as stream:
+            os.chmod(path, 0o600)
+            json.dump({'version': 1, 'contexts': rows}, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        path.replace(directory / 'contexts.json')
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def config():
+    path = Path(os.environ.get('HERDR_CONTEXT_CONFIG', str(Path.home() / '.config/herdr/context.json')))
+    value = json.loads(path.read_text()) if path.exists() else {}
+    base = os.environ.get('HERDR_WEB_URL', value.get('web_url', ''))
+    url = urlsplit(base)
+    if url.scheme not in ('http', 'https') or not url.netloc or url.username or url.password:
+        raise Error('Configure web_url in ~/.config/herdr/context.json (or HERDR_WEB_URL) with your Herdr Web UI HTTP(S) address.')
+    return base
+
+
+def hidden(ws):
+    return not ws or ws.get('name') == '__i3_scratch'
+
+
+def collect(root, snapshot, records):
+    """Read-only discovery. Invalid/duplicate identities are excluded, not guessed."""
+    pairs, errors = {}, []
+    focused_workspaces = {w.get('id') for n, w in picker.walk(root) if n.get('focused') and w}
+    for node, ws in picker.views(root):
+        marks = [MARK.fullmatch(mark) for mark in node.get('marks', []) if MARK.fullmatch(mark)]
+        if len(marks) > 1:
+            errors.append(f'Window {node["id"]} has multiple context identities.')
+            continue
+        if marks:
+            wid, kind = marks[0].groups()
+        elif node.get('app_id') == picker.CLASS and snapshot is not None:
+            identity = picker.identity(node, snapshot)
+            if not identity:
+                continue
+            wid, kind = identity.get('workspace_id'), 'terminal'
+        else:
+            continue
+        if not isinstance(wid, str) or not WSID.fullmatch(wid):
+            continue
+        pairs.setdefault(wid, {}).setdefault(kind, []).append((node, ws))
+    result = []
+    for wid, pair in pairs.items():
+        try:
+            if any(len(nodes) != 1 for nodes in pair.values()):
+                raise Error('Multiple windows claim the same view.')
+            saved = records.get(wid, {})
+            terminal, tws = pair.get('terminal', [(None, None)])[0]
+            chat, cws = pair.get('chat', [(None, None)])[0]
+            # A browser by itself never becomes a new workspace owner.
+            if terminal is None:
+                raise Error('Terminal companion is closed; reopen its Kitty projector before pairing.')
+            if terminal.get('app_id') != picker.CLASS:
+                raise Error('Terminal identity no longer belongs to a Herdr projector.')
+            workspace = None
+            if snapshot is not None:
+                workspace = next((w for w in snapshot.get('workspaces', []) if w.get('workspace_id') == wid), None)
+                live = picker.identity(terminal, snapshot)
+                if not workspace or not live or live.get('workspace_id') != wid:
+                    raise Error('Kitty no longer displays its assigned Herdr workspace. Return to that workspace in Herdr before switching.')
+            visible = [(kind, n, w) for kind, n, w in [('terminal', terminal, tws), ('chat', chat, cws)] if n and not hidden(w)]
+            if len(visible) > 1:
+                raise Error('Both companion views are visible; park one before continuing.')
+            current = visible[0] if visible else (None, None, None)
+            _, representative, sws = current
+            slot = (sws or {}).get('num') if sws else picker.slot_of(terminal, tws)
+            if not isinstance(slot, int) or not 1 <= slot <= 9:
+                raise Error('Use a dedicated Sway workspace numbered 1–9.')
+            # Another projector cannot occupy this slot, even before binding.
+            others = [n for n, w in picker.projectors(root) if n['id'] != terminal['id'] and picker.slot_of(n, w) == slot]
+            if others:
+                raise Error(f'Sway workspace {slot} owns multiple Kitty projectors.')
+            name = (sws or {}).get('name') or saved.get('sway_workspace') or str(slot)
+            closed = bool(saved.get('closed')) if not visible else False
+            closed = closed or any(picker.CLOSED.fullmatch(m) for m in terminal.get('marks', []))
+            result.append({'workspace_id': wid, 'label': (workspace or {}).get('label', saved.get('label', '')),
+                           'slot': slot, 'sway_workspace': name, 'terminal_id': terminal['id'],
+                           'chat_id': chat['id'] if chat else None,
+                           'representative_id': representative['id'] if representative else None,
+                           'view': current[0], 'last_view': saved.get('last_view', 'terminal'),
+                           'closed': closed, 'pane_id': saved.get('pane_id'),
+                           'focused': bool(sws and sws.get('id') in focused_workspaces),
+                           '_terminal': terminal, '_chat': chat, '_workspace': workspace})
+        except Error as exc:
+            errors.append(f'{wid}: {exc}')
+    duplicates = {r['slot'] for r in result if sum(x['slot'] == r['slot'] for x in result) > 1}
+    if duplicates:
+        errors.append('Multiple Herdr contexts claim Sway slots: ' + ', '.join(map(str, sorted(duplicates))))
+        result = [row for row in result if row['slot'] not in duplicates]
+    return result, errors
+
+
+def inspect(*, require_snapshot=False):
+    root = picker.tree()
+    records = registry()
+    error = None
+    try:
+        snapshot = picker.remote_snapshot()
+    except (Error, OSError, ValueError) as exc:
+        if require_snapshot:
+            raise
+        snapshot, error = None, str(exc)
+    contexts, errors = collect(root, snapshot, records)
+    if error:
+        errors.append('Herdr snapshot unavailable: ' + error)
+    return root, records, snapshot, contexts, errors
+
+
+def public(row):
+    return {key: value for key, value in row.items() if not key.startswith('_')}
+
+
+def remember(row, records, **changes):
+    record = records.setdefault(row['workspace_id'], {})
+    for key in ('label', 'slot', 'sway_workspace'):
+        record[key] = row[key]
+    record.update(changes)
+    save(records)
+
+
+def mark(row):
+    for kind in ('terminal', 'chat'):
+        node = row['_' + kind]
+        if not node:
+            continue
+        # Sway marks are globally unique. Legacy slot/name/closed marks belong
+        # only to Kitty; giving them to Chat would silently steal Kitty's marks.
+        desired = [f'herdr-context-{row["workspace_id"]}-{kind}']
+        if kind == 'terminal':
+            desired += [f'herdr-slot-{row["slot"]}', f'herdr-workspace-{row["workspace_id"]}']
+        for old in node.get('marks', []):
+            if picker.SLOT.fullmatch(old) and old not in desired:
+                picker.ipc(f'[con_id={node["id"]}] unmark {old}')
+        for value in desired:
+            if value not in node.get('marks', []):
+                picker.ipc(f'[con_id={node["id"]}] mark --add {value}')
+        if kind == 'terminal':
+            wanted_name = 'herdr-name-' + row['sway_workspace'].encode('utf-8').hex()
+            if wanted_name not in node.get('marks', []):
+                picker.remember_name(node, row['sway_workspace'])
+
+
+def pick_context(root, contexts, workspace=None):
+    if workspace:
+        matches = [r for r in contexts if r['workspace_id'] == workspace]
+    else:
+        current = picker.focused_workspace(root)
+        matches = [r for r in contexts if r['slot'] == current.get('num') and not r['closed']]
+    if len(matches) != 1:
+        raise Error('No unique Herdr context here. Open one Kitty projector in this Sway workspace, and select its assigned Herdr workspace.')
+    return matches[0]
+
+
+def pane_for(row, snapshot, explicit=None):
+    panes = [p for p in snapshot.get('panes', snapshot.get('agents', [])) if p.get('workspace_id') == row['workspace_id']]
+    agents = [p for p in snapshot.get('agents', []) if p.get('workspace_id') == row['workspace_id']]
+    by_id = {p.get('pane_id'): p for p in panes + agents if p.get('pane_id')}
+    if explicit:
+        if explicit not in by_id:
+            raise Error('The requested pane is not in this Herdr workspace.')
+        return explicit
+    # Client-local selected pane is not exported by the global API. A single
+    # agent is unambiguous even if the workspace also has utility shell panes.
+    candidates = {p['pane_id'] for p in agents if p.get('pane_id') and p.get('agent')}
+    if len(candidates) == 1:
+        return next(iter(candidates))
+    if len(by_id) == 1:
+        return next(iter(by_id))
+    if row.get('pane_id') in by_id:
+        return row['pane_id']
+    choices = {}
+    for pid, item in by_id.items():
+        label = picker.clean(item.get('title') or item.get('terminal_title_stripped') or item.get('agent') or 'Shell')
+        choices[f'{label} · {pid}'] = pid
+    if not choices:
+        raise Error('This Herdr workspace has no panes.')
+    selected = picker.dmenu(list(choices), 'Chat pane in this workspace · independent of Kitty selection')
+    if selected is None:
+        raise Cancelled()
+    return choices[selected]
+
+
+def profile_dir():
+    return state_dir() / 'chrome'
+
+
+def own_browser(node):
+    """Validate process ancestry, never accept a normal browser by its title."""
+    pid = node.get('pid')
+    profile_arg = '--user-data-dir=' + str(profile_dir())
+    seen = set()
+    while isinstance(pid, int) and pid > 1 and pid not in seen:
+        seen.add(pid)
+        try:
+            args = Path(f'/proc/{pid}/cmdline').read_bytes().decode().split('\0')
+            if profile_arg in args and '--class=' + BROWSER_CLASS in args:
+                return True
+            status = Path(f'/proc/{pid}/status').read_text()
+            pid = int(re.search(r'^PPid:\s+(\d+)$', status, re.M).group(1))
+        except (OSError, ValueError, AttributeError, UnicodeError):
+            return False
+    return False
+
+
+def browser_port():
+    lines = (profile_dir() / 'DevToolsActivePort').read_text().splitlines()
+    port = int(lines[0])
+    if not 1 <= port <= 65535:
+        raise Error('Invalid dedicated Chrome debugging port.')
+    return port
+
+
+def http_json(path):
+    opener = build_opener(ProxyHandler({}))
+    port = browser_port()
+    # An old port file must never let us attach to another browser after port
+    # reuse. Chrome records a random browser endpoint alongside the port.
+    expected = (profile_dir() / 'DevToolsActivePort').read_text().splitlines()[1]
+    with opener.open(f'http://127.0.0.1:{port}/json/version', timeout=3) as response:
+        version = json.load(response)
+    if urlsplit(version.get('webSocketDebuggerUrl', '')).path != expected:
+        raise Error('Dedicated Chrome endpoint changed; refusing a different browser.')
+    with opener.open(f'http://127.0.0.1:{port}{path}', timeout=3) as response:
+        return json.load(response)
+
+
+def cdp(target, method, params):
+    """One bounded CDP request over a localhost WebSocket, without dependencies."""
+    url = urlsplit(target['webSocketDebuggerUrl'])
+    if url.scheme != 'ws' or url.hostname not in ('127.0.0.1', 'localhost') or url.port != browser_port():
+        raise Error('Unexpected dedicated Chrome debugging endpoint.')
+    key = base64.b64encode(secrets.token_bytes(16)).decode()
+    with socket.create_connection(('127.0.0.1', url.port), timeout=4) as conn:
+        stream = conn.makefile('rb')
+        conn.sendall((f'GET {url.path} HTTP/1.1\r\nHost: 127.0.0.1:{url.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n').encode())
+        status = stream.readline(4096)
+        headers = {}
+        for _ in range(64):
+            line = stream.readline(4096)
+            if line == b'\r\n':
+                break
+            if b':' not in line:
+                raise Error('Invalid Chrome WebSocket handshake.')
+            name, value = line.decode().split(':', 1)
+            headers[name.lower()] = value.strip()
+        expected = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
+        if b' 101 ' not in status or headers.get('sec-websocket-accept') != expected:
+            raise Error('Chrome rejected the scoped debugging connection.')
+
+        def send(opcode, payload):
+            mask = secrets.token_bytes(4)
+            size = len(payload)
+            header = bytes([0x80 | opcode, 0x80 | size]) if size < 126 else bytes([0x80 | opcode, 0x80 | 126]) + struct.pack('!H', size)
+            conn.sendall(header + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload)))
+
+        def read(size):
+            data = stream.read(size)
+            if len(data) != size:
+                raise Error('Chrome closed the debugging connection.')
+            return data
+
+        send(1, json.dumps({'id': 1, 'method': method, 'params': params}).encode())
+        deadline = time.monotonic() + 5
+        fragments = bytearray()
+        while time.monotonic() < deadline:
+            first, second = read(2)
+            length = second & 127
+            if length == 126:
+                length = struct.unpack('!H', read(2))[0]
+            elif length == 127:
+                length = struct.unpack('!Q', read(8))[0]
+            if length > 1048576 or len(fragments) + length > 1048576 or second & 128:
+                raise Error('Invalid or oversized Chrome debugging response.')
+            payload = read(length)
+            opcode = first & 15
+            if opcode == 8:
+                raise Error('Chrome closed the debugging connection.')
+            if opcode == 9:
+                send(10, payload)
+                continue
+            if opcode not in (0, 1):
+                continue
+            fragments.extend(payload)
+            if not first & 128:
+                continue
+            message = json.loads(fragments)
+            fragments.clear()
+            if message.get('id') == 1:
+                if message.get('error') or message.get('result', {}).get('exceptionDetails'):
+                    raise Error('Chrome could not apply the requested Chat navigation.')
+                return message.get('result', {})
+        raise Error('Chrome debugging request timed out.')
+
+
+def app_target(wid):
+    base = urlsplit(config())
+    candidates = []
+    for target in http_json('/json/list'):
+        url = urlsplit(target.get('url', ''))
+        if (target.get('type') == 'page' and (url.scheme, url.netloc, url.path or '/') == (base.scheme, base.netloc, base.path or '/')
+                and parse_qs(url.query).get('context') == [wid]):
+            candidates.append(target)
+    if len(candidates) > 1:
+        raise Error('Multiple dedicated Chat tabs claim this workspace; close the extra companion explicitly.')
+    return candidates[0] if candidates else None
+
+
+def chat_url(row, pane):
+    base = urlsplit(config())
+    query = dict(parse_qs(base.query))
+    for key in ('ws', 'pane', 'view', 'sidebar', 'context', 'file', 'settings', 'section', 'new'):
+        query.pop(key, None)
+    query.update(ws=[row['workspace_id']], pane=[pane], view=['chat'], sidebar=['hidden'], context=[row['workspace_id']])
+    return urlunsplit((base.scheme, base.netloc, base.path, urlencode(query, doseq=True), base.fragment))
+
+
+def ensure_chat(row, pane):
+    if row['_chat']:
+        if not own_browser(row['_chat']):
+            raise Error('Chat process identity differs from the dedicated browser profile.')
+        target = app_target(row['workspace_id'])
+        if not target:
+            raise Error('The companion navigated away from Herdr Chat; return it to its original Herdr page before toggling.')
+        desired = chat_url(row, pane)
+        old = parse_qs(urlsplit(target['url']).query)
+        wanted = parse_qs(urlsplit(desired).query)
+        # ws may carry the UI's human-readable slug, so compare its stable ID.
+        route_changed = (old.get('pane') != [pane] or
+                         old.get('machine', ['local']) != wanted.get('machine', ['local']) or
+                         old.get('ws', [''])[0].split('-', 1)[0] != row['workspace_id'] or
+                         any(key in old for key in ('file', 'settings', 'section', 'new')))
+        if route_changed:
+            # Existing SPA popstate handler selects a pane without reloading the
+            # app. Same-pane toggles do nothing, keeping draft/scroll untouched.
+            expression = 'history.pushState({"herdr-web-ui:nav":true}, "", ' + json.dumps(desired) + '); window.dispatchEvent(new PopStateEvent("popstate", {state:history.state})); true'
+            cdp(target, 'Runtime.evaluate', {'expression': expression, 'returnByValue': True})
+        if route_changed or old.get('view') != ['chat'] or old.get('sidebar') != ['hidden']:
+            # App.tsx's popstate intentionally ignores lens-only navigation.
+            # Use its explicit, language-independent controls for that case.
+            expression = '''(() => {
+              const chat = document.querySelector('button[data-view="chat"]');
+              if (chat && chat.getAttribute('aria-pressed') !== 'true') chat.click();
+              const sidebar = document.querySelector('button.sidebar-toggle[aria-pressed="true"]');
+              if (sidebar) sidebar.click();
+              return true;
+            })()'''
+            cdp(target, 'Runtime.evaluate', {'expression': expression, 'returnByValue': True})
+
+            def landed():
+                page = app_target(row['workspace_id'])
+                query = parse_qs(urlsplit(page['url']).query) if page else {}
+                return (query.get('pane') == [pane] and query.get('view') == ['chat'] and
+                        query.get('machine', ['local']) == wanted.get('machine', ['local']) and
+                        query.get('ws', [''])[0].split('-', 1)[0] == row['workspace_id'])
+            picker.wait_for(landed, 3, 'Chat did not accept the requested workspace/pane. Its page was preserved; check its connection or sign-in.')
+        return row['_chat']
+    profile_dir().mkdir(mode=0o700, parents=True, exist_ok=True)
+    # Refuse to duplicate an unmarked surviving app after an interrupted bind.
+    try:
+        target = app_target(row['workspace_id'])
+    except (OSError, ValueError):
+        target = None
+    if target is None:
+        executable = os.environ.get('HERDR_CONTEXT_BROWSER', 'google-chrome-stable')
+        args = [executable, '--ozone-platform=wayland', '--class=' + BROWSER_CLASS,
+                '--user-data-dir=' + str(profile_dir()), '--remote-debugging-address=127.0.0.1',
+                '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check',
+                '--app=' + chat_url(row, pane)]
+        log = state_dir() / 'chrome.log'
+        with log.open('ab') as stream:
+            subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=stream, stderr=stream, start_new_session=True)
+
+        def ready():
+            try:
+                return app_target(row['workspace_id'])
+            except (OSError, ValueError):
+                return None
+        target = picker.wait_for(ready, 12, 'Dedicated Chrome did not open its Chat page; see ' + str(log))
+    token = 'herdr-context-bind-' + secrets.token_hex(12)
+    original_title = cdp(target, 'Runtime.evaluate', {'expression': 'document.title', 'returnByValue': True}).get('result', {}).get('value', 'Herdr')
+    cdp(target, 'Runtime.evaluate', {'expression': 'document.title=' + json.dumps(token)})
+    try:
+        def appeared():
+            candidates = [n for n, _ in picker.views(picker.tree()) if n.get('name') == token and own_browser(n)]
+            if len(candidates) > 1:
+                raise Error('Multiple windows matched the fresh Chat target.')
+            return candidates[0] if candidates else None
+        node = picker.wait_for(appeared, 5, 'Could not identify the dedicated Chrome window safely; it remains open for diagnosis.')
+        picker.ipc(f'[con_id={node["id"]}] mark --add herdr-context-{row["workspace_id"]}-chat')
+        picker.ipc(f'[con_id={node["id"]}] move scratchpad')
+    finally:
+        cdp(target, 'Runtime.evaluate', {'expression': 'if(document.title===' + json.dumps(token) + ') document.title=' + json.dumps(original_title)})
+    row['_chat'], row['chat_id'] = node, node['id']
+    return node
+
+
+def show(row, records, kind, snapshot=None, pane=None):
+    # Validate the destination before changing focus or moving anything.
+    if kind == 'chat':
+        if snapshot is None:
+            raise Error('Herdr is unreachable; return to Terminal or retry when connected.')
+        pane = pane_for(row, snapshot, pane)
+        ensure_chat(row, pane)
+    show_existing(row, records, kind, pane=pane)
+
+
+def show_existing(row, records, kind, *, pane=None):
+    """Reveal an existing companion, without navigating or reloading its page."""
+    target = row['_' + kind]
+    if target is None:
+        raise Error('That companion window has closed.')
+    mark(row)
+    live = {n['id']: (n, w) for n, w in picker.views(picker.tree())}
+    if target['id'] not in live:
+        raise Error('The destination closed while switching.')
+    visible = [(n, w) for n, w in live.values() if n['id'] in (row['terminal_id'], row['chat_id']) and not hidden(w)]
+    if len(visible) > 1:
+        raise Error('Both companion views became visible; refusing an ambiguous swap.')
+    if visible and visible[0][0]['id'] != target['id']:
+        current = visible[0][0]
+        picker.ipc(f'[con_id={current["id"]}] swap container with con_id {target["id"]}')
+    elif not visible:
+        # Parked pair restoration: use a live numbered workspace if renamed.
+        names = [n['name'] for n, _ in picker.walk(picker.tree()) if n.get('type') == 'workspace' and n.get('num') == row['slot']]
+        if len(names) > 1:
+            raise Error('Multiple Sway workspaces have this slot number.')
+        name = names[0] if names else row['sway_workspace']
+        picker.ipc(f'[con_id={target["id"]}] move container to workspace ' + picker.quote_sway(name))
+        picker.ipc(f'[con_id={target["id"]}] floating disable')
+        row['sway_workspace'] = name
+    picker.ipc(f'[con_id={target["id"]}] focus')
+    for node in (row['_terminal'], row['_chat']):
+        if node:
+            for value in node.get('marks', []):
+                if picker.CLOSED.fullmatch(value):
+                    picker.ipc(f'[con_id={node["id"]}] unmark {value}')
+    remember(row, records, last_view=kind, closed=False, **({'pane_id': pane} if pane else {}))
+
+
+def focus_pair(view_id, *, terminal=False):
+    """Picker integration; caller already holds the shared desktop lock."""
+    _, records, snapshot, contexts, _ = inspect()
+    matches = [r for r in contexts if view_id in (r['terminal_id'], r['chat_id'])]
+    if not matches:
+        return False
+    row = matches[0]
+    kind = 'terminal' if terminal else row['view'] or row['last_view']
+    # Picker focus merely reveals an existing view; no pane change or network
+    # navigation. This also permits restoring a workspace during a server outage.
+    if kind == 'chat' and row['_chat']:
+        show_existing(row, records, kind)
+    else:
+        show(row, records, 'terminal', snapshot)
+    return True
+
+
+def park_current():
+    """Park both views, preserving the last view. Return IDs picker must skip."""
+    root, records, _, contexts, _ = inspect()
+    current = picker.focused_workspace(root)
+    matches = [r for r in contexts if r['slot'] == current.get('num') and r['representative_id']]
+    if not matches:
+        if any(picker.slot_of(n, w) == current.get('num') and any(MARK.fullmatch(m) for m in n.get('marks', [])) for n, w in picker.views(root)):
+            raise Error('This workspace has an unresolved companion identity. Resolve herdr-context status diagnostics before parking it.')
+        return set()
+    row = matches[0]
+    mark(row)
+    remember(row, records, last_view=row['view'], closed=True)
+    stamp = time.time_ns()
+    for node in (row['_terminal'], row['_chat']):
+        if node:
+            if node['id'] == row['terminal_id']:
+                picker.ipc(f'[con_id={node["id"]}] mark --add herdr-closed-{stamp}')
+            picker.ipc(f'[con_id={node["id"]}] move scratchpad')
+    return {value for value in (row['terminal_id'], row['chat_id']) if value}
+
+
+def detach_pair(view_id):
+    """Explicit detach closes local companions only, never the Herdr server."""
+    root = picker.tree()
+    node = next((n for n, _ in picker.views(root) if n['id'] == view_id), None)
+    matches = [MARK.fullmatch(m) for m in (node or {}).get('marks', []) if MARK.fullmatch(m)]
+    if len(matches) != 1:
+        raise Error('Cannot detach an ambiguous companion identity.')
+    wid = matches[0].group(1)
+    pair = [n for n, _ in picker.views(root) if any(m in n.get('marks', []) for m in (f'herdr-context-{wid}-terminal', f'herdr-context-{wid}-chat'))]
+    if len(pair) > 2:
+        raise Error('Multiple windows claim this pair; detach them individually.')
+    for member in pair:
+        picker.ipc(f'[con_id={member["id"]}] kill')
+    records = registry()
+    records.pop(wid, None)
+    save(records)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest='command', required=True)
+    for name in ('toggle', 'show', 'activate'):
+        command = commands.add_parser(name)
+        if name == 'show':
+            command.add_argument('view', choices=('terminal', 'chat'))
+        command.add_argument('--workspace', required=name == 'activate', help='Herdr workspace ID, e.g. w1')
+        selection = command.add_mutually_exclusive_group()
+        selection.add_argument('--pane', help='Explicit pane in this workspace; never global server focus')
+        selection.add_argument('--choose-pane', action='store_true', help='Choose a Chat pane again instead of reusing the last choice')
+    status = commands.add_parser('status', help='Read-only mapping, agents, and diagnostics')
+    status.add_argument('--json', action='store_true')
+    commands.add_parser('reconcile', help='Remember valid identities and repair a closed active companion; never creates or reloads apps')
+    args = parser.parse_args()
+    if args.command == 'status':
+        _, _, snapshot, contexts, errors = inspect()
+        payload = {'version': 1, 'contexts': [public(r) for r in contexts],
+                   'agents': snapshot.get('agents', []) if snapshot is not None else None, 'errors': errors}
+        print(json.dumps(payload) if args.json else '\n'.join(f'{r["slot"]}: {r["label"]} ({r["workspace_id"]}) — {r["view"] or "parked"}' for r in contexts) + ('\n' + '\n'.join(errors) if errors else ''))
+        return
+    with picker.desktop_lock():
+        root, records, snapshot, contexts, errors = inspect()
+        if args.command == 'reconcile':
+            for row in contexts:
+                mark(row)
+                remember(row, records, last_view=row['view'] or row['last_view'], closed=row['closed'])
+                # If the visible browser was closed, return Kitty to its owner
+                # workspace without stealing focus. Closed pairs remain parked.
+                if row['view'] is None and not row['closed'] and row['_chat'] is None:
+                    picker.ipc(f'[con_id={row["terminal_id"]}] move container to workspace ' + picker.quote_sway(row['sway_workspace']))
+                    picker.ipc(f'[con_id={row["terminal_id"]}] floating disable')
+            if errors:
+                print('\n'.join(errors), file=sys.stderr)
+            return
+        row = pick_context(root, contexts, args.workspace)
+        if args.choose_pane:
+            row['pane_id'] = None
+        kind = args.view if args.command == 'show' else ('chat' if row['view'] != 'chat' else 'terminal') if args.command == 'toggle' else ('chat' if args.pane else row['view'] or row['last_view'])
+        if args.choose_pane:
+            kind = 'chat'
+        if args.command == 'activate' and not args.pane and not args.choose_pane:
+            show_existing(row, records, kind) if row['_' + kind] else show(row, records, 'terminal', snapshot)
+        else:
+            show(row, records, kind, snapshot, args.pane)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Cancelled:
+        pass
+    except (Error, OSError, ValueError, TypeError, KeyError) as exc:
+        print(f'herdr-context: {exc}', file=sys.stderr)
+        try:
+            picker.run(['notify-send', 'Herdr workspace', str(exc)], timeout=2, check=False)
+        except Error:
+            pass
+        sys.exit(1)
