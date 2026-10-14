@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""Top-display workspace switcher. Herdr status is read-only and sampled on open."""
+import argparse
+import fcntl
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import socket
+import subprocess
+import sys
+import threading
+import time
+
+
+def bridge():
+    path = Path(__file__).resolve().with_name('herdr-picker')
+    loader = importlib.machinery.SourceFileLoader('workspace_switcher_bridge', str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def sway_query(kind):
+    result = subprocess.run(['swaymsg', '-r', '-t', kind], capture_output=True, text=True, timeout=4, check=True)
+    return json.loads(result.stdout)
+
+
+def require_output(output, outputs):
+    if not any(row.get('name') == output and row.get('active') for row in outputs):
+        raise RuntimeError(f'Top display {output} is unavailable. No other display will be used.')
+
+
+def make_rows(b, root, workspaces, snapshot, output, unavailable=False):
+    rows = []
+    slots = {}
+    for ws in workspaces:
+        if ws.get('num', -1) >= 0:
+            slots.setdefault(ws['num'], []).append(ws)
+    eligible = set(range(1, 10)) | {w['num'] for w in workspaces if w.get('output') == output and w.get('num', -1) >= 0}
+    for number in sorted(eligible):
+        matches = slots.get(number, [])
+        # Never borrow a lower/external output's workspace or resolve ambiguous numbers.
+        if len(matches) > 1 or (matches and matches[0].get('output') != output):
+            continue
+        ws = matches[0] if matches else None
+        candidates = [(n, w) for n, w in b.projectors(root)
+                      if (b.slot_of(n, w) if (w or {}).get('name') == '__i3_scratch'
+                          else (w or {}).get('num')) == number]
+        statuses = []
+        for node, location in candidates:
+            state = b.identity(node, snapshot)
+            assigned = False
+            if state is None:
+                state = b.assigned_identity(node, snapshot)
+                assigned = state is not None
+            status = b.clean(state.get('agent_status', 'unknown')) if state else 'unavailable' if unavailable else 'unknown'
+            statuses.append(('assigned ' if assigned else '') + status)
+        parked = [n for n, w in candidates if (w or {}).get('name') == '__i3_scratch']
+        # Two parked/projected identities for a slot must be resolved in the existing picker.
+        if len(candidates) > 1:
+            statuses.append('multiple projectors')
+        name = b.clean(ws['name']) if ws else f'{number} · ' + ('Parked Herdr' if parked else 'Empty workspace')
+        marker = '●' if ws and ws.get('focused') else '!' if ws and ws.get('urgent') else ' '
+        label = f'{marker} {name}'
+        if statuses:
+            label += '    ' + ' / '.join(dict.fromkeys(statuses))
+        elif ws:
+            label += '    no Herdr projector'
+        row = {'slot': number, 'name': ws['name'] if ws else None, 'output': output, 'label': label}
+        if len(candidates) == 1 and len(parked) == 1:
+            row['parked'] = {key: parked[0].get(key) for key in ('id', 'pid', 'app_id')}
+        rows.append(row)
+    return rows
+
+
+def activate(b, row):
+    require_output(row['output'], sway_query('get_outputs'))
+    latest = sway_query('get_workspaces')
+    matches = [w for w in latest if w.get('num') == row['slot']]
+    if len(matches) > 1 or (matches and matches[0].get('output') != row['output']):
+        raise RuntimeError('Workspace moved to another output or became ambiguous. Open the switcher again.')
+    if row['name'] is not None and (not matches or matches[0]['name'] != row['name']):
+        raise RuntimeError('Workspace changed since opening. Open the switcher again.')
+    if row['name'] is None and matches:
+        raise RuntimeError('An empty slot changed since opening. Open the switcher again.')
+    # Revalidate a parked projector before changing focus, never use server global focus.
+    parked = row.get('parked')
+    if parked:
+        current = next(((n, w) for n, w in b.views(b.tree()) if n['id'] == parked['id']), None)
+        if not current or any(current[0].get(k) != parked[k] for k in ('pid', 'app_id')):
+            raise RuntimeError('Parked projector closed or changed identity. Open the switcher again.')
+        if (current[1] or {}).get('name') != '__i3_scratch' or b.slot_of(*current) != row['slot']:
+            raise RuntimeError('Parked projector changed location. Open the switcher again.')
+    b.ipc('focus output ' + b.quote_sway(row['output']))
+    if parked:
+        b.focus_view(parked['id'], expected=parked)
+    else:
+        b.select_workspace(row['slot'], row['name'])
+
+
+def fuzzel_command(output, count, unavailable=False):
+    palette_path = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'theme/desktop-shell.json'
+    if palette_path.exists():
+        p = json.loads(palette_path.read_text())
+    else:
+        # Older generations already ship this fragment. Parse data only; never source it.
+        colors = {}
+        for line in palette_path.with_name('kitty.conf').read_text().splitlines():
+            fields = line.split()
+            if len(fields) == 2 and re.fullmatch(r'#[0-9a-fA-F]{6}', fields[1]):
+                colors[fields[0]] = fields[1]
+        p = {'ground': {'raised': colors['background']}, 'fg': colors['foreground'],
+             'fgDim': colors.get('color8', colors['foreground']),
+             'selection': {'bg': colors['selection_background'], 'fg': colors['selection_foreground']},
+             'brand': colors.get('url_color', colors['foreground']),
+             'border': {'inactive': colors.get('color8', colors['foreground'])}}
+    def rgba(value):
+        if not re.fullmatch(r'#[0-9a-fA-F]{6}', value):
+            raise ValueError('Invalid theme color in desktop-shell.json')
+        return value[1:] + 'ff'
+    return ['fuzzel', '--config=/dev/null', '--dmenu', '--index', '--only-match', '--no-sort',
+            '--namespace=sway-workspace-switcher', '--output=' + output, '--anchor=center',
+            '--font=Anthropic Sans:size=12', '--dpi-aware=no', '--width=56', '--lines=' + str(count),
+            '--horizontal-pad=16', '--vertical-pad=14', '--inner-pad=12', '--border-width=1',
+            '--border-radius=8', '--selection-radius=4', '--no-icons', '--layer=overlay',
+            '--keyboard-focus=exclusive', '--log-no-syslog', '--prompt=Workspaces  ',
+            '--placeholder=' + ('Herdr unavailable · status at open' if unavailable else 'Top display · Herdr status at open'),
+            '--background-color=' + rgba(p['ground']['raised']), '--text-color=' + rgba(p['fg']),
+            '--input-color=' + rgba(p['fg']), '--prompt-color=' + rgba(p['fg']),
+            '--placeholder-color=' + rgba(p['fgDim']), '--selection-color=' + rgba(p['selection']['bg']),
+            '--selection-text-color=' + rgba(p['selection']['fg']), '--match-color=' + rgba(p['brand']),
+            '--selection-match-color=' + rgba(p['selection']['fg']), '--border-color=' + rgba(p['border']['inactive'])]
+
+
+class Toggle:
+    """Own control socket and flock, never PID discovery or process-name killing."""
+    def __init__(self):
+        runtime = Path(os.environ['XDG_RUNTIME_DIR'])
+        self.directory = runtime / 'sway-workspace-switcher'
+        self.directory.mkdir(mode=0o700, exist_ok=True)
+        if self.directory.is_symlink() or self.directory.stat().st_uid != os.getuid():
+            raise RuntimeError('Unsafe switcher runtime directory')
+        self.directory.chmod(0o700)
+        token = hashlib.sha256(os.environ['SWAYSOCK'].encode()).hexdigest()[:16]
+        self.path = self.directory / (token + '.sock')
+        self.lock = (self.directory / (token + '.lock')).open('a')
+        self.closed = threading.Event()
+        self.server = None
+
+    def acquire_or_close(self):
+        try:
+            fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            for _ in range(20):
+                with socket.socket(socket.AF_UNIX) as client:
+                    client.settimeout(.2)
+                    try:
+                        client.connect(str(self.path))
+                        client.sendall(b'close\n')
+                        return False
+                    except (ConnectionRefusedError, FileNotFoundError):
+                        time.sleep(.025)
+            raise RuntimeError('Switcher is busy but its control socket is unavailable.')
+        self.path.unlink(missing_ok=True)  # Only this lock owner can remove its stale socket.
+        self.server = socket.socket(socket.AF_UNIX)
+        self.server.bind(str(self.path))
+        self.server.listen(2)
+        self.server.settimeout(.2)
+        def listen():
+            while not self.closed.is_set():
+                try:
+                    connection, _ = self.server.accept()
+                    with connection:
+                        connection.settimeout(.2)
+                        if connection.recv(64) == b'close\n':
+                            self.closed.set()
+                except socket.timeout:
+                    pass
+                except OSError:
+                    return
+        threading.Thread(target=listen, daemon=True).start()
+        return True
+
+    def close(self):
+        self.closed.set()
+        if self.server:
+            self.server.close()
+            self.path.unlink(missing_ok=True)
+        self.lock.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--json', action='store_true', help='read-only workspace/status rows without opening a window')
+    parser.add_argument('--output', default='eDP-1', help='explicit top output; never falls back to another output')
+    args = parser.parse_args()
+    if not os.environ.get('SWAYSOCK'):
+        raise RuntimeError('Run inside the physical Sway session.')
+    b = bridge()
+    if b.hyprland():
+        raise RuntimeError('This switcher is wired to Sway only.')
+    toggle = None
+    child = None
+    try:
+        if not args.json:
+            toggle = Toggle()
+            if not toggle.acquire_or_close():
+                return
+        require_output(args.output, sway_query('get_outputs'))
+        root, workspaces = b.tree(), sway_query('get_workspaces')
+        snapshot, unavailable = {}, False
+        try:
+            snapshot = b.remote_snapshot()
+        except (b.BridgeError, ValueError, KeyError) as exc:
+            unavailable = True
+            print(f'sway-workspace-switcher: Herdr status unavailable: {exc}', file=sys.stderr)
+        rows = make_rows(b, root, workspaces, snapshot, args.output, unavailable)
+        if args.json:
+            print(json.dumps({'output': args.output, 'status_at_open': True, 'herdr_unavailable': unavailable, 'workspaces': rows}, ensure_ascii=False))
+            return
+        if toggle.closed.is_set():
+            return
+        child = subprocess.Popen(fuzzel_command(args.output, len(rows), unavailable), stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        child.stdin.write('\n'.join(row['label'] for row in rows) + '\n')
+        child.stdin.close()
+        while child.poll() is None:
+            if toggle.closed.wait(.05):
+                child.terminate()
+                child.wait(timeout=3)
+                return
+        if child.returncode == 2:  # Fuzzel user cancellation (Escape or focus loss).
+            return
+        if child.returncode:
+            raise RuntimeError(f'Workspace menu failed with exit {child.returncode}; see its stderr.')
+        selected = child.stdout.read().strip()
+        if not selected.isdecimal() or not 0 <= int(selected) < len(rows):
+            raise RuntimeError('Workspace menu returned an invalid selection.')
+        with b.desktop_lock():
+            activate(b, rows[int(selected)])
+    finally:
+        if child and child.poll() is None:
+            child.terminate()
+            try:
+                child.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
+                print('sway-workspace-switcher: menu needed SIGKILL', file=sys.stderr)
+        if toggle:
+            toggle.close()
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception as exc:
+        print(f'sway-workspace-switcher: {exc}', file=sys.stderr)
+        try:
+            subprocess.run(['notify-send', 'Workspace switcher', str(exc)], timeout=2, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        sys.exit(1)

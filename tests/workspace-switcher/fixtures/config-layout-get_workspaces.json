@@ -1,0 +1,172 @@
+[
+ {
+  "id": 2001,
+  "type": "workspace",
+  "orientation": "horizontal",
+  "name": "1",
+  "num": 1,
+  "focused": true,
+  "visible": true,
+  "urgent": false,
+  "output": "eDP-1",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1440,
+   "height": 900
+  }
+ },
+ {
+  "id": 2002,
+  "type": "workspace",
+  "orientation": "horizontal",
+  "name": "2",
+  "num": 2,
+  "focused": false,
+  "visible": false,
+  "urgent": false,
+  "output": "eDP-1",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1440,
+   "height": 900
+  }
+ },
+ {
+  "id": 2003,
+  "type": "workspace",
+  "orientation": "horizontal",
+  "name": "3",
+  "num": 3,
+  "focused": false,
+  "visible": false,
+  "urgent": false,
+  "output": "eDP-1",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1440,
+   "height": 900
+  }
+ },
+ {
+  "id": 2004,
+  "type": "workspace",
+  "orientation": "horizontal",
+  "name": "4",
+  "num": 4,
+  "focused": false,
+  "visible": false,
+  "urgent": false,
+  "output": "eDP-1",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1440,
+   "height": 900
+  }
+ },
+ {
+  "id": 2005,
+  "type": "workspace",
+  "orientation": "horizontal",
+  "name": "5",
+  "num": 5,
+  "focused": false,
+  "visible": false,
+  "urgent": false,
+  "output": "eDP-1",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1440,
+   "height": 900
+  }
+ },
+ {
+  "id": 2006,
+  "type": "workspace",
+  "orientation": "horizontal",
+  "name": "6",
+  "num": 6,
+  "focused": false,
+  "visible": false,
+  "urgent": false,
+  "output": "eDP-1",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1440,
+   "height": 900
+  }
+ },
+ {
+  "id": 2007,
+  "type": "workspace",
+  "orientation": "horizontal",
+  "name": "7",
+  "num": 7,
+  "focused": false,
+  "visible": false,
+  "urgent": false,
+  "output": "eDP-1",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1440,
+   "height": 900
+  }
+ },
+ {
+  "id": 2008,
+  "type": "workspace",
+  "orientation": "horizontal",
+  "name": "8",
+  "num": 8,
+  "focused": false,
+  "visible": false,
+  "urgent": false,
+  "output": "eDP-1",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1440,
+   "height": 900
+  }
+ },
+ {
+  "id": 2009,
+  "type": "workspace",
+  "orientation": "horizontal",
+  "name": "9",
+  "num": 9,
+  "focused": false,
+  "visible": false,
+  "urgent": false,
+  "output": "eDP-1",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1440,
+   "height": 900
+  }
+ },
+ {
+  "id": 2010,
+  "type": "workspace",
+  "orientation": "horizontal",
+  "name": "10",
+  "num": 10,
+  "focused": false,
+  "visible": true,
+  "urgent": false,
+  "output": "eDP-2",
+  "rect": {
+   "x": 0,
+   "y": 900,
+   "width": 1440,
+   "height": 900
+  }
+ }
+]

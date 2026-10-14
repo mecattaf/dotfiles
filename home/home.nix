@@ -528,6 +528,10 @@ in
     gst_all_1.gst-plugins-good
     gst_all_1.gst-plugins-bad
     libjxl
+  ] ++ lib.optionals osConfig.myDisplay.enable [
+    # Mod+i top-display workspace switcher (sway-workspace-switcher): a plain
+    # layer-shell dmenu beside Vicinae, on the physical seat only.
+    fuzzel
   ];
 
   # nvim → implemented in ./nvim.nix (imported above).

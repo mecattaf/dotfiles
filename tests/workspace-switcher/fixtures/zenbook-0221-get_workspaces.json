@@ -1,0 +1,586 @@
+[
+  {
+    "id": 102,
+    "type": "workspace",
+    "orientation": "horizontal",
+    "percent": null,
+    "urgent": false,
+    "marks": [],
+    "layout": "splith",
+    "border": "none",
+    "current_border_width": 0,
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900
+    },
+    "deco_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "window_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "name": "1",
+    "window": null,
+    "nodes": [],
+    "floating_nodes": [],
+    "focus": [
+      119
+    ],
+    "fullscreen_mode": 1,
+    "sticky": false,
+    "floating": null,
+    "scratchpad_state": null,
+    "num": 1,
+    "output": "eDP-1",
+    "representation": "H[herdr-projector]",
+    "focused": false,
+    "visible": false
+  },
+  {
+    "id": 137,
+    "type": "workspace",
+    "orientation": "horizontal",
+    "percent": null,
+    "urgent": false,
+    "marks": [],
+    "layout": "splith",
+    "border": "none",
+    "current_border_width": 0,
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900
+    },
+    "deco_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "window_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "name": "2",
+    "window": null,
+    "nodes": [],
+    "floating_nodes": [],
+    "focus": [
+      138
+    ],
+    "fullscreen_mode": 1,
+    "sticky": false,
+    "floating": null,
+    "scratchpad_state": null,
+    "num": 2,
+    "output": "eDP-1",
+    "representation": "H[herdr-projector]",
+    "focused": false,
+    "visible": false
+  },
+  {
+    "id": 124,
+    "type": "workspace",
+    "orientation": "horizontal",
+    "percent": null,
+    "urgent": false,
+    "marks": [],
+    "layout": "splith",
+    "border": "none",
+    "current_border_width": 0,
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900
+    },
+    "deco_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "window_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "name": "3",
+    "window": null,
+    "nodes": [],
+    "floating_nodes": [],
+    "focus": [
+      125
+    ],
+    "fullscreen_mode": 1,
+    "sticky": false,
+    "floating": null,
+    "scratchpad_state": null,
+    "num": 3,
+    "output": "eDP-1",
+    "representation": "H[herdr-projector]",
+    "focused": false,
+    "visible": false
+  },
+  {
+    "id": 152,
+    "type": "workspace",
+    "orientation": "horizontal",
+    "percent": null,
+    "urgent": false,
+    "marks": [],
+    "layout": "splith",
+    "border": "none",
+    "current_border_width": 0,
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900
+    },
+    "deco_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "window_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "name": "6",
+    "window": null,
+    "nodes": [],
+    "floating_nodes": [
+      {
+        "id": 150,
+        "type": "floating_con",
+        "orientation": "none",
+        "percent": 0.71594444444444438,
+        "urgent": false,
+        "marks": [],
+        "focused": false,
+        "layout": "none",
+        "border": "pixel",
+        "current_border_width": 1,
+        "rect": {
+          "x": 427,
+          "y": 11,
+          "width": 1052,
+          "height": 882
+        },
+        "deco_rect": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "window_rect": {
+          "x": 1,
+          "y": 1,
+          "width": 1050,
+          "height": 880
+        },
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1050,
+          "height": 880
+        },
+        "name": "Left rail · design studies",
+        "window": null,
+        "nodes": [],
+        "floating_nodes": [],
+        "focus": [],
+        "fullscreen_mode": 0,
+        "sticky": false,
+        "floating": "user_on",
+        "scratchpad_state": "none",
+        "pid": 2674,
+        "app_id": "chrome-127.0.0.1__-Default",
+        "foreign_toplevel_identifier": "f7344d7de9c3eec162675df957bc7d8f",
+        "visible": true,
+        "max_render_time": 0,
+        "allow_tearing": false,
+        "shell": "xdg_shell",
+        "inhibit_idle": false,
+        "sandbox_engine": null,
+        "sandbox_app_id": null,
+        "sandbox_instance_id": null,
+        "tag": null,
+        "idle_inhibitors": {
+          "user": "none",
+          "application": "none"
+        }
+      },
+      {
+        "id": 154,
+        "type": "floating_con",
+        "orientation": "none",
+        "percent": 0.48888888888888887,
+        "urgent": false,
+        "marks": [],
+        "focused": false,
+        "layout": "none",
+        "border": "none",
+        "current_border_width": 1,
+        "rect": {
+          "x": 56,
+          "y": -48,
+          "width": 720,
+          "height": 880
+        },
+        "deco_rect": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "window_rect": {
+          "x": 0,
+          "y": 0,
+          "width": 720,
+          "height": 880
+        },
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 720,
+          "height": 880
+        },
+        "name": "GPUIX comparison — Desktop",
+        "window": null,
+        "nodes": [],
+        "floating_nodes": [],
+        "focus": [],
+        "fullscreen_mode": 0,
+        "sticky": false,
+        "floating": "user_on",
+        "scratchpad_state": "none",
+        "pid": 486482,
+        "app_id": "gpuix-comparison-desktop",
+        "foreign_toplevel_identifier": "c3162696dd4b8200b62db622c3f2cbe4",
+        "visible": true,
+        "max_render_time": 0,
+        "allow_tearing": false,
+        "shell": "xdg_shell",
+        "inhibit_idle": false,
+        "sandbox_engine": null,
+        "sandbox_app_id": null,
+        "sandbox_instance_id": null,
+        "tag": null,
+        "idle_inhibitors": {
+          "user": "none",
+          "application": "none"
+        }
+      }
+    ],
+    "focus": [
+      154,
+      150
+    ],
+    "fullscreen_mode": 1,
+    "sticky": false,
+    "floating": null,
+    "scratchpad_state": null,
+    "num": 6,
+    "output": "eDP-1",
+    "representation": "H[]",
+    "focused": false,
+    "visible": true
+  },
+  {
+    "id": 147,
+    "type": "workspace",
+    "orientation": "horizontal",
+    "percent": null,
+    "urgent": false,
+    "marks": [],
+    "layout": "splith",
+    "border": "none",
+    "current_border_width": 0,
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900
+    },
+    "deco_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "window_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "name": "8",
+    "window": null,
+    "nodes": [],
+    "floating_nodes": [],
+    "focus": [
+      155,
+      145
+    ],
+    "fullscreen_mode": 1,
+    "sticky": false,
+    "floating": null,
+    "scratchpad_state": null,
+    "num": 8,
+    "output": "eDP-1",
+    "representation": "H[chrome-127.0.0.1__-Default gpuix-comparison-mail]",
+    "focused": false,
+    "visible": false
+  },
+  {
+    "id": 148,
+    "type": "workspace",
+    "orientation": "horizontal",
+    "percent": null,
+    "urgent": false,
+    "marks": [],
+    "layout": "splith",
+    "border": "none",
+    "current_border_width": 0,
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900
+    },
+    "deco_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "window_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "name": "9",
+    "window": null,
+    "nodes": [],
+    "floating_nodes": [],
+    "focus": [
+      144
+    ],
+    "fullscreen_mode": 1,
+    "sticky": false,
+    "floating": null,
+    "scratchpad_state": null,
+    "num": 9,
+    "output": "eDP-1",
+    "representation": "H[chrome-127.0.0.1__-Default]",
+    "focused": false,
+    "visible": false
+  },
+  {
+    "id": 8,
+    "type": "workspace",
+    "orientation": "vertical",
+    "percent": null,
+    "urgent": false,
+    "marks": [],
+    "layout": "splitv",
+    "border": "none",
+    "current_border_width": 0,
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900
+    },
+    "deco_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "window_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "name": "10",
+    "window": null,
+    "nodes": [],
+    "floating_nodes": [],
+    "focus": [
+      132
+    ],
+    "fullscreen_mode": 1,
+    "sticky": false,
+    "floating": null,
+    "scratchpad_state": null,
+    "num": 10,
+    "output": "eDP-1",
+    "representation": "V[herdr-projector]",
+    "focused": false,
+    "visible": false
+  },
+  {
+    "id": 14,
+    "type": "workspace",
+    "orientation": "vertical",
+    "percent": null,
+    "urgent": false,
+    "marks": [],
+    "layout": "splitv",
+    "border": "none",
+    "current_border_width": 0,
+    "rect": {
+      "x": 0,
+      "y": 900,
+      "width": 1440,
+      "height": 900
+    },
+    "deco_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "window_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "name": "4",
+    "window": null,
+    "nodes": [],
+    "floating_nodes": [],
+    "focus": [
+      122
+    ],
+    "fullscreen_mode": 1,
+    "sticky": false,
+    "floating": null,
+    "scratchpad_state": null,
+    "num": 4,
+    "output": "eDP-2",
+    "representation": "V[herdr-projector]",
+    "focused": false,
+    "visible": false
+  },
+  {
+    "id": 131,
+    "type": "workspace",
+    "orientation": "horizontal",
+    "percent": null,
+    "urgent": false,
+    "marks": [],
+    "layout": "splith",
+    "border": "none",
+    "current_border_width": 0,
+    "rect": {
+      "x": 0,
+      "y": 900,
+      "width": 1440,
+      "height": 900
+    },
+    "deco_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "window_rect": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "name": "5",
+    "window": null,
+    "nodes": [],
+    "floating_nodes": [],
+    "focus": [
+      10
+    ],
+    "fullscreen_mode": 1,
+    "sticky": false,
+    "floating": null,
+    "scratchpad_state": null,
+    "num": 5,
+    "output": "eDP-2",
+    "representation": "H[google-chrome]",
+    "focused": true,
+    "visible": true
+  }
+]
