@@ -4,6 +4,7 @@ from contextlib import nullcontext
 import importlib.machinery
 import importlib.util
 import os
+import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -161,6 +162,16 @@ class Navigation(unittest.TestCase):
             with self.assertRaises(context.Error):
                 context.ensure_chat(row, 'wA:p1')
             cdp.assert_not_called()
+
+    def test_partial_browser_endpoint_is_retryable_and_valid_pair_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(context, 'profile_dir', return_value=Path(directory)):
+            endpoint = Path(directory) / 'DevToolsActivePort'
+            for incomplete in ['', '12345', '12345\n', '0\n/devtools/browser/fixture-id\n', '12345\n/not-a-browser\n']:
+                endpoint.write_text(incomplete)
+                with self.subTest(value=incomplete), self.assertRaises(ValueError):
+                    context.browser_endpoint()
+            endpoint.write_text('12345\n/devtools/browser/fixture-id\n')
+            self.assertEqual(context.browser_endpoint(), (12345, '/devtools/browser/fixture-id'))
 
     def test_duplicate_cdp_targets_are_rejected(self):
         target = {'type': 'page', 'url': 'https://herdr.example/?context=wA'}
