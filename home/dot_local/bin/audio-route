@@ -33,6 +33,13 @@ readonly INTERNAL_SINK_PREFIX='^alsa_output\.pci-'
 readonly INTERNAL_SOURCE_PREFIX='^alsa_input\.pci-'
 readonly INTERNAL_CARD_RE='sof[-_]?hda[-_]?dsp'
 
+# The audible floor (2026-10-14). wpctl prints and accepts the CUBIC, perceptual
+# number; the linear gain PipeWire applies is that number cubed, so a displayed
+# 0.24 is 0.0138 linear, about -37 dB. A sink picked below AUDIBLE_FLOOR is
+# lifted to AUDIBLE_RESTORE (the level that brought the INZONE Buds back live).
+readonly AUDIBLE_FLOOR='0.30'   # displayed 30 % = 2.7 % linear gain, about -31 dB
+readonly AUDIBLE_RESTORE='0.50' # displayed 50 % = 12.5 % linear gain, -18 dB
+
 if ! graph=$(timeout 5 pw-dump); then
     printf '%s\n' 'PipeWire is not responding.' >&2
     printf '%s\n' 'Reconnect the last USB audio device and try again.' >&2
@@ -180,13 +187,48 @@ if [[ -z "$sink_id" || -z "$source_id" ]]; then
     exit 1
 fi
 
-# Preserve each device's stored volume, but never route into a retained mute.
+# Preserve each device's stored volume, with two exceptions the picker lifts
+# because F9 is the one deliberate "hear this device now" act: a retained mute,
+# and, since 2026-10-14, a near-silent level. The second came from the INZONE
+# Buds "not playing sound" while the sink was the running default with Chrome
+# linked and wpctl showing 0.24: wpctl prints the cubic value, and the stored
+# channelVolumes in ~/.local/state/wireplumber/default-routes was 0.0138
+# (about -37 dB), inaudible at listening level. The Buds dongle has no ALSA
+# volume element (amixer shows only 'PCM Playback Switch' booleans), so every
+# dB of that is software attenuation before 16-bit output and nothing else can
+# lift it. WirePlumber re-applies the stored route volume whenever the route
+# becomes active again (replug, boot, profile change), so a level walked down
+# once with `volume down` is still there at the next pick. The level is read
+# from the resolved node id, never @DEFAULT_AUDIO_SINK@, which races WirePlumber's
+# default-nodes module right after set-default. `wpctl get-volume` exits 0 on
+# "not found" and "does not support volume" (wpctl 0.5.15), so the stdout shape
+# is the only check: anything but "Volume: <number>" skips the floor and the
+# route switch goes ahead regardless. Bash has no float compare, so awk does it.
+#
 # WirePlumber moves existing streams when the configured default changes, so
 # an already-playing browser follows the selection immediately.
 wpctl set-mute "$sink_id" 0
 wpctl set-mute "$source_id" 0
+was_pct=''
+lifted_pct=''
+vol=$(wpctl get-volume "$sink_id" 2>/dev/null \
+    | awk '$1 == "Volume:" && $2 ~ /^[0-9]+(\.[0-9]+)?$/ { print $2 }' || true)
+if [[ -n "$vol" ]] \
+    && awk -v v="$vol" -v floor="$AUDIBLE_FLOOR" 'BEGIN { exit !(v + 0 < floor + 0) }' \
+    && wpctl set-volume "$sink_id" "$AUDIBLE_RESTORE"; then
+    was_pct=$(awk -v v="$vol" 'BEGIN { printf "%d", v * 100 + 0.5 }')
+    lifted_pct=$(awk -v r="$AUDIBLE_RESTORE" 'BEGIN { printf "%d", r * 100 + 0.5 }')
+fi
 wpctl set-default "$sink_id"
 wpctl set-default "$source_id"
 
 printf '\n✓ %s\n' "$label"
-read -r -t 1.2 || true
+hold=1.2
+if [[ -n "$lifted_pct" ]]; then
+    # Same single-slot popup F7/F8 raise (bin/osd), so the jump into the ears is
+    # announced where every other volume change on the box is.
+    printf '↑ volume %s%% → %s%% (was below the audible floor)\n' "$was_pct" "$lifted_pct"
+    osd "Volume" "${lifted_pct}%" "$lifted_pct" 2>/dev/null || true
+    hold=2.5
+fi
+read -r -t "$hold" || true
