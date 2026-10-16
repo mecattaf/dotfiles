@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# touchpad-toggle -- flip every touchpad on or off and pop one OSD
+#
+# Bound to Caps Lock in dot_config/sway/binds.conf. input.conf maps the Caps
+# key to the Menu keysym (caps:menu) so it carries no lock state and no LED.
+# The OSD reuses the brightness popup slot (osd), so a press replaces it.
+
+set -u
+
+state="$(swaymsg -t get_inputs 2>/dev/null \
+    | jq -r '[.[] | select(.type == "touchpad") | .libinput.send_events] | first // empty')"
+
+if [ -z "$state" ]; then
+    echo "touchpad-toggle: no touchpad on this host." >&2
+    exit 0
+fi
+
+if [ "$state" = "enabled" ]; then
+    swaymsg input type:touchpad events disabled >/dev/null && osd "Touchpad" "off"
+else
+    swaymsg input type:touchpad events enabled >/dev/null && osd "Touchpad" "on"
+fi
