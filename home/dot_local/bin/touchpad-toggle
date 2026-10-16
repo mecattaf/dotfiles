@@ -4,11 +4,23 @@
 # Bound to Caps Lock in dot_config/sway/binds.conf. input.conf maps the Caps
 # key to the Menu keysym (caps:menu) so it carries no lock state and no LED.
 # The OSD reuses the brightness popup slot (osd), so a press replaces it.
+# The Duo keyboard's Caps LED mirrors the state: lit = touchpad off. Best
+# effort; a host or keyboard without that LED is skipped silently.
 
 set -u
 
 state="$(swaymsg -t get_inputs 2>/dev/null \
     | jq -r '[.[] | select(.type == "touchpad") | .libinput.send_events] | first // empty')"
+
+caps_led() {
+    local led
+    for led in /sys/class/leds/*::capslock; do
+        [ -e "$led" ] || continue
+        [ "$(cat "$led/device/id/vendor" 2>/dev/null)" = 0b05 ] || continue
+        [ "$(cat "$led/device/id/product" 2>/dev/null)" = 1b2c ] || continue
+        brightnessctl -q -d "${led##*/}" set "$1" >/dev/null 2>&1 || true
+    done
+}
 
 if [ -z "$state" ]; then
     echo "touchpad-toggle: no touchpad on this host." >&2
@@ -16,7 +28,7 @@ if [ -z "$state" ]; then
 fi
 
 if [ "$state" = "enabled" ]; then
-    swaymsg input type:touchpad events disabled >/dev/null && osd "Touchpad" "off"
+    swaymsg input type:touchpad events disabled >/dev/null && { caps_led 1; osd "Touchpad" "off"; }
 else
-    swaymsg input type:touchpad events enabled >/dev/null && osd "Touchpad" "on"
+    swaymsg input type:touchpad events enabled >/dev/null && { caps_led 0; osd "Touchpad" "on"; }
 fi
