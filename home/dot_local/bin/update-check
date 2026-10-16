@@ -1,0 +1,725 @@
+#!/usr/bin/env python3
+"""Check the fleet's programs against upstream; open one update PR per input.
+
+The dotfiles half of the nightly update check (#550). The clock is a routine
+on the substrate floor (substrate T-7): nothing in this repository schedules
+this command. One run:
+
+  1. fetches origin/main and the update/* branches (the checkout's working
+     tree and branch are never touched);
+  2. for each input in lib/update-watch.json, finds the newest upstream: the
+     branch head for an input that follows a branch, the newest stable GitHub
+     release for one that flake.nix pins to a tag or a commit;
+  3. when that differs from main, rebuilds branch update/<input> from
+     origin/main in a worktree under ~/.wt/dotfiles: the bump commit, then
+     any commit a reviewer added on top in an earlier round (cherry-picked);
+  4. skips the bump when no watched program changed version;
+  5. runs the gate (nixfmt on flake.nix, `nix flake check --no-build`, a build
+     of every host closure the input reaches) and opens or refreshes the PR,
+     as a draft when the gate fails;
+  6. closes an update PR whose input main already carries.
+
+It never merges, switches, restarts or deploys. The PR body carries the
+version table and the upstream release notes for the range; the update-check
+skill tells the routine's agent how to read them against this repo and which
+new features to propose.
+
+Examples:
+  update-check                 every input
+  update-check --only herdr    one input
+  update-check --dry-run       report what would move; no worktree, push or PR
+  update-check --json          print the run report as JSON
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fcntl
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+
+HOME = Path.home()
+REPO = Path(os.environ.get("UPDATE_CHECK_REPO", HOME / "mecattaf/dotfiles"))
+WORKTREES = Path(os.environ.get("UPDATE_CHECK_WORKTREES", HOME / ".wt/dotfiles"))
+STATE = Path(os.environ.get("UPDATE_CHECK_STATE", HOME / ".local/state/update-check"))
+GH_REPO = os.environ.get("UPDATE_CHECK_GH_REPO", "mecattaf/dotfiles")
+GATE_TIMEOUT = int(os.environ.get("UPDATE_CHECK_GATE_TIMEOUT", str(3 * 3600)))
+RETRY_SECONDS = int(os.environ.get("UPDATE_CHECK_RETRY_SECONDS", "10"))
+
+WATCH_PATH = "lib/update-watch.json"
+BRANCH_PREFIX = "update/"
+TRAILER = "Update-Check: bump"
+BODY_LIMIT = 60000
+RELEASE_PAGE = 30
+HOSTS = ("strix", "client", "nas")
+VERSION_RE = re.compile(r"^(\d+(?:\.\d+)*)$")
+MARKER_RE = re.compile(r"<!-- update-check (\{.*?\}) -->")
+
+
+class CheckError(Exception):
+    pass
+
+
+# ── processes ───────────────────────────────────────────────────────────────
+
+
+def sh(
+    args: list[str],
+    cwd: Path | None = None,
+    check: bool = True,
+    timeout: int | None = None,
+    env: dict[str, str] | None = None,
+) -> str:
+    try:
+        p = subprocess.run(
+            args,
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            env=None if env is None else {**os.environ, **env},
+        )
+    except subprocess.TimeoutExpired as e:
+        raise CheckError(f"{' '.join(args[:3])} timed out after {timeout}s") from e
+    if check and p.returncode != 0:
+        tail = (p.stderr or p.stdout).strip()[-800:]
+        raise CheckError(f"{' '.join(args[:3])} exited {p.returncode}: {tail}")
+    return p.stdout
+
+
+def git(*args: str, cwd: Path = REPO, check: bool = True) -> str:
+    return sh(["git", *args], cwd=cwd, check=check).strip()
+
+
+def gh_json(*args: str) -> Any:
+    # GitHub answers a heavy read with a 502/504 now and then; a read is
+    # retried, a write (pr create/edit/close) never is.
+    attempts = 3 if args[0] == "api" else 1
+    for attempt in range(attempts):
+        try:
+            out = sh(["gh", *args], cwd=REPO, timeout=120)
+            return json.loads(out) if out.strip() else None
+        except CheckError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(RETRY_SECONDS * (attempt + 1))
+    return None
+
+
+# ── pure helpers (tests/update-check exercises these directly) ─────────────
+
+
+def parse_version(text: str | None, prefix: str = "") -> tuple[int, ...] | None:
+    """A dotted numeric version, after stripping prefix; None for anything else
+    (pre-releases, unstable snapshots, a tag without the prefix)."""
+    if not text:
+        return None
+    if prefix:
+        if not text.startswith(prefix):
+            return None
+        text = text[len(prefix) :]
+    m = VERSION_RE.match(text)
+    return tuple(int(x) for x in m.group(1).split(".")) if m else None
+
+
+def select_releases(
+    releases: list[dict[str, Any]],
+    prefix: str,
+    low: tuple[int, ...] | None,
+    high: tuple[int, ...] | None,
+    since: str | None = None,
+    until: str | None = None,
+) -> list[dict[str, Any]]:
+    """Stable releases in (low, high] by version, oldest first. When either end
+    is not a version, fall back to publication time in (since, until]."""
+    picked = []
+    for r in releases:
+        if r.get("draft") or r.get("prerelease"):
+            continue
+        v = parse_version(r.get("tag_name"), prefix)
+        if v is None:
+            continue
+        if low is not None and high is not None:
+            if low < v <= high:
+                picked.append((v, r))
+            continue
+        published = r.get("published_at") or ""
+        if since and published <= since:
+            continue
+        if until and published > until:
+            continue
+        picked.append((v, r))
+    picked.sort(key=lambda pair: pair[0])
+    return [r for _, r in picked]
+
+
+def lock_node(lock: dict[str, Any], name: str) -> dict[str, Any]:
+    key = lock["nodes"]["root"]["inputs"].get(name)
+    if key is None:
+        raise CheckError(f"{name} is not a root input of flake.lock")
+    if isinstance(key, list):
+        raise CheckError(f"{name} follows another input; nothing to bump")
+    node = lock["nodes"][key]
+    if node.get("original", {}).get("type") != "github":
+        raise CheckError(f"{name} is not a github input")
+    return node
+
+
+def pin_string(node: dict[str, Any]) -> str:
+    """The flake.nix URL the node was locked from."""
+    o = node["original"]
+    base = f"github:{o['owner']}/{o['repo']}"
+    ref = o.get("rev") or o.get("ref")
+    return f"{base}/{ref}" if ref else base
+
+
+def rewrite_pin(
+    text: str,
+    old_pin: str,
+    new_pin: str,
+    old_tag: str | None = None,
+    new_tag: str | None = None,
+) -> str:
+    """Move the one quoted pin in flake.nix; on that line, also rename the old
+    release (the comment beside a commit pin names it)."""
+    quoted = f'"{old_pin}"'
+    count = text.count(quoted)
+    if count != 1:
+        raise CheckError(f"flake.nix names {old_pin} {count} times; expected once")
+    out = []
+    for line in text.splitlines(keepends=True):
+        if quoted in line:
+            line = line.replace(quoted, f'"{new_pin}"')
+            if old_tag and new_tag and old_tag != new_tag:
+                line = re.sub(
+                    rf"(?<![\w.]){re.escape(old_tag)}(?![\w.])", new_tag, line
+                )
+        out.append(line)
+    return "".join(out)
+
+
+def read_marker(body: str | None) -> dict[str, Any] | None:
+    m = MARKER_RE.search(body or "")
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(1))
+    except json.JSONDecodeError:
+        return None
+
+
+def short(rev: str | None) -> str:
+    return (rev or "")[:8]
+
+
+def day(timestamp: int | str | None) -> str:
+    if timestamp is None:
+        return "?"
+    if isinstance(timestamp, int):
+        return dt.datetime.fromtimestamp(timestamp, dt.timezone.utc).strftime("%Y-%m-%d")
+    return str(timestamp)[:10]
+
+
+def pr_title(name: str, changed: dict[str, tuple[Any, Any]], tag: str | None = None) -> str:
+    # A snapshot version (0-unstable-<sha>) says less than the release it is.
+    parts = [f"{pkg} {tag if tag and parse_version(new) is None else new}"
+             for pkg, (_, new) in changed.items()]
+    head = ", ".join(parts[:4]) + (f", +{len(parts) - 4}" if len(parts) > 4 else "")
+    return f"update: {name} ({head})"
+
+
+def build_body(
+    report: dict[str, Any],
+    entry: dict[str, Any],
+    notes: list[dict[str, Any]],
+    limit: int = BODY_LIMIT,
+) -> str:
+    """The PR body: a machine marker, the version table, what a switch does,
+    the gate, carried commits, then as much of the release notes as fits."""
+    marker = {
+        "input": report["input"],
+        "to_rev": report["to_rev"],
+        "base": report["base"],
+        "versions": {k: list(v) for k, v in report["changed"].items()},
+    }
+    lines = [
+        f"<!-- update-check {json.dumps(marker, sort_keys=True)} -->",
+        f"Nightly update check (#550): `{report['input']}` moves from "
+        f"`{short(report['from_rev'])}` ({day(report.get('from_date'))}) to "
+        f"`{short(report['to_rev'])}` ({day(report.get('to_date'))})"
+        + (f", release {report['tag']}." if report.get("tag") else "."),
+        "",
+        "| program | main | this PR |",
+        "|---|---|---|",
+    ]
+    for pkg, (old, new) in report["changed"].items():
+        lines.append(f"| {pkg} | {old or 'none'} | {new or 'none'} |")
+    lines += ["", f"**What a switch does.** {entry.get('switch', 'Not written down.')}", ""]
+
+    gate = report["gate"]
+    steps = ", ".join(
+        f"{s['step']} {'ok' if s['ok'] else 'FAILED'} ({s['seconds']}s)" for s in gate["steps"]
+    )
+    lines.append(
+        f"**Gate** ({'passed' if gate['ok'] else 'FAILED, so this PR is a draft'}): {steps}."
+    )
+    if not gate["ok"] and gate.get("tail"):
+        lines += ["", "```", gate["tail"].rstrip()[-4000:], "```"]
+    if report.get("carried"):
+        lines += ["", "**Carried from the previous round:** " + ", ".join(
+            f"`{short(s)}`" for s in report["carried"]) + "."]
+    if report.get("dropped"):
+        lines += ["", "**Dropped (did not apply on the new bump, still on the old branch tip):** "
+                  + ", ".join(f"`{short(s)}`" for s in report["dropped"]) + "."]
+    lines += [
+        "",
+        "Merging is Tom's, and nothing switches until he says so. The update-check "
+        "skill reads the notes below against this repo and leaves its digest as "
+        "the comment marked `update-digest`.",
+    ]
+    tail = ["", f"Opened by `update-check` (home/dot_local/bin/update-check) at {report['run']}."]
+
+    head = "\n".join(lines)
+    budget = limit - len(head) - sum(len(t) + 1 for t in tail) - 200
+    # Each program gets a fair share of the room: the one with the least to
+    # say goes first, and whatever it leaves flows on to the others. Within a
+    # program every release keeps its heading and an even cut of what is left;
+    # a cut release says so and links its full notes.
+    pieces = {i: [release_piece(n["repo"], r) for r in reversed(n["releases"])]
+              for i, n in enumerate(notes)}
+    frames = {i: (f"\n\n<details><summary>{n['package']}: {len(n['releases'])} release(s), "
+                  f"{n['releases'][0]['tag_name']} to {n['releases'][-1]['tag_name']}</summary>\n",
+                  "\n</details>")
+              for i, n in enumerate(notes) if n["releases"] and not n.get("error")}
+    kept: dict[int, list[str]] = {}
+    order = sorted(frames, key=lambda i: sum(len(x) for x in pieces[i]))
+    for left, i in enumerate(order):
+        share = budget // (len(order) - left) - sum(len(x) for x in frames[i])
+        out: list[str] = []
+        used = 0
+        for k, (piece, url) in enumerate(pieces[i]):
+            room = share - used
+            if room < 400:
+                break
+            allot = room // (len(pieces[i]) - k)
+            if len(piece) > allot:
+                cut = f"\n(cut for length; full notes: {url})\n"
+                piece = piece[: max(allot, 400) - len(cut)].rsplit("\n", 1)[0] + cut
+            out.append(piece)
+            used += len(piece)
+        kept[i] = out
+        budget -= used + sum(len(x) for x in frames[i])
+
+    sections: list[str] = []
+    for i, n in enumerate(notes):
+        link = f"https://github.com/{n['repo']}/releases"
+        if n.get("error"):
+            sections.append(f"\n\n{n['package']}: the release notes could not be read this run ({link}).")
+            continue
+        if not n["releases"]:
+            sections.append(f"\n\n{n['package']}: no stable release notes between {n['from']} "
+                            f"and {n['to']} ({link}).")
+            continue
+        open_, close = frames[i]
+        dropped = len(pieces[i]) - len(kept[i])
+        more = (f"\n{dropped} older release(s) left out for length: {link}\n" if dropped else "")
+        sections.append(open_ + "".join(kept[i]) + more + close)
+    notes_head = ["", "", "**Release notes in this range**"] if notes else []
+    return head + "\n".join(notes_head) + "".join(sections) + "\n".join(tail) + "\n"
+
+
+def release_piece(repo: str, r: dict[str, Any]) -> tuple[str, str]:
+    """One release's section of the PR body, and the URL of its full notes."""
+    body = (r.get("body") or "").strip()
+    # GitHub's generated notes open with their own heading; ours says it.
+    body = re.sub(r"^#+ *what'?s changed *\n+", "", body, flags=re.IGNORECASE)
+    url = f"https://github.com/{repo}/releases/tag/{r['tag_name']}"
+    return f"\n### {r['tag_name']} ({day(r.get('published_at'))})\n\n{body}\n", url
+
+
+# ── the run ────────────────────────────────────────────────────────────────
+
+
+class Run:
+    def __init__(self, args: argparse.Namespace) -> None:
+        self.args = args
+        self.stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.logs = STATE / "logs" / self.stamp.replace(":", "")
+        git(
+            "fetch", "-q", "--prune", "origin",
+            "+refs/heads/main:refs/remotes/origin/main",
+            "+refs/heads/update/*:refs/remotes/origin/update/*",
+        )
+        git("worktree", "prune")
+        self.main = git("rev-parse", "refs/remotes/origin/main")
+        self.lock = json.loads(git("show", f"{self.main}:flake.lock"))
+        if args.watch:
+            self.watch = json.loads(Path(args.watch).read_text())
+        else:
+            self.watch = json.loads(git("show", f"{self.main}:{WATCH_PATH}"))
+        self._releases: dict[str, list[dict[str, Any]]] = {}
+
+    # upstream ------------------------------------------------------------
+
+    def releases(self, repo: str, back_to: str | None = None) -> list[dict[str, Any]]:
+        """The repo's releases, newest first, paged until one is older than
+        back_to (an ISO time) or five pages are read. Small pages: a project
+        with long notes (codex) times a 100-release page out."""
+        have = self._releases.setdefault(repo, [])
+        page = len(have) // RELEASE_PAGE + 1
+        while page <= 5:
+            if have and back_to is None:
+                break
+            if have and (have[-1].get("published_at") or "") < back_to:
+                break
+            if have and len(have) % RELEASE_PAGE:
+                break  # the last page was short: there is no more
+            got = gh_json("api", f"repos/{repo}/releases?per_page={RELEASE_PAGE}&page={page}") or []
+            have.extend(got)
+            if len(got) < RELEASE_PAGE:
+                break
+            page += 1
+        return have
+
+    def upstream(self, entry: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]:
+        o = node["original"]
+        repo = f"{o['owner']}/{o['repo']}"
+        if entry["follow"] == "branch":
+            ref = o.get("ref") or gh_json("api", f"repos/{repo}")["default_branch"]
+            c = gh_json("api", f"repos/{repo}/commits/{ref}")
+            return {"rev": c["sha"], "date": c["commit"]["committer"]["date"], "tag": None}
+        prefix = entry.get("tagPrefix", "v")
+        stable = [
+            r for r in self.releases(repo)
+            if not r.get("draft") and not r.get("prerelease")
+            and parse_version(r.get("tag_name"), prefix) is not None
+        ]
+        if not stable:
+            raise CheckError(f"{repo} has no stable release with tag prefix {prefix!r}")
+        newest = max(stable, key=lambda r: parse_version(r["tag_name"], prefix) or ())
+        sha = gh_json("api", f"repos/{repo}/commits/{newest['tag_name']}")["sha"]
+        return {"rev": sha, "date": newest.get("published_at"), "tag": newest["tag_name"]}
+
+    def old_tag(self, entry: dict[str, Any], node: dict[str, Any]) -> str | None:
+        """The release main pins, when it pins one: the tag itself, or the tag
+        whose commit is the pinned rev."""
+        o = node["original"]
+        if o.get("ref"):
+            return o["ref"]
+        if not o.get("rev"):
+            return None
+        tags = gh_json("api", f"repos/{o['owner']}/{o['repo']}/tags?per_page=100") or []
+        prefix = entry.get("tagPrefix", "v")
+        for t in tags:
+            if t.get("commit", {}).get("sha") == o["rev"] and parse_version(t.get("name"), prefix):
+                return t["name"]
+        return None
+
+    # pull requests ---------------------------------------------------------
+
+    def open_pr(self, branch: str) -> dict[str, Any] | None:
+        prs = gh_json(
+            "pr", "list", "-R", GH_REPO, "--state", "open", "--head", branch,
+            "--json", "number,url,isDraft,body,mergeable,headRefOid",
+        ) or []
+        return prs[0] if prs else None
+
+    # worktrees ---------------------------------------------------------------
+
+    def clear_worktree(self, wt: Path, branch: str) -> None:
+        listed = git("worktree", "list", "--porcelain")
+        if f"worktree {wt}\n" in listed + "\n":
+            git("worktree", "remove", "--force", str(wt))
+        elif wt.exists() and wt.parent == WORKTREES and wt.name.startswith("update-"):
+            shutil.rmtree(wt)
+        if git("rev-parse", "-q", "--verify", f"refs/heads/{branch}", check=False):
+            git("branch", "-D", branch)
+
+    def eval_versions(self, wt: Path, paths: dict[str, str]) -> dict[str, Any]:
+        expr = (
+            'let f = builtins.getFlake "git+file://' + str(wt) + '"; '
+            'paths = builtins.fromJSON (builtins.getEnv "UPDATE_CHECK_PATHS"); '
+            "at = p: builtins.foldl' (a: k: if a != null && builtins.isAttrs a "
+            "&& builtins.hasAttr k a then builtins.getAttr k a else null) f "
+            '(builtins.filter builtins.isString (builtins.split "\\\\." p)); '
+            "v = p: let r = builtins.tryEval (at p); in if r.success then r.value else null; "
+            "in builtins.mapAttrs (_: v) paths"
+        )
+        out = sh(
+            ["nix", "eval", "--impure", "--json", "--expr", expr],
+            cwd=wt, timeout=1800, env={"UPDATE_CHECK_PATHS": json.dumps(paths)},
+        )
+        return json.loads(out)
+
+    def carry(self, wt: Path, branch: str) -> tuple[list[str], list[str]]:
+        remote = f"refs/remotes/origin/{branch}"
+        if not git("rev-parse", "-q", "--verify", remote, check=False):
+            return [], []
+        carried: list[str] = []
+        dropped: list[str] = []
+        for sha in git("rev-list", "--reverse", "--no-merges", f"{self.main}..{remote}").split():
+            if TRAILER in git("log", "-1", "--format=%B", sha):
+                continue
+            p = subprocess.run(["git", "cherry-pick", sha], cwd=wt, capture_output=True, text=True)
+            if p.returncode == 0:
+                carried.append(sha)
+                continue
+            conflicted = git("diff", "--name-only", "--diff-filter=U", cwd=wt, check=False)
+            if not conflicted and not git("diff", "--cached", "--name-only", cwd=wt, check=False):
+                git("cherry-pick", "--skip", cwd=wt, check=False)  # already in main
+                continue
+            git("cherry-pick", "--abort", cwd=wt, check=False)
+            dropped.append(sha)
+        return carried, dropped
+
+    def gate(self, wt: Path, entry: dict[str, Any], flake_changed: bool) -> dict[str, Any]:
+        self.logs.mkdir(parents=True, exist_ok=True)
+        log_path = self.logs / f"{entry['name']}.log"
+        steps: list[tuple[str, list[str]]] = []
+        if flake_changed:
+            steps.append(("format", ["nix", "fmt", "--", "--check", "flake.nix"]))
+        steps.append(("flake check", ["nix", "flake", "check", "--no-build", "--keep-going"]))
+        steps.append((
+            "build " + ", ".join(entry["hosts"] + [b.rsplit(".", 1)[-1] for b in entry.get("build", [])]),
+            ["nix", "build", "--no-link", "--keep-going"]
+            + [f".#nixosConfigurations.{h}.config.system.build.toplevel" for h in entry["hosts"]]
+            + entry.get("build", []),
+        ))
+        deadline = time.monotonic() + GATE_TIMEOUT
+        results = []
+        with log_path.open("a") as log:
+            for label, cmd in steps:
+                log.write(f"$ {' '.join(cmd)}\n")
+                log.flush()
+                start = time.monotonic()
+                left = max(60, int(deadline - start))
+                try:
+                    ok = subprocess.run(
+                        cmd, cwd=wt, stdout=log, stderr=subprocess.STDOUT, timeout=left
+                    ).returncode == 0
+                except subprocess.TimeoutExpired:
+                    log.write(f"update-check: {label} timed out after {left}s\n")
+                    ok = False
+                results.append({"step": label, "ok": ok, "seconds": int(time.monotonic() - start)})
+        lines = log_path.read_text(errors="replace").splitlines()
+        ok = all(r["ok"] for r in results)
+        return {"ok": ok, "steps": results, "log": str(log_path),
+                "tail": "" if ok else "\n".join(lines[-60:])}
+
+    def notes(self, entry, node, before, after, up, old_tag) -> list[dict[str, Any]]:
+        o = node["original"]
+        own_repo = f"{o['owner']}/{o['repo']}"
+        out = []
+        for pkg, src in entry.get("notes", {}).items():
+            old, new = before.get(pkg), after.get(pkg)
+            if old == new:
+                continue
+            prefix = src.get("tagPrefix", "v")
+            low, high = parse_version(old), parse_version(new)
+            if (low is None or high is None) and src["repo"] == own_repo:
+                low = parse_version(old_tag, prefix)
+                high = parse_version(up.get("tag"), prefix)
+            since = until = None
+            if low is None or high is None:
+                # An unstable snapshot on either end: take the releases
+                # published after main's pin and up to the new one.
+                modified = node["locked"].get("lastModified")
+                if modified:
+                    since = dt.datetime.fromtimestamp(modified, dt.timezone.utc).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ")
+                until = up.get("date")
+            # A release in range can predate main's pin by a few days (the
+            # catalog packaged it late): page back a week before the pin.
+            modified = node["locked"].get("lastModified") or 0
+            back_to = dt.datetime.fromtimestamp(modified - 7 * 86400, dt.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ")
+            note = {"package": pkg, "repo": src["repo"], "from": old, "to": new, "releases": []}
+            try:
+                note["releases"] = select_releases(
+                    self.releases(src["repo"], back_to), prefix, low, high, since, until)
+            except CheckError as e:
+                note["error"] = str(e)
+            out.append(note)
+        return out
+
+    # one input ----------------------------------------------------------------
+
+    def check(self, entry: dict[str, Any]) -> dict[str, Any]:
+        name = entry["name"]
+        branch = BRANCH_PREFIX + name
+        node = lock_node(self.lock, name)
+        rec: dict[str, Any] = {
+            "input": name, "run": self.stamp, "base": self.main,
+            "from_rev": node["locked"]["rev"], "from_date": node["locked"].get("lastModified"),
+        }
+        up = self.upstream(entry, node)
+        rec.update(to_rev=up["rev"], to_date=up.get("date"), tag=up.get("tag"))
+        pr = self.open_pr(branch)
+        rec["pr"] = pr["url"] if pr else None
+
+        if up["rev"] == node["locked"]["rev"]:
+            if pr is None:
+                return {**rec, "status": "current"}
+            if not self.args.dry_run:
+                sh(["gh", "pr", "close", str(pr["number"]), "-R", GH_REPO, "--delete-branch",
+                    "--comment", f"main already carries {name} at {short(up['rev'])}; "
+                    "closed by update-check."], cwd=REPO)
+            return {**rec, "status": "closed"}
+
+        marker = read_marker(pr["body"]) if pr else None
+        if (pr and marker and marker.get("to_rev") == up["rev"]
+                and pr.get("mergeable") != "CONFLICTING" and not self.args.force):
+            return {**rec, "status": "unchanged"}
+        if self.args.dry_run:
+            return {**rec, "status": "would-refresh" if pr else "would-open"}
+
+        wt = WORKTREES / f"update-{name}"
+        WORKTREES.mkdir(parents=True, exist_ok=True)
+        self.clear_worktree(wt, branch)
+        git("worktree", "add", "-q", "-b", branch, str(wt), self.main)
+        try:
+            return self.bump(entry, node, up, pr, wt, branch, rec)
+        finally:
+            self.clear_worktree(wt, branch)
+
+    def bump(self, entry, node, up, pr, wt, branch, rec) -> dict[str, Any]:
+        name = entry["name"]
+        before = self.eval_versions(wt, entry["versions"])
+        old_tag = None
+        flake_changed = False
+        if entry["follow"] == "release":
+            old_tag = self.old_tag(entry, node)
+            o = node["original"]
+            new_ref = up["rev"] if o.get("rev") else up["tag"]
+            new_pin = f"github:{o['owner']}/{o['repo']}/{new_ref}"
+            flake = wt / "flake.nix"
+            flake.write_text(rewrite_pin(flake.read_text(), pin_string(node), new_pin,
+                                         old_tag, up.get("tag")))
+            flake_changed = True
+        sh(["nix", "flake", "update", name], cwd=wt, timeout=1800)
+        new_node = lock_node(json.loads((wt / "flake.lock").read_text()), name)
+        rec["to_rev"] = new_node["locked"]["rev"]
+        if not git("status", "--porcelain", cwd=wt):
+            return {**rec, "status": "current"}
+        git("add", "flake.nix", "flake.lock", cwd=wt)
+        git("commit", "-q", "-m", f"{name}: bump to {short(rec['to_rev'])}\n\n{TRAILER}", cwd=wt)
+        after = self.eval_versions(wt, entry["versions"])
+        changed = {k: (before.get(k), after.get(k)) for k in entry["versions"]
+                   if before.get(k) != after.get(k)}
+        rec["changed"] = changed
+        if not changed:
+            return {**rec, "status": "no-version-change"}
+        marker = read_marker(pr["body"]) if pr else None
+        if (pr and marker and pr.get("mergeable") != "CONFLICTING" and not self.args.force
+                and marker.get("versions") == {k: list(v) for k, v in changed.items()}):
+            # Upstream moved, but nothing we watch did since the open PR.
+            return {**rec, "status": "unchanged"}
+
+        what = rec["tag"] or day(new_node["locked"].get("lastModified"))
+        msg = [f"{name}: bump to {short(rec['to_rev'])} ({what})", ""]
+        msg += [f"{pkg} {old} -> {new}" for pkg, (old, new) in changed.items()]
+        msg += ["", "Opened by update-check (#550).", "", TRAILER]
+        git("commit", "-q", "--amend", "-m", "\n".join(msg), cwd=wt)
+
+        rec["carried"], rec["dropped"] = self.carry(wt, branch)
+        notes = self.notes(entry, node, before, after, up, old_tag)
+        rec["gate"] = self.gate(wt, entry, flake_changed)
+        body = build_body(rec, entry, notes)
+        title = pr_title(name, changed, rec.get("tag"))
+
+        remote = git("rev-parse", "-q", "--verify", f"refs/remotes/origin/{branch}", check=False)
+        git("push", "-q", f"--force-with-lease=refs/heads/{branch}:{remote}", "origin",
+            f"HEAD:refs/heads/{branch}", cwd=wt)
+        STATE.mkdir(parents=True, exist_ok=True)
+        body_file = self.logs / f"{name}.body.md"
+        self.logs.mkdir(parents=True, exist_ok=True)
+        body_file.write_text(body)
+        draft = not rec["gate"]["ok"]
+        if pr:
+            sh(["gh", "pr", "edit", str(pr["number"]), "-R", GH_REPO, "--title", title,
+                "--body-file", str(body_file)], cwd=REPO)
+            if draft != bool(pr.get("isDraft")):
+                sh(["gh", "pr", "ready", str(pr["number"]), "-R", GH_REPO]
+                   + (["--undo"] if draft else []), cwd=REPO)
+            rec["status"] = "refreshed"
+        else:
+            out = sh(["gh", "pr", "create", "-R", GH_REPO, "--base", "main", "--head", branch,
+                      "--title", title, "--body-file", str(body_file)]
+                     + (["--draft"] if draft else []), cwd=REPO)
+            rec["pr"] = out.strip().splitlines()[-1] if out.strip() else None
+            rec["status"] = "opened"
+        rec["draft"] = draft
+        return rec
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(
+        prog="update-check", description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ap.add_argument("--only", action="append", metavar="INPUT", help="check only this input (repeatable)")
+    ap.add_argument("--dry-run", action="store_true", help="report what would move; change nothing")
+    ap.add_argument("--force", action="store_true", help="rebuild a PR even when upstream has not moved")
+    ap.add_argument("--json", action="store_true", help="print the run report as JSON")
+    ap.add_argument("--watch", help=f"read this watch file instead of origin/main:{WATCH_PATH}")
+    args = ap.parse_args(argv)
+
+    STATE.mkdir(parents=True, exist_ok=True)
+    lock = (STATE / "lock").open("w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("update-check: another run holds the lock", file=sys.stderr)
+        return 75
+
+    run = Run(args)
+    entries = run.watch["inputs"]
+    if args.only:
+        unknown = set(args.only) - {e["name"] for e in entries}
+        if unknown:
+            print(f"update-check: not watched: {', '.join(sorted(unknown))}", file=sys.stderr)
+            return 2
+        entries = [e for e in entries if e["name"] in args.only]
+
+    results = []
+    for entry in entries:
+        try:
+            results.append(run.check(entry))
+        except CheckError as e:
+            results.append({"input": entry["name"], "status": "error", "error": str(e)})
+    report = {"run": run.stamp, "main": run.main, "dry_run": args.dry_run, "inputs": results}
+    if not args.dry_run:
+        (STATE / "runs").mkdir(parents=True, exist_ok=True)
+        (STATE / "runs" / f"{run.stamp.replace(':', '')}.json").write_text(
+            json.dumps(report, indent=2, default=list) + "\n")
+
+    if args.json:
+        print(json.dumps(report, indent=2, default=list))
+    else:
+        for r in results:
+            line = f"{r['input']:<14} {r['status']:<17}"
+            if r.get("changed"):
+                line += " " + ", ".join(f"{k} {a}->{b}" for k, (a, b) in r["changed"].items())
+            elif r.get("to_rev") and r["status"] != "current":
+                line += f" {short(r.get('from_rev'))} -> {short(r['to_rev'])}"
+            if r.get("gate") and not r["gate"]["ok"]:
+                line += f"  gate FAILED ({r['gate']['log']})"
+            if r.get("pr"):
+                line += f"  {r['pr']}"
+            if r.get("error"):
+                line += f"  {r['error']}"
+            print(line)
+    return 1 if any(r["status"] == "error" for r in results) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
