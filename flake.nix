@@ -2254,6 +2254,18 @@
           );
           # Declared, not enabled: Halogen serves until the cutover.
           assert !strix.services.gufo.enable;
+          # Consumers name exactly what Gufo serves (lib/local-model.nix): it
+          # answers 404 to any other id.
+          assert strix.services.gufo.llm.servedModelName == (import ./lib/local-model.nix).modelId;
+          assert
+            builtins.sort builtins.lessThan (
+              map (n: strix.services.gufo.alternates.${n}.servedModelName) (
+                builtins.attrNames strix.services.gufo.alternates
+              )
+            ) == builtins.sort builtins.lessThan (import ./lib/local-model.nix).alternates;
+          assert strix.services.utilityModel.endpoint == (import ./lib/local-model.nix).endpoint;
+          assert
+            (import ./lib/local-model.nix).endpoint == "http://strix:${toString strix.services.gufo.port}";
           assert localModelCatalog.artifacts.halogen-qwen38-flash-next.source.layout == "snapshot";
           assert builtins.length localModelCatalog.artifacts.halogen-qwen38-flash-next.source.files == 9;
 
@@ -2262,7 +2274,8 @@
           assert strix.services.halogen.autoStart;
 
           assert strix.virtualisation.oci-containers.containers.halogen.autoStart;
-          assert strix.services.halogen.client.enable;
+          assert strix.services.utilityModel.enable;
+          assert strix.services.utilityModel.modelId == "qwen3.8-flash-next";
 
           # One declaration, two hosts: the containers differ only in autoStart
           # and the strix's two desktop memory bounds (Flash's KV pool,

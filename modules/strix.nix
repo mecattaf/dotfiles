@@ -18,6 +18,8 @@
     ./local-models.nix
     ./halogen.nix
     ./gufo.nix
+    # The utility-model seam (/drain, /print), independent of the engine.
+    ./utility-model.nix
   ];
 
   config = {

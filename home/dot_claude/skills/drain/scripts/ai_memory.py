@@ -26,9 +26,9 @@ from typing import Callable, Mapping, Sequence
 
 SOURCES = ("claude-code", "codex")
 STABLE_MODEL_ID = "utility"
-# The seam is the fleet's Halogen server on the worker, reached through the
+# The seam is the fleet's local model server on the strix, reached through the
 # `utility-model` wrapper. The server stays resident, but a request that lands
-# while the worker's unit is still starting waits on that start, and a long
+# while its unit is still starting waits on that start, and a long
 # root turn is a long generation — so the per-request budget is generous.
 UTILITY_TIMEOUT_SECONDS = 1200.0
 # A byte ceiling well inside the server's prompt budget while still
@@ -1113,7 +1113,7 @@ def utility_content(response: dict[str, object] | str) -> str:
 
 
 # The stable id `utility` is served by the fleet's one inference server, the
-# Halogen Flash server on the worker (modules/halogen.nix): `utility-model`
+# local model server on the strix (modules/utility-model.nix): `utility-model`
 # forwards one chat-completions request to it over the wired LAN and answers
 # under the stable id. That wrapper is installed on the strix alone, so
 # an absent wrapper means "not this host", never "the model is gone". Failure
@@ -1122,7 +1122,7 @@ def utility_content(response: dict[str, object] | str) -> str:
 # semantics.
 UTILITY_UNAVAILABLE = (
     "local utility-model is not installed here; the utility-model wrapper "
-    "(which forwards to the Halogen server on the worker) is installed on the "
+    "(which forwards to the local model server) is installed on the "
     "strix only"
 )
 
@@ -1143,7 +1143,7 @@ def invoke_utility(request: dict[str, object]) -> dict[str, object]:
         )
     except subprocess.TimeoutExpired as exc:
         raise MemoryError(
-            "local utility-model timed out; the Halogen server on the worker "
+            "local utility-model timed out; the local model server "
             f"did not answer within {UTILITY_TIMEOUT_SECONDS:.0f}s"
         ) from exc
     except OSError as exc:

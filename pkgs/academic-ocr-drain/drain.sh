@@ -133,7 +133,7 @@ while IFS= read -r line; do
     --arg embeddingsUrl "$EMBEDDINGS_URL" '{
     paperId: .db_id, title: .title, sourceUrl: .file_url, sha256: .sha256,
     pageCount: .pages, dataRoot: $dataRoot, tools: $tools, bash: $bash,
-    dpi: 200, ocrModel: "halogen-qwen3.8-flash-next",
+    dpi: 200, ocrModel: "qwen3.8-flash-next",
     embedModel: "qwen3-embedding-8b",
     embeddingsUrl: (if $embeddingsUrl == "" then null else $embeddingsUrl end),
     minAgreementPermille: 700,
