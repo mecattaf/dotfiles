@@ -1,0 +1,44 @@
+{
+  "hy-memory-30b-a3b-q8-0": {
+    "kind": "model",
+    "maker": "rapatsky",
+    "baseCheckpoint": {
+      "url": "https://huggingface.co/tencent/Hy-Memory-30B-A3B",
+      "revision": "64a460a94d5498b7316fb02395c72d01c47a7347"
+    },
+    "quantization": "Q8_0",
+    "notes": "Tencent Hunyuan's memory-writer MoE (30B total, about 3B active, hy_v3 architecture, Apache-2.0) as a community Q8_0 GGUF with its standalone chat template, checksums and conversion record. Consumer: the hand-run hy-memory-serve wrapper of pkgs/memory-sweep for the T-15 one-time sweep trial (DECISIONS.md 2026-10-17). Not served by Gufo (no hy_v3) nor by the gfx1151 llama.cpp 9925 (predates the hy_v3 merge); never resident, no unit.",
+    "source": {
+      "hfUrl": "https://huggingface.co/rapatsky/Hy-Memory-30B-A3B-GGUF",
+      "revision": "8674f68e9f60b9ec237c37130244ecee6baf3364",
+      "layout": "flat",
+      "primary": "Hy-Memory-30B-A3B-Q8_0.gguf",
+      "files": [
+        {
+          "path": "Hy-Memory-30B-A3B-Q8_0.gguf",
+          "bytes": 31985729056,
+          "oid": "b5375575b238d1f03eace82a092b2e3c95e31ad336337f72a20d985f208821bf",
+          "hash": "sha256-tTdVdbI40fA+rOgqCSsuPJXjGtM2M39yog2YXyCIIb8="
+        },
+        {
+          "path": "chat_template.jinja",
+          "bytes": 11258,
+          "oid": "8759492d33deb19b2f58855f62d3e431276da89d698b2800d1e353fbb12d5320",
+          "hash": "sha256-h1lJLTPesZsvWIVfYtPkMSdtqJ1piygA0eNT+7EtUyA="
+        },
+        {
+          "path": "SHA256SUMS",
+          "bytes": 380,
+          "oid": "b5b1663ceba04a04f9d4740d5f086bac60c5c4a8832008e56c77b2324f1cbee2",
+          "hash": "sha256-tbFmPOugSgT51HQNXwhrrGDFxKiDIAjlbHeyMk8cvuI="
+        },
+        {
+          "path": "conversion.json",
+          "bytes": 2242,
+          "oid": "86d54a0c709a816b269271a6de37fe56392ad66fb44ebd2d8fba0380c978461b",
+          "hash": "sha256-htVKDHCagWsmknGm3jf+Vjkq1m+0Tr0tj7oDgMl4Rhs="
+        }
+      ]
+    }
+  }
+}

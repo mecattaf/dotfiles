@@ -1,0 +1,15 @@
+# SECRET_DEFERRED
+
+SECRET_DEFERRED_BODY must never be sampled.
+# SECRET_DEFERRED
+
+SECRET_DEFERRED_BODY must never be sampled.
+# SECRET_DEFERRED
+
+SECRET_DEFERRED_BODY must never be sampled.
+# SECRET_DEFERRED
+
+SECRET_DEFERRED_BODY must never be sampled.
+# SECRET_DEFERRED
+
+SECRET_DEFERRED_BODY must never be sampled.

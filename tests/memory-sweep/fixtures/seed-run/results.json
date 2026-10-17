@@ -1,0 +1,34 @@
+{
+  "note-01-first": {
+    "transport": "seed",
+    "status": 200,
+    "seconds": 12.5,
+    "response": {
+      "code": 0
+    }
+  },
+  "chat-02-a": {
+    "transport": "seed",
+    "status": 200,
+    "seconds": 7.0,
+    "response": {
+      "code": 0
+    }
+  },
+  "_metrics": {
+    "before": {
+      "prompt_tokens": 100,
+      "generated_tokens": 10
+    },
+    "after": {
+      "prompt_tokens": 1100,
+      "generated_tokens": 210
+    }
+  },
+  "_versions": {
+    "llama_server": "/nix/store/x-llama-cpp-10063/bin/llama-server",
+    "core_image": "docker.io/agentmemory/memory-core@sha256:deadbeef",
+    "transport": "seed",
+    "prompt_mode": "chat"
+  }
+}

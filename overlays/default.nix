@@ -91,6 +91,19 @@ final: prev: {
   # every one-time landing lane. Stdlib Python; see pkgs/land.
   land = final.callPackage ../pkgs/land { };
 
+  # memory-sweep (DECISIONS.md 2026-10-17): the bounded, hand-run T-15 trial of
+  # Tencent's Hy-Memory writer behind TencentDB-Agent-Memory's MemoryCore. It
+  # wraps nixpkgs' llama-cpp 10063 (Vulkan) by store path because the fleet's
+  # gfx1151 llama.cpp from nix-strix-halo is build 9925 (2026-07-08), 68
+  # commits before llama.cpp merged hy_v3 (2969d6d1, 2026-07-13), while nixpkgs
+  # at our pin is 70 commits after it and its Vulkan build is on
+  # cache.nixos.org; the chat normaliser is the drain skill's tested
+  # ai_memory.py, by store path, not a second parser.
+  memory-sweep = final.callPackage ../pkgs/memory-sweep {
+    llamaCppVulkan = final.llama-cpp.override { vulkanSupport = true; };
+    aiMemoryEngine = ../home/dot_claude/skills/drain/scripts/ai_memory.py;
+  };
+
   # pnpm 11.17.0: the stack v1 pin (Tom's ruling G4, 2026-09-29: whatever upstream
   # cloudflare-os used, Node 24 and pnpm 11.17.0). nixpkgs here ships 11.15.0.
   # Used on the substrate puller PATH (modules/substrate.nix puller.extraPath) so
