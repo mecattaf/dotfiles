@@ -27,6 +27,7 @@ assertion.
 |---|---|---|
 | `worker` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b` | [`../../modules/halogen.nix`](../../modules/halogen.nix) at `http://worker:8731`; Flash resident at boot, the 27B only after `halogen-switch qwen38-27b` |
 | `coordinator` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b`, `vibevoice-asr-streaming-7b-bf16`, plus the Qwen speech rows from `modules/qwen-tts.nix` | Halogen at `http://coordinator:8731` only after `halogen-switch`; streaming ASR per `call-diarize` run; Qwen TTS on demand |
+| `strix` (2026-10-17 addition) | plus `hy-memory-30b-a3b-q8-0` | nothing at boot; `hy-memory-serve` by hand for one `memory-sweep-sample run`, then it exits |
 | `nas` | none; it holds the Library | — |
 
 ## The catalogue
@@ -36,6 +37,7 @@ assertion.
 | `halogen-qwen38-flash-next` | model (4-bit checkpoint + quality overlay + vision tower + flat tokenizer, 9 files) | W4B `.hgn` | [`peonist-ai/halogen-qwen3.8-flash-next@ac23b1b`](https://huggingface.co/peonist-ai/halogen-qwen3.8-flash-next/tree/ac23b1b223b4e9192d27c22367d4dbacf2b595ef) (base [`Qwen/Qwen3.8-Flash-Next`](https://huggingface.co/Qwen/Qwen3.8-Flash-Next)) | 127.47 GB | Halogen Flash server (resident on the worker, operator-started on the coordinator); the only thing that loads these bytes |
 | `halogen-qwen38-27b` | model (dense checkpoint + flat tokenizer, 6 files) | P1W4D-D2 `.hgn` | [`peonist-ai/halogen-qwen3.8-27b@d92dc33`](https://huggingface.co/peonist-ai/halogen-qwen3.8-27b/tree/d92dc33afed1cdc073846c76e51090fa493ce74a) | 35.9 GB | `podman-halogen-qwen38-27b`, the alternate engine on `:8731` of either twin, text only |
 | `vibevoice-asr-streaming-7b-bf16` | model (streaming transcription + speaker labels, 17-file snapshot with its own tokenizer) | BF16 | [`microsoft/VibeVoice-ASR-Streaming-7B@60d858b`](https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/tree/60d858b518b4e19d404af3737f848fc185b30177) | 17.36 GB | `call-diarize` on the coordinator; the one diarization model |
+| `hy-memory-30b-a3b-q8-0` | model (memory writer, `hy_v3` MoE 30B total / about 3B active, GGUF + standalone chat template + SHA256SUMS + conversion record, 4 files) | Q8_0 | [`rapatsky/Hy-Memory-30B-A3B-GGUF@8674f68`](https://huggingface.co/rapatsky/Hy-Memory-30B-A3B-GGUF/tree/8674f68e9f60b9ec237c37130244ecee6baf3364) (base [`tencent/Hy-Memory-30B-A3B@64a460a`](https://huggingface.co/tencent/Hy-Memory-30B-A3B)) | 31.99 GB | hand-run `hy-memory-serve` (`pkgs/memory-sweep`) for the T-15 trial, [`memory-sweep-sample.md`](memory-sweep-sample.md); no unit, never resident |
 
 Retired on 2026-09-30 (sweep F1), from the catalogue and the NAS Library:
 `qwen3-embedding-8b-q8-0`, `mage-flow-4b-turbo-bf16`,
@@ -75,6 +77,9 @@ initialising on gfx1151 with no CPU fallback.
 - Every loaned GGUF is Q8 (`Q8_0` or `UD-Q8_K_XL`). Speech and Mage snapshots,
   tokenizers and the halogen `.hgn` bundles are explicit format exceptions, not
   low-bit selections.
+  The `hy-memory-30b-a3b-q8-0` row follows the Q8 rule; its declared consumer
+  is the hand-run `hy-memory-serve`, which has no unit and is never resident
+  (DECISIONS.md 2026-10-17).
 - One TTS model (Qwen3-TTS with the K-2SO voice) and one diarization model
   (VibeVoice-ASR-Streaming-7B), per Tom's 2026-09-16 ruling in `DECISIONS.md`.
 - Runtime downloads (`-hf`, `hf download` from a service) are forbidden by

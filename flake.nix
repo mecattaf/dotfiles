@@ -531,6 +531,9 @@
             mactahoe-gtk-theme
             mactahoe-claude-gtk-theme
             mactahoe-icon-theme
+            # `nix build .#memory-sweep` — the hand-run T-15 memory-writer trial
+            # (DECISIONS.md 2026-10-17); checks.memory-sweep drives its tests.
+            memory-sweep
             music-acquire
             sfmono-liga
             ;
@@ -1498,6 +1501,97 @@
               touch "$out"
             '';
 
+        # memory-sweep (DECISIONS.md 2026-10-17): the bounded, hand-run T-15
+        # trial of a memory writer. Evaluation-time: the catalogue row has the
+        # shape the design pinned, the package is on the strix and nowhere
+        # else, no host has a unit or timer named memory-sweep* or hy-memory*
+        # (AGENTS.md "Scheduled work": nothing scheduled comes from dotfiles),
+        # the wrapped llama-server is nixpkgs' 10063 (after the hy_v3 merge)
+        # while the fleet's gfx1151 9925 commands are still installed, and the
+        # rendered serve wrapper carries no `-hf` and no non-loopback URL.
+        # Build-time: the script's pure functions under unittest, like
+        # `ai-memory` above.
+        memory-sweep =
+          let
+            inherit (nixpkgs) lib;
+            strix = self.nixosConfigurations.strix.config;
+            row = localModelCatalog.artifacts."hy-memory-30b-a3b-q8-0";
+            hostNames = builtins.attrNames self.nixosConfigurations;
+            hostCfg = host: self.nixosConfigurations.${host}.config;
+            unitNames =
+              cfg:
+              builtins.attrNames cfg.systemd.services
+              ++ builtins.attrNames cfg.systemd.timers
+              ++ builtins.attrNames cfg.systemd.paths
+              ++ lib.optionals (cfg ? home-manager && cfg.home-manager.users ? tom) (
+                builtins.attrNames cfg.home-manager.users.tom.systemd.user.services
+                ++ builtins.attrNames cfg.home-manager.users.tom.systemd.user.timers
+              );
+            forbidden =
+              name:
+              lib.hasPrefix "memory-sweep" name
+              || lib.hasPrefix "hy-memory" name
+              || lib.hasPrefix "podman-memory-sweep" name;
+            # By pname, like gvisor-module above: a host's pkgs is its own instance.
+            hasPackage =
+              cfg: builtins.any (p: (p.pname or "") == "memory-sweep") cfg.environment.systemPackages;
+            serveText = builtins.readFile ./pkgs/memory-sweep/hy-memory-serve.sh;
+            # Everything after the exec is the argv the server really gets.
+            execTail = lib.last (lib.splitString "exec \"$SERVER\"" serveText);
+          in
+          assert builtins.elem "hy-memory-30b-a3b-q8-0" strix.services.local-models.artifacts;
+          assert builtins.length row.source.files == 4;
+          assert lib.foldl' (acc: f: acc + f.bytes) 0 row.source.files == 31985742936;
+          assert row.source.gate == null;
+          assert row.source.layout == "flat";
+          assert row.quantization == "Q8_0";
+          assert hasPackage strix;
+          assert builtins.all (host: host == "strix" || !(hasPackage (hostCfg host))) hostNames;
+          assert builtins.all (host: !(builtins.any forbidden (unitNames (hostCfg host)))) hostNames;
+          assert pkgs.memory-sweep.passthru.llamaServerVersion == "10063";
+          assert lib.hasSuffix "-llama-cpp-10063/bin/llama-server" pkgs.memory-sweep.passthru.llamaServer;
+          # Nothing was replaced: the fleet's own llama.cpp commands stay.
+          assert builtins.any (
+            p: lib.hasPrefix "strix-llama-cpp-rocm-commands" (p.name or "")
+          ) strix.environment.systemPackages;
+          assert !(lib.hasInfix "-hf" execTail);
+          assert !(lib.hasInfix "http" execTail);
+          assert lib.hasInfix "--host 127.0.0.1" execTail;
+          assert lib.hasInfix "--ctx-size 32768" execTail;
+          assert lib.hasInfix "no_think" execTail;
+          pkgs.runCommand "memory-sweep"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.memory-sweep
+              ];
+            }
+            ''
+              set -euo pipefail
+
+              export HOME="$TMPDIR/home"
+              export XDG_CACHE_HOME="$TMPDIR/cache"
+              export XDG_CONFIG_HOME="$TMPDIR/config"
+              export XDG_STATE_HOME="$TMPDIR/state"
+              export XDG_RUNTIME_DIR="$TMPDIR/runtime"
+              export PYTHONDONTWRITEBYTECODE=1
+              export MEMORY_SWEEP_AI_MEMORY=${./home/dot_claude/skills/drain/scripts/ai_memory.py}
+              export MEMORY_SWEEP_SCRIPT=${./pkgs/memory-sweep/memory_sweep.py}
+              export MEMORY_SWEEP_SERVE=${pkgs.memory-sweep}/libexec/memory-sweep/hy-memory-serve.sh
+              export MEMORY_SWEEP_TEMPLATE=${./pkgs/memory-sweep/tdai-gateway.template.yaml}
+              mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_STATE_HOME" "$XDG_RUNTIME_DIR"
+
+              python3 -m unittest discover \
+                -s ${./tests/memory-sweep} \
+                -p 'test_*.py' \
+                -v
+
+              memory-sweep-sample --help >/dev/null
+              hy-memory-serve --help >/dev/null
+
+              touch "$out"
+            '';
+
         # NO Claude Code hook is declared, and none is delivered. The MEM-2
         # SessionEnd harvest hook (dotfiles#339) was removed 2026-09-23: the
         # session process WAITS for a SessionEnd hook, and the runs that
@@ -2218,6 +2312,7 @@
               "qwen38-27b-gguf"
               "qwen38-27b-dflash2-gguf"
               "vibevoice-asr-streaming-7b-bf16"
+              "hy-memory-30b-a3b-q8-0"
               "qwen3-tts-1.7b-base-q8-0"
               "qwen-k2so-midway-b"
               "qwen3-tts-tokenizer-f32"
@@ -2236,6 +2331,7 @@
               "deepseek-v4-flash-gguf"
               "halogen-qwen38-27b"
               "halogen-qwen38-flash-next"
+              "hy-memory-30b-a3b-q8-0"
               "minimax-h3-fl2va"
               "qwen-image-2.1"
               "qwen-k2so-midway-b"

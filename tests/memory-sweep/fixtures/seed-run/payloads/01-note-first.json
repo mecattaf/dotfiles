@@ -1,0 +1,20 @@
+{
+  "sessionKey": "note-01-first",
+  "kind": "note",
+  "source": "notes",
+  "relpath": "journal/2026-07-01-first-note.md",
+  "conversations": [
+    [
+      {
+        "role": "user",
+        "content": "Note journal/2026-07-01-first-note.md, modified 2026-07-01\n\nbody",
+        "timestamp": "2026-07-01T00:00:00Z"
+      }
+    ]
+  ],
+  "stats": {
+    "rounds": 1,
+    "messages": 1,
+    "chars": 60
+  }
+}

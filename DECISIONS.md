@@ -1,5 +1,43 @@
 # DECISIONS
 
+2026-10-17 a bounded, hand-run trial of a memory writer over the T-15 sweep
+sample; nothing scheduled, nothing resident. Tom: "https://huggingface.co/tencent/Hy-Memory-30B-A3B
+which might be a nice complement to https://github.com/TencentCloud/TencentDB-Agent-Memory
+... so we can see if and how this works".
+
+Added: one catalogue row, hy-memory-30b-a3b-q8-0 (rapatsky's Q8_0 GGUF of
+Tencent Hunyuan's hy_v3 memory writer, 29.79 GiB, revision 8674f68e, with its
+chat template and checksums), wanted on the strix; pkgs/memory-sweep with
+`memory-sweep-sample` (N markdown files from ~/notes plus N chat jsonl from
+~/archives, run once through TencentDB-Agent-Memory's MemoryCore image by
+digest, report under ~/.local/state/memory-sweep/<run>/) and `hy-memory-serve`
+(the hand-run llama-server for that row); checks.memory-sweep;
+docs/local-ai/memory-sweep-sample.md; research_notes/tencent-memory-2026-10-17.
+
+Measured before deciding: the fleet's llama.cpp cannot load the model. The
+gfx1151 build on every strix generation is 9925 (ed8c261, 2026-07-08), 68
+commits before llama.cpp merged hy_v3 (2969d6d1, 2026-07-13); its libllama.so
+has no hy_v3 string. nix-strix-halo's llama-cpp-rocm and -vulkan both evaluate
+to 9925 at our lock, independent of the llama-cpp-master input, so a rebuild
+changes nothing. nixpkgs at our pin ships llama-cpp 10063 (2026-07-17, after
+the merge) and its Vulkan build is on cache.nixos.org. So `hy-memory-serve`
+wraps nixpkgs' llama-cpp 10063 (Vulkan) by store path. The fleet's
+`llama-server` on PATH is unchanged, Gufo is unchanged, Halogen is unchanged.
+
+Not taken: bumping nix-strix-halo (rebuilds the whole gfx1151 ROCm plane);
+a server module (nothing here is resident); vLLM or a hosted endpoint;
+building the Node tree with Nix (no tracked lockfile); the Panel, Knowledge
+and Proxy containers; an embedder (BM25 only; the "no embeddings server" line
+in AGENTS.md stands); any timer, path unit or hook. The L2/L3 tool-calling
+path of MemoryCore is observed, not relied on.
+
+Operator acts, in order, none performed by a switch: NAS switch, then
+`sudo systemctl start library-fetch` (about 32 GB from Hugging Face); strix
+switch; `sudo local-models-borrow --dry-run` then `--yes` (52 GB free today,
+8 GiB reserve, leaves about 22 GB); `memory-sweep-sample plan`; then `run`.
+If the row is to be dropped afterwards, the retire runbook in
+docs/nas/model-archive.md applies.
+
 2026-10-13 Paperless is REMOVED from the fleet: the NAS service and its
 database, the paperless-bridge, the strix relay and paperless.internal, the
 pinned nixpkgs-paperless input, its flake checks and its LaCie mirror rules.

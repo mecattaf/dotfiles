@@ -1,0 +1,25 @@
+{
+  "sessionKey": "chat-02-a",
+  "kind": "chat",
+  "source": "claude-code",
+  "relpath": "claude-code-mirror/claude/projects/-synthetic/a.jsonl",
+  "conversations": [
+    [
+      {
+        "role": "user",
+        "content": "q",
+        "timestamp": ""
+      },
+      {
+        "role": "assistant",
+        "content": "a",
+        "timestamp": ""
+      }
+    ]
+  ],
+  "stats": {
+    "rounds": 1,
+    "messages": 2,
+    "chars": 2
+  }
+}

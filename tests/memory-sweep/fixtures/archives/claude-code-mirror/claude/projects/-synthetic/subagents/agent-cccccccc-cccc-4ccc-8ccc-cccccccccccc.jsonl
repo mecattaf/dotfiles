@@ -1,0 +1,1 @@
+{"type": "user", "sessionId": "c", "message": {"role": "user", "content": "SECRET_SUBAGENT must never be sampled."}}

@@ -34,6 +34,9 @@
     ++ lib.optionals (config.networking.hostName == "strix") [
       # The one diarization model (Tom, 2026-09-16), loaded by call-diarize.
       "vibevoice-asr-streaming-7b-bf16"
+      # Hand-run by `hy-memory-serve` for the T-15 memory-sweep trial
+      # (DECISIONS.md 2026-10-17); never resident, no unit.
+      "hy-memory-30b-a3b-q8-0"
     ];
 
     services.halogen = {

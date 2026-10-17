@@ -1,0 +1,2 @@
+{"type": "user", "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "isSidechain": false, "timestamp": "2026-07-23T10:00:00+02:00", "message": {"role": "user", "content": "Second synthetic root session: what is the plan for the notes half?"}}
+{"type": "assistant", "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "isSidechain": false, "timestamp": "2026-07-23T10:01:00+02:00", "message": {"role": "assistant", "content": [{"type": "text", "text": "Each note becomes one seed session of user rounds, at most 8,000 chars each."}]}}
