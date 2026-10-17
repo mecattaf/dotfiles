@@ -16,7 +16,10 @@
 #   1. A systemd top-level drop-in (systemd.unit(5), "Top level drop-ins")
 #      installs OnFailure=failure-notify@%N.service on EVERY system service —
 #      including generated and transient ones, which a Nix-side map over
-#      config.systemd.services would miss. Push-based and instant.
+#      config.systemd.services would miss. Push-based and instant. Podman's
+#      healthcheck probes are transient services as well; for those the
+#      notifier surfaces the container's verdict, not each failed probe
+#      (failure-notify.sh).
 #   2. A journal tripwire on coredumps. systemd-coredump@ instances write a
 #      journal event rather than failing a unit, so no OnFailure can fire for
 #      them; the crashing process may not even be a service.
@@ -54,29 +57,17 @@ let
     '') maskedUnits}
   '';
 
-  notifier = pkgs.writeShellScript "failure-notify" ''
-    set -eu
-    unit="''${1:?usage: failure-notify <unit>}"
-    dir=${lib.escapeShellArg cfg.markerDir}
-    safe="$(${pkgs.coreutils}/bin/printf '%s' "$unit" | ${pkgs.coreutils}/bin/tr / _)"
-    when="$(${pkgs.coreutils}/bin/date '+%Y-%m-%d %H:%M')"
-
-    ${pkgs.coreutils}/bin/install -d -m 0755 "$dir"
-    exec 9>"$dir/.failure-marker-reconcile.lock"
-    ${pkgs.util-linux}/bin/flock 9
-    ${pkgs.coreutils}/bin/printf '%s failed at %s — journalctl -u %s -b\n' \
-      "$unit" "$when" "$unit" > "$dir/$safe"
-    ${pkgs.coreutils}/bin/chmod 0644 "$dir/$safe"
-
-    # Fields, not prose: the NAS journal copy can then answer "which units
-    # failed this week" without parsing sentences.
-    ${pkgs.coreutils}/bin/printf '%s\n' \
-      "MESSAGE=unit failure surfaced: $unit" \
-      "PRIORITY=3" \
-      "SYSLOG_IDENTIFIER=failure-notify" \
-      "FAILED_UNIT=$unit" \
-      "DECISION=marker-written" | ${pkgs.util-linux}/bin/logger --journald || true
-  '';
+  notifier = pkgs.writeShellApplication {
+    name = "failure-notify";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.util-linux
+    ]
+    # Asked for a container's health verdict when the failed unit is one of
+    # podman's transient healthcheck probes.
+    ++ lib.optional config.virtualisation.podman.enable config.virtualisation.podman.package;
+    text = builtins.readFile ./failure-notify.sh;
+  };
 
   markerReconciler = pkgs.writeShellApplication {
     name = "failure-marker-reconcile";
@@ -277,8 +268,9 @@ in
         # A notifier that can itself fail would need a notifier. The "-" prefix
         # makes any non-zero exit a success, which also keeps a failure during
         # early boot (before /var is writable) from cascading.
-        ExecStart = "-${notifier} %i";
+        ExecStart = "-${notifier}/bin/failure-notify %i";
       };
+      environment.FAILURE_MARKER_DIR = cfg.markerDir;
     };
 
     systemd.services."failure-marker-reconcile" = {
