@@ -692,6 +692,9 @@ def busy_reasons(load1: float, ncpu: int, procs: list[tuple[int, list[str]]]) ->
     for _, argv in procs:
         words = [Path(a).name for a in argv[:3]]
         hit = next((c for c in BUSY_COMMANDS if c in words), None)
+        if not hit and words[:1] == ["nix"]:
+            sub = " ".join(argv[1:3])
+            hit = next((c for c in ("nix build", "nix flake check") if ("nix " + sub).startswith(c)), None)
         if hit:
             out.append(f"{hit} is running")
             break
