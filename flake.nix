@@ -1922,7 +1922,8 @@
               ("yum.repos." + "d")
               ("harness" + "RPM")
               ("chez" + "moi")
-              ("k" + "run")
+              # Match command/library names, not identifier or hash substrings.
+              ("(^|[^[:alnum:]_])(lib)?k" + "run")
               ("tom@" + "bridge")
               ("/usr/share/backgrounds/" + "harness")
               ("osConfig" + "[[:space:]]*\\?[[:space:]]*null")
