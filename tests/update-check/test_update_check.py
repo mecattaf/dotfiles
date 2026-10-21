@@ -199,6 +199,10 @@ class PureHelpers(unittest.TestCase):
                          ["a nix build is running"])
         self.assertEqual(uc.busy_reasons(1.0, 32, [(0, ["/run/current-system/sw/bin/nixos-rebuild", "switch"])]),
                          ["nixos-rebuild is running"])
+        self.assertEqual(uc.busy_reasons(1.0, 32, [(1000, ["nix", "build", ".#x"])]), ["nix build is running"])
+        self.assertEqual(uc.busy_reasons(1.0, 32, [(1000, ["/bin/nix", "flake", "check"])]),
+                         ["nix flake check is running"])
+        self.assertEqual(uc.busy_reasons(1.0, 32, [(1000, ["nix", "eval", ".#x"])]), [])
 
     def test_parse_version(self) -> None:
         self.assertEqual(uc.parse_version("2.1.296"), (2, 1, 296))
