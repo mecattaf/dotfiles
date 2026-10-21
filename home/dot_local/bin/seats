@@ -1382,10 +1382,10 @@ def read_qwen(spec, opts):
     return classify(seat)
 
 
-# ── provider: halogen (the worker's inference server) ───────────────────────
+# ── provider: halogen (compatibility key for the Gufo server) ───────────────────────
 
 def _halogen_model_ids(payload):
-    """Model ids out of a /health or /v1/models answer, whatever shape it takes."""
+    """Model ids out of a /ready or /v1/models answer, whatever shape it takes."""
     if not isinstance(payload, dict):
         return []
     ids = []
@@ -1410,14 +1410,14 @@ def _halogen_model_ids(payload):
 def read_halogen(spec, opts):
     """Up or not, and which model id answers. Two GETs, nothing spent.
 
-    /health is the liveness probe. The model id comes from that answer when it
+    /ready is the liveness probe. The model id comes from that answer when it
     carries one and from /v1/models otherwise; a server that is up but names
     no model is reported as up with the id unknown, never guessed.
     """
     seat = blank_seat(spec, "unknown", "UNKNOWN")
     endpoint = (spec.get("endpoint") or INFERENCE_URL).rstrip("/")
-    seat["source"] = {"kind": "halogen-health", "endpoint": endpoint + "/health"}
-    health, error = http_json(endpoint + "/health", timeout=3)
+    seat["source"] = {"kind": "gufo-ready", "endpoint": endpoint + "/ready"}
+    health, error = http_json(endpoint + "/ready", timeout=3)
     if health is None:
         seat["state"], seat["detail"] = "offline", error or "no answer"
         return seat
