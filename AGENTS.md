@@ -47,11 +47,15 @@ repo holds the logic: `update-check` (home/dot_local/bin) reads
 use, rebuilds the rolling branch `update/<input>` from main, runs the gate and
 opens or refreshes one PR. The PR is a draft when the gate fails. The check
 skips the bump when no watched program changed version, and closes the PR
-once main carries the input. The `update-check` skill then reads each PR's
-release notes against the repo, posts one digest comment, and commits only the
-adoptions that need no ruling. Those commits carry no `Update-Check: bump`
-trailer, so the next rebuild keeps them. Nothing merges, switches or restarts
-without Tom. Adding a program is an entry in the watch file.
+once main carries the input. Fish, kitty and Wrangler ride the existing nixpkgs-fresh leaf overlay;
+new stable kernel major.minor series are issue watches. The Projects
+floor routine uses `update-check --if-idle --json`: soft hourly opportunities,
+load/Nix/Herdr admission checks and one completed attempt per Paris night.
+Every defer and failure is recorded. No local timer is installed. Digests are
+opt-in and comment-only; the routine makes no adoption commits. Earlier
+review commits without `Update-Check: bump` survive refreshes, or a conflict
+aborts before the remote changes. Nothing merges, switches or restarts without
+Tom. Adding a program is an entry in the watch file.
 
 **Closet and physical seat (Tom, 2026-10-08).** Strix (formerly coordinator)
 is permanently headless in the closet, with the NAS, BE550 and Freebox. Both

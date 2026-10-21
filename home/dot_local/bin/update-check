@@ -29,6 +29,7 @@ Examples:
   update-check --only herdr    one input
   update-check --dry-run       report what would move; no worktree, push or PR
   update-check --json          print the run report as JSON
+  update-check --if-idle       soft nightly admission and once-per-night stamp
 """
 
 from __future__ import annotations
@@ -39,10 +40,11 @@ import fcntl
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import time
+import urllib.request
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
 
@@ -88,6 +90,8 @@ def sh(
             timeout=timeout,
             env=None if env is None else {**os.environ, **env},
         )
+    except OSError as e:
+        raise CheckError(f"{args[0]} could not run: {e}") from e
     except subprocess.TimeoutExpired as e:
         raise CheckError(f"{' '.join(args[:3])} timed out after {timeout}s") from e
     if check and p.returncode != 0:
@@ -113,6 +117,71 @@ def gh_json(*args: str) -> Any:
                 raise
             time.sleep(RETRY_SECONDS * (attempt + 1))
     return None
+
+
+def night_key(now: dt.datetime | None = None) -> str:
+    """Paris noon-to-noon night, named for its evening; independent of TZ."""
+    local = (now or dt.datetime.now(dt.timezone.utc)).astimezone(ZoneInfo("Europe/Paris"))
+    return (local - dt.timedelta(hours=12)).date().isoformat()
+
+
+def busy_reasons() -> list[str]:
+    """Read-only, conservative admission check. Never stop an existing job."""
+    reasons = []
+    load = os.getloadavg()[1]
+    limit = max(1.0, (os.cpu_count() or 1) * 0.5)
+    if load >= limit:
+        reasons.append(f"five-minute load {load:.1f} >= {limit:.1f}")
+    for proc in Path("/proc").glob("[0-9]*/cmdline"):
+        try:
+            args = proc.read_bytes().decode(errors="replace").strip("\0").split("\0")
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
+            continue
+        try:
+            uid_line = next(line for line in (proc.parent / "status").read_text().splitlines() if line.startswith("Uid:"))
+            if 30000 <= int(uid_line.split()[1]) < 31000:
+                reasons.append(f"Nix builder running (pid {proc.parent.name})")
+        except (FileNotFoundError, ProcessLookupError, PermissionError, StopIteration):
+            pass
+        words = [Path(arg).name for arg in args[:3]]
+        if any(word in {"nixos-rebuild", "nixos-rebuild-ng", "home-manager", "deploy-rs", "nh"} for word in words):
+            reasons.append(f"build or activation command running (pid {proc.parent.name})")
+        command = Path(args[0]).name if args else ""
+        if (command in {"nix", "nix-build", "nix-store", "nixos-rebuild", "nixos-rebuild-ng"}
+                and (command.startswith("nixos-rebuild") or command == "nix-build"
+                     or any(a in {"build", "develop", "shell", "-r", "--realise"} for a in args[1:]))):
+            reasons.append(f"Nix work running (pid {proc.parent.name})")
+    # Calling pane list is read-only and cannot start or attach a session.
+    try:
+        payload = json.loads(sh(["herdr", "pane", "list"], timeout=15))
+        panes = payload["result"]["panes"]
+        if not isinstance(panes, list):
+            raise ValueError("panes is not a list")
+        for pane in panes:
+            if pane.get("agent") and pane.get("agent_status") not in {"idle", "done", "blocked"}:
+                reasons.append(f"Herdr pane {pane.get('pane_id', '?')} is {pane.get('agent_status', 'unknown')}")
+    except (CheckError, ValueError, KeyError, TypeError) as e:
+        raise CheckError(f"cannot establish Herdr idleness: {e}") from e
+    return reasons
+
+
+def write_report(report: dict[str, Any], as_json: bool, persist: bool = True) -> None:
+    if persist:
+        directory = STATE / "runs"
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"{report['run'].replace(':', '')}.json").write_text(
+            json.dumps(report, indent=2, default=list) + "\n")
+    if as_json:
+        print(json.dumps(report, indent=2, default=list))
+    else:
+        print(f"update-check: {report.get('status', 'completed')}")
+        for reason in report.get("reasons", []):
+            print(f"  {reason}")
+        for result in report.get("inputs", []):
+            print(f"{result['input']:<14} {result['status']:<17} "
+                  + (result.get("pr") or result.get("issue") or result.get("error") or ""))
+            if result.get("gate", {}).get("ok") is False:
+                print(f"  gate FAILED ({result['gate'].get('log', 'see PR')})")
 
 
 # ── pure helpers (tests/update-check exercises these directly) ─────────────
@@ -250,6 +319,7 @@ def build_body(
         "to_rev": report["to_rev"],
         "base": report["base"],
         "versions": {k: list(v) for k, v in report["changed"].items()},
+        "gate_ok": report["gate"]["ok"],
     }
     lines = [
         f"<!-- update-check {json.dumps(marker, sort_keys=True)} -->",
@@ -283,7 +353,7 @@ def build_body(
     lines += [
         "",
         "Merging is Tom's, and nothing switches until he says so. The update-check "
-        "skill reads the notes below against this repo and leaves its digest as "
+        "skill optionally reads the notes below against this repo and leaves its digest as "
         "the comment marked `update-digest`.",
     ]
     tail = ["", f"Opened by `update-check` (home/dot_local/bin/update-check) at {report['run']}."]
@@ -352,7 +422,7 @@ def release_piece(repo: str, r: dict[str, Any]) -> tuple[str, str]:
 class Run:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-        self.stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
         self.logs = STATE / "logs" / self.stamp.replace(":", "")
         git(
             "fetch", "-q", "--prune", "origin",
@@ -435,18 +505,14 @@ class Run:
 
     # worktrees ---------------------------------------------------------------
 
-    def clear_worktree(self, wt: Path, branch: str) -> None:
-        listed = git("worktree", "list", "--porcelain")
-        if f"worktree {wt}\n" in listed + "\n":
-            git("worktree", "remove", "--force", str(wt))
-        elif wt.exists() and wt.parent == WORKTREES and wt.name.startswith("update-"):
-            shutil.rmtree(wt)
-        if git("rev-parse", "-q", "--verify", f"refs/heads/{branch}", check=False):
-            git("branch", "-D", branch)
+    def clear_worktree(self, wt: Path) -> None:
+        # Only called for the detached worktree this process created. Never
+        # remove the rolling branch or a reviewer's update-<input> worktree.
+        git("worktree", "remove", "--force", str(wt))
 
-    def eval_versions(self, wt: Path, paths: dict[str, str]) -> dict[str, Any]:
+    def eval_versions(self, wt: Path, paths: dict[str, str], rev: str | None = None) -> dict[str, Any]:
         expr = (
-            'let f = builtins.getFlake "git+file://' + str(wt) + '"; '
+            'let f = builtins.getFlake "git+file://' + str(wt) + (f'?rev={rev}' if rev else '') + '"; '
             'paths = builtins.fromJSON (builtins.getEnv "UPDATE_CHECK_PATHS"); '
             "at = p: builtins.foldl' (a: k: if a != null && builtins.isAttrs a "
             "&& builtins.hasAttr k a then builtins.getAttr k a else null) f "
@@ -458,7 +524,11 @@ class Run:
             ["nix", "eval", "--impure", "--json", "--expr", expr],
             cwd=wt, timeout=1800, env={"UPDATE_CHECK_PATHS": json.dumps(paths)},
         )
-        return json.loads(out)
+        versions = json.loads(out)
+        missing = [key for key in paths if not isinstance(versions.get(key), str) or not versions[key]]
+        if missing:
+            raise CheckError("version probe missing or invalid: " + ", ".join(missing))
+        return versions
 
     def carry(self, wt: Path, branch: str) -> tuple[list[str], list[str]]:
         remote = f"refs/remotes/origin/{branch}"
@@ -478,7 +548,8 @@ class Run:
                 git("cherry-pick", "--skip", cwd=wt, check=False)  # already in main
                 continue
             git("cherry-pick", "--abort", cwd=wt, check=False)
-            dropped.append(sha)
+            raise CheckError(f"review commit {sha} did not apply; existing PR preserved: "
+                             + (p.stderr or p.stdout).strip()[-600:])
         return carried, dropped
 
     def gate(self, wt: Path, entry: dict[str, Any], flake_changed: bool) -> dict[str, Any]:
@@ -501,15 +572,22 @@ class Run:
                 log.write(f"$ {' '.join(cmd)}\n")
                 log.flush()
                 start = time.monotonic()
-                left = max(60, int(deadline - start))
+                left = int(deadline - start)
                 try:
+                    if left <= 0:
+                        raise subprocess.TimeoutExpired(cmd, GATE_TIMEOUT)
                     ok = subprocess.run(
                         cmd, cwd=wt, stdout=log, stderr=subprocess.STDOUT, timeout=left
                     ).returncode == 0
+                except OSError as e:
+                    log.write(f"update-check: {label}: {e}\n")
+                    ok = False
                 except subprocess.TimeoutExpired:
                     log.write(f"update-check: {label} timed out after {left}s\n")
                     ok = False
                 results.append({"step": label, "ok": ok, "seconds": int(time.monotonic() - start)})
+                if not ok:
+                    break
         lines = log_path.read_text(errors="replace").splitlines()
         ok = all(r["ok"] for r in results)
         return {"ok": ok, "steps": results, "log": str(log_path),
@@ -569,6 +647,11 @@ class Run:
         if up["rev"] == node["locked"]["rev"]:
             if pr is None:
                 return {**rec, "status": "current"}
+            remote = f"refs/remotes/origin/{branch}"
+            pending = [sha for sha in git("rev-list", "--no-merges", f"{self.main}..{remote}").split()
+                       if TRAILER not in git("log", "-1", "--format=%B", sha)]
+            if pending:
+                return {**rec, "status": "review-pending", "pending_commits": pending}
             if not self.args.dry_run:
                 sh(["gh", "pr", "close", str(pr["number"]), "-R", GH_REPO, "--delete-branch",
                     "--comment", f"main already carries {name} at {short(up['rev'])}; "
@@ -577,19 +660,20 @@ class Run:
 
         marker = read_marker(pr["body"]) if pr else None
         if (pr and marker and marker.get("to_rev") == up["rev"]
-                and pr.get("mergeable") != "CONFLICTING" and not self.args.force):
-            return {**rec, "status": "unchanged"}
+                and marker.get("base") == self.main
+                and pr.get("mergeable") == "MERGEABLE" and not self.args.force):
+            return {**rec, "status": "unchanged", "draft": bool(pr.get("isDraft")),
+                    "gate": {"ok": marker.get("gate_ok", not pr.get("isDraft"))}}
         if self.args.dry_run:
             return {**rec, "status": "would-refresh" if pr else "would-open"}
 
-        wt = WORKTREES / f"update-{name}"
+        wt = WORKTREES / f"update-check-{name}-{os.getpid()}"
         WORKTREES.mkdir(parents=True, exist_ok=True)
-        self.clear_worktree(wt, branch)
-        git("worktree", "add", "-q", "-b", branch, str(wt), self.main)
+        git("worktree", "add", "-q", "--detach", str(wt), self.main)
         try:
             return self.bump(entry, node, up, pr, wt, branch, rec)
         finally:
-            self.clear_worktree(wt, branch)
+            self.clear_worktree(wt)
 
     def bump(self, entry, node, up, pr, wt, branch, rec) -> dict[str, Any]:
         name = entry["name"]
@@ -619,10 +703,12 @@ class Run:
         if not changed:
             return {**rec, "status": "no-version-change"}
         marker = read_marker(pr["body"]) if pr else None
-        if (pr and marker and pr.get("mergeable") != "CONFLICTING" and not self.args.force
+        if (pr and marker and marker.get("base") == self.main
+                and pr.get("mergeable") == "MERGEABLE" and not self.args.force
                 and marker.get("versions") == {k: list(v) for k, v in changed.items()}):
             # Upstream moved, but nothing we watch did since the open PR.
-            return {**rec, "status": "unchanged"}
+            return {**rec, "status": "unchanged", "draft": bool(pr.get("isDraft")),
+                    "gate": {"ok": marker.get("gate_ok", not pr.get("isDraft"))}}
 
         what = rec["tag"] or day(new_node["locked"].get("lastModified"))
         msg = [f"{name}: bump to {short(rec['to_rev'])} ({what})", ""]
@@ -631,6 +717,8 @@ class Run:
         git("commit", "-q", "--amend", "-m", "\n".join(msg), cwd=wt)
 
         rec["carried"], rec["dropped"] = self.carry(wt, branch)
+        after = self.eval_versions(wt, entry["versions"])
+        rec["changed"] = {k: (before[k], after[k]) for k in entry["versions"] if before[k] != after[k]}
         notes = self.notes(entry, node, before, after, up, old_tag)
         rec["gate"] = self.gate(wt, entry, flake_changed)
         body = build_body(rec, entry, notes)
@@ -661,64 +749,126 @@ class Run:
         return rec
 
 
+    def check_issue(self, entry: dict[str, Any]) -> dict[str, Any]:
+        """Watch upstream without advancing the deliberately held nixpkgs pin."""
+        current = self.eval_versions(REPO, entry["versions"], self.main)
+        if entry["source"] == "kernel.org":
+            with urllib.request.urlopen("https://www.kernel.org/releases.json", timeout=30) as response:
+                releases = json.load(response)["releases"]
+            stable = [r for r in releases if parse_version(r.get("version")) is not None
+                      and not r.get("iseol")]
+            if not stable:
+                raise CheckError("kernel.org returned no stable releases")
+            latest = max(stable, key=lambda r: parse_version(r["version"]))
+            version = latest["version"]
+            link = latest.get("gitweb") or "https://www.kernel.org/"
+        else:
+            prefix = entry.get("tagPrefix", "v")
+            stable = [r for r in self.releases(entry["repo"]) if not r.get("draft")
+                      and not r.get("prerelease") and parse_version(r.get("tag_name"), prefix)]
+            if not stable:
+                raise CheckError(f"{entry['repo']} returned no stable releases")
+            latest = max(stable, key=lambda r: parse_version(r["tag_name"], prefix))
+            version = latest["tag_name"][len(prefix):]
+            link = f"https://github.com/{entry['repo']}/releases/tag/{latest['tag_name']}"
+        target = parse_version(version)
+        parsed = {name: parse_version(value) for name, value in current.items()}
+        if any(value is None for value in parsed.values()):
+            raise CheckError(f"cannot compare installed versions: {current}")
+        if entry.get("seriesOnly"):
+            target = target[:2]
+            parsed = {name: value[:2] for name, value in parsed.items()}
+            version = ".".join(map(str, target))
+        rec = {"input": entry["name"], "versions": current, "available": version}
+        if all(value >= target for value in parsed.values()):
+            return {**rec, "status": "current"}
+        title = f"update: {entry['name']} {version} available"
+        issues = gh_json("issue", "list", "-R", GH_REPO, "--state", "all", "--search",
+                         f'"{title}" in:title', "--limit", "100", "--json", "title,url,state") or []
+        existing = next((issue for issue in issues if issue["title"] == title), None)
+        if existing:
+            return {**rec, "status": "issue-exists", "issue": existing["url"], "issue_state": existing["state"]}
+        if self.args.dry_run:
+            return {**rec, "status": "would-open-issue"}
+        self.logs.mkdir(parents=True, exist_ok=True)
+        body = self.logs / f"{entry['name']}.issue.md"
+        body.write_text(f"Upstream [{entry['name']} {version}]({link}) is available.\n\n"
+                        + "| host/program | main |\n|---|---|\n"
+                        + "".join(f"| {name} | {value} |\n" for name, value in current.items())
+                        + "\n" + entry["reason"] + "\n\n"
+                        + "Recorded by update-check (#550). No pin, running process or service was changed.\n")
+        url = sh(["gh", "issue", "create", "-R", GH_REPO, "--title", title,
+                  "--body-file", str(body)], cwd=REPO).strip()
+        return {**rec, "status": "issue-opened", "issue": url}
+
+
 def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(
-        prog="update-check", description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    ap.add_argument("--only", action="append", metavar="INPUT", help="check only this input (repeatable)")
-    ap.add_argument("--dry-run", action="store_true", help="report what would move; change nothing")
+    ap = argparse.ArgumentParser(prog="update-check", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--only", action="append", metavar="INPUT", help="check only this input or issue watch (repeatable)")
+    ap.add_argument("--dry-run", action="store_true", help="report what would move; no remote writes")
     ap.add_argument("--force", action="store_true", help="rebuild a PR even when upstream has not moved")
     ap.add_argument("--json", action="store_true", help="print the run report as JSON")
+    ap.add_argument("--if-idle", action="store_true", help="defer when busy; attempt the full suite once per Paris night")
     ap.add_argument("--watch", help=f"read this watch file instead of origin/main:{WATCH_PATH}")
+    ap.add_argument("--once-per-night", action="store_true", help="compatibility alias for --if-idle (includes the nightly stamp)")
     args = ap.parse_args(argv)
-
+    args.if_idle = args.if_idle or args.once_per_night
+    if args.if_idle and (args.only or args.force or args.watch):
+        ap.error("--if-idle is the full nightly check; do not combine with --only, --force or --watch")
     STATE.mkdir(parents=True, exist_ok=True)
-    lock = (STATE / "lock").open("w")
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        print("update-check: another run holds the lock", file=sys.stderr)
-        return 75
-
-    run = Run(args)
-    entries = run.watch["inputs"]
-    if args.only:
-        unknown = set(args.only) - {e["name"] for e in entries}
-        if unknown:
-            print(f"update-check: not watched: {', '.join(sorted(unknown))}", file=sys.stderr)
-            return 2
-        entries = [e for e in entries if e["name"] in args.only]
-
-    results = []
-    for entry in entries:
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    report = {"run": stamp, "dry_run": args.dry_run, "inputs": []}
+    with (STATE / "lock").open("a") as lock:
         try:
-            results.append(run.check(entry))
-        except CheckError as e:
-            results.append({"input": entry["name"], "status": "error", "error": str(e)})
-    report = {"run": run.stamp, "main": run.main, "dry_run": args.dry_run, "inputs": results}
-    if not args.dry_run:
-        (STATE / "runs").mkdir(parents=True, exist_ok=True)
-        (STATE / "runs" / f"{run.stamp.replace(':', '')}.json").write_text(
-            json.dumps(report, indent=2, default=list) + "\n")
-
-    if args.json:
-        print(json.dumps(report, indent=2, default=list))
-    else:
-        for r in results:
-            line = f"{r['input']:<14} {r['status']:<17}"
-            if r.get("changed"):
-                line += " " + ", ".join(f"{k} {a}->{b}" for k, (a, b) in r["changed"].items())
-            elif r.get("to_rev") and r["status"] != "current":
-                line += f" {short(r.get('from_rev'))} -> {short(r['to_rev'])}"
-            if r.get("gate") and not r["gate"]["ok"]:
-                line += f"  gate FAILED ({r['gate']['log']})"
-            if r.get("pr"):
-                line += f"  {r['pr']}"
-            if r.get("error"):
-                line += f"  {r['error']}"
-            print(line)
-    return 1 if any(r["status"] == "error" for r in results) else 0
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            write_report({**report, "status": "deferred", "reasons": ["another run holds the lock"]}, args.json)
+            return 0 if args.if_idle else 75
+        night = night_key()
+        completed = STATE / "last-night.json"
+        try:
+            if args.if_idle:
+                if completed.exists() and json.loads(completed.read_text()).get("night") == night:
+                    write_report({**report, "status": "already-checked", "night": night}, args.json)
+                    return 0
+                reasons = busy_reasons()
+                if reasons:
+                    write_report({**report, "status": "deferred", "reasons": reasons, "night": night}, args.json)
+                    return 0
+            run = Run(args)
+            entries = [(entry, run.check) for entry in run.watch["inputs"]]
+            entries += [(entry, run.check_issue) for entry in run.watch.get("issues", [])]
+            if args.only:
+                unknown = set(args.only) - {entry["name"] for entry, _ in entries}
+                if unknown:
+                    raise CheckError(f"not watched: {', '.join(sorted(unknown))}")
+                entries = [(entry, check) for entry, check in entries if entry["name"] in args.only]
+            report.update(main=run.main, status="completed", night=night)
+            for entry, check in entries:
+                if args.if_idle:
+                    reasons = busy_reasons()
+                    if reasons:
+                        report.update(status="deferred", reasons=reasons)
+                        break
+                try:
+                    report["inputs"].append(check(entry))
+                except (CheckError, OSError, ValueError, KeyError, TypeError) as e:
+                    report["inputs"].append({"input": entry["name"], "status": "error", "error": str(e)})
+            failed = any(r["status"] == "error" or r.get("gate", {}).get("ok") is False
+                         or r.get("draft") for r in report["inputs"])
+            report["ok"] = not failed
+            if args.if_idle and not args.dry_run and report["status"] == "completed":
+                # A failed completed attempt also consumes this night: report it,
+                # don't repeat multi-hour builds every hour. Manual checks remain available.
+                temporary = completed.with_suffix(".tmp")
+                temporary.write_text(json.dumps({"night": night, "run": stamp, "ok": not failed}) + "\n")
+                temporary.replace(completed)
+            write_report(report, args.json, persist=not args.dry_run)
+            return int(failed)
+        except (CheckError, OSError, ValueError, KeyError, TypeError) as e:
+            write_report({**report, "status": "error", "ok": False, "reasons": [str(e)]}, args.json)
+            return 1
 
 
 if __name__ == "__main__":
