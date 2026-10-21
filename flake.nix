@@ -6,7 +6,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # nixpkgs-fresh — a second nixpkgs used ONLY to keep a handful of
-    # fast-moving user packages (currently google-chrome and uv, see overlays
+    # fast-moving user packages (Chrome, uv, fish, kitty and Wrangler, see overlays
     # list below) and the twins'/NAS's linuxPackages_7_2 kernel series current
     # independent of the `nixpkgs` pin above. That pin is deliberately
     # lagging — the exact-candidate fleet deploy keeps it as the only door
@@ -18,7 +18,7 @@
     # gated by the same core Hydra jobs, minus the big-channel test set that
     # had nixos-unstable sitting 4+ days behind while 7.2.2 (a kernel point
     # fix the twins wanted) was already through. Everything this input feeds
-    # is either an upstream binary (chrome), a leaf tool (uv), or the
+    # is either an upstream binary (Chrome), a leaf user tool, or the
     # versioned kernel attr whose whole doctrine is point-fix-only advance.
     #
     # The lock entry is the reviewed revision. The Projects nightly checker
@@ -147,7 +147,7 @@
 
     # Client desktop pilot: package and Home Manager module from one release.
     # Keep upstream's nixpkgs so its signed binary cache remains usable.
-    vicinae.url = "github:vicinaehq/vicinae/v0.29.1";
+    vicinae.url = "github:vicinaehq/vicinae/v0.29.2";
 
     # herdr — the terminal workspace manager for AI coding agents
     # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
@@ -155,9 +155,9 @@
     # kitten tier, its session layer, and its title-naming pipeline are all
     # deleted in favour of one server holding every PTY.
     #
-    # PINNED TO A REV, not a branch: v0.9.1 (2026-09-16) is the current release
-    # (plugin API + the agent sidebar), and nixpkgs carries an older release. Bump by
-    # editing the rev here, deliberately, the way nixpkgs-paperless is bumped.
+    # PINNED TO A REV, not a branch: the release named on the url line below
+    # (nixpkgs carries an older one). The rev moves only through a reviewed PR,
+    # which update-check opens when herdr cuts a release (#550).
     #
     # Consume `packages.<sys>.herdr` ONLY (home/herdr.nix). Upstream composes
     # rust-overlay into its own pkgs fixpoint to build the Rust toolchain from
@@ -166,7 +166,7 @@
     # NOT in `rollingInputOverrides`: herdr owns live PTYs, so its version moves
     # when Tom says so, never on a nightly resolve.
     herdr = {
-      url = "github:herdrdev/herdr/7b116c05bfda646af39d2524c54e70c751f57ee8"; # v0.9.3, wire PROTOCOL_VERSION 22 as in 0.9.0
+      url = "github:herdrdev/herdr/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01"; # v0.9.5; live server remains protected by keep-old
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -200,7 +200,7 @@
     # no container (modules/gufo.nix). Pinned to the commit the catalog was read
     # from. No nixpkgs.follows: upstream qualifies its build against its own
     # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
-    gufo.url = "github:gufo-org/gufo/ae26ca4a13f252a0424c23e4bd7662167f23b436";
+    gufo.url = "github:gufo-org/gufo/0c03748a271eab895befc0d2343aa50ca4b6d836";
 
     # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
     # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
@@ -229,7 +229,7 @@
       system = "x86_64-linux";
 
       # Inputs whose PACKAGE CONTENT may move independently of the committed
-      # flake.lock during the nightly fleet transaction. The strix resolves
+      # flake.lock during an explicit fleet deployment. The strix resolves
       # each once and passes the same immutable URLs to every build and activation.
       #
       # This is intentionally NOT the main nixpkgs input: kernel/Mesa remain behind
@@ -293,7 +293,7 @@
         "/run/agenix/ssh-user-key"
       ];
 
-      # One overlay list everywhere (top-level pkgs + every host).
+      # Shared package overlays; interactive-only tool updates are added below.
       overlays = [
         self.overlays.default
         (final: _prev: {
@@ -330,8 +330,23 @@
         )
       ];
 
+      # The frozen NAS keeps its stable shell and tooling. These user tools
+      # follow the reviewed fresh input only on Strix and the client.
+      interactiveToolOverlay =
+        _final: _prev:
+        let
+          fresh = import inputs.nixpkgs-fresh {
+            inherit system;
+            config.allowUnfree = true;
+          };
+        in
+        {
+          inherit (fresh) fish kitty wrangler;
+        };
+
       pkgs = import nixpkgs {
-        inherit system overlays;
+        inherit system;
+        overlays = overlays ++ [ interactiveToolOverlay ];
         config.allowUnfree = true; # google-chrome
       };
 
@@ -365,7 +380,7 @@
           };
           modules = [
             {
-              nixpkgs.overlays = overlays;
+              nixpkgs.overlays = overlays ++ nixpkgs.lib.optionals withHomeManager [ interactiveToolOverlay ];
               nixpkgs.config.allowUnfree = true;
             }
             ./modules/common.nix
@@ -1876,7 +1891,8 @@
               ("yum.repos." + "d")
               ("harness" + "RPM")
               ("chez" + "moi")
-              ("k" + "run")
+              # Match command/library names, not identifier or hash substrings.
+              ("(^|[^[:alnum:]_])(lib)?k" + "run")
               ("tom@" + "bridge")
               ("/usr/share/backgrounds/" + "harness")
               ("osConfig" + "[[:space:]]*\\?[[:space:]]*null")

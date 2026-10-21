@@ -264,7 +264,7 @@ in
         type = types.str;
         default = "${home}/.local/bin/seats";
         defaultText = lib.literalExpression ''"''${home}/.local/bin/seats"'';
-        description = "The capacity oracle. A chezmoi-managed script (home/dot_local/bin/seats), stdlib python.";
+        description = "The capacity oracle. A Home Manager-linked script (home/dot_local/bin/seats), stdlib python.";
       };
 
       host = mkOption {
