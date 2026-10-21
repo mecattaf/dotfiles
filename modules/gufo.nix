@@ -199,21 +199,18 @@ let
     RestartSec = "30s";
   };
 
-  halogenUnits = lib.optionals (config.services ? halogen && config.services.halogen.enable) (
-    [ "podman-halogen.service" ]
-    ++ map (n: "podman-halogen-${n}.service") (builtins.attrNames config.services.halogen.alternates)
-  );
-
   alternateNames = builtins.attrNames cfg.alternates;
   unitOf = name: if name == "flash" then "gufo-llm.service" else "gufo-llm-${name}.service";
   textUnits = map unitOf ([ "flash" ] ++ alternateNames);
 
   mkLlmUnit = name: m: {
     description = "Gufo text model ${m.servedModelName} (${m.artifact})";
-    conflicts = (lib.remove (unitOf name) textUnits) ++ halogenUnits ++ [ "gufo-image.service" ];
-    after = halogenUnits;
+    conflicts = (lib.remove (unitOf name) textUnits) ++ [ "gufo-image.service" ];
     wantedBy = lib.optionals (name == "flash" && cfg.autoStart) [ "multi-user.target" ];
     serviceConfig = gpuServiceConfig // {
+      MemoryHigh = "96G";
+      MemoryMax = "104G";
+      MemorySwapMax = 0;
       ExecStartPre = "${bundleCheckFor (artifactsOf m)}";
       ExecStart = lib.escapeShellArgs ([ (lib.getExe' cfg.package "gufo") ] ++ llmArgs m);
       ExecStartPost = "${waitReady cfg.port}";
@@ -330,8 +327,16 @@ in
         servedModelName = "qwen3.8-flash-next";
         mmproj = "mmproj-BF16.gguf";
         mtp = "MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf";
-        sessions = 2;
-        context = 131072;
+        sessions = 1;
+        context = 102400;
+        extraArgs = [
+          "--think" "off"
+          "--cache-ram-bytes" "1073741824"
+          "--max-tokens" "16384"
+          "--max-pending" "8"
+          "--request-timeout-ms" "1200000"
+          "--stall-timeout-ms" "180000"
+        ];
       };
       description = "The resident text model (gufo-llm.service).";
     };
@@ -405,16 +410,6 @@ in
       {
         assertion = !(cfg.alternates ? flash) && !(cfg.alternates ? off);
         message = "services.gufo.alternates may not be named `flash` (the primary) or `off` (gufo-switch's stop verb).";
-      }
-      {
-        assertion =
-          !(
-            cfg.autoStart
-            && config.services ? halogen
-            && config.services.halogen.enable
-            && config.services.halogen.autoStart
-          );
-        message = "Gufo and Halogen cannot both start at boot on the GPU: set services.halogen.autoStart (or enable) to false when Gufo takes over.";
       }
     ];
 

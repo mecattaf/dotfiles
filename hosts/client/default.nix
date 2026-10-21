@@ -272,6 +272,9 @@
   systemd.services."systemd-backlight@backlight:card1-eDP-2-backlight".enable = false;
   services.udev.extraRules = ''
     ACTION=="add", SUBSYSTEM=="backlight", KERNEL=="intel_backlight|card1-eDP-2-backlight", RUN+="${pkgs.bash}/bin/sh -c 'cat /sys/class/backlight/%k/max_brightness > /sys/class/backlight/%k/brightness'"
+    # touchpad-toggle lights the Caps LED while the touchpad is off; let the
+    # seat user (group video) write it without a logind round trip.
+    ACTION=="add", SUBSYSTEM=="leds", KERNEL=="*::capslock", RUN+="${pkgs.coreutils}/bin/chgrp video /sys/class/leds/%k/brightness", RUN+="${pkgs.coreutils}/bin/chmod g+w /sys/class/leds/%k/brightness"
   '';
 
   # The dock contract (modules/zenbook-duo-daemon.nix): keyboard on → eDP-2

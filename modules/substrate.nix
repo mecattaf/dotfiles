@@ -870,6 +870,9 @@ in
     };
 
     systemd.user.services.substrate-puller = mkIf cfg.puller.enable {
+      # Running factory jobs outlive configuration switches. The mutable model
+      # catalog is reread per call; apply new runner code only after a drain.
+      restartIfChanged = false;
       description = "substrate-puller: the Substrate interpreter host on this box";
       wantedBy = [ "default.target" ];
       unitConfig.ConditionUser = cfg.user;

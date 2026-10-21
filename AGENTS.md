@@ -38,6 +38,27 @@ Besides these, the silent-hours releases are `paper-daemon-flush.timer` and the
 06:05 entry of `speech-queue.timer` on the strix. Adding any other timer or
 `OnCalendar` to this repository needs Tom.
 
+**Nightly update check (#550, Tom 2026-10-14).** Tom: "nightly, i want to be
+chekcing codex and cc and other programs for their latest version and
+ingesting it, potentially also with the new features that they entail". The
+clock is a substrate floor routine (substrate T-7), never a timer here. This
+repo holds the logic: `update-check` (home/dot_local/bin) reads
+`lib/update-watch.json`, and for each input whose upstream moved a program we
+use, rebuilds the rolling branch `update/<input>` from main, runs the gate and
+opens or refreshes one PR. The PR is a draft when the gate fails. The check
+skips the bump when no watched program changed version, and closes the PR
+once main carries the input. Fish, kitty and Wrangler ride the existing nixpkgs-fresh leaf overlay;
+new stable kernel major.minor series are issue watches. The Projects
+floor routine uses `update-check --if-idle --background --json`: soft hourly opportunities,
+load/Nix/Herdr admission checks and one completed attempt per Paris night.
+Every defer and failure is recorded. The detached worker survives the Floor
+turn limit, inherits its lock and writes a durable job result; a launch receipt
+is not a successful check. No local timer is installed. Digests are
+opt-in and comment-only; the routine makes no adoption commits. Earlier
+review commits without `Update-Check: bump` survive refreshes, or a conflict
+aborts before the remote changes. Nothing merges, switches or restarts without
+Tom. Adding a program is an entry in the watch file.
+
 **Closet and physical seat (Tom, 2026-10-08).** Strix (formerly coordinator)
 is permanently headless in the closet, with the NAS, BE550 and Freebox. Both
 closet computers use Ethernet. Strix is 10.42.0.2 on enp191s0; Wi-Fi is disabled
@@ -79,15 +100,15 @@ Gufo answers 404 to a request naming any other model id, so callers send the
 exact served id. It has no `/v1/embeddings` (501), no reranking and no
 diarization.
 
-**Until the cutover, Halogen still serves.** Halogen Flash
-(`modules/halogen.nix`: Qwen3.8-Flash-Next in Peonist's `.hgn` format, model id
-`halogen-qwen3.8-flash-next`, alternate `halogen-switch qwen38-27b`) stays the
-live endpoint at `strix:8731` until `services.gufo.enable` is switched on with
-`services.halogen.autoStart = false`. The Gufo and Halogen units conflict, so
-they never hold the GPU together. Do no Halogen-specific work (Tom,
-2026-10-13); after the cutover the `.hgn` rows and `modules/halogen.nix` are
-retired. Immich ML also runs on Strix; its socket starts it on demand, with a
-15-minute idle shutdown. There is no worker host.
+**Halogen is retired (Tom, 2026-10-21).** Tom: "subagent to kill halogen and give me `gufo`".
+Gufo owns port 8731 with one execution session, 102400 tokens of context,
+thinking off and a fixed 1 GiB prefix cache. No Halogen service or container
+is declared. The old catalog rows remain only as NAS archive receipts; Strix
+no longer wants them. The `halogen` provider/runtime key in Substrate is a
+compatibility identifier until its neutral-key migration, not an engine.
+Mutable `models.toml` selects the exact Gufo wire model without a puller restart.
+Immich ML also runs on Strix; its socket starts it on demand with a 15-minute
+idle shutdown. There is no worker host.
 
 **The NPU path is decommissioned — permanently, 2026-08-29.** FastFlowLM (`flm`)
 is no longer installed on any host, and the XDNA2 NPU is not an inference target
@@ -97,8 +118,7 @@ pause. Do not add a `flm` invocation, an `flm serve` unit, or an NPU backend row
 back.
 
 **The `utility` slot forwards to the local text model.** The stable ID
-`utility` resolves to Strix's resident text model (Halogen Flash until the
-Gufo cutover, then Gufo's Flash-Next), and the request-scoped `utility-model`
+`utility` resolves to Strix's resident Gufo Flash-Next model, and the request-scoped `utility-model`
 wrapper — installed on the strix only — forwards a single
 chat-completions request to it over the wired LAN. `/drain` and `/print` dial
 that seam under the same name and with the same CLI flags as before. What must

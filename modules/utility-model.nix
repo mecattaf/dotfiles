@@ -43,7 +43,7 @@ in
 
     contextTokens = lib.mkOption {
       type = lib.types.ints.positive;
-      default = 131072;
+      default = 102400;
       description = "Prompt budget the utility-model wrapper plans against.";
     };
   };

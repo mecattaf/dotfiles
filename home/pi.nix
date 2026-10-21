@@ -187,8 +187,8 @@ let
   localModelsJson = {
     providers = {
       # The fleet's one local model on the strix, by hostname over the house
-      # LAN (lib/local-model.nix). Vision-capable; reasoning is on by default
-      # and the token budget covers thinking, so maxTokens is generous. The
+      # LAN (lib/local-model.nix). Vision-capable; the resident service uses
+      # thinking off and a bounded 100K context. The
       # provider key stays `halogen` because substrate's runtimes and models
       # catalogue name it (a missing provider means halogen there).
       halogen = {
@@ -201,13 +201,13 @@ let
           {
             id = localModel.modelId;
             name = "Qwen3.8-Flash-Next (local, Strix)";
-            contextWindow = 262144;
-            maxTokens = 32768;
+            contextWindow = 102400;
+            maxTokens = 16384;
             input = [
               "text"
               "image"
             ];
-            reasoning = true;
+            reasoning = false;
             cost = zeroCost;
           }
           # The alternates answer on the same port only while an operator has
