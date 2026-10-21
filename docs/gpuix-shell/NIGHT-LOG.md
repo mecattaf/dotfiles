@@ -46,3 +46,4 @@ Model policy: /tmp/claude-1000/-home-tom-tuesday-oct20/94d008d7-4112-4bf7-92cd-2
 - MEASURED: pkgs/gpuix-shell holds the music design pass's scaffold only (package.json, tsconfig, launcher/provider.ts contract, music/{types,errors,config,format}.ts, music/subsonic/{types,api,map}.ts); `bun x tsc --noEmit` exit 0; `bun test` 5 pass.
 - Seats at 11:30Z: cc weekly 16% (fresh window), cc2 weekly 8%.
 - Tom's order now: complete the workflow and write up the synthesis as the final plan step, for closure. Launching the closure-synthesis workflow (3 digests → SYNTHESIS.md); then commit, push, draft PR.
+- 13:46 CEST closure: SYNTHESIS.md written (675 lines); three commits on experimental/gpuix-shell (6203c094, f545e47e, 9f4be64e); pushed; draft PR https://github.com/mecattaf/dotfiles/pull/576. Build waves 2-4 not relaunched; see SYNTHESIS.md §6.4 and §10.
