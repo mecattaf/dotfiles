@@ -21,10 +21,9 @@
     # is either an upstream binary (chrome), a leaf tool (uv), or the
     # versioned kernel attr whose whole doctrine is point-fix-only advance.
     #
-    # Its lock entry is a reproducible fallback. The nightly fleet transaction uses
-    # `rollingInputOverrides` below to resolve it (with llm-agents and the two AMD
-    # catalogs) exactly once, then builds and deploys those immutable URLs without
-    # writing the lock. A plain local build uses the reviewed fallback revision.
+    # The lock entry is the reviewed revision. The Projects nightly checker
+    # proposes lock bumps in update/nixpkgs-fresh PRs; it never deploys.
+    # rollingInputOverrides remains available to explicit fleet candidates.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
     # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
@@ -1680,6 +1679,40 @@
 
               python3 -m unittest discover \
                 -s ${./tests/claude-sessions} \
+                -p 'test_*.py' \
+                -v
+
+              touch "$out"
+            '';
+
+        # update-check (#550): the nightly update check's contract, hermetically.
+        # A fake nix and gh stand in for upstream and GitHub around a real git
+        # origin: one PR per moved input, a draft on a failed gate, nothing on a
+        # quiet night, review commits carried across a rebuilt bump, the PR
+        # closed when main catches up; and lib/update-watch.json is read
+        # against this flake.lock, so a watched input that stops being bumpable
+        # turns the check red.
+        update-check =
+          pkgs.runCommand "update-check"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.git
+              ];
+              PYTHONTZPATH = "${pkgs.tzdata}/share/zoneinfo";
+            }
+            ''
+              set -euo pipefail
+
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export UPDATE_CHECK_SCRIPT=${./home/dot_local/bin/update-check}
+              export UPDATE_WATCH=${./lib/update-watch.json}
+              export UPDATE_FLAKE_LOCK=${./flake.lock}
+              mkdir -p "$HOME"
+
+              python3 -m unittest discover \
+                -s ${./tests/update-check} \
                 -p 'test_*.py' \
                 -v
 
