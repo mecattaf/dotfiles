@@ -29,6 +29,11 @@ Examples:
   update-check --only herdr    one input
   update-check --dry-run       report what would move; no worktree, push or PR
   update-check --json          print the run report as JSON
+  update-check --if-idle --once-per-night
+                               what the floor routine runs: skip while the
+                               strix is busy, and once a night has run, skip
+                               until the next one (the routine fires hourly
+                               through the night, so a busy hour is retried)
 """
 
 from __future__ import annotations
@@ -54,6 +59,11 @@ STATE = Path(os.environ.get("UPDATE_CHECK_STATE", HOME / ".local/state/update-ch
 GH_REPO = os.environ.get("UPDATE_CHECK_GH_REPO", "mecattaf/dotfiles")
 GATE_TIMEOUT = int(os.environ.get("UPDATE_CHECK_GATE_TIMEOUT", str(3 * 3600)))
 RETRY_SECONDS = int(os.environ.get("UPDATE_CHECK_RETRY_SECONDS", "10"))
+# --if-idle: busy above this 1-minute load per CPU, or while a Nix build or
+# switch runs (a build runs as a nixbld user; NixOS gives those uids 30000+).
+IDLE_LOAD = float(os.environ.get("UPDATE_CHECK_IDLE_LOAD", "0.5"))
+NIXBLD_UIDS = range(30000, 31000)
+BUSY_COMMANDS = ("nixos-rebuild", "nix-build", "home-manager", "deploy-rs", "nh")
 
 WATCH_PATH = "lib/update-watch.json"
 BRANCH_PREFIX = "update/"
@@ -661,6 +671,47 @@ class Run:
         return rec
 
 
+
+# ── the soft schedule (--if-idle, --once-per-night) ────────────────────────
+
+
+def night_of(now: dt.datetime) -> str:
+    """The night a local time belongs to: noon to noon, named by its evening.
+    01:00 on the 22nd and 23:00 on the 21st are the same night, 2026-10-21."""
+    return (now - dt.timedelta(hours=12)).date().isoformat()
+
+
+def busy_reasons(load1: float, ncpu: int, procs: list[tuple[int, list[str]]]) -> list[str]:
+    """Why the box is not free, from its 1-minute load and its processes as
+    (uid, argv); empty when it is free."""
+    out = []
+    if load1 > IDLE_LOAD * ncpu:
+        out.append(f"load {load1:.1f} above {IDLE_LOAD * ncpu:.1f}")
+    if any(uid in NIXBLD_UIDS for uid, _ in procs):
+        out.append("a nix build is running")
+    for _, argv in procs:
+        words = [Path(a).name for a in argv[:3]]
+        hit = next((c for c in BUSY_COMMANDS if c in words), None)
+        if hit:
+            out.append(f"{hit} is running")
+            break
+    return out
+
+
+def read_procs() -> list[tuple[int, list[str]]]:
+    procs = []
+    for d in Path("/proc").iterdir():
+        if not d.name.isdigit() or d.name == str(os.getpid()):
+            continue
+        try:
+            argv = [a for a in (d / "cmdline").read_bytes().decode(errors="replace").split("\0") if a]
+            uid = int(next(l for l in (d / "status").read_text().splitlines() if l.startswith("Uid:")).split()[1])
+        except (OSError, StopIteration, ValueError, IndexError):
+            continue
+        procs.append((uid, argv))
+    return procs
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         prog="update-check", description=__doc__,
@@ -671,6 +722,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--force", action="store_true", help="rebuild a PR even when upstream has not moved")
     ap.add_argument("--json", action="store_true", help="print the run report as JSON")
     ap.add_argument("--watch", help=f"read this watch file instead of origin/main:{WATCH_PATH}")
+    ap.add_argument("--if-idle", action="store_true", help="skip (exit 0) while the box is busy")
+    ap.add_argument("--once-per-night", action="store_true",
+                    help="skip (exit 0) when a run already finished clean this night (noon to noon)")
     args = ap.parse_args(argv)
 
     STATE.mkdir(parents=True, exist_ok=True)
@@ -680,6 +734,20 @@ def main(argv: list[str]) -> int:
     except BlockingIOError:
         print("update-check: another run holds the lock", file=sys.stderr)
         return 75
+
+    night = night_of(dt.datetime.now())
+    night_file = STATE / "night"
+    skipped = None
+    if args.once_per_night and night_file.exists() and night_file.read_text().strip() == night:
+        skipped = f"the night of {night} already ran"
+    elif args.if_idle:
+        reasons = busy_reasons(os.getloadavg()[0], os.cpu_count() or 1, read_procs())
+        if reasons:
+            skipped = f"busy ({'; '.join(reasons)}); the next firing tries again"
+    if skipped:
+        print(json.dumps({"night": night, "skipped": skipped, "inputs": []}) if args.json
+              else f"update-check: skipped, {skipped}")
+        return 0
 
     run = Run(args)
     entries = run.watch["inputs"]
@@ -718,7 +786,10 @@ def main(argv: list[str]) -> int:
             if r.get("error"):
                 line += f"  {r['error']}"
             print(line)
-    return 1 if any(r["status"] == "error" for r in results) else 0
+    failed = any(r["status"] == "error" for r in results)
+    if args.once_per_night and not args.dry_run and not failed:
+        night_file.write_text(night + "\n")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

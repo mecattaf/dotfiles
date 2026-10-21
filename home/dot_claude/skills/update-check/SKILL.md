@@ -20,6 +20,11 @@ On the strix:
 
     update-check --json
 
+The floor routine runs `update-check --if-idle --once-per-night --json`
+instead: it answers `{"skipped": ...}` while the strix is busy or when this
+night already ran, and that is a normal outcome, not an error. The nightly
+routine stops after step 1; the digest (step 2) runs when Tom asks for it.
+
 It fetches main, compares each input in `lib/update-watch.json` with upstream,
 and for each one that moved it rebuilds the rolling branch `update/<input>`,
 runs the gate and opens or refreshes one PR. Read the per-input `status`:

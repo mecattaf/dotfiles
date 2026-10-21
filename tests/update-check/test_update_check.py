@@ -186,6 +186,20 @@ def release(tag: str, published: str, body: str, prerelease: bool = False) -> di
 
 
 class PureHelpers(unittest.TestCase):
+    def test_a_night_runs_noon_to_noon(self) -> None:
+        d = uc.dt.datetime
+        self.assertEqual(uc.night_of(d(2026, 10, 22, 1, 0)), "2026-10-21")
+        self.assertEqual(uc.night_of(d(2026, 10, 21, 23, 0)), "2026-10-21")
+        self.assertEqual(uc.night_of(d(2026, 10, 22, 12, 0)), "2026-10-22")
+
+    def test_busy_reasons(self) -> None:
+        self.assertEqual(uc.busy_reasons(1.0, 32, [(1000, ["/bin/fish"])]), [])
+        self.assertIn("load", uc.busy_reasons(20.0, 32, [])[0])
+        self.assertEqual(uc.busy_reasons(1.0, 32, [(30001, ["bash", "-e", "builder.sh"])]),
+                         ["a nix build is running"])
+        self.assertEqual(uc.busy_reasons(1.0, 32, [(0, ["/run/current-system/sw/bin/nixos-rebuild", "switch"])]),
+                         ["nixos-rebuild is running"])
+
     def test_parse_version(self) -> None:
         self.assertEqual(uc.parse_version("2.1.296"), (2, 1, 296))
         self.assertEqual(uc.parse_version("rust-v0.162.1", "rust-v"), (0, 162, 1))
@@ -525,6 +539,26 @@ class Run(unittest.TestCase):
         self.assertEqual(r["llm-agents"]["status"], "opened")
         self.assertIn("the release notes could not be read this run", self.state()["prs"][0]["body"])
         self.assert_tidy()
+
+    def run_raw(self, *args: str, **env: str) -> dict:
+        p = subprocess.run([sys.executable, str(SCRIPT), "--json", *args], env={**self.env, **env},
+                           capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stderr + p.stdout)
+        return json.loads(p.stdout)
+
+    def test_once_per_night_runs_once_then_skips(self) -> None:
+        first = self.run_raw("--once-per-night")
+        self.assertNotIn("skipped", first)
+        self.assertEqual(len(self.state()["prs"]), 2)
+        second = self.run_raw("--once-per-night")
+        self.assertIn("already ran", second["skipped"])
+        self.assertEqual(len(self.state()["prs"]), 2)
+
+    def test_if_idle_skips_a_busy_box_and_leaves_the_night_open(self) -> None:
+        r = self.run_raw("--if-idle", "--once-per-night", UPDATE_CHECK_IDLE_LOAD="-1")
+        self.assertIn("busy", r["skipped"])
+        self.assertEqual(self.origin_branches(), ["main"])
+        self.assertFalse((self.t / "state" / "night").exists())
 
     def test_dry_run_changes_nothing(self) -> None:
         r = self.run_check("--dry-run")
