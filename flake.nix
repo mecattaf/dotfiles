@@ -21,10 +21,9 @@
     # is either an upstream binary (chrome), a leaf tool (uv), or the
     # versioned kernel attr whose whole doctrine is point-fix-only advance.
     #
-    # Its lock entry is a reproducible fallback. The nightly fleet transaction uses
-    # `rollingInputOverrides` below to resolve it (with llm-agents and the two AMD
-    # catalogs) exactly once, then builds and deploys those immutable URLs without
-    # writing the lock. A plain local build uses the reviewed fallback revision.
+    # The lock entry is the reviewed revision. The Projects nightly checker
+    # proposes lock bumps in update/nixpkgs-fresh PRs; it never deploys.
+    # rollingInputOverrides remains available to explicit fleet candidates.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
     # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
@@ -1700,6 +1699,7 @@
                 pkgs.python3
                 pkgs.git
               ];
+              PYTHONTZPATH = "${pkgs.tzdata}/share/zoneinfo";
             }
             ''
               set -euo pipefail
