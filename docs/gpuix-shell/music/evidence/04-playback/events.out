@@ -1,0 +1,168 @@
+25 reply#10 success
+25 reply#11 success
+25 reply#12 success
+25 reply#13 success
+25 reply#14 success
+25 reply#15 success
+25 reply#16 success
+25 reply#17 success
+25 reply#18 success
+25 reply#19 success {"playlist_entry_id":1}
+25 reply#20 success {"playlist_entry_id":2}
+25 property-change pause false
+25 property-change playlist-pos 0
+25 property-change playlist-count 2
+25 property-change idle-active true
+25 property-change duration
+25 property-change media-title
+25 property-change eof-reached
+25 property-change core-idle true
+28 start-file 1
+28 property-change idle-active false
+28 property-change media-title "a.flac"
+60 audio-reconfig
+61 audio-reconfig
+61 file-loaded
+61 property-change duration 4
+61 property-change media-title "Tone A"
+61 property-change eof-reached false
+62 audio-reconfig
+62 playback-restart
+62 property-change core-idle false
+3637 audio-reconfig
+3637 property-change eof-reached
+3637 property-change core-idle true
+3637 end-file eof 1
+3637 property-change duration
+3637 property-change media-title
+3637 start-file 2
+3637 property-change playlist-pos 1
+3637 property-change media-title "b.flac"
+3638 reply#21 success null
+3638 reply#22 success {"playlist_entry_id":3}
+3638 audio-reconfig
+3638 audio-reconfig
+3638 file-loaded
+3638 playback-restart
+3638 property-change playlist-pos 0
+3638 property-change playlist-count 2
+3638 property-change duration 3
+3638 property-change media-title "Tone B"
+3638 property-change eof-reached false
+3638 property-change core-idle false
+6616 audio-reconfig
+6616 property-change eof-reached
+6616 property-change core-idle true
+6616 end-file eof 2
+6616 property-change duration
+6616 property-change media-title
+6616 start-file 3
+6616 property-change playlist-pos 1
+6616 property-change media-title "c.mp3"
+6616 reply#23 success null
+6616 property-change playlist-pos 0
+6616 property-change playlist-count 1
+6617 reply#24 success {"playlist_entry_id":4}
+6617 audio-reconfig
+6617 audio-reconfig
+6617 file-loaded
+6617 property-change duration 2
+6617 property-change media-title "Tone C"
+6617 property-change eof-reached false
+7110 audio-reconfig
+7110 audio-reconfig
+7111 property-change playlist-count 2
+7111 playback-restart
+7111 property-change core-idle false
+8701 audio-reconfig
+8701 property-change eof-reached
+8701 property-change core-idle true
+8701 end-file eof 3
+8701 property-change duration
+8701 property-change media-title
+8701 start-file 4
+8701 property-change playlist-pos 1
+8702 property-change media-title "c.mp3"
+8702 reply#25 success null
+8702 reply#26 success {"playlist_entry_id":5}
+8702 audio-reconfig
+8702 audio-reconfig
+8702 file-loaded
+8702 property-change playlist-pos 0
+8702 property-change playlist-count 2
+8702 playback-restart
+8702 property-change duration 2
+8702 property-change media-title "Tone C"
+8702 property-change eof-reached false
+8702 property-change core-idle false
+10738 audio-reconfig
+10738 property-change eof-reached
+10738 property-change core-idle true
+10738 end-file eof 4
+10738 property-change duration
+10738 property-change media-title
+10738 start-file 5
+10739 property-change playlist-pos 1
+10739 property-change media-title "c.mp3"
+10739 reply#27 success null
+10739 reply#28 success {"playlist_entry_id":6}
+10739 audio-reconfig
+10739 audio-reconfig
+10739 file-loaded
+10739 property-change playlist-pos 0
+10739 property-change playlist-count 2
+10739 property-change duration 2
+10739 property-change media-title "Tone C"
+10739 property-change eof-reached false
+10739 playback-restart
+10739 property-change core-idle false
+12728 audio-reconfig
+12728 property-change eof-reached
+12728 property-change core-idle true
+12728 end-file eof 5
+12728 property-change duration
+12728 property-change media-title
+12728 start-file 6
+12728 property-change playlist-pos 1
+12728 property-change media-title "c.mp3"
+12728 reply#29 success null
+12728 property-change playlist-pos 0
+12728 property-change playlist-count 1
+12728 reply#30 success {"playlist_entry_id":7}
+12728 property-change playlist-count 2
+12728 audio-reconfig
+12728 audio-reconfig
+12728 file-loaded
+12729 property-change duration 2
+12729 property-change media-title "Tone C"
+12729 property-change eof-reached false
+12729 playback-restart
+12729 property-change core-idle false
+14715 audio-reconfig
+14715 property-change eof-reached
+14715 property-change core-idle true
+14715 end-file eof 6
+14715 property-change duration
+14715 property-change media-title
+14715 start-file 7
+14715 property-change playlist-pos 1
+14715 property-change media-title "c.mp3"
+14715 reply#31 success null
+14716 reply#32 success {"playlist_entry_id":8}
+14716 property-change playlist-pos 0
+14716 audio-reconfig
+14716 audio-reconfig
+14716 file-loaded
+14716 property-change duration 2
+14716 property-change media-title "Tone C"
+14716 property-change eof-reached false
+14716 playback-restart
+14716 property-change core-idle false
+15001 reply#33 success null
+15001 audio-reconfig
+15001 property-change eof-reached
+15001 property-change core-idle true
+15001 end-file quit 7
+15002 property-change duration
+15002 property-change media-title
+{"timePosEvents":154,"spanS":14.98,"perSecond":10.3,"medianGapMs":99,"maxGapMs":543}

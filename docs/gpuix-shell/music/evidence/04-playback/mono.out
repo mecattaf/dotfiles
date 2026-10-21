@@ -1,0 +1,4 @@
+{'rt': 'python CLOCK_MONOTONIC', 'ms': 656532238}
+{"rt":"bun","hrtimeMs":56,"perfNow":57}
+{"rt":"node","hrtimeMs":656532318,"perfNow":10}
+{'rt': 'python CLOCK_MONOTONIC', 'ms': 656532334}

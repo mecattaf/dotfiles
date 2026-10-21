@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Read-only Subsonic/OpenSubsonic probe used to write 03-subsonic-api-live.md.
+#   subsonic-get <endpoint> [key=value ...]   -> JSON on stdout (username redacted)
+#   subsonic-get -o FILE <endpoint> [k=v ...] -> raw bytes to FILE, headers on stdout
+#   subsonic-get --url <endpoint> [k=v ...]   -> prints the URL with every auth value masked
+#   subsonic-get --time <endpoint> [k=v ...]  -> JSON to /dev/null, curl's server round trip (ms) on stdout
+# A value of @user (e.g. username=@user) is replaced by the configured username.
+# Credentials are read at run time from $NAVIDROME_CREDENTIALS_FILE
+# (default /run/agenix/navidrome-credentials, lines NAVIDROME_USER= / NAVIDROME_PASSWORD=)
+# and passed to curl on stdin (--config -), never on argv and never printed.
+set -euo pipefail
+base=${NAVIDROME_URL:-http://music.internal}
+creds=${NAVIDROME_CREDENTIALS_FILE:-/run/agenix/navidrome-credentials}
+out= mode=json
+case ${1-} in
+  -o) out=$2; mode=bytes; shift 2 ;;
+  --url) mode=url; shift ;;
+  --time) mode=time; shift ;;
+esac
+endpoint=$1; shift
+case $endpoint in
+  star|unstar|scrobble|setRating|createPlaylist|updatePlaylist|deletePlaylist|savePlayQueue|createBookmark|deleteBookmark|createShare|updateShare|deleteShare|startScan|createUser|updateUser|deleteUser|changePassword|createInternetRadioStation|updateInternetRadioStation|deleteInternetRadioStation)
+    echo "subsonic-get: refusing write endpoint $endpoint (probe is read-only)" >&2; exit 2 ;;
+esac
+user=$(sed -n 's/^NAVIDROME_USER=//p' "$creds")
+pass=$(sed -n 's/^NAVIDROME_PASSWORD=//p' "$creds")
+salt=$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')
+token=$(printf '%s%s' "$pass" "$salt" | md5sum | cut -d' ' -f1)
+urlenc() { jq -rn --arg v "$1" '$v|@uri'; }
+q="u=$(urlenc "$user")&t=$token&s=$salt&v=1.16.1&c=gpuix-shell-probe&f=json"
+for kv in "$@"; do v=${kv#*=}; [ "$v" = @user ] && v=$user; q+="&${kv%%=*}=$(urlenc "$v")"; done
+redact() { sed -e "s/\"$user\"/\"<user>\"/g" -e "s/=$user\b/=<user>/g"; }
+case $mode in
+  url) printf '%s/rest/%s?%s\n' "$base" "$endpoint" "$q" | sed -e "s/u=$user/u=<user>/" -e 's/t=[0-9a-f]\{32\}/t=<md5(password+salt)>/' -e 's/s=[0-9a-f]\{16\}/s=<salt>/' ;;
+  json) printf 'url = "%s/rest/%s?%s"\n' "$base" "$endpoint" "$q" | curl -sS --max-time 30 --config - | redact ;;
+  time) printf 'url = "%s/rest/%s?%s"\n' "$base" "$endpoint" "$q" | curl -sS --max-time 30 -o /dev/null -w '%{time_total}\n' --config - | awk '{printf "%d\n", $1*1000}' ;;
+  bytes) printf 'url = "%s/rest/%s?%s"\n' "$base" "$endpoint" "$q" | curl -sS --max-time 60 -D - -o "$out" --config - | redact ;;
+esac
