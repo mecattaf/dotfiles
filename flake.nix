@@ -21,9 +21,9 @@
     # is either an upstream binary (Chrome), a leaf user tool, or the
     # versioned kernel attr whose whole doctrine is point-fix-only advance.
     #
-    # The lock entry is the reviewed package revision. Substrate’s nightly check
-    # opens a bump PR; it never activates the fleet. Explicit fleet deploys may
-    # resolve `rollingInputOverrides` once and share those immutable URLs.
+    # The lock entry is the reviewed revision. The Projects nightly checker
+    # proposes lock bumps in update/nixpkgs-fresh PRs; it never deploys.
+    # rollingInputOverrides remains available to explicit fleet candidates.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
     # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
@@ -155,9 +155,9 @@
     # kitten tier, its session layer, and its title-naming pipeline are all
     # deleted in favour of one server holding every PTY.
     #
-    # PINNED TO A REV, not a branch: v0.9.5 (2026-10-14); nixpkgs
-    # carries an older release. Bump by
-    # editing the rev here, deliberately, the way nixpkgs-paperless is bumped.
+    # PINNED TO A REV, not a branch: the release named on the url line below
+    # (nixpkgs carries an older one). The rev moves only through a reviewed PR,
+    # which update-check opens when herdr cuts a release (#550).
     #
     # Consume `packages.<sys>.herdr` ONLY (home/herdr.nix). Upstream composes
     # rust-overlay into its own pkgs fixpoint to build the Rust toolchain from
@@ -1704,6 +1704,7 @@
                 pkgs.python3
                 pkgs.git
               ];
+              PYTHONTZPATH = "${pkgs.tzdata}/share/zoneinfo";
             }
             ''
               set -euo pipefail

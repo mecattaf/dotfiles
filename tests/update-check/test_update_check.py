@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import argparse
+import contextlib
+import datetime as dt
+import io
+from unittest.mock import patch, Mock
 import importlib.machinery
 import importlib.util
 import json
@@ -8,6 +13,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -34,8 +40,9 @@ uc = load_module()
 # answers the versions fake.json records for the revs locked in the evaluated
 # tree, and fmt/flake check/build fail on a branch named in fake.json "fail".
 FAKE_NIX = r'''
-import json, os, re, subprocess, sys
+import json, os, re, subprocess, sys, time
 from pathlib import Path
+time.sleep(float(os.environ.get("FAKE_NIX_DELAY", "0")))
 state_path = Path(os.environ["FAKE_STATE"])
 state = json.loads(state_path.read_text())
 args = sys.argv[1:]
@@ -56,7 +63,7 @@ if args[:2] == ["flake", "update"]:
     Path("flake.lock").write_text(json.dumps(lock, indent=2) + "\n")
     sys.exit(0)
 if args[0] == "eval":
-    tree = re.search(r'git\+file://([^"]+)', args[-1]).group(1)
+    tree = re.search(r'git\+file://([^"]+)', args[-1]).group(1).split("?")[0]
     lock = json.loads((Path(tree) / "flake.lock").read_text())
     merged = {}
     for key in lock["nodes"]["root"]["inputs"].values():
@@ -65,8 +72,8 @@ if args[0] == "eval":
     print(json.dumps({k: merged.get(k) for k in paths}))
     sys.exit(0)
 branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
-if any(f in branch for f in state["fail"]):
-    print("error: builder for %s failed" % branch)
+if any(f in branch or f.replace("update/", "update-check-") in str(Path.cwd()) for f in state["fail"]):
+    print("error: builder for %s failed" % state["fail"][0])
     sys.exit(1)
 print("ok")
 '''
@@ -186,24 +193,6 @@ def release(tag: str, published: str, body: str, prerelease: bool = False) -> di
 
 
 class PureHelpers(unittest.TestCase):
-    def test_a_night_runs_noon_to_noon(self) -> None:
-        d = uc.dt.datetime
-        self.assertEqual(uc.night_of(d(2026, 10, 22, 1, 0)), "2026-10-21")
-        self.assertEqual(uc.night_of(d(2026, 10, 21, 23, 0)), "2026-10-21")
-        self.assertEqual(uc.night_of(d(2026, 10, 22, 12, 0)), "2026-10-22")
-
-    def test_busy_reasons(self) -> None:
-        self.assertEqual(uc.busy_reasons(1.0, 32, [(1000, ["/bin/fish"])]), [])
-        self.assertIn("load", uc.busy_reasons(20.0, 32, [])[0])
-        self.assertEqual(uc.busy_reasons(1.0, 32, [(30001, ["bash", "-e", "builder.sh"])]),
-                         ["a nix build is running"])
-        self.assertEqual(uc.busy_reasons(1.0, 32, [(0, ["/run/current-system/sw/bin/nixos-rebuild", "switch"])]),
-                         ["nixos-rebuild is running"])
-        self.assertEqual(uc.busy_reasons(1.0, 32, [(1000, ["nix", "build", ".#x"])]), ["nix build is running"])
-        self.assertEqual(uc.busy_reasons(1.0, 32, [(1000, ["/bin/nix", "flake", "check"])]),
-                         ["nix flake check is running"])
-        self.assertEqual(uc.busy_reasons(1.0, 32, [(1000, ["nix", "eval", ".#x"])]), [])
-
     def test_parse_version(self) -> None:
         self.assertEqual(uc.parse_version("2.1.296"), (2, 1, 296))
         self.assertEqual(uc.parse_version("rust-v0.162.1", "rust-v"), (0, 162, 1))
@@ -416,10 +405,10 @@ class Run(unittest.TestCase):
         s.update(changes)
         self.write_state(s)
 
-    def run_check(self, *args: str) -> dict:
+    def run_check(self, *args: str, expected_exit: int = 0) -> dict:
         p = subprocess.run([sys.executable, str(SCRIPT), "--json", *args], env=self.env,
                            capture_output=True, text=True)
-        self.assertEqual(p.returncode, 0, p.stderr + p.stdout)
+        self.assertEqual(p.returncode, expected_exit, p.stderr + p.stdout)
         return {r["input"]: r for r in json.loads(p.stdout)["inputs"]}
 
     def origin_file(self, branch: str, path: str) -> str:
@@ -464,13 +453,16 @@ class Run(unittest.TestCase):
 
     def test_a_failed_gate_opens_a_draft_with_the_log_tail(self) -> None:
         self.edit_state(fail=["update/herdr"])
-        r = self.run_check()
+        r = self.run_check(expected_exit=1)
         self.assertFalse(r["herdr"]["gate"]["ok"])
         prs = {p["head"]: p for p in self.state()["prs"]}
         self.assertTrue(prs["update/herdr"]["isDraft"])
         self.assertIn("builder for update/herdr failed", prs["update/herdr"]["body"])
         self.assertFalse(prs["update/llm-agents"]["isDraft"])
 
+        # An unchanged failed draft stays visibly failed on later checks.
+        r = self.run_check("--only", "herdr", expected_exit=1)
+        self.assertFalse(r["herdr"]["gate"]["ok"])
         self.edit_state(fail=[])
         r = self.run_check("--force", "--only", "herdr")
         self.assertEqual(r["herdr"]["status"], "refreshed")
@@ -531,6 +523,23 @@ class Run(unittest.TestCase):
         self.assertEqual(self.state()["prs"][0]["state"], "closed")
         self.assertEqual(self.origin_branches(), ["main"])
 
+    def test_main_catching_up_keeps_unmerged_review_commits(self) -> None:
+        self.run_check("--only", "llm-agents")
+        review = self.t / "review"
+        self.git("clone", "-q", "-b", "update/llm-agents", str(self.origin), str(review))
+        (review / "ADOPT.md").write_text("pending reviewed change")
+        self.git("-C", str(review), "add", "ADOPT.md")
+        self.git("-C", str(review), "commit", "-qam", "reviewed adoption")
+        self.git("-C", str(review), "push", "-q", "origin", "update/llm-agents")
+        (self.seed / "flake.lock").write_text(lock_json(A1, H0))
+        self.git("-C", str(self.seed), "commit", "-qam", "input bumped separately")
+        self.git("-C", str(self.seed), "push", "-q", str(self.origin), "main")
+        result = self.run_check("--only", "llm-agents")["llm-agents"]
+        self.assertEqual(result["status"], "review-pending")
+        self.assertEqual(len(result["pending_commits"]), 1)
+        self.assertEqual(self.state()["prs"][0]["state"], "open")
+        self.assertIn("update/llm-agents", self.origin_branches())
+
     def test_a_flaky_github_read_is_retried(self) -> None:
         self.edit_state(api_fail=["anthropics/claude-code/releases"], api_fail_once=True)
         r = self.run_check("--only", "llm-agents")
@@ -544,26 +553,6 @@ class Run(unittest.TestCase):
         self.assertIn("the release notes could not be read this run", self.state()["prs"][0]["body"])
         self.assert_tidy()
 
-    def run_raw(self, *args: str, **env: str) -> dict:
-        p = subprocess.run([sys.executable, str(SCRIPT), "--json", *args], env={**self.env, **env},
-                           capture_output=True, text=True)
-        self.assertEqual(p.returncode, 0, p.stderr + p.stdout)
-        return json.loads(p.stdout)
-
-    def test_once_per_night_runs_once_then_skips(self) -> None:
-        first = self.run_raw("--once-per-night")
-        self.assertNotIn("skipped", first)
-        self.assertEqual(len(self.state()["prs"]), 2)
-        second = self.run_raw("--once-per-night")
-        self.assertIn("already ran", second["skipped"])
-        self.assertEqual(len(self.state()["prs"]), 2)
-
-    def test_if_idle_skips_a_busy_box_and_leaves_the_night_open(self) -> None:
-        r = self.run_raw("--if-idle", "--once-per-night", UPDATE_CHECK_IDLE_LOAD="-1")
-        self.assertIn("busy", r["skipped"])
-        self.assertEqual(self.origin_branches(), ["main"])
-        self.assertFalse((self.t / "state" / "night").exists())
-
     def test_dry_run_changes_nothing(self) -> None:
         r = self.run_check("--dry-run")
         self.assertEqual(r["llm-agents"]["status"], "would-open")
@@ -571,6 +560,235 @@ class Run(unittest.TestCase):
         self.assertEqual(self.origin_branches(), ["main"])
         self.assertEqual(self.state()["prs"], [])
         self.assertFalse((self.t / "wt").exists())
+
+    def test_missing_version_probe_is_an_error_not_a_quiet_night(self) -> None:
+        state = self.state()
+        state["versions"][A0] = {}
+        self.write_state(state)
+        results = self.run_check("--only", "llm-agents", expected_exit=1)
+        self.assertIn("version probe missing", results["llm-agents"]["error"])
+        self.assertEqual(self.origin_branches(), ["main"])
+        self.assert_tidy()
+
+    def test_review_worktree_is_never_deleted(self) -> None:
+        self.run_check("--only", "llm-agents")
+        self.git("-C", str(self.repo), "fetch", "origin")
+        review = self.t / "wt" / "update-llm-agents"
+        self.git("-C", str(self.repo), "worktree", "add", "-b", "update/llm-agents",
+                 str(review), "origin/update/llm-agents")
+        (review / "uncommitted.txt").write_text("live review")
+        self.edit_state(heads={"numtide/llm-agents.nix": A2})
+        self.run_check("--only", "llm-agents")
+        self.assertEqual((review / "uncommitted.txt").read_text(), "live review")
+        self.assertTrue(self.git("-C", str(self.repo), "branch", "--list", "update/llm-agents"))
+
+    def test_review_conflict_preserves_remote_tip(self) -> None:
+        self.run_check("--only", "llm-agents")
+        review = self.t / "review"
+        self.git("clone", "-q", "-b", "update/llm-agents", str(self.origin), str(review))
+        (review / "flake.nix").write_text("reviewer edits the declaration\n")
+        self.git("-C", str(review), "commit", "-qam", "reviewed adoption")
+        self.git("-C", str(review), "push", "-q", "origin", "update/llm-agents")
+        old_tip = self.git("--git-dir", str(self.origin), "rev-parse", "update/llm-agents")
+        (self.seed / "flake.nix").write_text("main edits the declaration differently\n")
+        self.git("-C", str(self.seed), "commit", "-qam", "new main")
+        self.git("-C", str(self.seed), "push", "-q", str(self.origin), "main")
+        self.edit_state(heads={"numtide/llm-agents.nix": A2})
+        results = self.run_check("--only", "llm-agents", expected_exit=1)
+        self.assertIn("existing PR preserved", results["llm-agents"]["error"])
+        self.assertEqual(self.git("--git-dir", str(self.origin), "rev-parse", "update/llm-agents"), old_tip)
+        self.assert_tidy()
+
+    def test_changed_main_refreshes_unchanged_upstream(self) -> None:
+        self.run_check("--only", "llm-agents")
+        (self.seed / "unrelated.txt").write_text("main changed")
+        self.git("-C", str(self.seed), "add", "unrelated.txt")
+        self.git("-C", str(self.seed), "commit", "-qam", "new main")
+        self.git("-C", str(self.seed), "push", "-q", str(self.origin), "main")
+        results = self.run_check("--only", "llm-agents")
+        self.assertEqual(results["llm-agents"]["status"], "refreshed")
+        self.assertEqual(self.origin_file("update/llm-agents", "unrelated.txt"), "main changed")
+
+    def test_background_worker_outlives_parent_and_holds_lock_until_result(self):
+        self.env["FAKE_NIX_DELAY"] = "0.25"
+        launched = subprocess.run([sys.executable, str(SCRIPT), "--background", "--json", "--only", "herdr"],
+                                  env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(launched.returncode, 0, launched.stderr)
+        receipt = json.loads(launched.stdout)
+        self.assertEqual(receipt["status"], "launched")
+        self.assertEqual(os.getsid(receipt["pid"]), receipt["pid"])
+        # The launching process has exited. A second invocation cannot acquire
+        # the lock still held by the worker in its separate process session.
+        duplicate = subprocess.run([sys.executable, str(SCRIPT), "--background", "--json"],
+                                   env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(duplicate.returncode, 75)
+        self.assertEqual(json.loads(duplicate.stdout)["active_job"]["pid"], receipt["pid"])
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            result = json.loads(Path(receipt["job"]).read_text())
+            if result["status"] == "completed":
+                break
+            time.sleep(0.05)
+        self.assertEqual(result["status"], "completed", result)
+        self.assertTrue(result["ok"])
+        self.assertTrue(Path(receipt["log"]).exists())
+        self.assertEqual(result["inputs"][0]["status"], "opened")
+        self.assert_tidy()
+
+    def test_background_gate_failure_is_durable(self):
+        self.edit_state(fail=["update/herdr"])
+        launched = subprocess.run([sys.executable, str(SCRIPT), "--background", "--json", "--only", "herdr"],
+                                  env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(launched.returncode, 0)
+        receipt = json.loads(launched.stdout)
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            result = json.loads(Path(receipt["job"]).read_text())
+            if result["status"] == "completed":
+                break
+            time.sleep(0.05)
+        self.assertEqual(result["status"], "completed", result)
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["inputs"][0]["gate"]["ok"])
+
+    def test_interrupted_background_job_is_reported_before_launching_more(self):
+        state = self.t / "state"
+        jobs = state / "jobs"
+        jobs.mkdir(parents=True)
+        job = jobs / "previous.json"
+        receipt = {"status": "running", "pid": 999999999, "job": str(job), "run": "previous"}
+        job.write_text(json.dumps(receipt))
+        (state / "last-launch.json").write_text(json.dumps(receipt))
+        result = subprocess.run([sys.executable, str(SCRIPT), "--background", "--json"],
+                                env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout)["previous"]["status"], "interrupted")
+        self.assertEqual(self.state()["prs"], [])
+
+
+class Nightly(unittest.TestCase):
+    def test_paris_date_crosses_utc_midnight_and_dst(self):
+        self.assertEqual(uc.night_key(dt.datetime(2026, 10, 21, 23, tzinfo=dt.timezone.utc)), "2026-10-21")
+        self.assertEqual(uc.night_key(dt.datetime(2026, 10, 26, 23, 30, tzinfo=dt.timezone.utc)), "2026-10-26")
+
+    def invoke(self, *flags):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = uc.main(["--if-idle", "--json", *flags])
+        return code, json.loads(output.getvalue())
+
+    def test_busy_defers_without_fetch_or_stamp(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(uc, "STATE", Path(directory)), \
+                patch.object(uc, "busy_reasons", return_value=["working Herdr pane"]), \
+                patch.object(uc, "Run") as run:
+            code, report = self.invoke()
+            self.assertEqual((code, report["status"]), (0, "deferred"))
+            run.assert_not_called()
+            self.assertFalse((Path(directory) / "last-night.json").exists())
+            self.assertEqual(len(list((Path(directory) / "runs").glob("*.json"))), 1)
+
+    def test_completed_failure_is_visible_and_not_rebuilt_hourly(self):
+        run = Mock(main="abc", watch={"inputs": [{"name": "herdr"}]})
+        run.check.return_value = {"input": "herdr", "status": "opened", "gate": {"ok": False}, "draft": True}
+        with tempfile.TemporaryDirectory() as directory, patch.object(uc, "STATE", Path(directory)), \
+                patch.object(uc, "busy_reasons", return_value=[]), patch.object(uc, "Run", return_value=run):
+            code, report = self.invoke()
+            self.assertEqual((code, report["status"], report["ok"]), (1, "completed", False))
+            code, report = self.invoke()
+            self.assertEqual((code, report["status"]), (1, "already-checked"))
+            self.assertFalse(report["previous"]["ok"])
+            self.assertEqual(run.check.call_count, 1)
+            self.assertFalse(json.loads((Path(directory) / "last-night.json").read_text())["ok"])
+
+    def test_dry_run_does_not_consume_night(self):
+        run = Mock(main="abc", watch={"inputs": []})
+        with tempfile.TemporaryDirectory() as directory, patch.object(uc, "STATE", Path(directory)), \
+                patch.object(uc, "busy_reasons", return_value=[]), patch.object(uc, "Run", return_value=run):
+            self.invoke("--dry-run")
+            self.assertFalse((Path(directory) / "last-night.json").exists())
+
+    def test_unknown_idle_state_errors_without_running(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(uc, "STATE", Path(directory)), \
+                patch.object(uc, "busy_reasons", side_effect=uc.CheckError("Herdr unavailable")), \
+                patch.object(uc, "Run") as run:
+            code, report = self.invoke()
+            self.assertEqual((code, report["status"]), (1, "error"))
+            run.assert_not_called()
+
+    def test_busy_between_inputs_defers_remaining_work(self):
+        run = Mock(main="abc", watch={"inputs": [{"name": "a"}, {"name": "b"}]})
+        run.check.return_value = {"input": "a", "status": "current"}
+        with tempfile.TemporaryDirectory() as directory, patch.object(uc, "STATE", Path(directory)), \
+                patch.object(uc, "busy_reasons", side_effect=[[], [], ["new interactive work"]]), \
+                patch.object(uc, "Run", return_value=run):
+            code, report = self.invoke()
+            self.assertEqual((code, report["status"]), (0, "deferred"))
+            self.assertEqual(run.check.call_count, 1)
+            self.assertFalse((Path(directory) / "last-night.json").exists())
+
+    def test_herdr_probe_is_conservative_and_read_only(self):
+        panes = [{"agent": "codex", "agent_status": "working", "pane_id": "p1"},
+                 {"agent": "claude", "agent_status": "idle", "pane_id": "p2"},
+                 {"agent_status": "unknown", "pane_id": "shell"}]
+        with patch.object(uc.os, "getloadavg", return_value=(0, 0, 0)), \
+                patch.object(uc.Path, "glob", return_value=[]), \
+                patch.object(uc, "sh", return_value=json.dumps({"result": {"panes": panes}})) as sh:
+            self.assertEqual(uc.busy_reasons(), ["Herdr pane p1 is working"])
+            sh.assert_called_once_with(["herdr", "pane", "list"], timeout=15)
+
+
+class IssueWatch(unittest.TestCase):
+    def make_run(self, directory):
+        run = uc.Run.__new__(uc.Run)
+        run.args = argparse.Namespace(dry_run=False)
+        run.main = "main-commit"
+        run.logs = Path(directory)
+        run.eval_versions = Mock(return_value={"strix": "7.2.12", "nas": "7.2.10"})
+        return run
+
+    def test_kernel_series_ignores_patch_and_rc_and_keeps_closed_issue(self):
+        entry = {"name": "linux", "source": "kernel.org", "seriesOnly": True,
+                 "versions": {"strix": "x", "nas": "y"}, "reason": "Review before reboot."}
+        for available, expected in [("7.2.99", "current"), ("7.3", "issue-exists")]:
+            with self.subTest(available), tempfile.TemporaryDirectory() as directory:
+                run = self.make_run(directory)
+                response = io.StringIO(json.dumps({"releases": [{"version": available}, {"version": "7.4-rc1"}]}))
+                with patch.object(uc.urllib.request, "urlopen", return_value=response), \
+                        patch.object(uc, "gh_json", return_value=[{"title": "update: linux 7.3 available", "url": "issue-url", "state": "CLOSED"}]), \
+                        patch.object(uc, "sh") as sh:
+                    result = run.check_issue(entry)
+                    self.assertEqual(result["status"], expected)
+                    sh.assert_not_called()
+                    if expected == "issue-exists":
+                        self.assertEqual(result["issue_state"], "CLOSED")
+
+    def test_new_series_opens_issue_without_nix_update(self):
+        entry = {"name": "linux", "source": "kernel.org", "seriesOnly": True,
+                 "versions": {"strix": "x", "nas": "y"}, "reason": "Review before reboot."}
+        with tempfile.TemporaryDirectory() as directory:
+            run = self.make_run(directory)
+            response = io.StringIO(json.dumps({"releases": [{"version": "7.3.2", "gitweb": "https://kernel.org/"}]}))
+            with patch.object(uc.urllib.request, "urlopen", return_value=response), \
+                    patch.object(uc, "gh_json", return_value=[]), \
+                    patch.object(uc, "sh", return_value="https://github.com/example/issues/1") as sh:
+                result = run.check_issue(entry)
+                self.assertEqual((result["status"], result["available"]), ("issue-opened", "7.3"))
+                self.assertEqual(sh.call_args.args[0][:3], ["gh", "issue", "create"])
+                self.assertIn("7.2.12", (Path(directory) / "linux.issue.md").read_text())
+                run.eval_versions.assert_called_once_with(uc.REPO, entry["versions"], "main-commit")
+
+    def test_github_watch_uses_latest_stable_release(self):
+        entry = {"name": "fish", "source": "github", "repo": "fish-shell/fish-shell",
+                 "tagPrefix": "", "versions": {"fish": "x"}, "reason": "Review shell."}
+        with tempfile.TemporaryDirectory() as directory:
+            run = self.make_run(directory)
+            run.eval_versions.return_value = {"fish": "4.8.1"}
+            run.args.dry_run = True
+            run.releases = Mock(return_value=[release("4.9.3", "today", "stable"), release("5.0.0", "today", "preview", True)])
+            with patch.object(uc, "gh_json", return_value=[]), patch.object(uc, "sh") as sh:
+                result = run.check_issue(entry)
+                self.assertEqual((result["status"], result["available"]), ("would-open-issue", "4.9.3"))
+                sh.assert_not_called()
 
 
 if __name__ == "__main__":
