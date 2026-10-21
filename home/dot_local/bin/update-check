@@ -615,7 +615,7 @@ class Run:
         steps.append(("flake check", ["nix", "flake", "check", "--no-build", "--keep-going"]))
         steps.append((
             "build " + ", ".join(entry["hosts"] + [b.rsplit(".", 1)[-1] for b in entry.get("build", [])]),
-            ["nix", "build", "--no-link", "--keep-going"]
+            ["nix", "build", "--no-link", "--keep-going", "--max-jobs", "2", "--cores", "4"]
             + [f".#nixosConfigurations.{h}.config.system.build.toplevel" for h in entry["hosts"]]
             + entry.get("build", []),
         ))
