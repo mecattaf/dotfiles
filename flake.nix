@@ -293,7 +293,7 @@
         "/run/agenix/ssh-user-key"
       ];
 
-      # One overlay list everywhere (top-level pkgs + every host).
+      # Shared package overlays; interactive-only tool updates are added below.
       overlays = [
         self.overlays.default
         (final: _prev: {
@@ -321,11 +321,6 @@
           in
           {
             google-chrome = fresh.google-chrome;
-            # User tools follow the same reviewed leaf-package input. The base
-            # system, Mesa and ROCm remain on the main nixpkgs pin.
-            fish = fresh.fish;
-            kitty = fresh.kitty;
-            wrangler = fresh.wrangler;
             # uv — Astral's Python package/project manager. Point releases land
             # weekly; riding nixpkgs-fresh HEAD keeps it current without waiting on
             # the deliberately-lagging main pin (which exists only to gate kernel/
@@ -335,8 +330,23 @@
         )
       ];
 
+      # The frozen NAS keeps its stable shell and tooling. These user tools
+      # follow the reviewed fresh input only on Strix and the client.
+      interactiveToolOverlay =
+        _final: _prev:
+        let
+          fresh = import inputs.nixpkgs-fresh {
+            inherit system;
+            config.allowUnfree = true;
+          };
+        in
+        {
+          inherit (fresh) fish kitty wrangler;
+        };
+
       pkgs = import nixpkgs {
-        inherit system overlays;
+        inherit system;
+        overlays = overlays ++ [ interactiveToolOverlay ];
         config.allowUnfree = true; # google-chrome
       };
 
@@ -370,7 +380,7 @@
           };
           modules = [
             {
-              nixpkgs.overlays = overlays;
+              nixpkgs.overlays = overlays ++ nixpkgs.lib.optionals withHomeManager [ interactiveToolOverlay ];
               nixpkgs.config.allowUnfree = true;
             }
             ./modules/common.nix
