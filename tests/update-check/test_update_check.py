@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -39,8 +40,9 @@ uc = load_module()
 # answers the versions fake.json records for the revs locked in the evaluated
 # tree, and fmt/flake check/build fail on a branch named in fake.json "fail".
 FAKE_NIX = r'''
-import json, os, re, subprocess, sys
+import json, os, re, subprocess, sys, time
 from pathlib import Path
+time.sleep(float(os.environ.get("FAKE_NIX_DELAY", "0")))
 state_path = Path(os.environ["FAKE_STATE"])
 state = json.loads(state_path.read_text())
 args = sys.argv[1:]
@@ -607,6 +609,62 @@ class Run(unittest.TestCase):
         self.assertEqual(results["llm-agents"]["status"], "refreshed")
         self.assertEqual(self.origin_file("update/llm-agents", "unrelated.txt"), "main changed")
 
+    def test_background_worker_outlives_parent_and_holds_lock_until_result(self):
+        self.env["FAKE_NIX_DELAY"] = "0.25"
+        launched = subprocess.run([sys.executable, str(SCRIPT), "--background", "--json", "--only", "herdr"],
+                                  env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(launched.returncode, 0, launched.stderr)
+        receipt = json.loads(launched.stdout)
+        self.assertEqual(receipt["status"], "launched")
+        self.assertEqual(os.getsid(receipt["pid"]), receipt["pid"])
+        # The launching process has exited. A second invocation cannot acquire
+        # the lock still held by the worker in its separate process session.
+        duplicate = subprocess.run([sys.executable, str(SCRIPT), "--background", "--json"],
+                                   env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(duplicate.returncode, 75)
+        self.assertEqual(json.loads(duplicate.stdout)["active_job"]["pid"], receipt["pid"])
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            result = json.loads(Path(receipt["job"]).read_text())
+            if result["status"] == "completed":
+                break
+            time.sleep(0.05)
+        self.assertEqual(result["status"], "completed", result)
+        self.assertTrue(result["ok"])
+        self.assertTrue(Path(receipt["log"]).exists())
+        self.assertEqual(result["inputs"][0]["status"], "opened")
+        self.assert_tidy()
+
+    def test_background_gate_failure_is_durable(self):
+        self.edit_state(fail=["update/herdr"])
+        launched = subprocess.run([sys.executable, str(SCRIPT), "--background", "--json", "--only", "herdr"],
+                                  env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(launched.returncode, 0)
+        receipt = json.loads(launched.stdout)
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            result = json.loads(Path(receipt["job"]).read_text())
+            if result["status"] == "completed":
+                break
+            time.sleep(0.05)
+        self.assertEqual(result["status"], "completed", result)
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["inputs"][0]["gate"]["ok"])
+
+    def test_interrupted_background_job_is_reported_before_launching_more(self):
+        state = self.t / "state"
+        jobs = state / "jobs"
+        jobs.mkdir(parents=True)
+        job = jobs / "previous.json"
+        receipt = {"status": "running", "pid": 999999999, "job": str(job), "run": "previous"}
+        job.write_text(json.dumps(receipt))
+        (state / "last-launch.json").write_text(json.dumps(receipt))
+        result = subprocess.run([sys.executable, str(SCRIPT), "--background", "--json"],
+                                env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout)["previous"]["status"], "interrupted")
+        self.assertEqual(self.state()["prs"], [])
+
 
 class Nightly(unittest.TestCase):
     def test_paris_date_crosses_utc_midnight_and_dst(self):
@@ -637,7 +695,8 @@ class Nightly(unittest.TestCase):
             code, report = self.invoke()
             self.assertEqual((code, report["status"], report["ok"]), (1, "completed", False))
             code, report = self.invoke()
-            self.assertEqual((code, report["status"]), (0, "already-checked"))
+            self.assertEqual((code, report["status"]), (1, "already-checked"))
+            self.assertFalse(report["previous"]["ok"])
             self.assertEqual(run.check.call_count, 1)
             self.assertFalse(json.loads((Path(directory) / "last-night.json").read_text())["ok"])
 

@@ -18,7 +18,7 @@ switch.
 
 On the strix:
 
-    update-check --if-idle --json
+    update-check --if-idle --background --json
 
 The Projects routine fires at 01:17–06:17 Europe/Paris, giving the first idle
 hour a chance. `--if-idle` defers for load, Nix builds or working/unknown Herdr
@@ -30,6 +30,16 @@ signals are errors, never permission to proceed. Manual `update-check --json`
 bypasses admission and the nightly stamp, but still never activates anything.
 If every opportunity is busy, the persisted deferred reports are the receipt;
 there is no catch-up or forced start. No local timer is installed.
+
+`--background` launches a separate process session so the checker survives
+the Floor runtime's 30-minute turn limit. The parent transfers its held lock
+to the worker: overlapping firings cannot launch a second run. A `launched`
+receipt names its PID, durable job JSON and log; it proves launch, not success.
+The job moves through `running` to `completed`/`error`. Later locked firings
+report the active job; later completed-night firings include the previous full
+result and return nonzero again if it failed. A worker that disappears without
+a final result is surfaced as `interrupted` before another launch. Read these
+receipts in the routine's report; never claim a check passed from launch alone.
 
 It fetches main, compares each input in `lib/update-watch.json` with upstream,
 and for each one that moved it rebuilds the rolling branch `update/<input>`,
@@ -45,7 +55,8 @@ runs the gate and opens or refreshes one PR. Read the per-input `status`:
 | `review-pending` | main carries the input but review commits remain | keep the PR open; report it |
 | `error` | the check itself could not finish | report the error line, do not retry in a loop |
 
-Top-level `deferred` or `already-checked` is a normal scheduler skip. Do not
+Top-level `deferred` or a successful `already-checked` is a normal scheduler
+skip. An `already-checked` previous failure remains a failure to report. Do not
 retry it, remove the stamp, override admission or start a build yourself.
 
 A PR whose gate failed is a draft with the log tail in its body. Name it in

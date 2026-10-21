@@ -49,9 +49,11 @@ opens or refreshes one PR. The PR is a draft when the gate fails. The check
 skips the bump when no watched program changed version, and closes the PR
 once main carries the input. Fish, kitty and Wrangler ride the existing nixpkgs-fresh leaf overlay;
 new stable kernel major.minor series are issue watches. The Projects
-floor routine uses `update-check --if-idle --json`: soft hourly opportunities,
+floor routine uses `update-check --if-idle --background --json`: soft hourly opportunities,
 load/Nix/Herdr admission checks and one completed attempt per Paris night.
-Every defer and failure is recorded. No local timer is installed. Digests are
+Every defer and failure is recorded. The detached worker survives the Floor
+turn limit, inherits its lock and writes a durable job result; a launch receipt
+is not a successful check. No local timer is installed. Digests are
 opt-in and comment-only; the routine makes no adoption commits. Earlier
 review commits without `Update-Check: bump` survive refreshes, or a conflict
 aborts before the remote changes. Nothing merges, switches or restarts without

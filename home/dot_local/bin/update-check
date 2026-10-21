@@ -29,7 +29,8 @@ Examples:
   update-check --only herdr    one input
   update-check --dry-run       report what would move; no worktree, push or PR
   update-check --json          print the run report as JSON
-  update-check --if-idle       soft nightly admission and once-per-night stamp
+  update-check --if-idle --background --json
+                               nightly launch with durable job result and log
 """
 
 from __future__ import annotations
@@ -166,7 +167,55 @@ def busy_reasons() -> list[str]:
     return reasons
 
 
+def atomic_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(value, indent=2, default=list) + "\n")
+    temporary.replace(path)
+
+
+def current_job() -> dict[str, Any] | None:
+    receipt = STATE / "last-launch.json"
+    if not receipt.exists():
+        return None
+    launch = json.loads(receipt.read_text())
+    job = Path(launch["job"])
+    return {**launch, **json.loads(job.read_text())} if job.exists() else launch
+
+
+def launch_background(argv: list[str], lock, report: dict[str, Any]) -> dict[str, Any]:
+    directory = STATE / "jobs"
+    directory.mkdir(parents=True, exist_ok=True)
+    identifier = report["run"].replace(":", "")
+    job = directory / f"{identifier}.json"
+    logfile = directory / f"{identifier}.log"
+    launch = {**report, "status": "launching", "job": str(job), "log": str(logfile)}
+    atomic_json(job, launch)
+    with logfile.open("a") as log:
+        try:
+            process = subprocess.Popen(
+                [sys.executable, str(Path(__file__).resolve()), *[arg for arg in argv if arg != "--background"]],
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                start_new_session=True, pass_fds=(lock.fileno(),),
+                env={**os.environ, "UPDATE_CHECK_LOCK_FD": str(lock.fileno()),
+                     "UPDATE_CHECK_JOB_FILE": str(job)},
+            )
+        except OSError as e:
+            atomic_json(job, {**launch, "status": "error", "ok": False, "reasons": [str(e)]})
+            raise CheckError(f"cannot launch background check: {e}") from e
+    launch.update(status="launched", pid=process.pid)
+    atomic_json(STATE / "last-launch.json", launch)
+    return launch
+
+
 def write_report(report: dict[str, Any], as_json: bool, persist: bool = True) -> None:
+    job_path = os.environ.get("UPDATE_CHECK_JOB_FILE")
+    if job_path:
+        job = Path(job_path)
+        if job.parent != STATE / "jobs":
+            raise CheckError("background job receipt is outside the state directory")
+        previous = json.loads(job.read_text())
+        atomic_json(job, {**previous, **report, "pid": os.getpid()})
     if persist:
         directory = STATE / "runs"
         directory.mkdir(parents=True, exist_ok=True)
@@ -176,6 +225,10 @@ def write_report(report: dict[str, Any], as_json: bool, persist: bool = True) ->
         print(json.dumps(report, indent=2, default=list))
     else:
         print(f"update-check: {report.get('status', 'completed')}")
+        if report.get("status") == "launched":
+            print(f"  pid {report['pid']}; result {report['job']}; log {report['log']}")
+        if report.get("previous", {}).get("ok") is False:
+            print(f"  previous nightly check FAILED; run {report['previous']['run']}")
         for reason in report.get("reasons", []):
             print(f"  {reason}")
         for result in report.get("inputs", []):
@@ -813,30 +866,62 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--if-idle", action="store_true", help="defer when busy; attempt the full suite once per Paris night")
     ap.add_argument("--watch", help=f"read this watch file instead of origin/main:{WATCH_PATH}")
     ap.add_argument("--once-per-night", action="store_true", help="compatibility alias for --if-idle (includes the nightly stamp)")
+    ap.add_argument("--background", action="store_true", help="launch in a separate process session; persist job result and log")
     args = ap.parse_args(argv)
     args.if_idle = args.if_idle or args.once_per_night
     if args.if_idle and (args.only or args.force or args.watch):
         ap.error("--if-idle is the full nightly check; do not combine with --only, --force or --watch")
+    if args.background and args.dry_run:
+        ap.error("--background cannot be combined with --dry-run")
     STATE.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
     report = {"run": stamp, "dry_run": args.dry_run, "inputs": []}
-    with (STATE / "lock").open("a") as lock:
+    inherited = os.environ.pop("UPDATE_CHECK_LOCK_FD", None)
+    lock_file = STATE / "lock"
+    lock = os.fdopen(int(inherited), "a") if inherited else lock_file.open("a")
+    if inherited and os.fstat(lock.fileno()).st_ino != lock_file.stat().st_ino:
+        raise CheckError("inherited background lock does not match state lock")
+    job_path = os.environ.get("UPDATE_CHECK_JOB_FILE")
+    if job_path:
+        job = Path(job_path)
+        if job.parent != STATE / "jobs":
+            raise CheckError("invalid background job receipt")
+        atomic_json(job, {**json.loads(job.read_text()), "status": "running", "pid": os.getpid()})
+    with lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            write_report({**report, "status": "deferred", "reasons": ["another run holds the lock"]}, args.json)
+            write_report({**report, "status": "deferred", "reasons": ["another run holds the lock"],
+                          "active_job": current_job()}, args.json)
             return 0 if args.if_idle else 75
         night = night_key()
         completed = STATE / "last-night.json"
         try:
             if args.if_idle:
-                if completed.exists() and json.loads(completed.read_text()).get("night") == night:
-                    write_report({**report, "status": "already-checked", "night": night}, args.json)
-                    return 0
+                previous = json.loads(completed.read_text()) if completed.exists() else {}
+                if previous.get("night") == night:
+                    write_report({**report, "status": "already-checked", "night": night,
+                                  "previous": previous}, args.json)
+                    return int(previous.get("ok") is False)
                 reasons = busy_reasons()
                 if reasons:
                     write_report({**report, "status": "deferred", "reasons": reasons, "night": night}, args.json)
                     return 0
+            # The lock is inherited by the worker's open file description,
+            # so no competing launch can slip between parent and worker.
+            if args.background:
+                previous_job = current_job()
+                if previous_job and previous_job.get("status") in {"launching", "launched", "running"}:
+                    # We own the lock now: an earlier worker cannot still be
+                    # running its check. Surface an interrupted job once.
+                    interrupted = {**previous_job, "status": "interrupted", "ok": False,
+                                   "reasons": ["previous worker exited without a final result"]}
+                    atomic_json(Path(previous_job["job"]), interrupted)
+                    write_report({**report, "status": "error", "ok": False,
+                                  "previous": interrupted, "reasons": interrupted["reasons"]}, args.json)
+                    return 1
+                write_report(launch_background(argv, lock, report), args.json)
+                return 0
             run = Run(args)
             entries = [(entry, run.check) for entry in run.watch["inputs"]]
             entries += [(entry, run.check_issue) for entry in run.watch.get("issues", [])]
@@ -862,9 +947,7 @@ def main(argv: list[str]) -> int:
             if args.if_idle and not args.dry_run and report["status"] == "completed":
                 # A failed completed attempt also consumes this night: report it,
                 # don't repeat multi-hour builds every hour. Manual checks remain available.
-                temporary = completed.with_suffix(".tmp")
-                temporary.write_text(json.dumps({"night": night, "run": stamp, "ok": not failed}) + "\n")
-                temporary.replace(completed)
+                atomic_json(completed, report)
             write_report(report, args.json, persist=not args.dry_run)
             return int(failed)
         except (CheckError, OSError, ValueError, KeyError, TypeError) as e:
