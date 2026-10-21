@@ -15,7 +15,7 @@
 # loads exactly ONE model, so this module runs one systemd unit per model:
 #
 #   gufo-llm.service          the resident text model (Flash-Next), at boot
-#                             when autoStart, on Halogen's address and port
+#                             when autoStart, on the fleet address and port
 #   gufo-llm-<name>.service   an alternate text model (the 27B, DeepSeek V4
 #                             Flash), started only by `gufo-switch <name>`
 #   gufo-tts / gufo-asr / gufo-image.service
@@ -27,9 +27,8 @@
 # /var/lib/local-models. Neither build nor startup downloads anything; each
 # unit checks its files before starting.
 #
-# Halogen and Gufo never hold the GPU together: every text unit here carries
-# Conflicts= on the Halogen units (systemd applies a conflict in both
-# directions), and an assertion refuses a config where both start at boot.
+# Text model units conflict with one another and the image unit, so only
+# one large model owns the GPU. Halogen is no longer declared.
 let
   cfg = config.services.gufo;
   catalog = import ../lib/local-models.nix { inherit lib; };
@@ -402,7 +401,7 @@ in
     assertions = [
       {
         # The resident model only. An alternate whose artifacts this host does
-        # not want yet (DeepSeek V4 Flash until Halogen's loans are pruned) is
+        # not want yet (DeepSeek V4 Flash until explicitly borrowed) is
         # refused at start by its bundle check, which names the borrow command.
         assertion = lib.all (a: lib.elem a config.services.local-models.artifacts) (artifactsOf cfg.llm);
         message = "The resident Gufo model's artifacts (services.gufo.llm) must be in this host's services.local-models.artifacts.";

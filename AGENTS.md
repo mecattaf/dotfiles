@@ -103,8 +103,8 @@ diarization.
 **Halogen is retired (Tom, 2026-10-21).** Tom: "subagent to kill halogen and give me `gufo`".
 Gufo owns port 8731 with one execution session, 102400 tokens of context,
 thinking off and a fixed 1 GiB prefix cache. No Halogen service or container
-is declared. The old catalog rows remain only as NAS archive receipts; Strix
-no longer wants them. The `halogen` provider/runtime key in Substrate is a
+is declared. The old source catalog rows remain in the NAS Library catalog; Strix
+no longer wants their working copies. The `halogen` provider/runtime key in Substrate is a
 compatibility identifier until its neutral-key migration, not an engine.
 Mutable `models.toml` selects the exact Gufo wire model without a puller restart.
 Immich ML also runs on Strix; its socket starts it on demand with a 15-minute
