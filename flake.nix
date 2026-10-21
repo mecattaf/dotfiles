@@ -155,8 +155,8 @@
     # kitten tier, its session layer, and its title-naming pipeline are all
     # deleted in favour of one server holding every PTY.
     #
-    # PINNED TO A REV, not a branch: v0.9.1 (2026-09-16) is the current release
-    # (plugin API + the agent sidebar), and nixpkgs carries an older release. Bump by
+    # PINNED TO A REV, not a branch: v0.9.5 (2026-10-14); nixpkgs
+    # carries an older release. Bump by
     # editing the rev here, deliberately, the way nixpkgs-paperless is bumped.
     #
     # Consume `packages.<sys>.herdr` ONLY (home/herdr.nix). Upstream composes
@@ -229,7 +229,7 @@
       system = "x86_64-linux";
 
       # Inputs whose PACKAGE CONTENT may move independently of the committed
-      # flake.lock during the nightly fleet transaction. The strix resolves
+      # flake.lock during an explicit fleet deployment. The strix resolves
       # each once and passes the same immutable URLs to every build and activation.
       #
       # This is intentionally NOT the main nixpkgs input: kernel/Mesa remain behind
