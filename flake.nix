@@ -6,7 +6,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # nixpkgs-fresh — a second nixpkgs used ONLY to keep a handful of
-    # fast-moving user packages (currently google-chrome and uv, see overlays
+    # fast-moving user packages (Chrome, uv, fish, kitty and Wrangler, see overlays
     # list below) and the twins'/NAS's linuxPackages_7_2 kernel series current
     # independent of the `nixpkgs` pin above. That pin is deliberately
     # lagging — the exact-candidate fleet deploy keeps it as the only door
@@ -18,13 +18,12 @@
     # gated by the same core Hydra jobs, minus the big-channel test set that
     # had nixos-unstable sitting 4+ days behind while 7.2.2 (a kernel point
     # fix the twins wanted) was already through. Everything this input feeds
-    # is either an upstream binary (chrome), a leaf tool (uv), or the
+    # is either an upstream binary (Chrome), a leaf user tool, or the
     # versioned kernel attr whose whole doctrine is point-fix-only advance.
     #
-    # Its lock entry is a reproducible fallback. The nightly fleet transaction uses
-    # `rollingInputOverrides` below to resolve it (with llm-agents and the two AMD
-    # catalogs) exactly once, then builds and deploys those immutable URLs without
-    # writing the lock. A plain local build uses the reviewed fallback revision.
+    # The lock entry is the reviewed package revision. Substrate’s nightly check
+    # opens a bump PR; it never activates the fleet. Explicit fleet deploys may
+    # resolve `rollingInputOverrides` once and share those immutable URLs.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
     # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
@@ -148,7 +147,7 @@
 
     # Client desktop pilot: package and Home Manager module from one release.
     # Keep upstream's nixpkgs so its signed binary cache remains usable.
-    vicinae.url = "github:vicinaehq/vicinae/v0.29.1";
+    vicinae.url = "github:vicinaehq/vicinae/v0.29.2";
 
     # herdr — the terminal workspace manager for AI coding agents
     # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
@@ -167,7 +166,7 @@
     # NOT in `rollingInputOverrides`: herdr owns live PTYs, so its version moves
     # when Tom says so, never on a nightly resolve.
     herdr = {
-      url = "github:herdrdev/herdr/7b116c05bfda646af39d2524c54e70c751f57ee8"; # v0.9.3, wire PROTOCOL_VERSION 22 as in 0.9.0
+      url = "github:herdrdev/herdr/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01"; # v0.9.5; live server remains protected by keep-old
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -201,7 +200,7 @@
     # no container (modules/gufo.nix). Pinned to the commit the catalog was read
     # from. No nixpkgs.follows: upstream qualifies its build against its own
     # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
-    gufo.url = "github:gufo-org/gufo/ae26ca4a13f252a0424c23e4bd7662167f23b436";
+    gufo.url = "github:gufo-org/gufo/0c03748a271eab895befc0d2343aa50ca4b6d836";
 
     # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
     # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
@@ -322,6 +321,11 @@
           in
           {
             google-chrome = fresh.google-chrome;
+            # User tools follow the same reviewed leaf-package input. The base
+            # system, Mesa and ROCm remain on the main nixpkgs pin.
+            fish = fresh.fish;
+            kitty = fresh.kitty;
+            wrangler = fresh.wrangler;
             # uv — Astral's Python package/project manager. Point releases land
             # weekly; riding nixpkgs-fresh HEAD keeps it current without waiting on
             # the deliberately-lagging main pin (which exists only to gate kernel/
