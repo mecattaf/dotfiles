@@ -6,7 +6,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # nixpkgs-fresh — a second nixpkgs used ONLY to keep a handful of
-    # fast-moving user packages (currently google-chrome and uv, see overlays
+    # fast-moving user packages (Chrome, uv, fish, kitty and Wrangler, see overlays
     # list below) and the twins'/NAS's linuxPackages_7_2 kernel series current
     # independent of the `nixpkgs` pin above. That pin is deliberately
     # lagging — the exact-candidate fleet deploy keeps it as the only door
@@ -18,7 +18,7 @@
     # gated by the same core Hydra jobs, minus the big-channel test set that
     # had nixos-unstable sitting 4+ days behind while 7.2.2 (a kernel point
     # fix the twins wanted) was already through. Everything this input feeds
-    # is either an upstream binary (chrome), a leaf tool (uv), or the
+    # is either an upstream binary (Chrome), a leaf user tool, or the
     # versioned kernel attr whose whole doctrine is point-fix-only advance.
     #
     # The lock entry is the reviewed revision. The Projects nightly checker
@@ -147,7 +147,7 @@
 
     # Client desktop pilot: package and Home Manager module from one release.
     # Keep upstream's nixpkgs so its signed binary cache remains usable.
-    vicinae.url = "github:vicinaehq/vicinae/v0.29.1";
+    vicinae.url = "github:vicinaehq/vicinae/v0.29.2";
 
     # herdr — the terminal workspace manager for AI coding agents
     # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
@@ -155,9 +155,9 @@
     # kitten tier, its session layer, and its title-naming pipeline are all
     # deleted in favour of one server holding every PTY.
     #
-    # PINNED TO A REV, not a branch: v0.9.1 (2026-09-16) is the current release
-    # (plugin API + the agent sidebar), and nixpkgs carries an older release. Bump by
-    # editing the rev here, deliberately, the way nixpkgs-paperless is bumped.
+    # PINNED TO A REV, not a branch: the release named on the url line below
+    # (nixpkgs carries an older one). The rev moves only through a reviewed PR,
+    # which update-check opens when herdr cuts a release (#550).
     #
     # Consume `packages.<sys>.herdr` ONLY (home/herdr.nix). Upstream composes
     # rust-overlay into its own pkgs fixpoint to build the Rust toolchain from
@@ -166,7 +166,7 @@
     # NOT in `rollingInputOverrides`: herdr owns live PTYs, so its version moves
     # when Tom says so, never on a nightly resolve.
     herdr = {
-      url = "github:herdrdev/herdr/7b116c05bfda646af39d2524c54e70c751f57ee8"; # v0.9.3, wire PROTOCOL_VERSION 22 as in 0.9.0
+      url = "github:herdrdev/herdr/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01"; # v0.9.5; live server remains protected by keep-old
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -200,7 +200,7 @@
     # no container (modules/gufo.nix). Pinned to the commit the catalog was read
     # from. No nixpkgs.follows: upstream qualifies its build against its own
     # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
-    gufo.url = "github:gufo-org/gufo/ae26ca4a13f252a0424c23e4bd7662167f23b436";
+    gufo.url = "github:gufo-org/gufo/0c03748a271eab895befc0d2343aa50ca4b6d836";
 
     # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
     # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
@@ -229,7 +229,7 @@
       system = "x86_64-linux";
 
       # Inputs whose PACKAGE CONTENT may move independently of the committed
-      # flake.lock during the nightly fleet transaction. The strix resolves
+      # flake.lock during an explicit fleet deployment. The strix resolves
       # each once and passes the same immutable URLs to every build and activation.
       #
       # This is intentionally NOT the main nixpkgs input: kernel/Mesa remain behind
@@ -293,7 +293,7 @@
         "/run/agenix/ssh-user-key"
       ];
 
-      # One overlay list everywhere (top-level pkgs + every host).
+      # Shared package overlays; interactive-only tool updates are added below.
       overlays = [
         self.overlays.default
         (final: _prev: {
@@ -330,8 +330,23 @@
         )
       ];
 
+      # The frozen NAS keeps its stable shell and tooling. These user tools
+      # follow the reviewed fresh input only on Strix and the client.
+      interactiveToolOverlay =
+        _final: _prev:
+        let
+          fresh = import inputs.nixpkgs-fresh {
+            inherit system;
+            config.allowUnfree = true;
+          };
+        in
+        {
+          inherit (fresh) fish kitty wrangler;
+        };
+
       pkgs = import nixpkgs {
-        inherit system overlays;
+        inherit system;
+        overlays = overlays ++ [ interactiveToolOverlay ];
         config.allowUnfree = true; # google-chrome
       };
 
@@ -365,7 +380,7 @@
           };
           modules = [
             {
-              nixpkgs.overlays = overlays;
+              nixpkgs.overlays = overlays ++ nixpkgs.lib.optionals withHomeManager [ interactiveToolOverlay ];
               nixpkgs.config.allowUnfree = true;
             }
             ./modules/common.nix
@@ -779,47 +794,16 @@
                 bash ${./tests/util-01/test-halogen-token-window.sh} | tee $out
             '';
 
-        # A deliberate stop of an inference server is not a failure (FDC-M4).
-        #
-        # `podman run` exits with the CONTAINER's status, so the SIGTERM of
-        # `podman stop` comes back as exit 143 — which systemd counts as a
-        # failure unless told otherwise. On this fleet a failed unit is not just
-        # a red line: the blanket OnFailure= of modules/failure-surfacing.nix
-        # writes a marker into /var/lib/failure-markers that an operator has to
-        # clear, so every `halogen-switch` between the two models left one
-        # behind. Nothing about that is visible from reading either module, and
-        # the units are only ever stopped by hand on a box with no display, so
-        # a regression here would go unnoticed exactly as the last one did.
-        #
-        # Asserted over EVERY podman-halogen* unit the worker declares, not a
-        # written-out list: the alternates are an attrset an operator extends
-        # (hosts/worker/default.nix), and a new model must not be able to join
-        # the fleet without this policy. 137 is asserted absent in the same
-        # breath — a container that is KILLED (the path
-        # --health-on-failure=kill takes on a wedged engine) must stay a
-        # failure, or Restart=on-failure has nothing left to recover from.
-        halogen-unit-policy =
+        gufo-unit-policy =
           let
-            # Both twins declare the Halogen units since 2026-09-16.
-            unitsOf =
-              host:
-              nixpkgs.lib.filterAttrs (
-                name: _: nixpkgs.lib.hasPrefix "podman-halogen" name
-              ) self.nixosConfigurations.${host}.config.systemd.services;
-            units = unitsOf "strix";
-            successCodes = unit: nixpkgs.lib.splitString " " (toString unit.serviceConfig.SuccessExitStatus);
-            succeeds = code: unit: builtins.elem code (successCodes unit);
-            declared = builtins.attrValues units;
+            strix = self.nixosConfigurations.strix.config;
           in
-          # The primary and one alternate today; the filter is what keeps this
-          # honest when that changes, so assert it found them both.
-          assert builtins.length declared >= 2;
-          assert (unitsOf "strix") ? podman-halogen;
-          assert units ? podman-halogen;
-          assert builtins.all (succeeds "143") declared;
-          assert builtins.all (unit: !(succeeds "137" unit)) declared;
-          assert builtins.all (unit: unit.serviceConfig.Restart == "on-failure") declared;
-          pkgs.runCommand "halogen-unit-policy" { } ''
+          assert !(strix.systemd.services ? podman-halogen);
+          assert strix.services.gufo.enable;
+          assert strix.services.gufo.llm.sessions == 1;
+          assert strix.services.gufo.llm.context == 102400;
+          assert strix.systemd.user.services.substrate-puller.restartIfChanged == false;
+          pkgs.runCommand "gufo-unit-policy" { } ''
             touch "$out"
           '';
 
@@ -1736,7 +1720,7 @@
           assert (profile "strix").name == "strix-server";
           assert
             (profile "strix").roles == [
-              "halogen"
+              "gufo"
               "attention"
             ];
 
@@ -1907,7 +1891,8 @@
               ("yum.repos." + "d")
               ("harness" + "RPM")
               ("chez" + "moi")
-              ("k" + "run")
+              # Match command/library names, not identifier or hash substrings.
+              ("(^|[^[:alnum:]_])(lib)?k" + "run")
               ("tom@" + "bridge")
               ("/usr/share/backgrounds/" + "harness")
               ("osConfig" + "[[:space:]]*\\?[[:space:]]*null")
@@ -2245,8 +2230,6 @@
           # once Gufo serves.
           assert
             strix.services.local-models.artifacts == [
-              "halogen-qwen38-flash-next"
-              "halogen-qwen38-27b"
               "qwen38-flash-next-gguf"
               "qwen38-27b-gguf"
               "qwen38-27b-dflash2-gguf"
@@ -2285,55 +2268,27 @@
           assert builtins.all (id: localModelCatalog.artifacts.${id}.source.gate == null) (
             builtins.filter (id: id != "minimax-h3-fl2va") (builtins.attrNames localModelCatalog.artifacts)
           );
-          # Declared, not enabled: Halogen serves until the cutover.
-          assert !strix.services.gufo.enable;
+          # The proven Gufo endpoint is the only resident text engine.
+          assert strix.services.gufo.enable;
+          # Consumers name exactly what Gufo serves (lib/local-model.nix): it
+          # answers 404 to any other id.
+          assert strix.services.gufo.llm.servedModelName == (import ./lib/local-model.nix).modelId;
+          assert
+            builtins.sort builtins.lessThan (
+              map (n: strix.services.gufo.alternates.${n}.servedModelName) (
+                builtins.attrNames strix.services.gufo.alternates
+              )
+            ) == builtins.sort builtins.lessThan (import ./lib/local-model.nix).alternates;
+          assert strix.services.utilityModel.endpoint == (import ./lib/local-model.nix).endpoint;
+          assert
+            (import ./lib/local-model.nix).endpoint == "http://strix:${toString strix.services.gufo.port}";
           assert localModelCatalog.artifacts.halogen-qwen38-flash-next.source.layout == "snapshot";
           assert builtins.length localModelCatalog.artifacts.halogen-qwen38-flash-next.source.files == 9;
 
-          assert strix.services.halogen.enable;
-
-          assert strix.services.halogen.autoStart;
-
-          assert strix.virtualisation.oci-containers.containers.halogen.autoStart;
-          assert strix.services.halogen.client.enable;
-
-          # One declaration, two hosts: the containers differ only in autoStart
-          # and the strix's two desktop memory bounds (Flash's KV pool,
-          # the 27B's prompt-cache budget).
-
-          assert
-            strix.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_KV_POOL_POSITIONS
-            == "262144";
-
-          assert
-            strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_CACHE_MB
-            == "8192";
-          # halogen-server 0.1.4 by digest; never a runtime download.
-
-          assert
-            !(strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment ? HALOGEN_DOWNLOAD);
-          assert
-            strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_TOKENIZER
-            == "/models/tokenizer";
-
-          assert strix.services.halogen.lanInterface == "enp191s0";
-
-          # The service never downloads weights (model-byte doctrine).
-
-          # The alternate 27B engine: declared, never started at boot, and
-          # never resident together with Flash (mutual Conflicts=), on the same
-          # port so clients need not care which one answers.
-
-          assert builtins.attrNames strix.services.halogen.alternates == [ "qwen38-27b" ];
-          assert !strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.autoStart;
-          assert strix.systemd.services.podman-halogen.conflicts == [ "podman-halogen-qwen38-27b.service" ];
-
-          assert
-            builtins.length (
-              nixpkgs.lib.filter (
-                package: nixpkgs.lib.getName package == "halogen-switch"
-              ) strix.environment.systemPackages
-            ) == 1;
+          assert strix.services.utilityModel.enable;
+          assert strix.services.utilityModel.modelId == "qwen3.8-flash-next";
+          assert !(strix.virtualisation.oci-containers.containers ? halogen);
+          assert !(strix.systemd.services ? podman-halogen);
 
           assert nixpkgs.lib.elem "amdgpu.gttsize=126976" strix.boot.kernelParams;
           # The utility-model wrapper lives on the strix only.

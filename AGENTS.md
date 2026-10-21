@@ -100,15 +100,15 @@ Gufo answers 404 to a request naming any other model id, so callers send the
 exact served id. It has no `/v1/embeddings` (501), no reranking and no
 diarization.
 
-**Until the cutover, Halogen still serves.** Halogen Flash
-(`modules/halogen.nix`: Qwen3.8-Flash-Next in Peonist's `.hgn` format, model id
-`halogen-qwen3.8-flash-next`, alternate `halogen-switch qwen38-27b`) stays the
-live endpoint at `strix:8731` until `services.gufo.enable` is switched on with
-`services.halogen.autoStart = false`. The Gufo and Halogen units conflict, so
-they never hold the GPU together. Do no Halogen-specific work (Tom,
-2026-10-13); after the cutover the `.hgn` rows and `modules/halogen.nix` are
-retired. Immich ML also runs on Strix; its socket starts it on demand, with a
-15-minute idle shutdown. There is no worker host.
+**Halogen is retired (Tom, 2026-10-21).** Tom: "subagent to kill halogen and give me `gufo`".
+Gufo owns port 8731 with one execution session, 102400 tokens of context,
+thinking off and a fixed 1 GiB prefix cache. No Halogen service or container
+is declared. The old source catalog rows remain in the NAS Library catalog; Strix
+no longer wants their working copies. The `halogen` provider/runtime key in Substrate is a
+compatibility identifier until its neutral-key migration, not an engine.
+Mutable `models.toml` selects the exact Gufo wire model without a puller restart.
+Immich ML also runs on Strix; its socket starts it on demand with a 15-minute
+idle shutdown. There is no worker host.
 
 **The NPU path is decommissioned — permanently, 2026-08-29.** FastFlowLM (`flm`)
 is no longer installed on any host, and the XDNA2 NPU is not an inference target
@@ -118,8 +118,7 @@ pause. Do not add a `flm` invocation, an `flm serve` unit, or an NPU backend row
 back.
 
 **The `utility` slot forwards to the local text model.** The stable ID
-`utility` resolves to Strix's resident text model (Halogen Flash until the
-Gufo cutover, then Gufo's Flash-Next), and the request-scoped `utility-model`
+`utility` resolves to Strix's resident Gufo Flash-Next model, and the request-scoped `utility-model`
 wrapper — installed on the strix only — forwards a single
 chat-completions request to it over the wired LAN. `/drain` and `/print` dial
 that seam under the same name and with the same CLI flags as before. What must

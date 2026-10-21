@@ -36,14 +36,9 @@
 # the latter to scope an extension to one repo instead of the whole fleet.
 #
 let
-  # Embedded home-manager exposes the host's evaluated NixOS config here. The
-  # fleet's one local endpoint is the worker's Halogen server; its address and
-  # model id come from modules/halogen.nix's client options on whichever host
-  # renders this, falling back to the fleet convention where that module is
-  # not imported.
-  halogen = lib.attrByPath [ "services" "halogen" ] null osConfig;
-  halogenEndpoint = if halogen != null then halogen.client.endpoint else "http://strix:8731";
-  halogenModelId = if halogen != null then halogen.modelId else "halogen-qwen3.8-flash-next";
+  # The fleet's one local endpoint and its served model id, the same on every
+  # host (lib/local-model.nix). The server answers 404 to any other id.
+  localModel = import ../lib/local-model.nix;
 
   # ── Qwen Token Plan (Alibaba MaaS subscription) ──────────────────────────
   # pi ships `qwen-token-plan` as a BUILT-IN provider on exactly our endpoint
@@ -179,33 +174,50 @@ let
     cacheWrite = 0;
   };
 
-  # Halogen is auth-free on the LAN; pi still wants a non-empty key or it
-  # refuses to build the Authorization header.
+  # The local server is auth-free on the LAN; pi still wants a non-empty key
+  # or it refuses to build the Authorization header. It honours
+  # `reasoning_effort` (none to max), so pi's thinking level reaches it
+  # (#424, carried by #525).
   openaiCompat = {
     supportsDeveloperRole = false;
-    supportsReasoningEffort = false;
+    supportsReasoningEffort = true;
     supportsStore = false;
   };
 
   localModelsJson = {
     providers = {
-      # The fleet's one local model: Halogen Flash on the worker, by hostname
-      # over the house LAN (modules/halogen.nix). Vision-capable; reasoning is
-      # on by default and the token budget covers thinking, so maxTokens is
-      # generous. Halogen accepts pi's /v1/chat/completions shape and also
-      # serves /v1/responses.
+      # The fleet's one local model on the strix, by hostname over the house
+      # LAN (lib/local-model.nix). Vision-capable; the resident service uses
+      # thinking off and a bounded 100K context. The
+      # provider key stays `halogen` because substrate's runtimes and models
+      # catalogue name it (a missing provider means halogen there).
       halogen = {
         api = "openai-completions";
-        apiKey = "halogen-no-auth";
+        apiKey = "local-no-auth";
         authHeader = true;
-        baseUrl = "${halogenEndpoint}/v1";
+        baseUrl = "${localModel.endpoint}/v1";
         compat = openaiCompat;
         models = [
           {
-            id = halogenModelId;
-            name = "Qwen3.8-Flash-Next (Halogen, Strix)";
-            contextWindow = 262144;
-            maxTokens = 32768;
+            id = localModel.modelId;
+            name = "Qwen3.8-Flash-Next (local, Strix)";
+            contextWindow = 102400;
+            maxTokens = 16384;
+            input = [
+              "text"
+              "image"
+            ];
+            reasoning = false;
+            cost = zeroCost;
+          }
+          # The alternates answer on the same port only while an operator has
+          # switched one in; the server answers 404 to the other ids, so a run
+          # names the row of the model that is resident.
+          {
+            id = "qwen3.8-27b";
+            name = "Qwen3.8-27B (local alternate, Strix)";
+            contextWindow = 131072;
+            maxTokens = 16384;
             input = [
               "text"
               "image"
@@ -213,13 +225,10 @@ let
             reasoning = true;
             cost = zeroCost;
           }
-          # The alternate engine on the same port (services.halogen.alternates,
-          # `halogen-switch qwen38-27b`). Whichever server is resident answers
-          # any model id, so this row is what pi shows while the 27B is up.
           {
-            id = "halogen-qwen3.8-27b";
-            name = "Qwen3.8-27B (Halogen alternate, Strix)";
-            contextWindow = 262144;
+            id = "deepseek-v4-flash";
+            name = "DeepSeek V4 Flash (local alternate, Strix)";
+            contextWindow = 32768;
             maxTokens = 16384;
             input = [ "text" ];
             reasoning = true;

@@ -165,8 +165,8 @@ async function resolvePage(page) {
   // properly tabulated VLM transcription of the same cells — the reference is
   // only ever a check on *which words* are present, never on their order.
   //
-  // One visual protocol: Halogen Flash on the worker (worker-gpu is the lane
-  // that names that device). It runs at temperature zero, so a second pass
+  // One visual protocol: the local model on the strix (worker-gpu is the lane
+  // name this file has always used for that device). It runs at temperature zero, so a second pass
   // with the same model would reproduce the first; a page whose transcription
   // disagrees with its mechanical reference is recorded as disputed rather
   // than re-transcribed.

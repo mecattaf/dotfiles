@@ -262,7 +262,7 @@ jq -n \
     protocols: [
       {id: "poppler-text", tier: "cheap"},
       {id: "mupdf-text", tier: "cheap"},
-      {id: "halogen-qwen3.8-flash-next", tier: "standard"}
+      {id: "qwen3.8-flash-next", tier: "standard"}
     ],
     driver: {
       adapter: "ocr-driver",
