@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import fcntl
+import html
 import json
 import os
 import re
@@ -45,6 +46,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
@@ -380,7 +382,7 @@ def build_body(
         f"Nightly update check (#550): `{report['input']}` moves from "
         f"`{short(report['from_rev'])}` ({day(report.get('from_date'))}) to "
         f"`{short(report['to_rev'])}` ({day(report.get('to_date'))})"
-        + (f", release {report['tag']}." if report.get("tag") else "."),
+        + (f", release {literal_label(report['tag'])}." if report.get("tag") else "."),
         "",
         "| program | main | this PR |",
         "|---|---|---|",
@@ -421,7 +423,8 @@ def build_body(
     pieces = {i: [release_piece(n["repo"], r) for r in reversed(n["releases"])]
               for i, n in enumerate(notes)}
     frames = {i: (f"\n\n<details><summary>{n['package']}: {len(n['releases'])} release(s), "
-                  f"{n['releases'][0]['tag_name']} to {n['releases'][-1]['tag_name']}</summary>\n",
+                  f"{literal_label(n['releases'][0]['tag_name'])} to "
+                  f"{literal_label(n['releases'][-1]['tag_name'])}</summary>\n",
                   "\n</details>")
               for i, n in enumerate(notes) if n["releases"] and not n.get("error")}
     kept: dict[int, list[str]] = {}
@@ -436,8 +439,10 @@ def build_body(
                 break
             allot = room // (len(pieces[i]) - k)
             if len(piece) > allot:
-                cut = f"\n(cut for length; full notes: {url})\n"
-                piece = piece[: max(allot, 400) - len(cut)].rsplit("\n", 1)[0] + cut
+                # Cut source text before fencing it. Slicing rendered Markdown
+                # could remove the closing fence and expose later upstream text.
+                release = list(reversed(notes[i]["releases"]))[k]
+                piece, _ = release_piece(notes[i]["repo"], release, max(allot, 400))
             out.append(piece)
             used += len(piece)
         kept[i] = out
@@ -461,13 +466,43 @@ def build_body(
     return head + "\n".join(notes_head) + "".join(sections) + "\n".join(tail) + "\n"
 
 
-def release_piece(repo: str, r: dict[str, Any]) -> tuple[str, str]:
-    """One release's section of the PR body, and the URL of its full notes."""
-    body = (r.get("body") or "").strip()
-    # GitHub's generated notes open with their own heading; ours says it.
-    body = re.sub(r"^#+ *what'?s changed *\n+", "", body, flags=re.IGNORECASE)
-    url = f"https://github.com/{repo}/releases/tag/{r['tag_name']}"
-    return f"\n### {r['tag_name']} ({day(r.get('published_at'))})\n\n{body}\n", url
+def literal_excerpt(text: str) -> str:
+    """Keep imported text inert in GitHub: no mentions, issue links or HTML.
+
+    A source can contain arbitrary Markdown, including its own code fences.
+    Choose a longer backtick fence and never truncate this rendered wrapper.
+    """
+    fence = "`" * max(3, 1 + max((len(m[0]) for m in re.finditer(r"`+", text)), default=0))
+    return f"{fence}text\n{text}" + ("" if text.endswith("\n") else "\n") + f"{fence}\n"
+
+
+def literal_label(text: str) -> str:
+    """Upstream metadata is text too, including tags in headings/summaries."""
+    return "<code>" + html.escape(text) + "</code>"
+
+
+def release_piece(repo: str, r: dict[str, Any], limit: int | None = None) -> tuple[str, str]:
+    """One release as an inert excerpt, plus a clickable canonical source.
+
+    Release Markdown is imported data, not instructions to GitHub's notification
+    and cross-reference parser. Preserve it literally, including attribution,
+    code and email addresses. Only the release page is linked outside the fence.
+    """
+    body = r.get("body") or ""
+    tag = r["tag_name"]
+    url = f"https://github.com/{repo}/releases/tag/{quote(tag, safe='')}"
+    heading = f"\n### {literal_label(tag)} ({day(r.get('published_at'))})\n\n"
+    link = f"\nFull notes: {url}\n"
+    piece = heading + literal_excerpt(body) + link
+    if limit is not None and len(piece) > limit:
+        link = f"\n(cut for length; full notes: {url})\n"
+        # Reserve the original (longest) fence even if the cut drops its source.
+        overhead = len(heading) + len(literal_excerpt(body)) - len(body) + len(link)
+        body = body[:max(0, limit - overhead)]
+        if "\n" in body:
+            body = body.rsplit("\n", 1)[0]
+        piece = heading + literal_excerpt(body) + link
+    return piece, url
 
 
 # ── the run ────────────────────────────────────────────────────────────────
