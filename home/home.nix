@@ -103,6 +103,7 @@ in
     ./browser-trust.nix
     ./ai-memory.nix
     ./client-apps.nix
+    ./dsh.nix
     ./harness-records.nix
     ./herdr.nix
     ./nvim.nix
@@ -250,12 +251,12 @@ in
       --home "$HOME" --template ${./dot_claude/settings.json}
   '';
 
-  # Same canonical skill tree, exposed to Codex and `pi` (earendil-works/pi)
-  # through the vendor-neutral, always-trusted Agent-Skills directory
-  # (~/.agents/skills). Both read the same agentskills.io SKILL.md format
-  # (name/description frontmatter, symlinks followed), so ONE tree feeds every
-  # harness. pi selects on `description` only (ignores `when_to_use`), so keep
-  # triggers there.
+  # Same canonical skill tree, exposed to Codex, `pi` (earendil-works/pi) and
+  # dsh (home/dsh.nix) through the vendor-neutral, always-trusted Agent-Skills
+  # directory (~/.agents/skills). All read the same agentskills.io SKILL.md
+  # format (name/description frontmatter, symlinks followed), so ONE tree feeds
+  # every harness. pi and dsh select on `description` only (they ignore
+  # `when_to_use`), so keep triggers there.
   home.file.".agents/skills".source = link "dot_claude/skills";
 
   # No Chrome --app launcher entries on any host (Tom, 2026-10-12: "i do not

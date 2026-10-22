@@ -8,6 +8,9 @@
         "strix",
         "client"
       ],
+      "build": [
+        ".#checks.x86_64-linux.dsh-config"
+      ],
       "versions": {
         "claude-code": "nixosConfigurations.strix.pkgs.llm-agents.claude-code.version",
         "codex": "nixosConfigurations.strix.pkgs.llm-agents.codex.version",
@@ -18,7 +21,8 @@
         "qmd": "nixosConfigurations.strix.pkgs.llm-agents.qmd.version",
         "spec-kit": "nixosConfigurations.strix.pkgs.llm-agents.spec-kit.version",
         "cc-switch-cli": "nixosConfigurations.strix.pkgs.llm-agents.cc-switch-cli.version",
-        "ck": "nixosConfigurations.strix.pkgs.llm-agents.ck.version"
+        "ck": "nixosConfigurations.strix.pkgs.llm-agents.ck.version",
+        "dsh": "nixosConfigurations.strix.pkgs.llm-agents.dsh.version"
       },
       "notes": {
         "claude-code": {
@@ -32,9 +36,13 @@
         "pi": {
           "repo": "earendil-works/pi",
           "tagPrefix": "v"
+        },
+        "dsh": {
+          "repo": "deepseek-ai/deepseek-harness",
+          "tagPrefix": "dsh-v"
         }
       },
-      "switch": "Home Manager only. Running agent sessions keep the binary they started with; the next session starts on the new one. The substrate units find claude, codex and pi through the profile, so their unit text does not change and nothing restarts."
+      "switch": "Home Manager only. Running agent sessions keep the binary they started with; the next session starts on the new one. The substrate units find claude, codex and pi through the profile, so their unit text does not change and nothing restarts. dsh is the pkgs/dsh wrapper around llm-agents.dsh; its policy is store --patch overlays, so a bump changes nothing under ~/.dsh, and checks.dsh-config (built above) re-checks the policy against the new release."
     },
     {
       "name": "herdr",

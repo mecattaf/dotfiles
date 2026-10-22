@@ -512,6 +512,9 @@
             browser-desktop
             chrome-stream
             fleet-status
+            # `nix build .#dsh -o .demo/dsh` is how a PR worktree runs dsh; its
+            # passthru carries `.runner`, `.smoke` and `.unwrapped` for the gate.
+            dsh
             # `nix run .#fontbuilder -- <capture-dir> <out-dir>` — the press for
             # the Anthropic suite. Exported because that IS the invocation. The
             # three anthropic-* font packages stay UNEXPORTED (matching sf-pro):
@@ -1122,6 +1125,19 @@
           assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") strixHome.home.packages);
           assert !(strixHome.xdg.configFile ? "kitty-herdr-nix.conf");
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr") strixHome.home.packages;
+          # dsh (T-31) on the agent host only: exactly one bin/dsh, and it is
+          # the policy wrapper reading the host's agenix key, never the bare
+          # llm-agents build. The client never gets it, nor the
+          # ~/.agents/AGENTS.md link that comes with it.
+          assert strixHome.programs.dsh.enable;
+          assert !clientHome.programs.dsh.enable;
+          assert
+            map (p: p.qwenKeyFile or null) (
+              builtins.filter (p: nixpkgs.lib.getName p == "dsh") strixHome.home.packages
+            ) == [ (cfgOf "strix").age.secrets.qwencloud-token.path ];
+          assert !(builtins.any (p: nixpkgs.lib.getName p == "dsh") clientHome.home.packages);
+          assert strixHome.home.file ? ".agents/AGENTS.md";
+          assert !(clientHome.home.file ? ".agents/AGENTS.md");
           # The client's herdr chords live in Sway's RAW, hot-reloaded binds.conf,
           # which no generation renders, so they are asserted here by content
           # (precedent: the readFile assert on dot_claude/settings.json below).
@@ -1784,6 +1800,80 @@
               export LAND_PY=${pkgs.land}/share/land/land.py
               mkdir -p "$HOME"
               python3 -m unittest discover -s ${./tests/land} -p 'test_*.py' -v
+              touch "$out"
+            '';
+
+        # dsh-config (T-31): the wrapped dsh boots every allowed profile with
+        # the fleet policy as the last layer, and refuses what it must. Runs
+        # in the build sandbox: no network, a private HOME and DSH_HOME under
+        # $TMPDIR, no key (the agenix path is not visible here). Each dump
+        # must leave stderr empty (a patch that matches no row warns there)
+        # and carry the policy rows; tests/dsh-config/check_dump.py reads its
+        # expectations from pkgs.dsh's passthru. lib/update-watch.json builds
+        # this on every llm-agents bump.
+        dsh-config =
+          let
+            expect = pkgs.writeText "dsh-config-expect.json" (
+              builtins.toJSON {
+                disabled = pkgs.dsh.disabledIds;
+                runner = "${pkgs.dsh.runner}/bin/dsh-bwrap";
+              }
+            );
+          in
+          pkgs.runCommand "dsh-config"
+            {
+              nativeBuildInputs = [ (pkgs.python3.withPackages (ps: [ ps.pyyaml ])) ];
+            }
+            ''
+              set -euo pipefail
+              export HOME="$TMPDIR/home" DSH_HOME="$TMPDIR/dsh-home"
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p "$HOME" "$TMPDIR/cwd"
+              mkdir -m 700 "$DSH_HOME"
+              cd "$TMPDIR/cwd"
+              dsh=${pkgs.dsh}/bin/dsh
+
+              test "$($dsh --version)" = ${pkgs.dsh.unwrapped.version}
+
+              dump() {
+                name="$1"
+                shift
+                "$dsh" "$@" > "$TMPDIR/$name.yml" 2> "$TMPDIR/$name.err"
+                if [ -s "$TMPDIR/$name.err" ]; then
+                  echo "dsh $*: stderr not empty:" >&2
+                  cat "$TMPDIR/$name.err" >&2
+                  exit 1
+                fi
+                python3 -I ${./tests/dsh-config/check_dump.py} "$TMPDIR/$name.yml" ${expect}
+              }
+              dump headless headless --dump-config
+              dump headless-flag --profile headless --dump-config
+              dump sdk sdk --dump-config
+              dump acp acp --dump-config
+
+              refused() {
+                set +e
+                "$@" > /dev/null 2> "$TMPDIR/refused.err"
+                code=$?
+                set -e
+                if [ "$code" != 2 ] || ! grep -q 'refused by the fleet wrapper' "$TMPDIR/refused.err"; then
+                  echo "expected a refusal (exit 2), got $code from: $*" >&2
+                  cat "$TMPDIR/refused.err" >&2
+                  exit 1
+                fi
+              }
+              refused "$dsh" web --help
+              refused "$dsh" --profile=web --help
+              refused "$dsh" sdk-minimal --help
+              refused "$dsh" headless --from-default-profile web --dump-config
+              refused "$dsh" plugin --profile headless add left-pad
+              refused env DSH_PERMISSION_MODE=danger-full-access "$dsh" headless --dump-config
+              (cd "$HOME" && refused "$dsh" headless --dump-config)
+              (cd "$DSH_HOME" && refused "$dsh" headless --dump-config)
+              (cd "$TMPDIR" && refused "$dsh" headless --dump-config)
+
+              # No DeepSeek identity minted by any of the boots above.
+              test ! -e "$DSH_HOME/.anonymous-user-id"
               touch "$out"
             '';
 

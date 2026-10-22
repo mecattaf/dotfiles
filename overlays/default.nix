@@ -41,6 +41,11 @@ final: _prev: {
   # Replaces paper-intake (paper-print-flush). See home/paper.nix.
   paper-daemon = final.callPackage ../pkgs/paper-daemon { };
 
+  # dsh (DeepSeek Harness) from llm-agents.nix behind the fleet policy: Qwen
+  # Cloud as the only route, every DeepSeek-bound row off, a hardened bwrap
+  # runner. Needs the flake's `llm-agents` overlay. See pkgs/dsh, home/dsh.nix.
+  dsh = final.callPackage ../pkgs/dsh { };
+
   # CLI-Anything — pinned cli-hub Python app plus immutable Codex/Claude/Pi
   # integrations. Upstream has no flake; see modules/cli-anything.nix.
   cli-anything-hub = final.callPackage ../pkgs/cli-anything-hub.nix { };
