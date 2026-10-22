@@ -75,20 +75,23 @@ let
   sessions = ./sessions.patch.yml;
 
   # Profiles declared here rather than shipped by dsh. `herdr` is the stock
-  # headless tuple plus the three plugins of pkgs/dsh-plugins, for Tom to run
-  # by hand inside a Herdr pane (`dsh herdr "<task>"`). Substrate drives the
-  # stock `headless` profile, which never mounts them. The guard comes before
-  # dsh-herdr, which cannot load without it either way.
+  # headless tuple plus the three plugins of pkgs/dsh-plugins and their
+  # stderr log sink, for Tom to run by hand inside a Herdr pane
+  # (`dsh herdr "<task>"`). Substrate drives the stock `headless` profile,
+  # which never mounts them. The guard comes before dsh-herdr, which cannot
+  # load without it either way.
   nixProfiles = {
     herdr = {
       bundles = [
         "@deepseek-ai/dsh-base"
         "@deepseek-ai/dsh-headless"
+        "stderr-log"
         "herdr-guard"
         "@dsh-external/dsh-herdr-toolkit"
         "jevcore-dsh"
       ];
       packages = {
+        "stderr-log" = dsh-plugins.stderr-log;
         "herdr-guard" = dsh-plugins.herdr-guard;
         "@dsh-external/dsh-herdr-toolkit" = dsh-plugins.dsh-herdr;
         "jevcore-dsh" = dsh-plugins.jevcore;

@@ -1895,11 +1895,13 @@
         # check phases are part of this closure: dsh-herdr's node tests (argv,
         # runtime, preview, the 23-tool registration against the real
         # dsh-tools) and the herdr-guard unit test (foreign pane_run, malformed
-        # ids, writes without HERDR_ENV=1). Here: jevcore's $out has the
-        # pinned build and no network path, and the wrapper boots `herdr` with
-        # every plugin row mounted and none skipped, while the stock headless
-        # profile (substrate's) mounts none of them. Same sandbox as
-        # dsh-config: no network, a private DSH_HOME, no key, no herdr.
+        # ids, writes without HERDR_ENV=1) and the stderr-log unit test. Here:
+        # jevcore's $out has the pinned build and no network path, the wrapper
+        # composes `herdr` with every plugin row mounted and none skipped, the
+        # stock headless profile (substrate's) mounts none of them, and a boot
+        # of `herdr` with a blank task (it stops before any model call) prints
+        # jevcore's ready line on stderr. Same sandbox as dsh-config: no
+        # network, a private DSH_HOME, no key, no herdr.
         dsh-plugins =
           let
             plugins = pkgs.dsh.plugins;
@@ -1908,6 +1910,7 @@
               runner = "${pkgs.dsh.runner}/bin/dsh-bwrap";
             };
             pluginRows = [
+              "stderr-log"
               "herdr-guard"
               "dsh-herdr-toolkit"
               "jev"
@@ -1936,7 +1939,7 @@
             ''
               set -euo pipefail
               # Built, so their check phases passed.
-              : ${plugins.dsh-herdr} ${plugins.herdr-guard}
+              : ${plugins.dsh-herdr} ${plugins.herdr-guard} ${plugins.stderr-log}
 
               # jevcore: the git 0.4.2 that admits this dsh, core beside it,
               # the skill, and no TypeSafe SDK or network call in the JS.
@@ -1983,6 +1986,7 @@
               # The synced profile: a private manifest and store links only.
               p="$DSH_HOME/profiles/herdr"
               test "$(stat -c %a "$p/package.json")" = 600
+              test "$(readlink "$p/node_modules/stderr-log")" = ${plugins.stderr-log}
               test "$(readlink "$p/node_modules/herdr-guard")" = ${plugins.herdr-guard}
               test "$(readlink "$p/node_modules/@dsh-external/dsh-herdr-toolkit")" = ${plugins.dsh-herdr}
               test "$(readlink "$p/node_modules/jevcore-dsh")" = ${plugins.jevcore}
@@ -1994,6 +1998,17 @@
               dump herdr-again ${expectHerdr} --profile herdr --dump-config
               test ! -e "$p/node_modules/dropped-plugin"
               test "$(cat "$p/cordis.patch.yml")" = '[]'
+
+              # The whole tree boots: an unknown --session-id fails in headless
+              # after the loader settled and before any model call. jevcore's
+              # ready line reaches stderr through stderr-log, on the offline mock.
+              rc=0
+              "$dsh" herdr --session-id session-none "reply OK" > "$TMPDIR/boot.out" 2> "$TMPDIR/boot.err" || rc=$?
+              cat "$TMPDIR/boot.err" >&2
+              echo "dsh herdr boot: exit $rc" >&2
+              test "$rc" = 1
+              grep -qF 'dsh: session "session-none" does not exist' "$TMPDIR/boot.err"
+              grep -qF '[jevcore] ready · provider=mock · gates: safety=off context=off' "$TMPDIR/boot.err"
               touch "$out"
             '';
 

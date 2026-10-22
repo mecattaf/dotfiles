@@ -163,8 +163,9 @@ let
   acp = [ (set "acp" defaultRoute) ];
 
   # The `herdr` profile's own rows. jevcore stays on its offline mock: no
-  # network path exists without the SDK, and the startup lines at `info` show
-  # `provider=mock` on stderr. Both gates stay off: on the mock every gated
+  # network path exists without the SDK, and its startup line at `info`
+  # (`[jevcore] ready · provider=mock`) reaches stderr through the profile's
+  # stderr-log plugin. Both gates stay off: on the mock every gated
   # bash, edit or git call would become an ask, which headless denies.
   # FOLLOW-UP, NOT IMPLEMENTED: a real Jev route is this one row (provider
   # live, baseURL, model, apiKeyRef) plus the SDK back in pkgs/dsh-plugins.

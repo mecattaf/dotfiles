@@ -19,4 +19,7 @@ in
   herdr-guard = callPackage ./herdr-guard { };
   # PerryLink/jevcore's dsh plugin, offline (mock provider, no SDK).
   jevcore = callPackage ./jevcore { };
+  # Owned here: prints the plugins' ctx.logger lines (jevcore's ready line,
+  # warnings) to stderr, which dsh itself never does.
+  stderr-log = callPackage ./stderr-log { };
 }
