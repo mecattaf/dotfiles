@@ -1,10 +1,21 @@
+# config: entry point of the client's (and strix's) native Sway session.
 # Native Sway, physical seat. All raw files come from the dotfiles checkout.
-# No bar: Vicinae is the command surface; Mako owns notifications.
+# No bar: Vicinae is the command surface (through ~/.local/bin/palette since
+# 2026-10-22, palette.conf); Mako owns notifications.
+# Include order matters: palette.conf sets $palette before modes.conf uses it;
+# sway-local.conf (generated in home/home.nix) comes after binds so the
+# client's F10 and XF86 brightness lines win; the theme comes last.
+# Every bindsym in binds.conf, palette.conf and modes.conf carries a
+# `## <group> | <verb> | <doc>` comment that tools/keymap/gen-keymap.py turns
+# into docs/shell/KEYMAP.md.
 include /etc/sway/physical-session.conf
 include ~/.config/sway/input.conf
 include ~/.config/sway/layout.conf
 include ~/.config/sway/binds.conf
+include ~/.config/sway/palette.conf
+include ~/.config/sway/modes.conf
 include ~/.config/sway/rules.conf
 include ~/.config/sway/startup.conf
 include ~/.config/sway-local.conf
 include ~/.config/theme/sway.conf
+# Not verified: include order never exercised by a sway run in this lane.
