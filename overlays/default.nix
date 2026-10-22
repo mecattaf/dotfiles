@@ -1,5 +1,5 @@
 { torchRocm }:
-final: prev: {
+final: _prev: {
   qwentts = final.callPackage ../pkgs/qwentts.nix { };
   speech-session = final.callPackage ../pkgs/speech-session { };
   qwen-speech = final.callPackage ../pkgs/qwen-speech { };
@@ -97,7 +97,7 @@ final: prev: {
   # a spec-task gate runs bare `pnpm`. Add-only: pkgs.pnpm itself is untouched.
   # The upstream derivation derives its src url from finalAttrs.version, so
   # both are overridden together; the hash is the registry tarball's sha256.
-  pnpm_11_17 = final.pnpm.overrideAttrs (old: {
+  pnpm_11_17 = final.pnpm.overrideAttrs (_old: {
     version = "11.17.0";
     src = final.fetchurl {
       url = "https://registry.npmjs.org/pnpm/-/pnpm-11.17.0.tgz";
