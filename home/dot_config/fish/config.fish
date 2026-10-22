@@ -87,9 +87,12 @@ function cc2;  __claude_seat cc2 $HOME/.claude-work $argv; end
 function cac2; __claude_seat cc2 $HOME/.claude-work --continue $argv; end
 # Codex, same shape: cx starts, cax resumes the newest session. codex 0.160.0
 # auto-starts a shared app-server daemon that copies its install into
-# ~/.codex/packages and needs the codex-package.json manifest the Nix build does
+# ~/.codex/packages and needs a codex-package.json manifest the Nix build did
 # not ship ("this CLI has no complete local package", 2026-10-04), so the
-# launchers run the embedded server as before 0.160.
+# launchers run the embedded server as before 0.160. The llm-agents build of
+# codex 0.162.1 ships the manifest (libexec/codex/codex-package.json), so the
+# flag is now a choice rather than a workaround; it stays until Tom decides on
+# the shared daemon.
 alias cx='codex --disable daemon_auto_start --dangerously-bypass-approvals-and-sandbox'
 alias cax='codex resume --last --disable daemon_auto_start --dangerously-bypass-approvals-and-sandbox'
 
