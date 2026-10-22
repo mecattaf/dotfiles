@@ -176,6 +176,41 @@ class SeatsFixture:
                         "usage": {"input": tin, "output": tout,
                                   "cacheRead": cache, "cacheWrite": 0}}})
 
+    def dsh_session(self, messages, cwd="--home-tom-src--", session="session-0000"):
+        """One dsh session file (plain JSONL, compression none). Field names
+        were read, structure only, from a real 0.2.1-rc.2 session.v4.jsonl;
+        every value here is synthetic. messages: (when, input, output,
+        cacheRead, provider)."""
+        folder = self.home / ".dsh/sessions" / cwd / session
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = [json.dumps({"type": "session", "version": 4, "id": session,
+                             "createdAt": 0, "cwd": "/home/tom/src"})]
+        for seq, (when, tin, tout, cache, provider) in enumerate(messages):
+            ms = int(when.timestamp() * 1000)
+            # The request records name the route too, and carry no usage:
+            # they must never be billed.
+            lines.append(json.dumps({
+                "type": "request/context", "seq": 3 * seq, "time": ms,
+                "data": {"provider": provider, "model": "deepseek-v4.1-flash",
+                         "contextWindow": 1000000}}))
+            lines.append(json.dumps({
+                "type": "assistant/message", "seq": 3 * seq + 1, "time": ms,
+                "data": {"turn": 1, "step": seq + 1,
+                         "message": {"role": "assistant", "content": [],
+                                     "source": {"kind": "model", "provider": provider,
+                                                "model": "deepseek-v4.1-flash"},
+                                     "id": f"m{seq}"},
+                         "usage": {"inputTokens": tin, "outputTokens": tout,
+                                   "cacheReadTokens": cache,
+                                   "totalTokens": tin + tout + cache}}}))
+            lines.append(json.dumps({"type": "step/end", "seq": 3 * seq + 2, "time": ms,
+                                     "data": {"turn": 1, "step": seq + 1}}))
+        path = folder / "session.v4.jsonl"
+        path.write_text("\n".join(lines) + "\n")
+        for stale in self.state.glob("qwen-events.json"):
+            stale.unlink()
+        return path
+
     def substrate_archive(self, name, messages, job="run1/job1"):
         """A harness session the factory archived at job end, beside the job's
         other harness archives: <transcripts>/<run>/<job>/<name>.jsonl."""
@@ -383,7 +418,30 @@ class SeatsTest(unittest.TestCase):
         spec.loader.exec_module(mod)
         pi = next(s for s in mod.DEFAULT_SEATS if s["id"] == "pi-qwencloud")
         self.assertEqual(pi["spend_root"],
-                         ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts"])
+                         ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts",
+                          "~/.dsh/sessions"])
+
+    def test_dsh_sessions_are_billed_to_the_same_seat(self):
+        # T-31: dsh spends the same token plan through its qwen-token-plan
+        # route, so its replies join this seat's credits and spend. Uncached
+        # input + output only; the cache reads and the request records are not.
+        self.box.dsh_session([
+            (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 500_000, "qwen-token-plan")])
+        _, seats = self.box.report()
+        qwen = seats["pi-qwencloud"]
+        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 11_000)
+        self.assertEqual(qwen["spend"]["tokens_in"], 90_000 + 10_000)
+        self.assertEqual(qwen["spend"]["tokens_out"], 6_250 + 1_000)
+        self.assertEqual(qwen["spend"]["sessions"], 2, "the pi file and the dsh session")
+
+    def test_dsh_traffic_on_other_routes_is_never_billed(self):
+        # A later local route (the gufo row) lands in the same session store.
+        self.box.dsh_session([
+            (self.qwen_opened + timedelta(hours=2), 999_999, 999_999, 0, "gufo")])
+        _, seats = self.box.report()
+        qwen = seats["pi-qwencloud"]
+        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250)
+        self.assertEqual(qwen["spend"]["tokens_in"], 90_000)
 
     def test_qwen_local_traffic_is_never_billed(self):
         _, seats = self.box.report()

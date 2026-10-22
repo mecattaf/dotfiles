@@ -48,10 +48,11 @@ THE SEATS, and where each one's truth lives:
                 confirms the key still authenticates; the quota-spending probe
                 is opt-in (--probe-qwen) because asking costs the thing being
                 measured. Credits are counted from pi's live session logs
-                (~/.pi/agent/sessions) AND from the pi sessions the substrate
-                factory archives under ~/.local/state/substrate/transcripts;
-                a factory job's tokens appear when its job ends, because the
-                archive is written at job end.
+                (~/.pi/agent/sessions), from the pi sessions the substrate
+                factory archives under ~/.local/state/substrate/transcripts
+                (a factory job's tokens appear when its job ends, because the
+                archive is written at job end), and from dsh's plain-JSONL
+                sessions (~/.dsh/sessions), the same token plan.
 
   openrouter    OpenRouter, the paid key pi's `openrouter` provider uses (the
                 token lives at /run/agenix/openrouter-token and is read at call
@@ -229,9 +230,13 @@ DEFAULT_SEATS = [
     {"id": "codex", "provider": "codex", "label": "Codex CLI",
      "config_dir": "~/.codex", "owner": "third-party", "spend_root": "~/.codex/sessions",
      "note": "RULINGS R-2026-09-06-02: this login is not Tom's — read by name, never spent."},
-    {"id": "pi-qwencloud", "provider": "qwen", "label": "Qwen Cloud (token-plan, via pi)",
+    # One seat, one credit pool: dsh (pkgs/dsh) spends the same token plan
+    # pi does, so its sessions join this seat rather than a new one. The id
+    # stays, because the meter rows and substrate join on it.
+    {"id": "pi-qwencloud", "provider": "qwen", "label": "Qwen Cloud (token-plan, via pi and dsh)",
      "owner": "tom",
-     "spend_root": ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts"]},
+     "spend_root": ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts",
+                    "~/.dsh/sessions"]},
     {"id": "openrouter", "provider": "openrouter", "label": "OpenRouter (paid key, soft cap)",
      "owner": "tom", "meter": "usd"},
     {"id": "openrouter-free", "provider": "openrouter", "label": "OpenRouter free model (daily requests)",
@@ -1104,12 +1109,53 @@ def parse_quota_reset(text, observed):
 
 
 QWEN_EVENTS_CACHE = STATE / "qwen-events.json"
-QWEN_EVENTS_CACHE_VERSION = 2   # bump when the scan changes what it extracts
+QWEN_EVENTS_CACHE_VERSION = 3   # bump when the scan changes what it extracts
 QWEN_PROVIDER = "qwen-token-plan"
 
 
+def dsh_time(record):
+    """A dsh session record's own stamp (`time`, epoch milliseconds), or None."""
+    value = record.get("time")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return parse_ts(value / 1000)
+
+
+def dsh_qwen_usage(record):
+    """(epoch, input, output, cache) for one dsh token-plan reply, else None.
+
+    dsh (pkgs/dsh) writes plain JSONL sessions under ~/.dsh/sessions/<cwd>/
+    <session>/session.v4.jsonl, one `assistant/message` record per model call:
+      {"type": "assistant/message", "time": <epoch ms>,
+       "data": {"message": {"source": {"provider": ..., "model": ...}},
+                "usage": {"inputTokens", "outputTokens", "cacheReadTokens",
+                          "cacheWriteTokens"}}}
+    dsh's counts are disjoint, like pi's: inputTokens is UNCACHED input, so
+    billable stays input + output and cache reads stay free. Every model on the
+    route is priced at the one qwen3.8-max calibration (QWEN_PLAN), which
+    over-counts DeepSeek Flash: the error is on the safe side.
+    """
+    if record.get("type") != "assistant/message":
+        return None
+    data = record.get("data")
+    if not isinstance(data, dict):
+        return None
+    message = data.get("message")
+    source = message.get("source") if isinstance(message, dict) else None
+    if not isinstance(source, dict) or source.get("provider") != QWEN_PROVIDER:
+        return None
+    usage = data.get("usage")
+    stamp = dsh_time(record)
+    if stamp is None or not isinstance(usage, dict):
+        return None
+    return (stamp.timestamp(),
+            int(usage.get("inputTokens") or 0),
+            int(usage.get("outputTokens") or 0),
+            int(usage.get("cacheReadTokens") or 0) + int(usage.get("cacheWriteTokens") or 0))
+
+
 def qwen_events(roots):
-    """(events, resets) from pi's own session logs, under every root given.
+    """(events, resets) from pi's and dsh's own session logs, under every root.
 
     events  sorted [(epoch, input, output)] for messages billed to the token
             plan — and ONLY those. The same session store carries locally
@@ -1156,9 +1202,14 @@ def qwen_events(roots):
                             # Anchored to the refusal's OWN timestamp: a reset
                             # stated as "08-14" by a message sent in August is
                             # August, not next August.
-                            when = parse_quota_reset(line, parse_ts(record.get("timestamp")))
+                            anchor = parse_ts(record.get("timestamp")) or dsh_time(record)
+                            when = parse_quota_reset(line, anchor)
                             if when:
                                 stamps.append(iso(when))
+                        reply = dsh_qwen_usage(record)
+                        if reply is not None:
+                            rows.append(list(reply[:3]))
+                            continue
                         message = record.get("message")
                         if not isinstance(message, dict) or message.get("provider") != QWEN_PROVIDER:
                             continue
@@ -1710,11 +1761,12 @@ def _events_codex(path):
 
 
 def _events_pi(path):
-    """pi, token-plan traffic only.
+    """pi and dsh, token-plan traffic only.
 
     The same session store carries locally served messages — the Halogen
     server on Strix, a hand-run llama-server. Those cost the subscription
     nothing, so counting them here would inflate a meter with local tokens.
+    A dsh session file is read by dsh_qwen_usage, under the same rule.
     """
     events = []
     with path.open(encoding="utf-8", errors="replace") as stream:
@@ -1724,6 +1776,10 @@ def _events_pi(path):
             try:
                 record = json.loads(line)
             except ValueError:
+                continue
+            reply = dsh_qwen_usage(record)
+            if reply is not None:
+                events.append(reply)
                 continue
             if record.get("type") != "message":
                 continue
