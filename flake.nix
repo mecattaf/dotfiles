@@ -200,7 +200,7 @@
     # no container (modules/gufo.nix). Pinned to the commit the catalog was read
     # from. No nixpkgs.follows: upstream qualifies its build against its own
     # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
-    gufo.url = "github:gufo-org/gufo/ae26ca4a13f252a0424c23e4bd7662167f23b436";
+    gufo.url = "github:gufo-org/gufo/0c03748a271eab895befc0d2343aa50ca4b6d836";
 
     # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
     # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
