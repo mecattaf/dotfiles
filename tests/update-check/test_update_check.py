@@ -261,7 +261,7 @@ class PureHelpers(unittest.TestCase):
         self.assertIn("(cut for length; full notes: "
                       "https://github.com/anthropics/claude-code/releases/tag/v2.1.296)", body)
         self.assertIn("| claude-code | 2.1.287 | 2.1.296 |", body)
-        self.assertLess(body.index("### v2.1.296"), body.index("### v2.1.288"))  # newest first
+        self.assertLess(body.index("### <code>v2.1.296</code>"), body.index("### <code>v2.1.288</code>"))  # newest first
         marker = uc.read_marker(body)
         self.assertEqual(marker["to_rev"], A1)
         self.assertEqual(marker["versions"], {"claude-code": ["2.1.287", "2.1.296"]})
@@ -286,10 +286,73 @@ class PureHelpers(unittest.TestCase):
         body = uc.build_body(report, {"switch": "-"}, notes, limit=30000)
         self.assertLessEqual(len(body), 30000)
         self.assertIn("pi notes", body)
-        self.assertNotIn("What's changed", body)
+        self.assertIn("What's changed", body)
         for tag in ["v2.%d" % n for n in range(20)] + ["v3.%d" % n for n in range(5)]:
-            self.assertIn(f"### {tag} ", body)  # every release keeps its heading
+            self.assertIn(f"### <code>{tag}</code> ", body)  # every release keeps its heading
         self.assertIn("x" * 1500, body)  # and a real share of its notes
+
+
+class ImportedNotes(unittest.TestCase):
+    def assert_inert(self, rendered, source):
+        # Parse the outer fence independently and prove it cannot close anywhere
+        # inside the source. This includes raw HTML, nested and unclosed fences.
+        match = re.search(r"^(`{3,})text\n", rendered, re.MULTILINE)
+        self.assertIsNotNone(match)
+        fence = match[1]
+        rest = rendered[match.end():]
+        closing = re.search(r"^" + re.escape(fence) + r"$", rest, re.MULTILINE)
+        self.assertIsNotNone(closing)
+        self.assertEqual(rest[:closing.start()], source + ("" if source.endswith("\n") else "\n"))
+        self.assertFalse(any(len(run[0]) >= len(fence) for run in re.finditer(r"`+", source)))
+
+    def test_exact_vicinae_incident_keeps_attribution_inert(self):
+        fixture = json.loads((Path(__file__).parent / "fixtures/vicinae-v0.29.2.json").read_text())
+        piece, url = uc.release_piece("vicinaehq/vicinae", fixture)
+        self.assert_inert(piece, fixture["body"])
+        self.assertIn("by @Keyruu in https://github.com/vicinaehq/vicinae/pull/2043", piece)
+        self.assertTrue(piece.endswith("Full notes: " + fixture["html_url"] + "\n"))
+        self.assertEqual(url, fixture["html_url"])
+        self.assertEqual(uc.release_piece("vicinaehq/vicinae", fixture)[0], piece)
+
+    def test_source_variants_are_preserved_literally(self):
+        sources = [
+            "Thanks @person and @org/team. Fixes #550, owner/repo#42.",
+            "[by @person](https://github.com/person) [fix](https://github.com/org/repo/issues/42)",
+            "[fix][pr]\n[pr]: https://github.com/org/repo/pull/42\n<https://github.com/org/repo/issues/42>",
+            "Contact name@example.org; npm install @org/pkg; `echo @person`.",
+            "```sh\necho @person\n```\n````\n@org/team\n`````\n",  # unclosed source fence
+            "<details><summary>@person</summary></details>\n<script>@team</script>",
+            "~~~text\n@person\n~~~\n    @person\nhttps://example.org/@person?q=@team",
+            "", "preserve trailing newline\n",
+        ]
+        for source in sources:
+            with self.subTest(source=source):
+                piece, _ = uc.release_piece("owner/repo", release("v1", "2026-10-22", source))
+                self.assert_inert(piece, source)
+
+    def test_truncation_keeps_every_excerpt_closed(self):
+        report = {"input": "app", "to_rev": A1, "from_rev": A0, "base": H0,
+                  "changed": {"app": ("1", "2")}, "gate": {"ok": True, "steps": []}, "run": "now"}
+        source = "```\n@person owner/repo#42 https://github.com/owner/repo/pull/42\n" * 100
+        notes = [{"package": "app", "repo": "owner/repo", "from": "1", "to": "2",
+                  "releases": [release("v1", "2026-10-21", source), release("v2", "2026-10-22", source)]}]
+        body = uc.build_body(report, {}, notes, limit=3000)
+        self.assertLessEqual(len(body), 3000)
+        self.assertIn("cut for length; full notes:", body)
+        blocks = list(re.finditer(r"^(`{3,})text\n(.*?)^\1$", body, re.MULTILINE | re.DOTALL))
+        self.assertEqual(len(blocks), 2)
+        outside = re.sub(r"^(`{3,})text\n(.*?)^\1$", "", body, flags=re.MULTILINE | re.DOTALL)
+        for dangerous in ("@person", "owner/repo#42", "https://github.com/owner/repo/pull/42"):
+            self.assertNotIn(dangerous, outside)
+        self.assertEqual(notes[0]["releases"][0]["body"], source)  # no mutation of fetched data
+        self.assertEqual(uc.build_body(report, {}, notes, limit=3000), body)
+
+    def test_tag_metadata_cannot_reintroduce_mentions_or_html(self):
+        tag = "v1-@person-</code><img>"
+        piece, url = uc.release_piece("owner/repo", release(tag, "2026-10-22", "notes"))
+        self.assertIn("<code>v1-@person-&lt;/code&gt;&lt;img&gt;</code>", piece)
+        self.assertNotIn("@", url)
+        self.assertNotIn("<img>", piece)
 
 
 class WatchFile(unittest.TestCase):
