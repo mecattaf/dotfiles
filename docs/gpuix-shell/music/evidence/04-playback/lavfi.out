@@ -1,0 +1,17 @@
+29 property-change duration=undefined
+30 start-file
+58 file-loaded
+58 property-change duration=1.044898
+59 playback-restart
+59 property-change duration=1.230658
+59 property-change duration=1.439637
+158 property-change duration=1.486077
+1152 end-file eof
+1152 start-file
+1152 property-change duration=undefined
+1152 file-loaded
+1152 property-change duration=0.981333
+1153 playback-restart
+2147 end-file eof
+2542 idle
+2543 property-change duration=undefined

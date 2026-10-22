@@ -1,0 +1,45 @@
+[
+ {
+  "label": "unreachable host, production argv",
+  "endToAudioMs": null,
+  "endFiles": [
+   "error:loading failed"
+  ],
+  "stderrLeaksToken": false,
+  "ytdlMentioned": false,
+  "stderr": []
+ },
+ {
+  "label": "44.1k flac -> 48k mp3, gapless weak",
+  "endToAudioMs": 494,
+  "endFiles": [
+   "eof",
+   "eof"
+  ],
+  "stderrLeaksToken": false,
+  "ytdlMentioned": false,
+  "stderr": []
+ },
+ {
+  "label": "44.1k flac -> 48k mp3, gapless yes",
+  "endToAudioMs": 1,
+  "endFiles": [
+   "eof",
+   "eof"
+  ],
+  "stderrLeaksToken": false,
+  "ytdlMentioned": false,
+  "stderr": []
+ },
+ {
+  "label": "44.1k flac -> 44.1k flac, gapless weak",
+  "endToAudioMs": 0,
+  "endFiles": [
+   "eof",
+   "eof"
+  ],
+  "stderrLeaksToken": false,
+  "ytdlMentioned": false,
+  "stderr": []
+ }
+]

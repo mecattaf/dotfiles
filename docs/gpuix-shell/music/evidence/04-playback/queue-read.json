@@ -1,0 +1,24 @@
+{
+ "byIndex": {
+  "status": "ok",
+  "keys": [
+   "username",
+   "changed",
+   "changedBy"
+  ],
+  "entries": 0,
+  "changedBy": "",
+  "changed": "0001-01-01T00:00:00Z"
+ },
+ "classic": {
+  "status": "ok",
+  "keys": [
+   "username",
+   "changed",
+   "changedBy"
+  ],
+  "entries": 0,
+  "changedBy": "",
+  "changed": "0001-01-01T00:00:00Z"
+ }
+}
