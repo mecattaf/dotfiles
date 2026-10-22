@@ -68,6 +68,15 @@
 # hosts/zenbook-duo/hardware.nix merged with 77eac406^'s host module; each
 # omission is recorded where it would have gone.
 {
+  # THE SHELL (2026-10-22, dryrun/shell-consolidation). This host is where the
+  # consolidated Wayland shell runs: Sway, kitty, fish, Vicinae as the only
+  # palette, Mako, swayidle and swaylock, wlr portal capture and the herdr
+  # projector. Its single source of truth is docs/shell/SHELL.md; the
+  # bindings table is docs/shell/KEYMAP.md (generated) and the GPUIX phase
+  # is docs/shell/DEFERRED.md. The Home Manager half enters through
+  # home/home.nix importing home/shell/. No option on this host changes for
+  # it; rawDotfiles.inStore below decides how the raw files arrive.
+  #
   # Sway + Vicinae desktop (myDisplay.enable defaults to true); hardware
   # stays host-specific.
 

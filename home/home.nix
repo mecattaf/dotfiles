@@ -71,6 +71,10 @@ let
     "yt-dlp"
     "kanshi"
     "qt6ct"
+    # NOT "vicinae" (2026-10-22, dryrun/shell-consolidation): home/vicinae.nix
+    # already places files inside ~/.config/vicinae, so a whole-dir link would
+    # collide with them. ./shell/default.nix links home/dot_config/vicinae/
+    # palette as a single file instead and puts `palette` on PATH.
   ];
 
   # Python interpreter backing the helper bin/ scripts (wifi-menu, fzf-nmcli, …).
@@ -112,6 +116,9 @@ in
     ./ssh.nix
     ./theme.nix
     ./vicinae.nix
+    # The consolidated Wayland shell (docs/shell/SHELL.md): imports the
+    # home/shell/ siblings that exist and wires the palette script.
+    ./shell
   ];
 
   home.username = "tom";
