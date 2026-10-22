@@ -1,0 +1,422 @@
+# commands.toml: the declarative command palette catalog (lane 16, 2026-10-22).
+#
+# What it is: one row per verb the shell can run. home/vicinae.nix reads this
+# file with builtins.fromTOML and renders the rows with scope "launcher" as
+# Vicinae root items (xdg.desktopEntries). home/dot_config/vicinae/palette
+# reads the same file with python3 tomllib and prints or runs any row by id.
+# What it replaced: the seven hand written `command` calls in home/vicinae.nix
+# (registered 2026-10-12, REPORTED by that file and commit f7167e3b).
+# Deliberately absent: native Sway commands (focus, move, layout, workspace
+# number N). They are not exec targets and stay in binds.conf only.
+# Rulings: R3 (Vicinae is the only palette), R2 (chords documented in one
+# place; KEYMAP.md is generated from binds.conf, this file only echoes them).
+#
+# Fields (all strings unless noted):
+#   id           unique, lower case with hyphens; for scope "launcher" it is
+#                also the desktop entry id, so Vicinae favorites such as
+#                "applications:herdr-picker" keep resolving.
+#   name         the row title in the palette.
+#   description  one line; becomes the desktop entry GenericName.
+#   exec         the command. Two tokens are expanded:
+#                  {home}       the home directory
+#                  {pkg:NAME}   the Nix store path of pkgs.NAME in vicinae.nix;
+#                               the palette script drops "{pkg:NAME}/bin/" and
+#                               relies on PATH instead.
+#   scope        "launcher"  shown in Vicinae root search and runnable by id
+#                "chord"     bound in binds.conf, runnable by id, kept out of
+#                            the Vicinae root (Tom curated that root on
+#                            2026-10-12, REPORTED commit f7167e3b)
+#                "client"    like chord, bound only in the client's
+#                            sway-local.conf (home/home.nix)
+#   chord        optional list of Sway chords, written as in binds.conf with
+#                $mod spelled Mod. Informational; binds.conf stays the source.
+
+# Launcher and palette ---------------------------------------------------
+
+[[command]]
+id = "launcher-toggle"
+name = "Open palette"
+description = "Toggle the Vicinae launcher"
+exec = "vicinae toggle"
+scope = "chord"
+chord = ["Mod+d", "Mod+space"]
+
+[[command]]
+id = "clipboard-history"
+name = "Clipboard history"
+description = "Open Vicinae clipboard history"
+exec = "vicinae cmd launch clipboard:history"
+scope = "chord"
+chord = ["Mod+v"]
+
+# Herdr and workspaces ---------------------------------------------------
+
+[[command]]
+id = "herdr-picker"
+name = "Herdr workspaces"
+description = "Find Herdr workspaces and agent status"
+exec = "{home}/.local/bin/herdr-picker"
+scope = "launcher"
+chord = ["Mod+Ctrl+space"]
+
+[[command]]
+id = "herdr-new"
+name = "New Herdr pane"
+description = "Open a new Herdr projector window"
+exec = "{home}/.local/bin/herdr-chord new"
+scope = "chord"
+chord = ["Mod+Return"]
+
+[[command]]
+id = "herdr-sidebar"
+name = "Herdr sidebar"
+description = "Open the Herdr sidebar projector"
+exec = "{home}/.local/bin/herdr-chord sidebar"
+scope = "chord"
+chord = ["Mod+Ctrl+Shift+Return"]
+
+[[command]]
+id = "kitty-fish"
+name = "Local terminal"
+description = "Plain kitty running fish, outside Herdr"
+exec = "kitty -e fish"
+scope = "chord"
+chord = ["Mod+Shift+Return"]
+
+[[command]]
+id = "sway-workspace-new"
+name = "New Herdr workspace"
+description = "Create an empty dedicated workspace"
+exec = "{home}/.local/bin/sway-workspace new"
+scope = "launcher"
+chord = ["Mod+t"]
+
+[[command]]
+id = "sway-workspace-restore"
+name = "Restore Herdr workspace"
+description = "Reopen the last closed workspace with its running session"
+exec = "{home}/.local/bin/sway-workspace restore"
+scope = "launcher"
+chord = ["Mod+Shift+t"]
+
+[[command]]
+id = "sway-workspace-rename"
+name = "Rename workspace"
+description = "Rename the current Sway workspace"
+exec = "{home}/.local/bin/sway-workspace rename"
+scope = "launcher"
+chord = ["Mod+Shift+n"]
+
+[[command]]
+id = "sway-workspace-close"
+name = "Close workspace"
+description = "Close the current Herdr workspace"
+exec = "{home}/.local/bin/sway-workspace close"
+scope = "chord"
+chord = ["Mod+w"]
+
+# Notifications (Mako) ---------------------------------------------------
+
+[[command]]
+id = "notifications-dismiss"
+name = "Dismiss notification"
+description = "Dismiss the newest Mako notification"
+exec = "{pkg:mako}/bin/makoctl dismiss"
+scope = "launcher"
+
+[[command]]
+id = "notifications-history"
+name = "Restore notification"
+description = "Restore the most recently dismissed notification"
+exec = "{pkg:mako}/bin/makoctl restore"
+scope = "launcher"
+
+# Settings ---------------------------------------------------------------
+
+[[command]]
+id = "network-settings"
+name = "Network settings"
+description = "Configure NetworkManager"
+exec = "{pkg:kitty}/bin/kitty --class network-settings {pkg:networkmanager}/bin/nmtui"
+scope = "launcher"
+
+# Browser, files and apps ------------------------------------------------
+
+[[command]]
+id = "chrome"
+name = "Chrome"
+description = "New Chrome window"
+exec = "google-chrome-stable"
+scope = "chord"
+chord = ["Mod+n", "Ctrl+n"]
+
+[[command]]
+id = "chrome-incognito"
+name = "Chrome incognito"
+description = "New Chrome incognito window"
+exec = "google-chrome-stable --incognito"
+scope = "chord"
+chord = ["Mod+Ctrl+n", "Ctrl+Shift+n"]
+
+[[command]]
+id = "files"
+name = "Files"
+description = "Open Nautilus"
+exec = "nautilus"
+scope = "chord"
+chord = ["Mod+e"]
+
+[[command]]
+id = "webapp-claude"
+name = "Claude"
+description = "claude.ai as a Chrome app window"
+exec = "google-chrome-stable --app=https://claude.ai/"
+scope = "chord"
+chord = ["Mod+Shift+c"]
+
+[[command]]
+id = "webapp-mail"
+name = "Mail"
+description = "Gmail as a Chrome app window"
+exec = "google-chrome-stable --app=https://mail.google.com/"
+scope = "chord"
+chord = ["Mod+Shift+w"]
+
+[[command]]
+id = "webapp-calendar"
+name = "Calendar"
+description = "Notion Calendar as a Chrome app window"
+exec = "google-chrome-stable --app=https://calendar.notion.so/"
+scope = "chord"
+chord = ["Mod+Shift+period"]
+
+[[command]]
+id = "obs"
+name = "OBS"
+description = "Open OBS Studio"
+exec = "obs"
+scope = "chord"
+chord = ["Mod+Shift+semicolon"]
+
+# Capture and clipboard --------------------------------------------------
+
+[[command]]
+id = "colorpicker"
+name = "Pick colour"
+description = "Colour under the cursor to the clipboard"
+exec = "{home}/.local/bin/colorpicker"
+scope = "chord"
+chord = ["Mod+c"]
+
+[[command]]
+id = "speak-clipboard"
+name = "Speak clipboard"
+description = "Read the clipboard text aloud through the speech daemon"
+exec = "{home}/.local/bin/speak-clipboard"
+scope = "chord"
+chord = ["Mod+Ctrl+r"]
+
+[[command]]
+id = "screenshot-screen"
+name = "Screenshot screen"
+description = "Capture the focused output to file and clipboard"
+exec = "{home}/.local/bin/screenshot screen"
+scope = "chord"
+chord = ["Mod+s"]
+
+[[command]]
+id = "screenshot-area"
+name = "Screenshot area"
+description = "Capture a selected area, optional Satty annotation"
+exec = "{home}/.local/bin/screenshot area"
+scope = "chord"
+chord = ["Mod+Shift+s"]
+
+[[command]]
+id = "screenshot-window"
+name = "Screenshot window"
+description = "Capture the focused window, optional Satty annotation"
+exec = "{home}/.local/bin/screenshot window"
+scope = "chord"
+chord = ["Mod+Alt+s"]
+
+[[command]]
+id = "screen-ocr-area"
+name = "Text from area"
+description = "OCR a selected area into the clipboard"
+exec = "{home}/.local/bin/screen-ocr-area"
+scope = "chord"
+chord = ["Mod+Ctrl+s"]
+
+# Session ----------------------------------------------------------------
+
+[[command]]
+id = "monitors-off"
+name = "Monitors off"
+description = "Power off the outputs until the next input"
+exec = "{home}/.local/bin/monitors-off"
+scope = "chord"
+chord = ["Mod+Shift+p"]
+
+[[command]]
+id = "theme-prompt"
+name = "Switch theme"
+description = "Pick the active role keyed theme"
+exec = "kitty --class theme-prompt -e {home}/.local/bin/theme-prompt theme"
+scope = "chord"
+chord = ["F2"]
+
+[[command]]
+id = "accent-prompt"
+name = "Switch accent"
+description = "Pick the theme accent"
+exec = "kitty --class theme-prompt -e {home}/.local/bin/theme-prompt accent"
+scope = "chord"
+chord = ["Shift+F2"]
+
+[[command]]
+id = "touchpad-toggle"
+name = "Toggle touchpad"
+description = "Enable or disable the touchpad"
+exec = "{home}/.local/bin/touchpad-toggle"
+scope = "chord"
+chord = ["Menu"]
+
+[[command]]
+id = "sleep-monitors"
+name = "Sleep monitors menu"
+description = "Choose which outputs sleep"
+exec = "kitty --class sleep-monitors-prompt -e {home}/.local/bin/sleep-monitors"
+scope = "chord"
+chord = ["F10"]
+
+[[command]]
+id = "pomodoro-menu"
+name = "Pomodoro"
+description = "Open the pomodoro menu"
+exec = "kitty --class pomodoro-prompt -e {home}/.local/bin/pomodoro menu"
+scope = "chord"
+chord = ["Shift+F10"]
+
+# Media and audio --------------------------------------------------------
+
+[[command]]
+id = "media-play"
+name = "Play or pause"
+description = "Toggle media playback"
+exec = "{home}/.local/bin/media play"
+scope = "chord"
+chord = ["F3", "XF86AudioPlay"]
+
+[[command]]
+id = "media-prev"
+name = "Previous track"
+description = "Previous media track"
+exec = "{home}/.local/bin/media prev"
+scope = "chord"
+chord = ["F4", "XF86AudioPrev"]
+
+[[command]]
+id = "media-next"
+name = "Next track"
+description = "Next media track"
+exec = "{home}/.local/bin/media next"
+scope = "chord"
+chord = ["F5", "XF86AudioNext"]
+
+[[command]]
+id = "volume-mute"
+name = "Mute"
+description = "Toggle output mute"
+exec = "{home}/.local/bin/volume mute"
+scope = "chord"
+chord = ["F6", "XF86AudioMute"]
+
+[[command]]
+id = "volume-down"
+name = "Volume down"
+description = "Lower output volume"
+exec = "{home}/.local/bin/volume down"
+scope = "chord"
+chord = ["F7", "XF86AudioLowerVolume"]
+
+[[command]]
+id = "volume-up"
+name = "Volume up"
+description = "Raise output volume"
+exec = "{home}/.local/bin/volume up"
+scope = "chord"
+chord = ["F8", "XF86AudioRaiseVolume"]
+
+[[command]]
+id = "audio-route"
+name = "Audio route"
+description = "Choose the audio output and input"
+exec = "kitty --class audio-route-prompt -e {home}/.local/bin/audio-route"
+scope = "chord"
+chord = ["F9"]
+
+[[command]]
+id = "call-record-menu"
+name = "Call recording"
+description = "Open the call recording menu"
+exec = "kitty --class call-record-prompt -e {home}/.local/bin/call-record-menu"
+scope = "chord"
+chord = ["Shift+F9"]
+
+# Client only (sway-local.conf in home/home.nix) -------------------------
+
+[[command]]
+id = "brightness-toggle"
+name = "Keyboard backlight"
+description = "Toggle the Zenbook keyboard backlight"
+exec = "{home}/.local/bin/brightness toggle"
+scope = "client"
+chord = ["F10"]
+
+[[command]]
+id = "brightness-down"
+name = "Brightness down"
+description = "Lower panel brightness"
+exec = "{home}/.local/bin/brightness down"
+scope = "client"
+chord = ["XF86MonBrightnessDown"]
+
+[[command]]
+id = "brightness-up"
+name = "Brightness up"
+description = "Raise panel brightness"
+exec = "{home}/.local/bin/brightness up"
+scope = "client"
+chord = ["XF86MonBrightnessUp"]
+
+[[command]]
+id = "brightness-down-fine"
+name = "Brightness down 2 percent"
+description = "Lower panel brightness in a fine step"
+exec = "{home}/.local/bin/brightness down 2%"
+scope = "client"
+chord = ["Shift+XF86MonBrightnessDown"]
+
+[[command]]
+id = "brightness-up-fine"
+name = "Brightness up 2 percent"
+description = "Raise panel brightness in a fine step"
+exec = "{home}/.local/bin/brightness up 2%"
+scope = "client"
+chord = ["Shift+XF86MonBrightnessUp"]
+
+[[command]]
+id = "volume-micmute"
+name = "Mute microphone"
+description = "Toggle microphone mute"
+exec = "{home}/.local/bin/volume micmute"
+scope = "client"
+chord = ["XF86AudioMicMute"]
+
+# Not verified
+# No row was executed. Chords were copied from binds.conf and the
+# sway-local.conf generator at clone HEAD 032cc87d (MEASURED by reading);
+# lane 12 may have edited binds.conf since. The F10 chord appears twice
+# because sway-local.conf rebinds it on the client with --no-warn (REPORTED).
+# No second reader (Tom's light verification rule, 2026-10-20).

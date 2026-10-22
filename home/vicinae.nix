@@ -1,3 +1,10 @@
+# vicinae.nix: the launcher and command palette (Vicinae) plus Mako.
+# What it is: Vicinae settings, theme pointer, Mako, and the palette's root
+# items. Changed 2026-10-22 (lane 16): the seven hand written desktop entries
+# are now generated from dot_config/vicinae/commands.toml, the declarative
+# palette catalog; every other setting is unchanged.
+# Deliberately absent: a bar (Vicinae is the command surface, Mako owns
+# notifications), Vicinae's input server, and any second palette (R3).
 {
   config,
   inputs,
@@ -10,13 +17,40 @@ let
   enabled = osConfig.myDisplay.enable;
   package = inputs.vicinae.packages.${pkgs.stdenv.hostPlatform.system}.default;
   cfgHome = config.xdg.configHome;
-  command = name: title: exec: {
-    inherit name exec;
-    genericName = title;
+  # The command palette catalog (lane 16, 2026-10-22). Rows with scope
+  # "launcher" become Vicinae root items below; every row is runnable by id
+  # through dot_config/vicinae/palette. Ruling R3: Vicinae is the only palette.
+  catalogFile = ./dot_config/vicinae/commands.toml;
+  catalog = (builtins.fromTOML (builtins.readFile catalogFile)).command;
+  # Exec tokens: {home} and {pkg:NAME}. Only the packages named here may
+  # appear; an unknown token fails evaluation instead of shipping a broken
+  # desktop entry.
+  pkgTokens = {
+    inherit (pkgs) mako kitty networkmanager;
+  };
+  expandExec =
+    exec:
+    let
+      names = builtins.attrNames pkgTokens;
+      out =
+        builtins.replaceStrings
+          ([ "{home}" ] ++ map (n: "{pkg:${n}}") names)
+          ([ config.home.homeDirectory ] ++ map (n: "${pkgTokens.${n}}") names)
+          exec;
+    in
+    if lib.hasInfix "{" out then
+      throw "home/dot_config/vicinae/commands.toml: unexpanded token in exec '${exec}'"
+    else
+      out;
+  command = row: {
+    name = row.name;
+    genericName = row.description;
+    exec = expandExec row.exec;
     terminal = false;
     categories = [ "Utility" ];
     icon = "utilities-terminal";
   };
+  launcherRows = builtins.filter (row: row.scope == "launcher") catalog;
 in
 {
   imports = [ inputs.vicinae.homeManagerModules.default ];
@@ -145,28 +179,16 @@ in
     home.packages = [ pkgs.libnotify ];
     # These commands appear in Vicinae's app search and share the same helpers
     # as Sway keybindings. No second extension runtime or bespoke desktop bar.
-    xdg.desktopEntries = {
-      herdr-picker =
-        command "Herdr workspaces" "Find Herdr workspaces and agent status"
-          "${config.home.homeDirectory}/.local/bin/herdr-picker";
-      sway-workspace-new =
-        command "New Herdr workspace" "Create an empty dedicated workspace"
-          "${config.home.homeDirectory}/.local/bin/sway-workspace new";
-      sway-workspace-restore =
-        command "Restore Herdr workspace" "Reopen the last closed workspace with its running session"
-          "${config.home.homeDirectory}/.local/bin/sway-workspace restore";
-      sway-workspace-rename =
-        command "Rename workspace" "Rename the current Sway workspace"
-          "${config.home.homeDirectory}/.local/bin/sway-workspace rename";
-      notifications-dismiss =
-        command "Dismiss notification" "Dismiss the newest Mako notification"
-          "${pkgs.mako}/bin/makoctl dismiss";
-      notifications-history =
-        command "Restore notification" "Restore the most recently dismissed notification"
-          "${pkgs.mako}/bin/makoctl restore";
-      network-settings =
-        command "Network settings" "Configure NetworkManager"
-          "${pkgs.kitty}/bin/kitty --class network-settings ${pkgs.networkmanager}/bin/nmtui";
-    };
+    # Generated from the catalog: each scope "launcher" row keeps its id as the
+    # desktop entry id, so favorites such as "applications:herdr-picker" hold.
+    xdg.desktopEntries = builtins.listToAttrs (
+      map (row: {
+        name = row.id;
+        value = command row;
+      }) launcherRows
+    );
+    # The catalog itself, for the palette script (store copy on purpose: the
+    # desktop entries above are built from this same revision).
+    xdg.configFile."vicinae/commands.toml".source = catalogFile;
   };
 }

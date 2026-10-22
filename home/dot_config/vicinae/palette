@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# palette: one entry point for the command palette (lane 16, 2026-10-22).
+#
+# What it is: reads home/dot_config/vicinae/commands.toml (linked to
+# ~/.config/vicinae/commands.toml by home/vicinae.nix) with python3 tomllib
+# and lists, prints or runs a verb by id. With no argument it opens the
+# palette renderer: `vicinae toggle` today, gpuix-shell in the GPUIX phase.
+# What it replaced: nothing yet; binds.conf still calls `vicinae toggle`
+# directly until lane 12 points Mod+d at `exec ~/.local/bin/palette`.
+# Wiring: the ~/.local/bin/palette link is owned by code-nix-wiring (lane 18),
+# not by this lane.
+# Deliberately absent: no fuzzy UI of its own (R3: Vicinae is the only
+# palette), no Sway IPC, no swaymsg.
+#
+# Usage:
+#   palette                  open the renderer (PALETTE_RENDERER=vicinae|gpuix)
+#   palette list [SCOPE]     id, scope, chords, name; tab separated
+#   palette show ID          print the expanded exec line
+#   palette run ID           run the expanded exec line
+#   palette check            validate the catalog, exit 1 on any error
+set -euo pipefail
+
+catalog="${PALETTE_CATALOG:-${XDG_CONFIG_HOME:-$HOME/.config}/vicinae/commands.toml}"
+
+# The python reader. Exec tokens: {home} becomes $HOME, "{pkg:NAME}/bin/"
+# is dropped so the binary resolves on PATH (vicinae.nix uses store paths).
+read_catalog() {
+  python3 - "$catalog" "$HOME" "$@" <<'PY'
+import re, sys, tomllib
+
+path, home, verb, *args = sys.argv[1:]
+SCOPES = {"launcher", "chord", "client"}
+REQUIRED = ("id", "name", "description", "exec", "scope")
+
+with open(path, "rb") as fh:
+    rows = tomllib.load(fh).get("command", [])
+
+def expand(cmd):
+    cmd = re.sub(r"\{pkg:[A-Za-z0-9_-]+\}/bin/", "", cmd)
+    return cmd.replace("{home}", home)
+
+if verb == "check":
+    errors, seen = [], set()
+    for i, row in enumerate(rows):
+        for key in REQUIRED:
+            if not isinstance(row.get(key), str) or not row[key]:
+                errors.append(f"row {i}: missing or empty {key}")
+        rid = row.get("id", f"row {i}")
+        if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", str(rid)):
+            errors.append(f"{rid}: id must be lower case with hyphens")
+        if rid in seen:
+            errors.append(f"{rid}: duplicate id")
+        seen.add(rid)
+        if row.get("scope") not in SCOPES:
+            errors.append(f"{rid}: scope must be one of {sorted(SCOPES)}")
+        chord = row.get("chord", [])
+        if not isinstance(chord, list) or not all(isinstance(c, str) for c in chord):
+            errors.append(f"{rid}: chord must be a list of strings")
+        if re.search(r"\{(?!home\}|pkg:)", row.get("exec", "")):
+            errors.append(f"{rid}: unknown exec token")
+    for line in errors:
+        print(line, file=sys.stderr)
+    print(f"{len(rows)} commands, {len(errors)} errors")
+    sys.exit(1 if errors else 0)
+
+if verb == "list":
+    scope = args[0] if args else None
+    for row in rows:
+        if scope is None or row["scope"] == scope:
+            print("\t".join([row["id"], row["scope"], " ".join(row.get("chord", [])), row["name"]]))
+    sys.exit(0)
+
+if verb == "show":
+    wanted = args[0]
+    for row in rows:
+        if row["id"] == wanted:
+            print(expand(row["exec"]))
+            sys.exit(0)
+    print(f"palette: no command with id {wanted}", file=sys.stderr)
+    sys.exit(2)
+
+print(f"palette: unknown verb {verb}", file=sys.stderr)
+sys.exit(64)
+PY
+}
+
+usage() {
+  sed -n '/^# Usage:/,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'
+}
+
+open_renderer() {
+  case "${PALETTE_RENDERER:-vicinae}" in
+    vicinae) exec vicinae toggle ;;
+    # TODO(tom, 2026-11-05): the GPUIX shell binary and its toggle verb are
+    # not decided; see docs/shell/DEFERRED.md and the GPUIX contract.
+    gpuix) echo "palette: gpuix renderer not built yet" >&2; exit 69 ;;
+    *) echo "palette: unknown PALETTE_RENDERER ${PALETTE_RENDERER}" >&2; exit 64 ;;
+  esac
+}
+
+if [[ $# -eq 0 ]]; then
+  open_renderer
+fi
+
+verb="$1"
+shift
+case "$verb" in
+  list | check) read_catalog "$verb" "$@" ;;
+  show)
+    [[ $# -eq 1 ]] || { usage >&2; exit 64; }
+    read_catalog show "$1"
+    ;;
+  run)
+    [[ $# -eq 1 ]] || { usage >&2; exit 64; }
+    line="$(read_catalog show "$1")"
+    # The catalog is Tom's own committed file; the line is a shell command
+    # by design, as Sway's `exec` treats it.
+    exec sh -c "$line"
+    ;;
+  open) open_renderer ;;
+  -h | --help | help) usage ;;
+  *) usage >&2; exit 64 ;;
+esac
+
+# Not verified
+# Never run against the live session: `palette`, `open` and `run` were not
+# executed. `check`, `list` and `show` were run against the clone's catalog
+# with PALETTE_CATALOG set (see the lane return). shellcheck output is in
+# the lane return. No second reader (Tom's light verification rule, 2026-10-20).
