@@ -65,6 +65,12 @@ in
     # (hellas-ai/nix-strix-halo#161) after we carried a local pkgs/amdtop.nix;
     # sourcing it here retires that copy and puts it on the same gfx1151 plane.
     strixAi.amdtop
+
+    # memory-sweep (DECISIONS.md 2026-10-17): `memory-sweep-sample` and
+    # `hy-memory-serve`. A second llama.cpp (nixpkgs 10063, Vulkan) exists only
+    # inside this package, because the gfx1151 build 9925 above predates the
+    # hy_v3 merge; it is never on PATH as `llama-server`.
+    pkgs.memory-sweep
   ];
 
   # The focused 0x80 MES blobs are the only part of upstream's `tuning` module we

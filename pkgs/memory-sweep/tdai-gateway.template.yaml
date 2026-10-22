@@ -1,0 +1,31 @@
+# MemoryCore gateway config rendered by memory-sweep-sample into
+# RUN_DIR/tdai-gateway.yaml (DECISIONS.md 2026-10-17). Standalone, local
+# state, loopback, SQLite, embeddings off (BM25 only), one LLM: the hand-run
+# Hy-Memory writer. `sk-local` is not a secret; it is the literal the gateway
+# needs to see as truthy before it splices the LLM config into the engine
+# (MemoryCore/src/gateway/config.ts, checkout e9a82935).
+deployMode: standalone
+stateBackend: local
+server:
+  host: 127.0.0.1
+  port: {{CORE_PORT}}
+data:
+  baseDir: /data/tdai-memory
+llm:
+  baseUrl: {{LLM_URL}}
+  apiKey: sk-local
+  model: {{MODEL}}
+  maxTokens: 4096
+  timeoutMs: 300000
+memory:
+  promptMode: {{PROMPT_MODE}}
+  pipeline:
+    everyNConversations: 1
+    l1IdleTimeoutSeconds: 15
+    l2DelayAfterL1Seconds: 5
+  embedding:
+    provider: none
+  bm25:
+    language: en
+skill:
+  enabled: false

@@ -1,0 +1,3 @@
+{"id": "1", "type": "persona", "priority": 0.8, "session_id": "note-01-first", "content": "Prefers plain markdown notes read on paper (synthetic)."}
+{"id": "2", "type": "instruction", "priority": 0.9, "session_id": "note-01-first", "content": "Nothing runs at midnight (synthetic)."}
+{"id": "3", "type": "episodic", "priority": 0.5, "session_id": "chat-02-a", "content": "Asked for a bounded sample command (synthetic)."}

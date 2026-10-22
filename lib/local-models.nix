@@ -196,9 +196,13 @@ let
           # models (Tom, 2026-10-13: "use that as the full collection of
           # modles that we use"), read from gufo-org/gufo at ae26ca4a. Bytes
           # and sha256 come from the Hugging Face API at the pinned revisions.
+          # memory-writer-models.json: one row, hy-memory-30b-a3b-q8-0, loaded only
+          # by the hand-run hy-memory-serve of pkgs/memory-sweep (DECISIONS.md
+          # 2026-10-17); no server consumes it at boot.
           artifacts =
             (builtins.fromJSON (builtins.readFile ./speech-intake-models.json))
             // (builtins.fromJSON (builtins.readFile ./gufo-models.json))
+            // (builtins.fromJSON (builtins.readFile ./memory-writer-models.json))
             // {
               "qwen3-tts-1.7b-base-q8-0" = mkSingleFileArtifact {
                 maker = "Qwen";
