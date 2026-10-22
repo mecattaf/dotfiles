@@ -4,13 +4,16 @@
   formats,
   bubblewrap,
   coreutils,
+  findutils,
+  writeText,
   llm-agents,
+  dsh-plugins,
   # The agent host's agenix path for the Qwen Token Plan key. home/dsh.nix
   # passes osConfig's path, or null where the secret is not declared.
   qwenKeyFile ? "/run/agenix/qwencloud-token",
-  # The profiles the wrapper will boot. Everything else is refused, so a
-  # custom profile cannot carry the web or sdk-minimal bundles past the name
-  # check. The plugin PR adds its own profile here.
+  # The stock profiles the wrapper will boot. Everything else, but the
+  # Nix-declared profiles below, is refused, so a custom profile cannot carry
+  # the web or sdk-minimal bundles past the name check.
   profiles ? [
     "headless"
     "sdk"
@@ -43,7 +46,12 @@
 #      after the profile word, where `--patch` must go, so they are the last
 #      config layer whatever DSH_HOME is. Overlays the caller passes come after
 #      them (the gate's smoke overlay relies on that);
-#   5. reads the Qwen key from its agenix file into QWEN_TOKEN_PLAN_API_KEY
+#   5. for a Nix-declared profile (`herdr`, below): adds its own overlay and
+#      environment, and rewrites $DSH_HOME/profiles/<name>/package.json (0600)
+#      and its node_modules links to the store plugins, every boot, before
+#      dsh reads them. dsh's cordis.yml and cordis.patch.yml there are never
+#      touched, and a store link no longer declared is removed;
+#   6. reads the Qwen key from its agenix file into QWEN_TOKEN_PLAN_API_KEY
 #      for the exec'd dsh only: never on argv, never echoed, never written
 #      under DSH_HOME. dsh drops every *KEY*/*TOKEN* name and every DSH_* name
 #      from the children it spawns, so the model's bash does not inherit it.
@@ -66,7 +74,65 @@ let
   };
   sessions = ./sessions.patch.yml;
 
-  profileCase = lib.concatStringsSep " | " profiles;
+  # Profiles declared here rather than shipped by dsh. `herdr` is the stock
+  # headless tuple plus the three plugins of pkgs/dsh-plugins, for Tom to run
+  # by hand inside a Herdr pane (`dsh herdr "<task>"`). Substrate drives the
+  # stock `headless` profile, which never mounts them. The guard comes before
+  # dsh-herdr, which cannot load without it either way.
+  nixProfiles = {
+    herdr = {
+      bundles = [
+        "@deepseek-ai/dsh-base"
+        "@deepseek-ai/dsh-headless"
+        "herdr-guard"
+        "@dsh-external/dsh-herdr-toolkit"
+        "jevcore-dsh"
+      ];
+      packages = {
+        "herdr-guard" = dsh-plugins.herdr-guard;
+        "@dsh-external/dsh-herdr-toolkit" = dsh-plugins.dsh-herdr;
+        "jevcore-dsh" = dsh-plugins.jevcore;
+      };
+      patch = config.herdr;
+      # No herdr call outlives 10 minutes (an unbounded `pane wait-output`
+      # or `agent wait` included). DSH_HERDR_PREVIEW_REQUIRED stays unset: it
+      # is the model checking itself, not a human gate.
+      env.DSH_HERDR_CLI_TIMEOUT_MS = "600000";
+    };
+  };
+  manifest =
+    name: p:
+    writeText "dsh-profile-${name}.json" (
+      builtins.toJSON {
+        name = "dsh-profile-${name}";
+        private = true;
+        dependencies = lib.mapAttrs (_: drv: drv.version) p.packages;
+        dsh.profile.bundles = p.bundles;
+      }
+    );
+  # One `case` arm per Nix-declared profile, indented for the wrapper text.
+  nixProfileCase = lib.concatMapStringsSep "\n  " (
+    name:
+    let
+      p = nixProfiles.${name};
+    in
+    lib.concatStringsSep "\n  " (
+      [
+        "${name})"
+        "  overlays+=(--patch ${p.patch})"
+      ]
+      ++ lib.mapAttrsToList (k: v: "  export ${k}=${lib.escapeShellArg v}") p.env
+      ++ [
+        "  sync_profile ${name} ${manifest name p} ${
+            lib.escapeShellArgs (lib.mapAttrsToList (pkg: drv: "${pkg}=${drv}") p.packages)
+          }"
+        "  ;;"
+      ]
+    )
+  ) (lib.attrNames nixProfiles);
+
+  allowed = profiles ++ lib.attrNames nixProfiles;
+  profileCase = lib.concatStringsSep " | " allowed;
 in
 writeShellApplication {
   name = "dsh";
@@ -75,18 +141,23 @@ writeShellApplication {
   runtimeInputs = [
     bubblewrap
     coreutils
+    findutils
   ];
   passthru = {
     inherit
       unwrapped
       runner
       sessions
-      profiles
       qwenKeyFile
+      nixProfiles
       ;
+    profiles = allowed;
+    plugins = dsh-plugins;
     inherit (config)
       policy
       acp
+      herdr
+      herdrRows
       smoke
       policyIds
       disabledIds
@@ -187,12 +258,12 @@ writeShellApplication {
 
     case "$profile" in
       ${profileCase}) ;;
-      *) refuse "profile '$profile' is not one of: ${lib.concatStringsSep ", " profiles}" ;;
+      *) refuse "profile '$profile' is not one of: ${lib.concatStringsSep ", " allowed}" ;;
     esac
     if [ -n "$from_default" ]; then
       case "$from_default" in
         ${profileCase}) ;;
-        *) refuse "--from-default-profile '$from_default' is not one of: ${lib.concatStringsSep ", " profiles}" ;;
+        *) refuse "--from-default-profile '$from_default' is not one of: ${lib.concatStringsSep ", " allowed}" ;;
       esac
     fi
     if [ "''${DSH_PERMISSION_MODE-}" = danger-full-access ]; then
@@ -228,8 +299,34 @@ writeShellApplication {
     # dsh-bwrap masks this too; DSH_* names never reach it.
     export DSHWRAP_HOME="$dsh_home"
 
+    # A Nix-declared profile's manifest and plugin links, rewritten in place
+    # (temp name, then rename) so a concurrent boot never reads half of one.
+    sync_profile() {
+      local dir="$dsh_home/profiles/$1" manifest="$2" pair name link
+      shift 2
+      if [ ! -d "$dsh_home" ]; then (umask 077 && mkdir -p -- "$dsh_home"); fi
+      mkdir -p -- "$dir/node_modules"
+      install -m 0600 -- "$manifest" "$dir/package.json.$$"
+      mv -f -- "$dir/package.json.$$" "$dir/package.json"
+      local keep=" "
+      for pair in "$@"; do
+        name="''${pair%%=*}"
+        link="$dir/node_modules/$name"
+        mkdir -p -- "$(dirname -- "$link")"
+        ln -sfn -- "''${pair#*=}" "$link.$$"
+        mv -fT -- "$link.$$" "$link"
+        keep+="$link "
+      done
+      while IFS= read -r -d "" link; do
+        case "$keep" in *" $link "*) ;; *) rm -f -- "$link" ;; esac
+      done < <(find "$dir/node_modules" -mindepth 1 -maxdepth 2 -type l -lname '${builtins.storeDir}/*' -print0)
+    }
+
     overlays=(--patch ${config.policy} --patch ${sessions})
-    if [ "$profile" = acp ]; then overlays+=(--patch ${config.acp}); fi
+    case "$profile" in
+      acp) overlays+=(--patch ${config.acp}) ;;
+      ${nixProfileCase}
+    esac
     # --dump-default-config prints the bundle layers only and takes no --patch.
     if [ "$dump_default" = 1 ]; then overlays=(); fi
   ''

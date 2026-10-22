@@ -12,7 +12,9 @@
 # Nothing here touches ~/.dsh. Everything there is dsh's own state, and its
 # profile files are replaced by atomic rename on settings writes, which would
 # break the next activation if Home Manager owned them. The policy reaches
-# every DSH_HOME as store `--patch` overlays the wrapper adds instead.
+# every DSH_HOME as store `--patch` overlays the wrapper adds instead, and the
+# wrapper itself links the hand-run `herdr` profile's plugins into
+# $DSH_HOME/profiles/herdr when that profile boots (pkgs/dsh, pkgs/dsh-plugins).
 #
 # No units, no timers: dsh runs by hand, and unattended runs belong to
 # substrate.

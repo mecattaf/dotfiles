@@ -19,8 +19,9 @@
 # a warning on stderr; checks.dsh-config fails on any stderr from a dump.
 #
 # Outputs:
-#   policy : every profile the wrapper boots (headless, sdk, acp)
+#   policy : every profile the wrapper boots (headless, sdk, acp, herdr)
 #   acp    : acp only; its bundle pins the official DeepSeek route in its own row
+#   herdr  : the hand-run plugin profile only (jevcore's row; ./default.nix)
 #   smoke  : the gate's one inference call (no retries, low effort); never
 #            installed, built only as `nix build .#dsh.smoke`
 let
@@ -161,6 +162,23 @@ let
 
   acp = [ (set "acp" defaultRoute) ];
 
+  # The `herdr` profile's own rows. jevcore stays on its offline mock: no
+  # network path exists without the SDK, and the startup lines at `info` show
+  # `provider=mock` on stderr. Both gates stay off: on the mock every gated
+  # bash, edit or git call would become an ask, which headless denies.
+  # FOLLOW-UP, NOT IMPLEMENTED: a real Jev route is this one row (provider
+  # live, baseURL, model, apiKeyRef) plus the SDK back in pkgs/dsh-plugins.
+  herdr = [
+    (set "jev" {
+      provider = "mock";
+      logLevel = "info";
+      gates = {
+        safety = false;
+        context = false;
+      };
+    })
+  ];
+
   # The gate's single call: fail on the first error rather than spend retries,
   # and think as little as the model allows.
   smoke = [
@@ -176,7 +194,10 @@ in
 {
   policy = yaml.generate "dsh-policy.patch.yml" policy;
   acp = yaml.generate "dsh-acp.patch.yml" acp;
+  herdr = yaml.generate "dsh-herdr.patch.yml" herdr;
   smoke = yaml.generate "dsh-smoke.patch.yml" smoke;
+  # The herdr profile's rows as data, for checks.dsh-plugins.
+  herdrRows = builtins.listToAttrs (map (row: lib.nameValuePair row.id row.config) herdr);
   # Row ids the policy touches, for checks.dsh-config.
   policyIds = map (row: row.id) policy;
   disabledIds = map (row: row.id) (lib.filter (row: row.disabled or false) policy);
