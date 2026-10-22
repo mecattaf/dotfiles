@@ -2478,6 +2478,22 @@
               touch "$out"
             '';
 
+        failure-notify =
+          pkgs.runCommand "failure-notify"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.gnugrep
+                pkgs.util-linux
+              ];
+              FAILURE_NOTIFIER = ./modules/failure-notify.sh;
+            }
+            ''
+              bash ${./tests/failure-notify.sh}
+              touch "$out"
+            '';
+
         failure-marker-reconcile =
           pkgs.runCommand "failure-marker-reconcile"
             {
