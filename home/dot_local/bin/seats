@@ -1109,7 +1109,7 @@ def parse_quota_reset(text, observed):
 
 
 QWEN_EVENTS_CACHE = STATE / "qwen-events.json"
-QWEN_EVENTS_CACHE_VERSION = 3   # bump when the scan changes what it extracts
+QWEN_EVENTS_CACHE_VERSION = 4   # bump when the scan changes what it extracts
 QWEN_PROVIDER = "qwen-token-plan"
 
 
@@ -1119,6 +1119,22 @@ def dsh_time(record):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return parse_ts(value / 1000)
+
+
+def dsh_fork_cut(record):
+    """True on the marker a forked dsh session writes after the events it copied.
+
+    dsh's fork (packages/core/session/src/fork.ts, buildForkSeed) copies the
+    parent's event prefix, `assistant/message` usage included, into the child
+    log and then writes {"type": "session/end-seed", "data": {"inherited":
+    true}}. Everything before that marker was billed in the parent's own file,
+    so a reader drops what it gathered from this file so far. Subagent child
+    logs carry no such marker and hold only their own calls.
+    """
+    if record.get("type") != "session/end-seed":
+        return False
+    data = record.get("data")
+    return isinstance(data, dict) and data.get("inherited") is True
 
 
 def dsh_qwen_usage(record):
@@ -1192,11 +1208,16 @@ def qwen_events(roots):
                 with path.open(encoding="utf-8", errors="replace") as stream:
                     for line in stream:
                         refusal = "quota will reset at" in line
-                        if not refusal and QWEN_PROVIDER not in line:
+                        seed = "session/end-seed" in line
+                        if not refusal and not seed and QWEN_PROVIDER not in line:
                             continue
                         try:
                             record = json.loads(line)
                         except ValueError:
+                            continue
+                        if seed and dsh_fork_cut(record):
+                            # A fork's copied prefix: billed in the parent.
+                            rows.clear()
                             continue
                         if refusal:
                             # Anchored to the refusal's OWN timestamp: a reset
@@ -1766,16 +1787,22 @@ def _events_pi(path):
     The same session store carries locally served messages — the Halogen
     server on Strix, a hand-run llama-server. Those cost the subscription
     nothing, so counting them here would inflate a meter with local tokens.
-    A dsh session file is read by dsh_qwen_usage, under the same rule.
+    A dsh session file is read by dsh_qwen_usage, under the same rule, and a
+    forked one only after its inherited prefix (dsh_fork_cut).
     """
     events = []
     with path.open(encoding="utf-8", errors="replace") as stream:
         for line in stream:
-            if '"usage"' not in line:
+            seed = "session/end-seed" in line
+            if not seed and '"usage"' not in line:
                 continue
             try:
                 record = json.loads(line)
             except ValueError:
+                continue
+            if seed and dsh_fork_cut(record):
+                # A fork's copied prefix: billed in the parent (dsh_fork_cut).
+                events.clear()
                 continue
             reply = dsh_qwen_usage(record)
             if reply is not None:

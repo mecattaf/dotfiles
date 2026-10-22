@@ -16,6 +16,18 @@
 # runner, so it still reads whatever tom can. The masks block actions, not
 # reads by the harness itself.
 #
+# Known limits:
+# - dsh's in-process `write` and `edit` tools also run outside this runner.
+#   In workspace-write their fence is the workspace, /tmp and os.tmpdir()
+#   (dsh packages/sandbox/sandbox/src/roots.ts), so they can write the host's
+#   /tmp and $TMPDIR. The wrapper refuses a DSH_HOME there, because a
+#   `cordis.patch.yml` with `!!js` under DSH_HOME runs unsandboxed on the
+#   next boot.
+# - Only the workspace's own top-level `.git` is protected. A nested repo
+#   under the workspace keeps a writable `.git`, and so does a workspace that
+#   had no `.git` when dsh started (the model can `git init` one), so hooks
+#   or config planted there run when tom uses git in it outside dsh.
+#
 # Any failure here prints a `dsh-bwrap: ` line, which the policy lists as a
 # runner-failure signature, so dsh reports a sandbox failure instead of
 # running the command some other way.
@@ -66,22 +78,16 @@ for m in "${masks[@]}"; do
   extra+=(--tmpfs "$m")
 done
 
-# Read-only git control files in a writable workspace. A `.git` FILE (a linked
-# worktree) is bound read-only whole, so it cannot be repointed at a gitdir the
-# model controls. A missing hooks dir is created first (git init creates it
-# anyway), so the model cannot create it under the read-only config.
-if [ -n "$ws" ]; then
-  if [ -f "$ws/.git" ]; then
-    extra+=(--ro-bind "$ws/.git" "$ws/.git")
-  elif [ -d "$ws/.git" ]; then
-    mkdir -p "$ws/.git/hooks"
-    extra+=(--ro-bind "$ws/.git/hooks" "$ws/.git/hooks")
-    for f in config config.worktree; do
-      if [ -f "$ws/.git/$f" ]; then
-        extra+=(--ro-bind "$ws/.git/$f" "$ws/.git/$f")
-      fi
-    done
-  fi
+# A read-only gitdir in a writable workspace. The whole `.git` is bound
+# read-only, FILE (a linked worktree) or DIRECTORY alike, so it is a mount
+# point: renaming or removing it fails (EBUSY), and nothing under it can be
+# created or changed, `commondir`, `config`, `hooks/` and `objects/`
+# included. Per-file binds were not enough: `mv .git` and a planted
+# `.git/commondir` both redirected a later host-side git to a config and
+# hooks dir the model wrote. The cost: dsh's bash cannot stage or commit, so
+# tom commits outside dsh.
+if [ -n "$ws" ] && [ -e "$ws/.git" ]; then
+  extra+=(--ro-bind "$ws/.git" "$ws/.git")
 fi
 
 exec bwrap "${pre[@]}" "${extra[@]}" -- "$@"

@@ -176,11 +176,14 @@ class SeatsFixture:
                         "usage": {"input": tin, "output": tout,
                                   "cacheRead": cache, "cacheWrite": 0}}})
 
-    def dsh_session(self, messages, cwd="--home-tom-src--", session="session-0000"):
+    def dsh_session(self, messages, cwd="--home-tom-src--", session="session-0000",
+                    inherited=0):
         """One dsh session file (plain JSONL, compression none). Field names
         were read, structure only, from a real 0.2.1-rc.2 session.v4.jsonl;
         every value here is synthetic. messages: (when, input, output,
-        cacheRead, provider)."""
+        cacheRead, provider). inherited: how many leading messages a fork
+        copied from its parent; the `session/end-seed` marker follows them
+        (dsh packages/core/session/src/fork.ts)."""
         folder = self.home / ".dsh/sessions" / cwd / session
         folder.mkdir(parents=True, exist_ok=True)
         lines = [json.dumps({"type": "session", "version": 4, "id": session,
@@ -205,6 +208,9 @@ class SeatsFixture:
                                    "totalTokens": tin + tout + cache}}}))
             lines.append(json.dumps({"type": "step/end", "seq": 3 * seq + 2, "time": ms,
                                      "data": {"turn": 1, "step": seq + 1}}))
+            if inherited and seq + 1 == inherited:
+                lines.append(json.dumps({"type": "session/end-seed", "seq": 3 * seq + 3,
+                                         "time": ms, "data": {"inherited": True}}))
         path = folder / "session.v4.jsonl"
         path.write_text("\n".join(lines) + "\n")
         for stale in self.state.glob("qwen-events.json"):
@@ -433,6 +439,23 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(qwen["spend"]["tokens_in"], 90_000 + 10_000)
         self.assertEqual(qwen["spend"]["tokens_out"], 6_250 + 1_000)
         self.assertEqual(qwen["spend"]["sessions"], 2, "the pi file and the dsh session")
+
+    def test_a_forked_dsh_session_bills_its_inherited_calls_once(self):
+        # A fork copies the parent's assistant/message records, usage and
+        # all, ahead of a session/end-seed marker; only the calls after the
+        # marker are the fork's own.
+        parent_call = (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 0,
+                       "qwen-token-plan")
+        own_call = (self.qwen_opened + timedelta(hours=3), 20_000, 2_000, 0,
+                    "qwen-token-plan")
+        self.box.dsh_session([parent_call], session="session-parent")
+        self.box.dsh_session([parent_call, own_call], session="session-fork", inherited=1)
+        _, seats = self.box.report()
+        qwen = seats["pi-qwencloud"]
+        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 11_000 + 22_000)
+        self.assertEqual(qwen["spend"]["tokens_in"], 90_000 + 10_000 + 20_000)
+        self.assertEqual(qwen["spend"]["tokens_out"], 6_250 + 1_000 + 2_000)
+        self.assertEqual(qwen["spend"]["sessions"], 3, "the pi file, the parent and the fork")
 
     def test_dsh_traffic_on_other_routes_is_never_billed(self):
         # A later local route (the gufo row) lands in the same session store.

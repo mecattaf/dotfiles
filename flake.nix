@@ -1826,11 +1826,14 @@
             }
             ''
               set -euo pipefail
-              export HOME="$TMPDIR/home" DSH_HOME="$TMPDIR/dsh-home"
+              # The wrapper refuses a DSH_HOME under $TMPDIR, so the build
+              # dir holds both and TMPDIR moves one level down.
+              build="$TMPDIR"
+              export HOME="$build/home" DSH_HOME="$build/dsh-home" TMPDIR="$build/tmp"
               export PYTHONDONTWRITEBYTECODE=1
-              mkdir -p "$HOME" "$TMPDIR/cwd"
+              mkdir -p "$HOME" "$build/cwd" "$TMPDIR" "$build/homes/tom"
               mkdir -m 700 "$DSH_HOME"
-              cd "$TMPDIR/cwd"
+              cd "$build/cwd"
               dsh=${pkgs.dsh}/bin/dsh
 
               test "$($dsh --version)" = ${pkgs.dsh.unwrapped.version}
@@ -1867,10 +1870,21 @@
               refused "$dsh" sdk-minimal --help
               refused "$dsh" headless --from-default-profile web --dump-config
               refused "$dsh" plugin --profile headless add left-pad
+              # An empty profile token must not fall through to unwrapped dsh.
+              refused "$dsh" --profile= headless --dump-config
+              refused "$dsh" --profile "" headless --dump-config
+              refused "$dsh" "" web --help
+              refused "$dsh" --dump-config
+              # A DSH_HOME the in-process write tool can reach (/tmp, $TMPDIR).
+              refused env DSH_HOME="$TMPDIR/dsh-home" "$dsh" headless --dump-config
+              refused env DSH_HOME=/tmp/dsh-home "$dsh" headless --dump-config
               refused env DSH_PERMISSION_MODE=danger-full-access "$dsh" headless --dump-config
               (cd "$HOME" && refused "$dsh" headless --dump-config)
               (cd "$DSH_HOME" && refused "$dsh" headless --dump-config)
-              (cd "$TMPDIR" && refused "$dsh" headless --dump-config)
+              (cd "$build" && refused "$dsh" headless --dump-config)
+              (cd / && refused "$dsh" headless --dump-config)
+              # A parent of $HOME that does not hold DSH_HOME.
+              (cd "$build/homes" && HOME="$build/homes/tom" refused "$dsh" headless --dump-config)
 
               # No DeepSeek identity minted by any of the boots above.
               test ! -e "$DSH_HOME/.anonymous-user-id"

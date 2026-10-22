@@ -32,10 +32,13 @@
 #   3. refuses (exit 2, one stderr line): `dsh plugin` (plugins come from Nix
 #      only), any profile but `profiles` (Tom, 2026-10-22: "no dsh web,
 #      ever"; sdk-minimal pins danger-full-access), --from-default-profile
-#      outside `profiles`, DSH_PERMISSION_MODE=danger-full-access, and a cwd
-#      that is $HOME, contains DSH_HOME or sits inside it. The cwd is the write
-#      fence, and a writable profile patch is code (`!!js` runs with full Node
-#      privileges);
+#      outside `profiles`, an empty profile word or `--profile` value, any
+#      argv without a profile except a lone --version/-V/--help/-h,
+#      DSH_PERMISSION_MODE=danger-full-access, a DSH_HOME under /tmp or
+#      $TMPDIR (dsh's in-process write tool reaches both), and a cwd that is
+#      $HOME or one of its parents, contains DSH_HOME or sits inside it. The
+#      cwd is the write fence, and a writable profile patch is code (`!!js`
+#      runs with full Node privileges);
 #   4. puts the policy overlays (./config.nix, ./sessions.patch.yml) right
 #      after the profile word, where `--patch` must go, so they are the last
 #      config layer whatever DSH_HOME is. Overlays the caller passes come after
@@ -95,6 +98,9 @@ writeShellApplication {
     inherit (unwrapped.meta) license platforms;
   };
   text = ''
+    # Bash imports xtrace from an exported SHELLOPTS; the key read below must
+    # never be traced.
+    { set +o xtrace; } 2>/dev/null
     unset DEEPSEEK_API_KEY DEEPSEEK_BASE_URL DEEPSEEK_SEARCH_BASE_URL
     export DSH_TELEMETRY_DISABLED=1
 
@@ -106,28 +112,37 @@ writeShellApplication {
     if [ "''${1-}" = plugin ]; then
       refuse "plugins come from Nix only (no dsh plugin)"
     fi
+    # dsh would read an empty first word as `--profile ""`, and the no-profile
+    # branch below would boot it unwrapped.
+    if [ "$#" -gt 0 ] && [ -z "''${1//[[:space:]]/}" ]; then
+      refuse "an empty first argument"
+    fi
 
     # The launcher reads its own options up to the first token it does not
     # know; a bare first word is shorthand for --profile <word>.
     profile=""
+    have_profile=0
     from_default=""
     dump_default=0
     dumping=0
     launcher=()
     if [ "$#" -gt 0 ] && [ "''${1:0:1}" != - ]; then
       profile="$1"
+      have_profile=1
       shift
     fi
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --profile)
-          if [ -n "$profile" ] || [ "$#" -lt 2 ]; then break; fi
+          if [ "$have_profile" = 1 ] || [ "$#" -lt 2 ]; then break; fi
           profile="$2"
+          have_profile=1
           shift 2
           ;;
         --profile=*)
-          if [ -n "$profile" ]; then break; fi
+          if [ "$have_profile" = 1 ]; then break; fi
           profile="''${1#--profile=}"
+          have_profile=1
           shift
           ;;
         --patch | --from-default-profile)
@@ -156,9 +171,18 @@ writeShellApplication {
       esac
     done
 
-    # No profile: --version, --help, or an argv the launcher rejects itself.
-    if [ -z "$profile" ]; then
-      exec ${unwrapped}/bin/dsh "''${launcher[@]}" "$@"
+    # No profile: only a lone --version or --help reaches dsh unwrapped.
+    # Anything else would let dsh pick the profile itself, past every check.
+    if [ "$have_profile" = 0 ]; then
+      if [ "''${#launcher[@]}" = 0 ] && [ "$#" = 1 ]; then
+        case "$1" in
+          -V | --version | -h | --help) exec ${unwrapped}/bin/dsh "$1" ;;
+        esac
+      fi
+      refuse "no profile given (dsh <profile> ..., or a lone --version/--help)"
+    fi
+    if [ -z "''${profile//[[:space:]]/}" ]; then
+      refuse "an empty profile name"
     fi
 
     case "$profile" in
@@ -179,12 +203,24 @@ writeShellApplication {
     dsh_home="''${DSH_HOME-}"
     if [ -z "''${dsh_home//[[:space:]]/}" ]; then dsh_home="$HOME/.dsh"; fi
     dsh_home="$(realpath -m -- "$dsh_home")"
+    # dsh's in-process write and edit tools may write /tmp and os.tmpdir()
+    # outside any sandbox, and a patch file under DSH_HOME is code.
+    # Prefixes end in exactly one slash, so `/` itself matches everything
+    # (bash never matches a quoted empty expansion followed by `/*`).
+    for t in /tmp "''${TMPDIR:-/tmp}"; do
+      t="$(realpath -m -- "$t")"
+      case "$dsh_home/" in
+        "''${t%/}/"*) refuse "DSH_HOME ($dsh_home) is under $t, which dsh's write tool can reach" ;;
+      esac
+    done
     here="$(pwd -P)"
-    if [ "$here" = "$(realpath -m -- "$HOME")" ]; then
-      refuse "the working directory is \$HOME, which would make it the writable workspace"
-    fi
+    here_dir="''${here%/}/"
+    home="$(realpath -m -- "$HOME")"
+    case "$home/" in
+      "$here_dir"*) refuse "the working directory $here is \$HOME or contains it, which would make it the writable workspace" ;;
+    esac
     case "$dsh_home/" in
-      "$here"/*) refuse "the working directory $here contains DSH_HOME ($dsh_home)" ;;
+      "$here_dir"*) refuse "the working directory $here contains DSH_HOME ($dsh_home)" ;;
     esac
     case "$here/" in
       "$dsh_home"/*) refuse "the working directory $here is inside DSH_HOME ($dsh_home)" ;;
@@ -199,7 +235,8 @@ writeShellApplication {
   ''
   + lib.optionalString (qwenKeyFile != null) ''
 
-    # Not for config dumps, which make no request.
+    # Not for config dumps, which make no request. Never traced.
+    { set +o xtrace; } 2>/dev/null
     if [ "$dumping" = 0 ] && [ -r ${lib.escapeShellArg qwenKeyFile} ]; then
       QWEN_TOKEN_PLAN_API_KEY="$(< ${lib.escapeShellArg qwenKeyFile})"
       export QWEN_TOKEN_PLAN_API_KEY
