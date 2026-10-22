@@ -58,6 +58,11 @@ opt-in and comment-only; the routine makes no adoption commits. Earlier
 review commits without `Update-Check: bump` survive refreshes, or a conflict
 aborts before the remote changes. Nothing merges, switches or restarts without
 Tom. Adding a program is an entry in the watch file.
+Imported release notes must stay in collision-safe literal text fences, with
+only their release-page links outside. Contributor mentions and upstream
+issue/PR references must never become active GitHub Markdown in generated PR
+bodies or digest comments (2026-10-22 notification incident). Truncate source
+text before fencing it, never the rendered wrapper.
 
 **Closet and physical seat (Tom, 2026-10-08).** Strix (formerly coordinator)
 is permanently headless in the closet, with the NAS, BE550 and Freebox. Both

@@ -68,6 +68,12 @@ such as an option a new release renamed. Otherwise leave it for Tom.
 The nightly routine does not invoke this section. An explicit request to
 digest authorizes one PR comment only: no commits, pushes or config changes.
 
+Imported upstream notes stay inside collision-safe literal text fences. The
+checker links the original release page outside each excerpt. Keep this boundary
+in digests too: never paste contributor mentions or upstream issue/PR references
+as active Markdown into a body or comment. Attribute in plain text and link the
+release page. Code examples and source text belong inside a literal fence.
+
 The PR body holds the version table and the upstream release notes for
 exactly the range between main and the PR. GitHub caps a PR body, so a long
 release is cut and links its full notes: read every cut one in full
