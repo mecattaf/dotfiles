@@ -147,7 +147,7 @@
 
     # Client desktop pilot: package and Home Manager module from one release.
     # Keep upstream's nixpkgs so its signed binary cache remains usable.
-    vicinae.url = "github:vicinaehq/vicinae/v0.29.1";
+    vicinae.url = "github:vicinaehq/vicinae/v0.29.2";
 
     # herdr — the terminal workspace manager for AI coding agents
     # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
