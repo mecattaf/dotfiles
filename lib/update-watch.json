@@ -9,7 +9,8 @@
         "client"
       ],
       "build": [
-        ".#checks.x86_64-linux.dsh-config"
+        ".#checks.x86_64-linux.dsh-config",
+        ".#checks.x86_64-linux.dsh-plugins"
       ],
       "versions": {
         "claude-code": "nixosConfigurations.strix.pkgs.llm-agents.claude-code.version",
@@ -42,7 +43,7 @@
           "tagPrefix": "dsh-v"
         }
       },
-      "switch": "Home Manager only. Running agent sessions keep the binary they started with; the next session starts on the new one. The substrate units find claude, codex and pi through the profile, so their unit text does not change and nothing restarts. dsh is the pkgs/dsh wrapper around llm-agents.dsh; its policy is store --patch overlays, so a bump changes nothing under ~/.dsh, and checks.dsh-config (built above) re-checks the policy against the new release."
+      "switch": "Home Manager only. Running agent sessions keep the binary they started with; the next session starts on the new one. The substrate units find claude, codex and pi through the profile, so their unit text does not change and nothing restarts. dsh is the pkgs/dsh wrapper around llm-agents.dsh; its policy is store --patch overlays, so a bump changes nothing under ~/.dsh, and checks.dsh-config (built above) re-checks the policy against the new release. checks.dsh-plugins (built above) re-runs the herdr profile's plugin tests against the new dsh-tools and boots that profile; its plugins are re-linked under ~/.dsh/profiles/herdr only when Tom next runs `dsh herdr`."
     },
     {
       "name": "herdr",

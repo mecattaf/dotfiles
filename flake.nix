@@ -1891,6 +1891,112 @@
               touch "$out"
             '';
 
+        # dsh-plugins (T-31): the hand-run `herdr` profile. Its plugins' own
+        # check phases are part of this closure: dsh-herdr's node tests (argv,
+        # runtime, preview, the 23-tool registration against the real
+        # dsh-tools) and the herdr-guard unit test (foreign pane_run, malformed
+        # ids, writes without HERDR_ENV=1). Here: jevcore's $out has the
+        # pinned build and no network path, and the wrapper boots `herdr` with
+        # every plugin row mounted and none skipped, while the stock headless
+        # profile (substrate's) mounts none of them. Same sandbox as
+        # dsh-config: no network, a private DSH_HOME, no key, no herdr.
+        dsh-plugins =
+          let
+            plugins = pkgs.dsh.plugins;
+            base = {
+              disabled = pkgs.dsh.disabledIds;
+              runner = "${pkgs.dsh.runner}/bin/dsh-bwrap";
+            };
+            pluginRows = [
+              "herdr-guard"
+              "dsh-herdr-toolkit"
+              "jev"
+            ];
+            expectHerdr = pkgs.writeText "dsh-plugins-herdr.json" (
+              builtins.toJSON (
+                base
+                // {
+                  rows = pkgs.dsh.herdrRows;
+                  present = pluginRows;
+                }
+              )
+            );
+            expectHeadless = pkgs.writeText "dsh-plugins-headless.json" (
+              builtins.toJSON (base // { absent = pluginRows; })
+            );
+            semver = "${pkgs.dsh.unwrapped}/lib/node_modules/@deepseek-ai/dsh/node_modules/semver";
+          in
+          pkgs.runCommand "dsh-plugins"
+            {
+              nativeBuildInputs = [
+                (pkgs.python3.withPackages (ps: [ ps.pyyaml ]))
+                pkgs.nodejs
+              ];
+            }
+            ''
+              set -euo pipefail
+              # Built, so their check phases passed.
+              : ${plugins.dsh-herdr} ${plugins.herdr-guard}
+
+              # jevcore: the git 0.4.2 that admits this dsh, core beside it,
+              # the skill, and no TypeSafe SDK or network call in the JS.
+              j=${plugins.jevcore}
+              node -e '
+                const [pkg, semver, dsh] = process.argv.slice(1)
+                const m = require(pkg)
+                if (m.version !== "0.4.2" || m.dependencies.jevcore !== "0.4.2") throw new Error("not 0.4.2")
+                if (!require(semver).satisfies(dsh, m.engines.dsh, { includePrerelease: true }))
+                  throw new Error("engines.dsh " + m.engines.dsh + " refuses " + dsh)
+              ' "$j/package.json" ${semver} ${pkgs.dsh.unwrapped.version}
+              test -f "$j/lib/index.js"
+              test -f "$j/skills/typesafe-ai-dsh/SKILL.md"
+              test -f "$j/node_modules/jevcore/lib/index.js"
+              test ! -e "$j/node_modules/@typesafe-ai"
+              if grep -rnE 'fetch\(|node:https?' "$j/lib" "$j/node_modules/jevcore/lib"; then
+                echo "jevcore: a network call in the built JS" >&2
+                exit 1
+              fi
+
+              build="$TMPDIR"
+              export HOME="$build/home" DSH_HOME="$build/dsh-home" TMPDIR="$build/tmp"
+              export HERDR_SOCKET_PATH="$build/no-herdr.sock"
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p "$HOME" "$build/cwd" "$TMPDIR"
+              mkdir -m 700 "$DSH_HOME"
+              cd "$build/cwd"
+              dsh=${pkgs.dsh}/bin/dsh
+
+              dump() {
+                name="$1" expect="$2"
+                shift 2
+                "$dsh" "$@" > "$TMPDIR/$name.yml" 2> "$TMPDIR/$name.err"
+                if [ -s "$TMPDIR/$name.err" ]; then
+                  echo "dsh $*: stderr not empty:" >&2
+                  cat "$TMPDIR/$name.err" >&2
+                  exit 1
+                fi
+                python3 -I ${./tests/dsh-config/check_dump.py} "$TMPDIR/$name.yml" "$expect"
+              }
+              dump herdr ${expectHerdr} herdr --dump-config
+              dump headless ${expectHeadless} headless --dump-config
+
+              # The synced profile: a private manifest and store links only.
+              p="$DSH_HOME/profiles/herdr"
+              test "$(stat -c %a "$p/package.json")" = 600
+              test "$(readlink "$p/node_modules/herdr-guard")" = ${plugins.herdr-guard}
+              test "$(readlink "$p/node_modules/@dsh-external/dsh-herdr-toolkit")" = ${plugins.dsh-herdr}
+              test "$(readlink "$p/node_modules/jevcore-dsh")" = ${plugins.jevcore}
+              test ! -e "$DSH_HOME/profiles/headless/node_modules"
+              # A store link no longer declared goes on the next boot; a
+              # profile file dsh owns stays.
+              ln -s ${plugins.jevcore} "$p/node_modules/dropped-plugin"
+              echo '[]' > "$p/cordis.patch.yml"
+              dump herdr-again ${expectHerdr} --profile herdr --dump-config
+              test ! -e "$p/node_modules/dropped-plugin"
+              test "$(cat "$p/cordis.patch.yml")" = '[]'
+              touch "$out"
+            '';
+
         # seats: one capacity oracle across every seat on this box. Hermetic —
         # SEATS_NO_NETWORK=1 and a home tree the test builds itself, because
         # every fact the program reports is relative to now and a checked-in
