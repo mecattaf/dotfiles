@@ -113,6 +113,22 @@ def quote_sway(value):
     return '"' + value + '"'
 
 
+def hyprland():
+    # Sway only. The physical seat runs Sway (modules/display.nix); callers such
+    # as sway-workspace-switcher ask this before touching anything and stop if
+    # it ever answers True. No Hyprland code lives in this picker.
+    return False
+
+
+def select_workspace(number, name=None):
+    # An existing workspace is addressed by its complete name, Sway's identity
+    # for it; an empty slot by number, so Sway creates it on the focused output.
+    if name is not None:
+        ipc('workspace ' + quote_sway(name))
+    else:
+        ipc(f'workspace number {int(number)}')
+
+
 @contextmanager
 def desktop_lock():
     runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
