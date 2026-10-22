@@ -1,3 +1,16 @@
 # Preserve the historical handoff's quoted upstream patch byte-for-byte.
 experiments/handwriting/2026-09-14/HANDOFF.md -whitespace
 # Unified-diff context represents an empty source line with one space.
+
+# Font binaries must NEVER be committed (rule of 2026-09-17, docs/fonts/README.md
+# "Standing rules"; attributes added 2026-10-22). The bytes live in tarballs on
+# the NAS M.2 and enter the store through requireFile in pkgs/*.nix. .gitignore
+# refuses these extensions; tools/fonts/check-no-font-bytes.sh fails on them by
+# extension and by magic header. These lines only keep git from diffing or
+# merging a font that was forced in anyway: they are not permission to add one.
+*.ttf -diff -merge
+*.otf -diff -merge
+*.ttc -diff -merge
+*.pfb -diff -merge
+*.woff -diff -merge
+*.woff2 -diff -merge
