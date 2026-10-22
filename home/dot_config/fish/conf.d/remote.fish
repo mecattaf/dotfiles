@@ -6,6 +6,7 @@ if test (hostname) != "strix"
     # itself when the link drops; the session keeps running server-side
     # meanwhile. `--remote-keybindings server` is what keeps the tally popup
     # keys working from here (#385).
+    ## shell | desk | open the herdr projector onto strix (thin clients only; replaces this shell)
     function desk
         # No name seed and no pre-create: herdr owns session identity, so the
         # old `term-<mmdd-HHMMSS>-<rand>` scheme retired with it. `desk-resume`

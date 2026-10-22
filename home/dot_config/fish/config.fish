@@ -1,3 +1,15 @@
+# config.fish: the last file fish reads at startup (after every conf.d/*.fish).
+# What it is: session flags, the interactive guard and the keypad escape, nothing else.
+# What it replaced: until 2026-10-22 (branch dryrun/shell-consolidation-2026-10-22)
+# this one file also carried the aliases, the tool inits and the agent launchers.
+# They moved, unchanged, to conf.d/10-aliases.fish, conf.d/20-tools.fish and
+# conf.d/30-shell-verbs.fish; README.md in this folder maps every moved line.
+# Deliberately absent: universal variables (fish_variables is tracked), any
+# `source` of a theme or tool fragment other than the tool inits in conf.d.
+# Note on order: fish reads conf.d/ BEFORE this file and for non interactive
+# shells too, so every conf.d fragment that must stay interactive only carries
+# its own copy of the guard below.
+
 set -g fish_greeting
 set -g fish_key_bindings fish_default_key_bindings
 set -e SSH_ASKPASS
@@ -18,91 +30,12 @@ status is-interactive || exit
 
 printf '\033[?1h\033=' >/dev/tty
 
-alias vi='nvim'
+# Aliases: conf.d/10-aliases.fish. Tool inits (starship, zoxide, atuin and its
+# Ctrl+E rebind): conf.d/20-tools.fish. Agent launchers (cc, cac, cc2, cac2, cx,
+# cax): conf.d/30-shell-verbs.fish. `desk`: conf.d/remote.fish (name kept, see
+# herdr-projector and home/herdr.nix which point at it).
 
-set -x STARSHIP_CONFIG ~/.config/starship/starship.toml
-starship init fish | source
-zoxide init fish | source
-
-# Using eza instead of ls — color/icons =auto so command substitutions and
-# pipes inside an interactive session still capture plain text
-alias ls='eza --color=auto --group-directories-first --icons=auto'
-alias l='eza -bGF --header --git --color=auto --group-directories-first --icons=auto'
-alias ll='eza -la --icons=auto --octal-permissions --group-directories-first'
-alias llm='eza -lbGd --header --git --sort=modified --color=auto --group-directories-first --icons=auto'
-alias la='eza --long --all --group --group-directories-first'
-alias lx='eza -lbhHigUmuSa@ --time-style=long-iso --git --color-scale --color=auto --group-directories-first --icons=auto'
-
-# Specialty views
-alias lS='eza -1 --color=auto --group-directories-first --icons=auto'
-alias lt='eza --tree --level=2 --color=auto --group-directories-first --icons=auto'
-alias l.="eza -a | grep -E \"^\.\""
-
-# Replace cd with zoxide
-alias cd='z'
-# zi command
-
-# Claude Code: two seats, one launcher shape (2026-09-22).
-#   cc  / cac   -> ~/.claude       the personal Claude Max login (gmail org)
-#   cc2 / cac2  -> ~/.claude-work  the leger.run Claude Max login
-# CLAUDE_CONFIG_DIR isolates login, history and state per seat; skills and
-# settings are the same dotfiles links for both (home.nix). Claude Code never
-# saves workspace trust for $HOME (docs, security: "trust acceptance is held
-# for the current session only and is not written to disk"), so a seat started
-# in ~ shows "Accessing workspace" on every launch. Both launchers therefore
-# move into the desk envelope (~/today) when typed from ~; the shell stays
-# there afterwards. Tom, 2026-10-13: cc and cc2 keep starting in ~/today; its
-# stale CLAUDE.md brief was moved out that day.
-set -q CLAUDE_ENVELOPE; or set -gx CLAUDE_ENVELOPE $HOME/today
-function __claude_seat --description 'start one Claude seat outside $HOME'
-    set -l seat $argv[1]
-    set -l config_dir $argv[2]
-    set -l args $argv[3..]
-    if test (pwd) = $HOME
-        if not test -d $CLAUDE_ENVELOPE
-            echo "$seat: \$CLAUDE_ENVELOPE ($CLAUDE_ENVELOPE) does not exist; cd into a project first" >&2
-            return 1
-        end
-        builtin cd $CLAUDE_ENVELOPE
-        echo "($seat: started in $CLAUDE_ENVELOPE, not in ~)" >&2
-    end
-    # Agent view off for both seats (2026-10-12): herdr is the multiplexer, and
-    # finished background sessions sat in "Needs input" for weeks. The 2.1.287
-    # binary describes the switch as "Disable agent view (`claude agents`,
-    # `--bg`, /background, the on-demand daemon)". The env var form needs no
-    # edit to the seeded ~/.local/state/claude/settings.json.
-    set -lx CLAUDE_CODE_DISABLE_AGENT_VIEW 1
-    # A terminal opened from inside a cc2 session already carries
-    # CLAUDE_CONFIG_DIR, so `cc` must clear it explicitly or it silently starts
-    # cc2 (measured 2026-09-22). Each seat sets its own value or none.
-    if test -n "$config_dir"
-        env CLAUDE_CONFIG_DIR=$config_dir claude --dangerously-skip-permissions $args
-    else
-        env -u CLAUDE_CONFIG_DIR claude --dangerously-skip-permissions $args
-    end
-end
-function cc;   __claude_seat cc  "" $argv; end
-function cac;  __claude_seat cc  "" --continue $argv; end
-function cc2;  __claude_seat cc2 $HOME/.claude-work $argv; end
-function cac2; __claude_seat cc2 $HOME/.claude-work --continue $argv; end
-# Codex, same shape: cx starts, cax resumes the newest session. codex 0.160.0
-# auto-starts a shared app-server daemon that copies its install into
-# ~/.codex/packages and needs the codex-package.json manifest the Nix build does
-# not ship ("this CLI has no complete local package", 2026-10-04), so the
-# launchers run the embedded server as before 0.160.
-alias cx='codex --disable daemon_auto_start --dangerously-bypass-approvals-and-sandbox'
-alias cax='codex resume --last --disable daemon_auto_start --dangerously-bypass-approvals-and-sandbox'
-
-# ── Music ────────────────────────────────────────────────────────────────
-# The library lives on the NAS and is served by Navidrome (hosts/nas/media.nix).
-# The cliamp TUI client and its m/music/mp/mn/mb/mnow aliases were removed
-# 2026-09-17 (unused).
-alias mscan='navidrome-scan'                     # reindex after a beets pass (--full for tag-only edits)
-
-type -q atuin || exit
-set -gx ATUIN_NOBIND "true"
-atuin init fish | source
-# Bind Ctrl+E to Atuin search
-bind \ce "atuin search -i"
-# Restore default Fish up-arrow behavior
-bind --preset \e\[A history-search-backward
+## Not verified
+# Startup order after the split was reasoned from fish 4.8.1 docs and the body of
+# __fish_config_interactive, not observed in a live interactive shell (no fish was
+# started with this config). No second reader (Tom's light verification rule, 2026-10-20).
