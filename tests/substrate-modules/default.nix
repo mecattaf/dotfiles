@@ -45,7 +45,7 @@ let
             cap = 12;
             callTimeoutMs = {
               opus = 3600000;
-              halogen = 1800000;
+              gufo = 1800000;
               codex = 3600000;
               codex-rw = 7200000;
               qwen = 3600000;
@@ -56,7 +56,7 @@ let
             sshRuntimes."ssh:strix" = {
               host = "strix-coordinator";
               harness = "pi";
-              seat = "halogen";
+              seat = "gufo";
             };
           };
         };

@@ -2913,11 +2913,11 @@
               server.handle_request()
               server.server_close()
             '';
-            strixPackages =
-              self.nixosConfigurations.strix-coordinator.config.home-manager.users.tom.home.packages;
+            brainPackages =
+              self.nixosConfigurations.nas.config.home-manager.users.tom.home.packages;
           in
           assert hf.version == expectedVersion;
-          assert builtins.elem hf strixPackages;
+          assert builtins.elem hf brainPackages;
           pkgs.runCommand "huggingface-cli-smoke"
             {
               nativeBuildInputs = [
