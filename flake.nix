@@ -7,11 +7,11 @@
 
     # nixpkgs-fresh — a second nixpkgs used ONLY to keep a handful of
     # fast-moving user packages (currently google-chrome and uv, see overlays
-    # list below) and the twins'/NAS's linuxPackages_7_2 kernel series current
+    # list below) and the fleet's linuxPackages_7_3 kernel series current
     # independent of the `nixpkgs` pin above. That pin is deliberately
     # lagging — the exact-candidate fleet deploy keeps it as the only door
     # Mesa/ROCm churn enters through, bumped manually. Browser point releases
-    # and 7.2.y kernel point fixes carry none of that risk, so they shouldn't
+    # and kernel point fixes stay within the selected series, so they shouldn't
     # have to wait on it.
     #
     # nixos-unstable-SMALL since 2026-08-30 (#244): the same rolling resolver,
@@ -26,13 +26,11 @@
     # rollingInputOverrides remains available to explicit fleet candidates.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
-    # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
-    # the NAS is a frozen self-sustaining appliance on standard stable nixpkgs,
-    # maintained manually every few years. It never rides the unstable
-    # kernel/Mesa churn the strix's pin exists to gate, and it accepts
-    # EOL-pin CVE exposure because it is reachable only from the strix
-    # over the private /30. Bump deliberately with
-    # `nix flake update nixpkgs-stable` on the same few-years cadence.
+    # nixpkgs-stable — the NAS userspace base (issue #135 ruling).
+    # Its kernel follows the fleet's current series from nixpkgs-fresh
+    # (Tom, 2026-10-23, #584); ./hosts/nas/kernel.nix owns that exception.
+    # Bump the stable userspace deliberately with
+    # `nix flake update nixpkgs-stable`.
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     home-manager = {
@@ -2382,9 +2380,11 @@
           # transition, which is exactly when a wedged box needs it.
           assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" strix.boot.kernelParams;
 
-          # The twins ride linux 7.2 from nixpkgs-fresh (modules/strix.nix).
-          # hasPrefix, not equality: the versioned attr advances within 7.2.x.
-          assert nixpkgs.lib.hasPrefix "7.2" strix.boot.kernelPackages.kernel.version;
+          # Every host follows Linux 7.3, including the NAS's stable userspace.
+          # Compare major.minor so point releases pass but 7.30 cannot match.
+          assert builtins.all (
+            host: nixpkgs.lib.versions.majorMinor host.config.boot.kernelPackages.kernel.version == "7.3"
+          ) (builtins.attrValues self.nixosConfigurations);
 
           # `assert !{strix,worker}.services.npu-llm.enable` stood here
           # until 2026-08-31 (#270): with modules/npu-llm.nix deleted the

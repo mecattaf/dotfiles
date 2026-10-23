@@ -196,7 +196,7 @@
       (import inputs.nixpkgs-fresh {
         inherit (pkgs.stdenv.hostPlatform) system;
         config.allowUnfree = true;
-      }).linuxPackages_7_2;
+      }).linuxPackages_7_3;
 
     boot.kernelParams = [
       "amd_iommu=off"

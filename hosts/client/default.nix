@@ -250,14 +250,14 @@
     })
   ];
 
-  # Linux 7.2 like the rest of the fleet (Tom, 2026-09-14), sourced exactly as
+  # Linux 7.3 like the rest of the fleet (Tom, 2026-10-23), sourced exactly as
   # modules/strix.nix and hosts/nas/kernel.nix do: the versioned attr moves only
-  # within 7.2.x and breaks eval loudly when the series ages out.
+  # within 7.3.x and breaks eval loudly when the series ages out.
   boot.kernelPackages =
     (import inputs.nixpkgs-fresh {
       inherit (pkgs.stdenv.hostPlatform) system;
       config.allowUnfree = true;
-    }).linuxPackages_7_2;
+    }).linuxPackages_7_3;
 
   # A short boot menu: five generations is rollback enough on a thin client
   # (the 20-entry fleet default left 19 stale entries here, 2026-09-14).
