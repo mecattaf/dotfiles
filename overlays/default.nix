@@ -1,4 +1,4 @@
-{ torchRocm }:
+{ torchRocm, herdr }:
 final: _prev: {
   qwentts = final.callPackage ../pkgs/qwentts.nix { };
   speech-session = final.callPackage ../pkgs/speech-session { };
@@ -40,6 +40,17 @@ final: _prev: {
   # end to end — render, quiet hours, queue guard, printer-sourced receipts.
   # Replaces paper-intake (paper-print-flush). See home/paper.nix.
   paper-daemon = final.callPackage ../pkgs/paper-daemon { };
+
+  # dsh (DeepSeek Harness) from llm-agents.nix behind the fleet policy: Qwen
+  # Cloud as the default, Gufo for local picks, every DeepSeek-bound row off,
+  # a hardened bwrap runner. Needs the flake's `llm-agents` overlay. See pkgs/dsh, home/dsh.nix.
+  dsh = final.callPackage ../pkgs/dsh { };
+  # The plugins of its hand-run `herdr` profile (gated dsh-herdr, herdr-guard,
+  # offline jevcore). An attrset, not a package; pkgs/dsh picks them up.
+  dsh-plugins = import ../pkgs/dsh-plugins {
+    inherit (final) callPackage llm-agents;
+    inherit herdr;
+  };
 
   # CLI-Anything — pinned cli-hub Python app plus immutable Codex/Claude/Pi
   # integrations. Upstream has no flake; see modules/cli-anything.nix.

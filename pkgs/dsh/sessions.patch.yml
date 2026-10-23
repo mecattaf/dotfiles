@@ -1,0 +1,11 @@
+# Plain JSONL sessions from the first session. Hand-written because the root
+# must stay a `!!js` expression that follows DSH_HOME (a Nix-baked path would
+# send a gate's sessions into the real ~/.dsh), and pkgs.formats.yaml cannot
+# emit one. This is upstream's own sdk-minimal row, and the only `!!js` in the
+# fleet's dsh config; it lives read-only in the store. The encoding is
+# permanent per root, and every fleet reader (seats, nightly-record) is
+# stdlib JSONL.
+- id: session-persistence-jsonl
+  config:
+    root: !!js dshHomePath('sessions')
+    compression: none
