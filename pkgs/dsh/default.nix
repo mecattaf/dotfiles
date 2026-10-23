@@ -20,10 +20,9 @@
 # dsh: DeepSeek Harness from llm-agents.nix (Tom's ruling, 2026-10-22: "use
 # llm-agents.nix"), served signed by numtide's cache, so nothing in the 712 MB
 # tree builds here. This wrapper is the only `dsh` on PATH: `dsh` stays out of
-# home/home.nix's keepFromLlmAgents for the same reason pi does there (two
-# bin/dsh would collide). A direct llm-agents.dsh reference also skips that
-# list's meta.available filter, so a broken bump fails the build loudly
-# instead of silently dropping dsh.
+# home/home.nix's keepFromLlmAgents (two bin/dsh would collide). A direct
+# llm-agents.dsh reference also skips that list's meta.available filter, so a
+# broken bump fails the build loudly instead of silently dropping dsh.
 #
 # What the wrapper does, in order:
 #   1. unsets DEEPSEEK_*: DEEPSEEK_BASE_URL alone repoints the official

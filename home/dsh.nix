@@ -19,8 +19,8 @@
 let
   cfg = config.programs.dsh;
   link = config.lib.rawDotfiles.link;
-  # Same gate as home/pi.nix: a host that does not declare the secret gets no
-  # key path, and the route fails MISSING_CREDENTIAL instead of reading /run.
+  # A host that does not declare the secret gets no key path, and the route
+  # fails MISSING_CREDENTIAL instead of reading /run.
   qwenKeyFile = lib.attrByPath [ "age" "secrets" "qwencloud-token" "path" ] null osConfig;
 in
 {

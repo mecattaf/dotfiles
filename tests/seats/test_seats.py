@@ -18,8 +18,11 @@ What it pins:
     CUMULATIVE token totals are differenced rather than summed
   * the Qwen window is parsed out of the provider's own 429 text, year and all,
     and an expired hold stops holding
-  * Qwen credits sum pi's live sessions AND the pi sessions the substrate
-    factory archived, skipping the other harnesses' archives beside them
+  * Qwen credits sum dsh's live sessions AND the sessions the substrate
+    factory archived, skipping the other harnesses' archives beside them,
+    and pi's old session shape is never spend, only window history: it still
+    places the 7-day window pi's calls opened on the same key
+  * a spend cache written by an older extractor is discarded, not counted
   * spend counts from the seat's own weekly window start, not a rolling week,
     and excludes events before it
   * --check returns 0 headroom / 1 spent / 2 unmeasurable
@@ -80,7 +83,7 @@ def window_cache(five_hour_pct, weekly_pct, weekly_reset, scoped=None,
 
 
 class SeatsFixture:
-    """A whole box on disk: three Claude seats, a Codex, a pi, two GPUs."""
+    """A whole box on disk: three Claude seats, a Codex, a dsh, two GPUs."""
 
     def __init__(self, root: pathlib.Path):
         self.root = root
@@ -143,19 +146,20 @@ class SeatsFixture:
         os.utime(newer, (NOW.timestamp(), NOW.timestamp()))
 
     def qwen(self, messages=(), refusals=(), hold=None):
-        """messages: (when, input, output, cacheRead, provider). refusals:
-        (when, reset). hold: an explicit hold record, for the paths that still
-        depend on one."""
-        session = self.home / ".pi/agent/sessions/-proj"
-        session.mkdir(parents=True, exist_ok=True)
-        lines = [self.pi_message(*row) for row in messages]
+        """The seat's own dsh session. messages: (when, input, output,
+        cacheRead, provider). refusals: (when, reset); the refusal record's
+        shape is synthetic, since the reader matches the provider's text on
+        any line and anchors it to the record's `time`. hold: an explicit hold
+        record, for the paths that still depend on one."""
+        lines = self.dsh_lines("session-qwen", messages)
         for when, reset in refusals:
             lines.append(json.dumps({
-                "type": "error", "timestamp": iso(when),
-                "error": ("429 insufficient_quota: Your token-plan 1-week quota has been "
-                          "exhausted. The quota will reset at %s UTC."
-                          % reset.strftime("%m-%d %H:%M:%S"))}))
-        (session / "s.jsonl").write_text("\n".join(lines) + "\n")
+                "type": "error", "time": int(when.timestamp() * 1000),
+                "data": {"message": (
+                    "429 insufficient_quota: Your token-plan 1-week quota has been "
+                    "exhausted. The quota will reset at %s UTC."
+                    % reset.strftime("%m-%d %H:%M:%S"))}}))
+        self.dsh_write("session-qwen", lines)
         path = self.state / "qwen-hold.json"
         if hold is not None:
             path.write_text(json.dumps(hold))
@@ -169,7 +173,7 @@ class SeatsFixture:
 
     @staticmethod
     def pi_message(when, tin, tout, cache, provider):
-        """One pi session record, the shape live and archived files share."""
+        """One record in pi's old session shape: window history, never spend."""
         return json.dumps({
             "type": "message", "timestamp": iso(when),
             "message": {"provider": provider, "model": "qwen3.8-max",
@@ -178,14 +182,26 @@ class SeatsFixture:
 
     def dsh_session(self, messages, cwd="--home-tom-src--", session="session-0000",
                     inherited=0):
-        """One dsh session file (plain JSONL, compression none). Field names
-        were read, structure only, from a real 0.2.1-rc.2 session.v4.jsonl;
-        every value here is synthetic. messages: (when, input, output,
-        cacheRead, provider). inherited: how many leading messages a fork
-        copied from its parent; the `session/end-seed` marker follows them
-        (dsh packages/core/session/src/fork.ts)."""
+        """One dsh session file (plain JSONL, compression none)."""
+        return self.dsh_write(session, self.dsh_lines(session, messages, inherited), cwd)
+
+    def dsh_write(self, session, lines, cwd="--home-tom-src--"):
         folder = self.home / ".dsh/sessions" / cwd / session
         folder.mkdir(parents=True, exist_ok=True)
+        path = folder / "session.v4.jsonl"
+        path.write_text("\n".join(lines) + "\n")
+        for stale in self.state.glob("qwen-events.json"):
+            stale.unlink()
+        return path
+
+    @staticmethod
+    def dsh_lines(session, messages, inherited=0):
+        """A dsh session's records. Field names were read, structure only,
+        from a real 0.2.1-rc.2 session.v4.jsonl; every value here is
+        synthetic. messages: (when, input, output, cacheRead, provider).
+        inherited: how many leading messages a fork copied from its parent;
+        the `session/end-seed` marker follows them (dsh
+        packages/core/session/src/fork.ts)."""
         lines = [json.dumps({"type": "session", "version": 4, "id": session,
                              "createdAt": 0, "cwd": "/home/tom/src"})]
         for seq, (when, tin, tout, cache, provider) in enumerate(messages):
@@ -211,19 +227,21 @@ class SeatsFixture:
             if inherited and seq + 1 == inherited:
                 lines.append(json.dumps({"type": "session/end-seed", "seq": 3 * seq + 3,
                                          "time": ms, "data": {"inherited": True}}))
-        path = folder / "session.v4.jsonl"
-        path.write_text("\n".join(lines) + "\n")
-        for stale in self.state.glob("qwen-events.json"):
-            stale.unlink()
-        return path
+        return lines
 
-    def substrate_archive(self, name, messages, job="run1/job1"):
+    def substrate_archive(self, name, messages, job="run1/job1", shape="dsh"):
         """A harness session the factory archived at job end, beside the job's
-        other harness archives: <transcripts>/<run>/<job>/<name>.jsonl."""
+        other harness archives: <transcripts>/<run>/<job>/<name>.jsonl. That
+        a substrate dsh harness archives the session file as is, is INFERRED
+        (the harness is not vendored yet)."""
         job_dir = self.home / ".local/state/substrate/transcripts" / job
         job_dir.mkdir(parents=True, exist_ok=True)
         path = job_dir / f"{name}.jsonl"
-        path.write_text("\n".join(self.pi_message(*row) for row in messages) + "\n")
+        lines = (self.dsh_lines(name, messages) if shape == "dsh"
+                 else [self.pi_message(*row) for row in messages])
+        path.write_text("\n".join(lines) + "\n")
+        for stale in self.state.glob("qwen-events.json"):
+            stale.unlink()
         return path
 
     # ── driving the program ─────────────────────────────────────────────────
@@ -279,14 +297,14 @@ class SeatsTest(unittest.TestCase):
         # Qwen: a reset four days ago, the window opened by first use three
         # days ago, and 96,250 billable tokens spent inside it — 500 credits at
         # the calibrated 192.5 tokens/credit, so 5.0% of the 10,000 allowance.
-        # The cache reads and the locally served (halogen) message must not be billed.
+        # The cache reads and the locally served (gufo) message must not be billed.
         self.qwen_reset = NOW - timedelta(days=4)
         self.qwen_opened = NOW - timedelta(days=3)
         self.box.qwen(
             messages=[
                 (self.qwen_reset - timedelta(hours=1), 500_000, 0, 0, "qwen-token-plan"),
                 (self.qwen_opened, 90_000, 6_250, 9_000_000, "qwen-token-plan"),
-                (self.qwen_opened + timedelta(hours=1), 999_999, 999_999, 0, "halogen"),
+                (self.qwen_opened + timedelta(hours=1), 999_999, 999_999, 0, "gufo"),
             ],
             refusals=[(self.qwen_reset - timedelta(days=2), self.qwen_reset)])
 
@@ -383,18 +401,18 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(qwen["grade"], "ESTIMATED")
         credits = qwen["credits"]
         # 90,000 + 6,250 = 96,250 billable; the 9,000,000 cache reads, the
-        # halogen message and the pre-window message are all excluded.
+        # gufo message and the pre-window message are all excluded.
         self.assertEqual(credits["billable_tokens"], 96_250)
         self.assertEqual(credits["used"], 500)
         self.assertEqual(credits["remaining"], 9_500)
         self.assertEqual(qwen["windows"][0]["used_pct"], 5.0)
         self.assertEqual(qwen["state"], "open")
 
-    def test_factory_archived_pi_sessions_are_billed_too(self):
-        # CMP-2: the factory saves its pi sessions and archives them under
-        # substrate's transcripts at job end; those tokens are this seat's
-        # spend as much as a hand-run pi session is, and the two roots sum.
-        self.box.substrate_archive("pi-session", [
+    def test_factory_archived_sessions_are_billed_too(self):
+        # CMP-2: the factory archives its sessions under substrate's
+        # transcripts at job end; those tokens are this seat's spend as much
+        # as a hand-run dsh session is, and the two roots sum.
+        self.box.substrate_archive("dsh-session", [
             (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 500_000, "qwen-token-plan")])
         _, seats = self.box.report()
         qwen = seats["pi-qwencloud"]
@@ -403,12 +421,12 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(qwen["spend"]["tokens_out"], 6_250 + 1_000)
         self.assertEqual(qwen["spend"]["sessions"], 2, "the live file and the archive")
 
-    def test_other_harnesses_archives_beside_pi_are_not_billed(self):
+    def test_other_harnesses_archives_beside_it_are_not_billed(self):
         # The same job dir holds claude-*.jsonl and codex-*.jsonl; a qwen-looking
         # line in one of those is another seat's record, skipped by basename.
         looks_like_qwen = [(self.qwen_opened + timedelta(hours=2),
                             999_999, 999_999, 0, "qwen-token-plan")]
-        self.box.substrate_archive("pi-session", [
+        self.box.substrate_archive("dsh-session", [
             (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 0, "qwen-token-plan")])
         self.box.substrate_archive("claude-x", looks_like_qwen)
         self.box.substrate_archive("codex-y", looks_like_qwen)
@@ -417,15 +435,70 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 11_000)
         self.assertEqual(qwen["spend"]["sessions"], 2)
 
-    def test_the_pi_seat_names_both_spend_roots(self):
+    def test_the_qwen_seat_names_both_spend_roots(self):
         spec = importlib.util.spec_from_loader(
-            "seats_mod_pi", importlib.machinery.SourceFileLoader("seats_mod_pi", SCRIPT))
+            "seats_mod_qwen", importlib.machinery.SourceFileLoader("seats_mod_qwen", SCRIPT))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        pi = next(s for s in mod.DEFAULT_SEATS if s["id"] == "pi-qwencloud")
-        self.assertEqual(pi["spend_root"],
-                         ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts",
-                          "~/.dsh/sessions"])
+        qwen = next(s for s in mod.DEFAULT_SEATS if s["id"] == "pi-qwencloud")
+        self.assertEqual(qwen["spend_root"],
+                         ["~/.dsh/sessions", "~/.local/state/substrate/transcripts"])
+        self.assertEqual(qwen["window_history_root"], ["~/.pi/agent/sessions"])
+
+    def pi_store(self, *messages):
+        store = self.box.home / ".pi/agent/sessions/-proj"
+        store.mkdir(parents=True, exist_ok=True)
+        (store / "s.jsonl").write_text(
+            "\n".join(self.box.pi_message(*row) for row in messages) + "\n")
+        for stale in self.box.state.glob("qwen-events.json"):
+            stale.unlink()
+
+    def test_pi_sessions_are_never_spend(self):
+        # pi left the fleet: neither its old live store nor a pi-shaped
+        # factory archive is spend, so the spend row reads dsh alone. The
+        # same calls were made on this key inside the current window, so the
+        # window's credits still carry them.
+        stale = (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 0,
+                 "qwen-token-plan")
+        self.pi_store(stale)
+        self.box.substrate_archive("pi-session", [stale], shape="pi")
+        _, seats = self.box.report()
+        qwen = seats["pi-qwencloud"]
+        self.assertEqual(qwen["spend"]["tokens_in"], 90_000)
+        self.assertEqual(qwen["spend"]["sessions"], 1)
+        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 2 * 11_000)
+
+    def test_pi_history_still_places_the_window(self):
+        # The window opens on the first call after a reset, whichever harness
+        # made it. pi made this key's earlier calls; without its history the
+        # window would start at the first dsh call instead.
+        first = self.qwen_reset + timedelta(hours=6)
+        self.pi_store((first, 1_000, 1_000, 0, "qwen-token-plan"),
+                      (first, 999_999, 999_999, 0, "halogen"))
+        _, seats = self.box.report()
+        qwen = seats["pi-qwencloud"]
+        entry = qwen["windows"][0]
+        self.assertEqual(entry["window_start"], iso(first))
+        self.assertEqual(entry["resets_at"], iso(first + timedelta(days=7)))
+        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 2_000,
+                         "pi's local-route call never counts")
+        self.assertEqual(qwen["spend"]["tokens_in"], 90_000)
+
+    def test_a_spend_cache_from_an_older_extractor_is_discarded(self):
+        # The old extractor billed pi-shaped archives; its buckets for a file
+        # written once must not outlive the version that built them.
+        when = self.qwen_opened + timedelta(hours=2)
+        path = self.box.substrate_archive(
+            "pi-session", [(when, 10_000, 1_000, 0, "qwen-token-plan")], shape="pi")
+        stat = path.stat()
+        key = f"{path}|{int(stat.st_mtime)}|{stat.st_size}"
+        hour = when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H")
+        (self.box.state / "spend-cache.json").write_text(
+            json.dumps({key: {hour: [10_000, 1_000, 0]}}))
+        _, seats = self.box.report()
+        self.assertEqual(seats["pi-qwencloud"]["spend"]["tokens_in"], 90_000)
+        blob = json.loads((self.box.state / "spend-cache.json").read_text())
+        self.assertIn("v", blob, "the rewritten cache carries its version")
 
     def test_dsh_sessions_are_billed_to_the_same_seat(self):
         # T-31: dsh spends the same token plan through its qwen-token-plan
@@ -438,7 +511,7 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 11_000)
         self.assertEqual(qwen["spend"]["tokens_in"], 90_000 + 10_000)
         self.assertEqual(qwen["spend"]["tokens_out"], 6_250 + 1_000)
-        self.assertEqual(qwen["spend"]["sessions"], 2, "the pi file and the dsh session")
+        self.assertEqual(qwen["spend"]["sessions"], 2, "the seat's session and this one")
 
     def test_a_forked_dsh_session_bills_its_inherited_calls_once(self):
         # A fork copies the parent's assistant/message records, usage and
@@ -455,7 +528,7 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 11_000 + 22_000)
         self.assertEqual(qwen["spend"]["tokens_in"], 90_000 + 10_000 + 20_000)
         self.assertEqual(qwen["spend"]["tokens_out"], 6_250 + 1_000 + 2_000)
-        self.assertEqual(qwen["spend"]["sessions"], 3, "the pi file, the parent and the fork")
+        self.assertEqual(qwen["spend"]["sessions"], 3, "the seat's session, the parent and the fork")
 
     def test_dsh_traffic_on_other_routes_is_never_billed(self):
         # A later local route (the gufo row) lands in the same session store.
@@ -468,7 +541,7 @@ class SeatsTest(unittest.TestCase):
 
     def test_qwen_local_traffic_is_never_billed(self):
         _, seats = self.box.report()
-        # The halogen message carries ~2M tokens and would dominate both
+        # The gufo message carries ~2M tokens and would dominate both
         # the credit estimate and the spend row if the provider went unchecked.
         self.assertEqual(seats["pi-qwencloud"]["spend"]["tokens_in"], 90_000)
 

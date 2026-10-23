@@ -40,7 +40,7 @@ python3Packages.buildPythonApplication rec {
 
   pythonImportsCheck = [ "cli_hub" ];
 
-  # Keep every upstream agent integration tied to the exact same immutable
+  # Keep each agent integration the fleet links tied to the exact same immutable
   # source revision as cli-hub. The NixOS module links these store trees into
   # each agent's normal discovery location; none of upstream's copy/install
   # scripts need to mutate $HOME.
@@ -71,25 +71,6 @@ python3Packages.buildPythonApplication rec {
       "$share/codex-skill/scripts/templates/"
     cp ../docs/PREVIEW_PROTOCOL.md \
       "$share/codex-skill/references/docs/PREVIEW_PROTOCOL.md"
-
-    cp -R ../.pi-extension/cli-anything "$share/pi-extension"
-    chmod -R u+w "$share/pi-extension"
-    mkdir -p \
-      "$share/pi-extension/commands" \
-      "$share/pi-extension/guides" \
-      "$share/pi-extension/scripts" \
-      "$share/pi-extension/templates" \
-      "$share/pi-extension/tests"
-    cp ../cli-anything-plugin/HARNESS.md "$share/pi-extension/HARNESS.md"
-    cp ../cli-anything-plugin/commands/*.md "$share/pi-extension/commands/"
-    cp ../cli-anything-plugin/guides/*.md "$share/pi-extension/guides/"
-    cp ../cli-anything-plugin/scripts/*.sh "$share/pi-extension/scripts/"
-    cp ../cli-anything-plugin/repl_skin.py \
-      ../cli-anything-plugin/preview_bundle.py \
-      ../cli-anything-plugin/skill_generator.py \
-      "$share/pi-extension/scripts/"
-    cp ../cli-anything-plugin/templates/* "$share/pi-extension/templates/"
-    cp ../cli-anything-plugin/tests/*.py "$share/pi-extension/tests/"
 
     cp -R ../cli-hub-meta-skill "$share/cli-hub-meta-skill"
   '';
