@@ -198,22 +198,19 @@ in
         };
       })
 
-      # qwencloud-token: Qwen Token Plan API key. Two consumers, same shape as
-      # huggingface-token — delivered read-only under /run and never copied into a
-      # mutable dotfile, because nothing ever rewrites it (unlike the OAuth creds
-      # above, which refresh in place).
-      # - pi reads it client-side through the `!cat` apiKey in
-      #   ~/.pi/agent/models.json (home/pi.nix). Deliberately NOT exported as
-      #   QWEN_TOKEN_PLAN_API_KEY in pi's environment: pi's bash tool would hand
-      #   it to every subprocess. models.json resolves it per request instead.
-      # - dsh (pkgs/dsh, home/dsh.nix) DOES get it as QWEN_TOKEN_PLAN_API_KEY,
-      #   set by its wrapper at exec time for the dsh process only. dsh drops
-      #   every *KEY*/*TOKEN* name (and every DSH_* name) from the children it
-      #   spawns, which removes the reason above, and its headless profile has
-      #   no credential store, so the environment is the only delivery that
-      #   reaches it. Its bwrap runner also masks /run/agenix from the model's
-      #   commands. Not masked: dsh's in-process `read` tool and any same-uid
-      #   /proc/<pid>/environ read, the same exposure pi has today.
+      # qwencloud-token: Qwen Token Plan API key, same shape as huggingface-token
+      # — delivered read-only under /run and never copied into a mutable
+      # dotfile, because nothing ever rewrites it (unlike the OAuth creds above,
+      # which refresh in place).
+      # dsh (pkgs/dsh, home/dsh.nix) gets it as QWEN_TOKEN_PLAN_API_KEY, set by
+      # its wrapper at exec time for the dsh process only. pi kept its key out
+      # of its environment because its bash tool handed the environment to
+      # every subprocess; dsh drops every *KEY*/*TOKEN* name (and every DSH_*
+      # name) from the children it spawns, which removes that reason, and its
+      # headless profile has no credential store, so the environment is the
+      # only delivery that reaches it. Its bwrap runner also masks /run/agenix
+      # from the model's commands. Not masked: dsh's in-process `read` tool and
+      # any same-uid /proc/<pid>/environ read, the exposure pi had too.
       # No new secret and no rekey for dsh: this one is reused as is.
       (lib.mkIf (config.networking.hostName == "strix") {
         age.secrets.qwencloud-token = {
@@ -224,10 +221,9 @@ in
         };
       })
 
-      # openrouter-token: OpenRouter API key, same shape and same reasoning as
-      # qwencloud-token above. pi resolves it per request through the `!cat`
-      # apiKey on its built-in `openrouter` provider (home/pi.nix); it is never
-      # exported as OPENROUTER_API_KEY.
+      # openrouter-token: OpenRouter API key, same shape as qwencloud-token
+      # above. No harness routes to it since pi was removed; seats reads it for
+      # the credit row. A dsh route, or retiring the key, is a follow-up.
       (lib.mkIf (config.networking.hostName == "strix") {
         age.secrets.openrouter-token = {
           file = ../secrets/openrouter-token.age;
