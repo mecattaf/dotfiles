@@ -1149,19 +1149,6 @@
           assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") strixHome.home.packages);
           assert !(strixHome.xdg.configFile ? "kitty-herdr-nix.conf");
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr") strixHome.home.packages;
-          # dsh (T-31) on the agent host only: exactly one bin/dsh, and it is
-          # the policy wrapper reading the host's agenix key, never the bare
-          # llm-agents build. The client never gets it, nor the
-          # ~/.agents/AGENTS.md link that comes with it.
-          assert strixHome.programs.dsh.enable;
-          assert !clientHome.programs.dsh.enable;
-          assert
-            map (p: p.qwenKeyFile or null) (
-              builtins.filter (p: nixpkgs.lib.getName p == "dsh") strixHome.home.packages
-            ) == [ (cfgOf "strix").age.secrets.qwencloud-token.path ];
-          assert !(builtins.any (p: nixpkgs.lib.getName p == "dsh") clientHome.home.packages);
-          assert strixHome.home.file ? ".agents/AGENTS.md";
-          assert !(clientHome.home.file ? ".agents/AGENTS.md");
           # The client's herdr chords live in Sway's RAW, hot-reloaded binds.conf,
           # which no generation renders, so they are asserted here by content
           # (precedent: the readFile assert on dot_claude/settings.json below).
@@ -1829,18 +1816,20 @@
 
         # dsh-config (T-31): the wrapped dsh boots every allowed profile with
         # the fleet policy as the last layer, and refuses what it must. Runs
-        # in the build sandbox: no network, a private HOME and DSH_HOME under
-        # $TMPDIR, no key (the agenix path is not visible here). Each dump
+        # against the NAS package in the build sandbox: no network, private
+        # HOME and DSH_HOME under $TMPDIR, no key path in the wrapper. Each dump
         # must leave stderr empty (a patch that matches no row warns there)
         # and carry the policy rows; tests/dsh-config/check_dump.py reads its
         # expectations from pkgs.dsh's passthru. lib/update-watch.json builds
         # this on every llm-agents bump.
         dsh-config =
           let
+            dshPackage = self.nixosConfigurations.nas.pkgs.dsh.override { qwenKeyFile = null; };
             expect = pkgs.writeText "dsh-config-expect.json" (
               builtins.toJSON {
-                disabled = pkgs.dsh.disabledIds;
-                runner = "${pkgs.dsh.runner}/bin/dsh-bwrap";
+                localProviders = dshPackage.localProviders;
+                disabled = dshPackage.disabledIds;
+                runner = "${dshPackage.runner}/bin/dsh-bwrap";
               }
             );
           in
@@ -1858,9 +1847,9 @@
               mkdir -p "$HOME" "$build/cwd" "$TMPDIR" "$build/homes/tom"
               mkdir -m 700 "$DSH_HOME"
               cd "$build/cwd"
-              dsh=${pkgs.dsh}/bin/dsh
+              dsh=${dshPackage}/bin/dsh
 
-              test "$($dsh --version)" = ${pkgs.dsh.unwrapped.version}
+              test "$($dsh --version)" = ${dshPackage.unwrapped.version}
 
               dump() {
                 name="$1"
@@ -1930,11 +1919,12 @@
         # file and the key variable is unset, whatever the sandbox exposes.
         dsh-plugins =
           let
-            plugins = pkgs.dsh.plugins;
-            dshNoKey = pkgs.dsh.override { qwenKeyFile = null; };
+            dshNoKey = self.nixosConfigurations.nas.pkgs.dsh.override { qwenKeyFile = null; };
+            plugins = dshNoKey.plugins;
             base = {
-              disabled = pkgs.dsh.disabledIds;
-              runner = "${pkgs.dsh.runner}/bin/dsh-bwrap";
+              localProviders = dshNoKey.localProviders;
+              disabled = dshNoKey.disabledIds;
+              runner = "${dshNoKey.runner}/bin/dsh-bwrap";
             };
             pluginRows = [
               "stderr-log"
@@ -1946,7 +1936,7 @@
               builtins.toJSON (
                 base
                 // {
-                  rows = pkgs.dsh.herdrRows;
+                  rows = dshNoKey.herdrRows;
                   present = pluginRows;
                 }
               )
@@ -1954,7 +1944,7 @@
             expectHeadless = pkgs.writeText "dsh-plugins-headless.json" (
               builtins.toJSON (base // { absent = pluginRows; })
             );
-            semver = "${pkgs.dsh.unwrapped}/lib/node_modules/@deepseek-ai/dsh/node_modules/semver";
+            semver = "${dshNoKey.unwrapped}/lib/node_modules/@deepseek-ai/dsh/node_modules/semver";
           in
           pkgs.runCommand "dsh-plugins"
             {
@@ -1977,7 +1967,7 @@
                 if (m.version !== "0.4.2" || m.dependencies.jevcore !== "0.4.2") throw new Error("not 0.4.2")
                 if (!require(semver).satisfies(dsh, m.engines.dsh, { includePrerelease: true }))
                   throw new Error("engines.dsh " + m.engines.dsh + " refuses " + dsh)
-              ' "$j/package.json" ${semver} ${pkgs.dsh.unwrapped.version}
+              ' "$j/package.json" ${semver} ${dshNoKey.unwrapped.version}
               test -f "$j/lib/index.js"
               test -f "$j/skills/typesafe-ai-dsh/SKILL.md"
               test -f "$j/node_modules/jevcore/lib/index.js"
@@ -1985,7 +1975,7 @@
 
               # The owned plugins' private scope: nothing in the dsh
               # installation, which resolves bundle names first, may shadow it.
-              u=${pkgs.dsh.unwrapped}/lib/node_modules
+              u=${dshNoKey.unwrapped}/lib/node_modules
               test ! -e "$u/@mecattaf"
               test ! -e "$u/@deepseek-ai/dsh/node_modules/@mecattaf"
               if grep -rnE 'fetch\(|node:https?' "$j/lib" "$j/node_modules/jevcore/lib"; then

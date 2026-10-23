@@ -23,7 +23,7 @@
         "spec-kit": "nixosConfigurations.strix.pkgs.llm-agents.spec-kit.version",
         "cc-switch-cli": "nixosConfigurations.strix.pkgs.llm-agents.cc-switch-cli.version",
         "ck": "nixosConfigurations.strix.pkgs.llm-agents.ck.version",
-        "dsh": "nixosConfigurations.strix.pkgs.llm-agents.dsh.version"
+        "dsh": "nixosConfigurations.nas.pkgs.llm-agents.dsh.version"
       },
       "notes": {
         "claude-code": {

@@ -28,9 +28,8 @@ in
 {
   options.programs.dsh.enable = lib.mkOption {
     type = lib.types.bool;
-    # The agent host only. The laptop client never gets dsh; the NAS takes
-    # over after the 10-23 migration (T-26), with the key moved there.
-    default = osConfig.networking.hostName == "strix";
+    # Harnesses and their credentials follow the brain role to the NAS.
+    default = osConfig.myFleet.has "brain";
     description = "Install the fleet's wrapped dsh (pkgs/dsh).";
   };
 

@@ -63,7 +63,10 @@ def main(dump_path, expect_path):
     check(model.get("model") == "deepseek-v4.1-flash", f"agent-default-model model is {model.get('model')!r}")
 
     providers = ((by_id.get("llm-pi-ai") or {}).get("config") or {}).get("providers") or {}
-    check(sorted(providers) == ["qwen-token-plan"], f"llm-pi-ai providers are {sorted(providers)}")
+    local = expect["localProviders"]
+    check(sorted(providers) == sorted(["qwen-token-plan", *local]), f"llm-pi-ai providers are {sorted(providers)}")
+    for name, config in local.items():
+        check(providers.get(name) == config, f"{name}: provider config is {providers.get(name)!r}")
 
     sessions = (by_id.get("session-persistence-jsonl") or {}).get("config") or {}
     check(sessions.get("compression") == "none", f"session compression is {sessions.get('compression')!r}")

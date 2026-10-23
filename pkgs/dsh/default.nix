@@ -163,13 +163,14 @@ writeShellApplication {
       acp
       herdr
       herdrRows
+      localProviders
       smoke
       policyIds
       disabledIds
       ;
   };
   meta = {
-    description = "DeepSeek Harness behind the fleet policy (Qwen Cloud route, hardened sandbox)";
+    description = "DeepSeek Harness behind the fleet policy (Qwen Cloud and Gufo routes, hardened sandbox)";
     mainProgram = "dsh";
     inherit (unwrapped.meta) license platforms;
   };
@@ -178,6 +179,8 @@ writeShellApplication {
     # never be traced.
     { set +o xtrace; } 2>/dev/null
     unset DEEPSEEK_API_KEY DEEPSEEK_BASE_URL DEEPSEEK_SEARCH_BASE_URL
+    # Public dummy bearer for the keyless Gufo server, never an agenix secret.
+    export GUFO_API_KEY=local-no-auth
     export DSH_TELEMETRY_DISABLED=1
 
     refuse() {

@@ -26,6 +26,7 @@
 #            installed, built only as `nix build .#dsh.smoke`
 let
   yaml = formats.yaml { };
+  localModel = import ../../lib/local-model.nix;
   off = id: {
     inherit id;
     disabled = true;
@@ -69,20 +70,71 @@ let
     ];
   };
 
-  # FOLLOW-UP, NOT IMPLEMENTED (Tom, 2026-10-22: "leave local models out for
-  # tonight"). Local inference through gufo is ONE more attribute here, beside
-  # qwen-token-plan, with its endpoint taken from the gufo module's client
-  # option, never a literal host:
-  #   gufo = {
-  #     displayName = "gufo (local)";
-  #     api = "openai-completions";
-  #     baseURL = "<gufo client endpoint>/v1";
-  #     apiKeyEnv = "GUFO_API_KEY"; # placeholder; the server is keyless
-  #     compat = { supportsDeveloperRole = false; supportsStore = false; maxTokensField = "max_tokens"; };
-  #     models = [ { id = "<served id>"; contextWindow = <server ctx>; maxTokens = <cap>; input = [ "text" ]; } ];
-  #   };
+  # Gufo's keyless LAN route. The wrapper supplies a public dummy bearer:
+  # pi-ai still requires a nonempty credential for a custom provider.
+  # Alternates share the endpoint and must be selected with gufo-switch first.
+  gufoModels = {
+    ${localModel.modelId} = {
+      name = "Qwen3.8 Flash-Next (Gufo)";
+      contextWindow = 102400;
+      input = [
+        "text"
+        "image"
+      ];
+      reasoningEfforts = false;
+    };
+    "qwen3.8-27b" = {
+      name = "Qwen3.8 27B (Gufo alternate)";
+      contextWindow = 131072;
+      input = [
+        "text"
+        "image"
+      ];
+      reasoningEfforts = {
+        low = "low";
+        high = "high";
+        max = "max";
+      };
+    };
+    deepseek-v4-flash = {
+      name = "DeepSeek V4 Flash (Gufo alternate)";
+      contextWindow = 32768;
+      input = [ "text" ];
+      reasoningEfforts = {
+        high = "high";
+        max = "max";
+      };
+      compat = {
+        thinkingFormat = "deepseek";
+        requiresReasoningContentOnAssistantMessages = true;
+      };
+    };
+  };
+  gufo = {
+    displayName = "Gufo (local)";
+    api = "openai-completions";
+    baseURL = "${localModel.endpoint}/v1";
+    apiKeyEnv = "GUFO_API_KEY";
+    compat = {
+      supportsDeveloperRole = false;
+      supportsReasoningEffort = true;
+      supportsStore = false;
+    };
+    models = map (
+      id:
+      gufoModels.${id}
+      // {
+        inherit id;
+        maxTokens = 16384;
+      }
+    ) ([ localModel.modelId ] ++ localModel.alternates);
+  };
   providers = retryPolicy: {
     qwen-token-plan = qwenTokenPlan retryPolicy;
+    inherit gufo;
+    # Disabled placeholder: ds4 has no fleet server declaration yet. Add its
+    # endpoint/model contract before enabling another llm-pi-ai provider here.
+    # ds4 = { api = "openai-completions"; ... };
   };
 
   defaultRoute = {
@@ -109,7 +161,7 @@ let
     # 3. No runtime plugin installs; plugins come from Nix only.
     (off "plugin-manager")
     (off "tool-plugin-manager")
-    # 4. Inference: Qwen Cloud is the only route.
+    # 4. Inference: Qwen Cloud stays the default; Gufo is an explicit pick.
     (set "llm-pi-ai" {
       providers = providers {
         mode = "normal";
@@ -197,6 +249,8 @@ in
   acp = yaml.generate "dsh-acp.patch.yml" acp;
   herdr = yaml.generate "dsh-herdr.patch.yml" herdr;
   smoke = yaml.generate "dsh-smoke.patch.yml" smoke;
+  # Local provider data for offline config checks.
+  localProviders = { inherit gufo; };
   # The herdr profile's rows as data, for checks.dsh-plugins.
   herdrRows = builtins.listToAttrs (map (row: lib.nameValuePair row.id row.config) herdr);
   # Row ids the policy touches, for checks.dsh-config.
