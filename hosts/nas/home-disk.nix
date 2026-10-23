@@ -9,6 +9,7 @@ let
   migrate = pkgs.callPackage ../../pkgs/nas-home-migrate {
     expectedDisk = cfg.device;
     expectedSerial = cfg.serial;
+    expectedLabel = "nashome";
     hddUuid = config.myNas.storage.filesystemUuid;
     postgresql = config.services.postgresql.package;
   };
@@ -16,16 +17,11 @@ in
 {
   options.myNas.homeDisk = {
     enable = lib.mkEnableOption "the manually prepared NAS home SSD (#599)";
-    partUuid = lib.mkOption {
-      type = lib.types.str;
-      default = "VERIFY-HOME-PARTUUID";
-      description = "Verified GPT partition UUID (PARTUUID, not filesystem UUID) of the incoming SSD's p2";
-    };
     device = lib.mkOption {
       type = lib.types.str;
-      # VERIFY against the incoming disk before filling partUuid.
+      # VERIFY on the installer bench before the simultaneous fleet power-off.
       default = "/dev/disk/by-id/nvme-WD_BLACK_SN7100_500GB_260538801482";
-      description = "Verified whole-disk by-id path; used for SMART and migration identity checks";
+      description = "Whole-disk by-id path; p2 backs home, and the whole disk is used for SMART and migration identity checks";
     };
     serial = lib.mkOption {
       type = lib.types.str;
@@ -39,12 +35,6 @@ in
     assertions = [
       {
         assertion =
-          builtins.match "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" cfg.partUuid
-          != null;
-        message = "NAS home disk: replace VERIFY-HOME-PARTUUID in myNas.homeDisk.partUuid with the verified p2 PARTUUID after checking the incoming SSD serial; do not deploy this placeholder";
-      }
-      {
-        assertion =
           lib.hasPrefix "/dev/disk/by-id/nvme-" cfg.device
           && lib.hasSuffix "_${cfg.serial}" cfg.device
           && cfg.serial != "";
@@ -52,12 +42,15 @@ in
       }
     ];
 
-    # Prepared BY HAND in tonight's stage 4, never added to disko:
+    # Prepared BY HAND on the worker's installer bench BEFORE the whole-fleet
+    # power-off; see docs/nas/home-disk-cutover.md. Never added to disko:
     # p1 disk-primary-fast, 176G ext4, RESERVED AND UNMOUNTED.
-    # p2 disk-primary-home, remaining space, btrfs @home + @snapshots.
+    # p2 disk-primary-home, remaining space, btrfs label nashome, @home + @snapshots.
+    # Serial-bearing by-id p2 is known before partitioning creates any UUID.
+    # Both mounts are ready to build/stage before the unplug and SSD transfer.
     # /mnt/fast, /nix, service state and the kernel remain on their current path.
     fileSystems."/home" = {
-      device = "/dev/disk/by-partuuid/${cfg.partUuid}";
+      device = "${cfg.device}-part2";
       fsType = "btrfs";
       options = [
         "subvol=@home"
@@ -68,7 +61,7 @@ in
       ];
     };
     fileSystems."/mnt/home-snapshots" = {
-      device = "/dev/disk/by-partuuid/${cfg.partUuid}";
+      device = "${cfg.device}-part2";
       fsType = "btrfs";
       options = [
         "subvol=@snapshots"
@@ -83,7 +76,7 @@ in
     systemd.services."user@1000".unitConfig.RequiresMountsFor = [ "/home" ];
 
     # Export the SAME helper that is installed, including the server-matched
-    # pg_dumpall. This package can be built before the PARTUUID is filled.
+    # pg_dumpall. Copy its closure to the installer for bench preparation.
     system.build.nas-home-migrate = migrate;
     environment.systemPackages = [ migrate ];
   };

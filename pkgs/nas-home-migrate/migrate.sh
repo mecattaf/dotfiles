@@ -5,6 +5,7 @@ set -euo pipefail
 
 expected_disk=@expectedDisk@
 expected_serial=@expectedSerial@
+expected_label=@expectedLabel@
 hdd_uuid=@hddUuid@
 excludes=@excludes@
 
@@ -12,12 +13,14 @@ die() { printf 'nas-home-migrate: %s\n' "$*" >&2; exit 1; }
 usage() {
     cat <<'USAGE'
 nas-home-migrate escrow [--dry-run | --apply]
-nas-home-migrate home [--dry-run | --apply] [--final]
+nas-home-migrate home [--dry-run | --apply] [--final] [--bench]
     [--source root@strix:/home/tom/] [--target /mnt/newhome]
 
-Run ON THE NAS. Default: dry-run. Escrow verifies the mounted HDD and plans
-root-only backups; it can run before the new SSD arrives. Home verifies the
-SSD serial, p2 label and exact writable btrfs @home mount before rsync.
+Default: dry-run. Escrow runs on the NAS and verifies its mounted HDD before
+root-only backups. Home verifies the SSD serial, both p2 labels and the exact
+writable btrfs @home mount before rsync. --bench allows home copying as root
+on the worker's installer before the SSD moves to the NAS; identity checks
+are unchanged. Escrow cannot use --bench.
 --target names the @home MOUNTPOINT; its tom/ directory must already exist.
 --final adds --checksum to the itemized rsync (still dry-run without --apply).
 No --delete, partitioning, formatting, mounting or service control is performed.
@@ -36,6 +39,7 @@ case "$action" in
 esac
 apply=false
 final=false
+bench=false
 mode_seen=false
 source='root@strix:/home/tom/'
 target='/mnt/newhome'
@@ -47,6 +51,7 @@ while (($#)); do
             [[ $1 != --apply ]] || apply=true
             shift ;;
         --final) [[ $action == home ]] || die '--final is only for home'; final=true; shift ;;
+        --bench) [[ $action == home ]] || die '--bench is only for home'; bench=true; shift ;;
         --source|--target)
             [[ $action == home && $# -ge 2 && -n $2 ]] || die "invalid $1"
             if [[ $1 == --source ]]; then source=$2; else target=$2; fi
@@ -57,8 +62,10 @@ while (($#)); do
 done
 
 if "$apply"; then
-    [[ $EUID == 0 ]] || die '--apply requires root on the NAS'
-    [[ $(uname -n) == nas ]] || die '--apply is only supported on the NAS'
+    [[ $EUID == 0 ]] || die '--apply requires root'
+    if ! "$bench"; then
+        [[ $(uname -n) == nas ]] || die 'run on the NAS, or use home --bench on the installer'
+    fi
 else
     printf 'DRY RUN: no backups or home files will be written.\n'
 fi
@@ -75,6 +82,8 @@ if [[ $action == home ]]; then
     [[ ${ancestry_serial//[[:space:]]/} == "$expected_serial" ]] || die 'p2 is not on the expected SSD'
     label=$(lsblk --nodeps --noheadings --raw --output PARTLABEL "$partition")
     [[ $label == disk-primary-home ]] || die 'p2 must be labelled disk-primary-home'
+    filesystem_label=$(lsblk --nodeps --noheadings --raw --output LABEL "$partition")
+    [[ $filesystem_label == "$expected_label" ]] || die "p2 filesystem must be labelled $expected_label"
     [[ $target == /* && -d $target && ! -L $target ]] || die 'target must be an existing absolute mountpoint'
     target=$(realpath -e -- "$target")
     [[ $(mount_field "$target" FSTYPE) == btrfs ]] || die 'target must be an exact btrfs mountpoint'
@@ -88,7 +97,10 @@ if [[ $action == home ]]; then
     [[ -d $target/tom && ! -L $target/tom ]] || die 'prepare the tom/ directory inside @home first'
     [[ $source != -* && $source == */ ]] || die 'source must end in / and cannot be an option'
     [[ -f $excludes ]] || die 'packaged exclusion list is missing'
-    printf 'Verified SSD serial %s, disk-primary-home p2, mounted @home at %s\n' "$expected_serial" "$target"
+    printf 'Verified SSD serial %s, disk-primary-home p2, filesystem %s, mounted @home at %s\n' "$expected_serial" "$expected_label" "$target"
+    if "$bench"; then
+        printf 'Bench mode: home copy on the installer; all disk identity checks remain enabled.\n'
+    fi
     args=(-aHAXS --numeric-ids --protect-args --itemize-changes --stats --exclude-from="$excludes")
     "$apply" || args+=(--dry-run)
     "$final" && args+=(--checksum)

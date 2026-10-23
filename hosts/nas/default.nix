@@ -24,7 +24,7 @@
     ./nix-on-nvme.nix # 2026-08-22: /nix onto the M.2 — GATE OFF, reboot-only (#232)
     ./journal.nix
     ./storage.nix
-    ./home-disk.nix # #599, manual preparation; placeholder blocks deployment
+    ./home-disk.nix # #599, bench-prepared home; stage before the fleet power-off
     ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)
     ./media.nix
     # ./phone-ingest.nix DELETED 2026-08-21 (Tom: "DEAD and no longer needed

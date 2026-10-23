@@ -10,6 +10,7 @@
   gnutar,
   expectedDisk,
   expectedSerial,
+  expectedLabel,
   hddUuid,
 }:
 writeShellApplication {
@@ -23,13 +24,15 @@ writeShellApplication {
     sqlite
     gnutar
   ];
-  text = builtins.replaceStrings [ "@expectedDisk@" "@expectedSerial@" "@hddUuid@" "@excludes@" ] (map
-    lib.escapeShellArg
-    [
-      expectedDisk
-      expectedSerial
-      hddUuid
-      "${./home-excludes}"
-    ]
-  ) (builtins.readFile ./migrate.sh);
+  text =
+    builtins.replaceStrings
+      [ "@expectedDisk@" "@expectedSerial@" "@expectedLabel@" "@hddUuid@" "@excludes@" ]
+      (map lib.escapeShellArg [
+        expectedDisk
+        expectedSerial
+        expectedLabel
+        hddUuid
+        "${./home-excludes}"
+      ])
+      (builtins.readFile ./migrate.sh);
 }
