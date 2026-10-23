@@ -13,12 +13,12 @@
 # printed/<id>/receipt.json, rejected/<id>/, failed/<id>/, work/ (in flight).
 # ~/Paper/inbox/ is NOT this loop's: it is the Huion's (DECISIONS 2026-09-13).
 #
-# Coordinator-only: the printer queue and the print skill live here.
+# Brain-only: the printer queue and the print skill live here.
 let
-  isCoordinator = osConfig.networking.hostName == "strix";
+  isBrain = osConfig.myFleet.has "brain";
   daemon = lib.getExe pkgs.paper-daemon;
 in
-lib.mkIf isCoordinator {
+lib.mkIf isBrain {
   # PathChanged, not PathExistsGlob/DirectoryNotEmpty: those re-trigger in a
   # loop while anything sits in the directory, and intake/ legitimately keeps
   # a subdirectory (.adopted-2026-09-09/) the daemon ignores. PathChanged

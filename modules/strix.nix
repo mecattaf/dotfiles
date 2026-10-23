@@ -28,7 +28,7 @@
       "qwen38-27b-gguf"
       "qwen38-27b-dflash2-gguf"
     ]
-    ++ lib.optionals (config.networking.hostName == "strix") [
+    ++ lib.optionals (config.myFleet.has "compute") [
       # The one diarization model (Tom, 2026-09-16), loaded by call-diarize.
       "vibevoice-asr-streaming-7b-bf16"
     ];

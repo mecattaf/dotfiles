@@ -100,7 +100,7 @@ in
       # by other hosts, and declaring an undecryptable secret fails activation, so the
       # whole block must be host-gated). Same copy-don't-link pattern as the claude
       # cred: both CLIs rewrite their file on token refresh.
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.gh-hosts = {
           file = ../secrets/gh-hosts.age;
           owner = "tom";
@@ -170,7 +170,7 @@ in
       # means the interactive `hf` wrapper works on either box unchanged.
       (lib.mkIf
         (
-          (config.networking.hostName == "strix" || config.networking.hostName == "nas")
+          (config.myFleet.has "brain" || config.networking.hostName == "nas")
           && builtins.pathExists hfTokenCiphertext
         )
         {
@@ -189,7 +189,7 @@ in
       # (NAVIDROME_USER / NAVIDROME_PASSWORD). Coordinator-only, matching the
       # recipient tier in secrets.nix. (Its first reader, the cliamp TUI client,
       # was removed 2026-09-17.)
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.navidrome-credentials = {
           file = ../secrets/navidrome-credentials.age;
           owner = "tom";
@@ -206,7 +206,7 @@ in
       # QWEN_TOKEN_PLAN_API_KEY in pi's environment: that would hand the key to
       # every subprocess pi's bash tool spawns. models.json resolves it per
       # request instead, so it never enters the agent's process environment.
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.qwencloud-token = {
           file = ../secrets/qwencloud-token.age;
           owner = "tom";
@@ -219,7 +219,7 @@ in
       # qwencloud-token above. pi resolves it per request through the `!cat`
       # apiKey on its built-in `openrouter` provider (home/pi.nix); it is never
       # exported as OPENROUTER_API_KEY.
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.openrouter-token = {
           file = ../secrets/openrouter-token.age;
           owner = "tom";
@@ -234,7 +234,7 @@ in
       # read-only /run symlink cannot be the live file. Seed once into ~/.codex
       # (Codex's default CODEX_HOME) only if absent; after that the live file is
       # Codex's, and a re-login means re-minting the ciphertext (secrets.nix).
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.codex-auth = {
           file = ../secrets/codex-auth.age;
           owner = "tom";
@@ -256,7 +256,7 @@ in
       # client-side by agent sessions on the strix for indexing/dedup
       # passes. Delivered to /run/agenix/immich-api-key; replaces the loose
       # ~/immichkey file so the credential survives reflash without re-minting.
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.immich-api-key = {
           file = ../secrets/immich-api-key.age;
           owner = "tom";
@@ -267,7 +267,7 @@ in
 
       # soundcloud-cookies: consumed by the music-consolidation drain's yt-dlp
       # invocations (systemd user units, strix-only).
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.soundcloud-cookies = {
           file = ../secrets/soundcloud-cookies.age;
           owner = "tom";
@@ -278,7 +278,7 @@ in
 
       # youtube-music-cookies: parked for the music-consolidation YT-Music-fallback
       # work (dotfiles secret only — no consumer wired up yet).
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.youtube-music-cookies = {
           file = ../secrets/youtube-music-cookies.age;
           owner = "tom";
