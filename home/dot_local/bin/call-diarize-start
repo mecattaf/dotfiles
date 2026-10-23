@@ -14,8 +14,8 @@
 # stop itself must start the work, directly, on the host that owns the GPU.
 #
 # `call-diarize <dir>` (pkgs/call-diarize, installed by home/harness-records.nix
-# on the strix only) is the real worker: VibeVoice-ASR on the GPU plus a Halogen
-# Flash cleanup. It runs for minutes, so it must not run in the Shift+F9 popup
+# on the strix only) is the real worker: VibeVoice-ASR on the GPU plus a cleanup
+# pass on the local model. It runs for minutes, so it must not run in the Shift+F9 popup
 # or inside an ssh session that the thin client will close. systemd-run with
 # --no-block gives it a life of its own under the user manager; --collect
 # removes the unit on exit even when it failed, so a second call on a fixed-up

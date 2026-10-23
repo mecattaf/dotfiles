@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# tests/l8-flash-probe/test-halogen-unit-row.sh — the probe's two rows on the
-# worker's podman-halogen.service, exercised in every state they can be in.
+# tests/l8-flash-probe/test-gufo-unit-row.sh — the probe's two rows on the
+# worker's gufo-llm.service, exercised in every state they can be in.
 #
-# The fleet's one inference serve is the worker's podman-halogen.service
-# (modules/halogen.nix), and the probe reads it on the worker's own system bus:
+# The fleet's one inference serve is the worker's gufo-llm.service
+# (modules/gufo.nix), and the probe reads it on the worker's own system bus:
 # directly when it runs there, over `ssh worker` from anywhere else. Three
 # outcomes are possible and each is pinned here by VERDICT, not wording:
 #
@@ -83,8 +83,8 @@ row() { # $1 = run output, $2 = row text; prints that row's verdict
   printf '%s\n' "$1" | grep -F "$2" | awk '{print $1}'
 }
 
-ACTIVE_ROW='podman-halogen.service active'
-RESTART_ROW='podman-halogen.service Restart=on-failure'
+ACTIVE_ROW='gufo-llm.service active'
+RESTART_ROW='gufo-llm.service Restart=on-failure'
 
 fails=0
 check() { # $1 = name, $2 = want, $3 = got
@@ -122,8 +122,8 @@ unit active 'Restart=on-failure'
 out="$(run client refuse)"
 check "strix, ssh refused -> active UNKNOWN" UNKNOWN "$(row "$out" "$ACTIVE_ROW")"
 check "strix, ssh refused -> restart UNKNOWN" UNKNOWN "$(row "$out" "$RESTART_ROW")"
-n="$(printf '%s\n' "$out" | grep -c 'podman-halogen.service')"
-check "exactly 2 halogen rows" 2 "$n"
+n="$(printf '%s\n' "$out" | grep -c 'gufo-llm.service')"
+check "exactly 2 Gufo rows" 2 "$n"
 
 # ── 5. the run's exit is not decided by an UNKNOWN row ─────────────────────
 # Everything else fails under the fakes, so the exit is 1 regardless; what is

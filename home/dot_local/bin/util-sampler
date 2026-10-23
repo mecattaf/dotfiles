@@ -2,8 +2,9 @@
 """util-sampler — UTIL-01 §signal.instrument. ONE sample per invocation.
 
 Reads: sysfs (gfx1151 amdgpu), `tally query pools` (strix only), the
-worker's halogen liveness and model-list endpoints, Halogen's journal since the
-previous sample (worker only; the token window), the box's drain ledger.
+local Gufo liveness and model-list endpoints, and the box's drain ledger.
+Gufo token telemetry is uncalibrated and reported as UNKNOWN. The older journal
+parser is retained for historical fixtures and replay only.
 Writes: exactly one JSON line to $UTIL_METERS/util-sampler/<box>-<date>.jsonl.
 
 It never POSTs, never touches /v1/chat/completions or /completion, never holds a
@@ -19,7 +20,7 @@ state file) and records their sums as `probes[].tokens`.  A window that could
 not be read carries `error` and no counts — the row writer then says UNKNOWN,
 never zero; a window with no request in it is a measured zero.
 
-Invoked by a 60 s systemd user timer; it takes one sample and exits.  There is no
+Invoked by hand; it takes one sample and exits.  There is no
 loop in this file.
 
 Time budget (no threads, no signals): the whole invocation is capped at 12 s and
@@ -71,23 +72,10 @@ SYSFS_FIELDS = {
     "gtt_used": "mem_info_gtt_used",
 }
 
-# The fleet's one inference server: Halogen Flash on the worker
-# (modules/halogen.nix), OpenAI-compatible on :8731 with GET /health as its
-# liveness probe and GET /v1/models as the list of what it serves.  The base
-# URL is the *_INFERENCE_URL convention; the override exists for a hand-run
-# llama-server, not for a second declared server.
+# Gufo's resident and alternate text units share the fleet endpoint.
 INFERENCE_URL = (os.environ.get("UTIL_SAMPLER_INFERENCE_URL") or "http://strix:8731").rstrip("/")
-
-# Halogen serves no prometheus /metrics (GET /metrics is a 404), so every probe's
-# `metrics` is None and `metrics_reason` says why in the sample itself.  Its
-# token counts come from the journal instead: see read_token_window().
-NO_METRICS = "no /metrics; tokens come from the journal window"
-
-# The journal units a Halogen server logs under: the Flash primary and the one
-# declared alternate (modules/halogen.nix unitOf; hosts/worker's
-# services.halogen.alternates).  Only one is resident at a time, and journalctl
-# with a -u that matches nothing still succeeds, so naming both is harmless.
-HALOGEN_UNITS = ("podman-halogen.service", "podman-halogen-qwen38-27b.service")
+NO_METRICS = "Gufo token telemetry is not calibrated; token counts are unknown"
+GUFO_UNITS = ("gufo-llm.service", "gufo-llm-qwen38-27b.service", "gufo-llm-deepseek-v4-flash.service")
 JOURNAL_TIMEOUT_S = 3.0
 # A cursor older than this is not chained: the lines behind it belong to a gap
 # the row already reports, and summing them into this one sample would put a
@@ -112,14 +100,14 @@ LINE_RE = re.compile(
     r"(?: \| (?P<rounds>\d+) rounds, commit (?P<commit>[\d.]+)/round)?"
     r" \| prompt (?P<prompt>\d+)(?: \((?P<cached>\d+) cached\))?, prefill (?P<prefill_s>[\d.]+)s")
 
-# Strix owns the resident Halogen probe; the client has no model server.
+# Strix owns the resident Gufo probe; the client has no model server.
 SERVE_PROBES = {
     "client": [],
     "strix": [
-        {"name": "halogen",
+        {"name": "gufo",
          "health": INFERENCE_URL + "/health",
          "arms": INFERENCE_URL + "/v1/models",
-         "journal_units": HALOGEN_UNITS},
+         "journal_units": GUFO_UNITS, "token_format": "gufo"},
     ],
 }
 
@@ -407,6 +395,9 @@ def read_token_window(spec, prev_cursor, clock):
     """
     base = {"source": "journal", "units": list(spec["journal_units"]),
             "since_cursor": prev_cursor, "cursor": None}
+    if spec.get("token_format") == "gufo":
+        base["error"] = "Gufo token telemetry is not calibrated"
+        return base
     budget = min(JOURNAL_TIMEOUT_S, clock.remaining())
     if budget <= 0:
         base["error"] = "invocation budget exhausted before journalctl"

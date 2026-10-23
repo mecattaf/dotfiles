@@ -330,7 +330,7 @@ in
     # Weights live OUTSIDE the store (2026-08-21 decisive ruling). NixOS creates
     # only the empty root and publishes metadata; it NEVER starts, schedules,
     # orders against, or waits for a model-byte transfer. Working copies stay
-    # world-readable so a read-only container mount (modules/halogen.nix) and
+    # world-readable so the native Gufo service and
     # a hand-run llama-server both read them. Missing rows fail only when an
     # operator tries to use them.
     systemd.tmpfiles.rules = lib.mkIf (hostArtifactIds != [ ]) [

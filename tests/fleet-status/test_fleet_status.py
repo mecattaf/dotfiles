@@ -48,14 +48,14 @@ def healthy_report(profile: str = "strix-inference") -> dict:
             "memory": m({"total": 8 << 30, "available": 4 << 30, "swap_total": 0, "swap_used": 0}, "t"),
             "psi": m({"memory_some": {"avg10": 1.5}}, "t"),
             "load": m([0.5, 0.4, 0.3], "t"),
-            "top_cgroups": m([{"cgroup": "system.slice/podman-halogen.service", "memory_current": 3 << 30}], "t"),
+            "top_cgroups": m([{"cgroup": "system.slice/gufo-llm.service", "memory_current": 3 << 30}], "t"),
         },
         "storage": {"mounts": m([{"mountpoint": "/", "mounted": True, "on_demand": False, "use_pct": 42.0}], "t")},
         "timers": {"system": m({"timers": 3, "non_success": []}, "t"), "user": m({"timers": 1, "non_success": []}, "t")},
         "events": {k: m([], "t") for k in ("coredumps", "unit_failures", "oom_kills", "update_adopt")},
         "inference": {
-            "halogen_units": m({"podman-halogen.service": "active"}, "t"),
-            "health": m({"status": "ok", "model": "halogen-qwen3.8-flash-next", "busy": False, "in_flight": 0, "queued": 0}, "t"),
+            "gufo_units": m({"gufo-llm.service": "active"}, "t"),
+            "health": m({"status": "ok", "model": "qwen3.8-flash-next", "busy": False, "in_flight": 0, "queued": 0}, "t"),
             "cache": m({"entries": 1}, "t"),
         },
         "runs": {"tally": fs.by_design("profile roles", "no Tally plane")},
@@ -149,7 +149,7 @@ class FanOut(unittest.TestCase):
         self.assertIn("PENDING REBOOT (kernel)", a)
         self.assertIn("failed 1", a)
         self.assertIn("updates   unknown", a)
-        self.assertIn("halogen ok", a)
+        self.assertIn("gufo ok", a)
 
     def test_ad_hoc_host_list_dials_undeclared_names(self):
         env = dict(self.env, FLEET_STATUS_HOSTS="A,ghost", FLEET_STATUS_NODE_DEADLINE="4")
@@ -193,7 +193,7 @@ class Collector(unittest.TestCase):
         self.assertEqual([m["name"] for m in s["failure_markers"]["markers"]["value"]], ["coredump"])
 
     def test_missing_tools_grade_unknown_never_empty(self):
-        rep = self.run_collect({"name": "strix-desk", "user_manager": True, "roles": ["runs", "attention", "halogen"], "halogen_port": 1, "mounts": []})
+        rep = self.run_collect({"name": "strix-desk", "user_manager": True, "roles": ["runs", "attention", "gufo"], "gufo_port": 1, "mounts": []})
         self.assertEqual(fs.validate_node_report(rep), [])
         s = rep["sections"]
         # The sandbox has no systemd: every systemd-backed fact must be unknown.

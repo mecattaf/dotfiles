@@ -191,7 +191,7 @@ pkgs.runCommand "substrate-modules"
     seed = tomllib.load(open(sys.argv[6], "rb"))
     ids = [m["id"] for m in seed["models"]]
     assert len(ids) == len(set(ids)), ids
-    assert "claude-opus-5-5" in ids and "halogen-qwen3.8-flash-next" in ids and "qwen3.8-max" in ids, ids
+    assert "claude-opus-5-5" in ids and "qwen3.8-flash-next" in ids and "qwen3.8-max" in ids, ids
     assert not any(m.get("provider") == "openrouter-free" for m in seed["models"]), "openrouter-free is parked (no entry)"
     assert not any("space-bunny" in m["id"] for m in seed["models"]), "the withdrawn stealth model is gone"
     for m in seed["models"]:
@@ -203,7 +203,7 @@ pkgs.runCommand "substrate-modules"
             lane = (m["harness"], m.get("provider", "halogen") if m["harness"] == "pi" else None)
             assert lane not in lanes, ("two defaults on one lane", lane, lanes[lane], m["id"])
             lanes[lane] = m["id"]
-    assert lanes[("claude", None)] == "claude-opus-5-5" and lanes[("pi", "halogen")] == "halogen-qwen3.8-flash-next", lanes
+    assert lanes[("claude", None)] == "claude-opus-5-5" and lanes[("pi", "halogen")] == "qwen3.8-flash-next", lanes
     assert ("pi", "qwen-token-plan") in lanes and ("pi", "openrouter") in lanes, lanes
     client = tomllib.load(open(sys.argv[4], "rb"))
     assert client["floor_url"].startswith("https://") and client["token_file"] == "@FLOOR_TOKEN_FILE@", client
