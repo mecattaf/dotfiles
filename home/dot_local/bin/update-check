@@ -65,7 +65,7 @@ BRANCH_PREFIX = "update/"
 TRAILER = "Update-Check: bump"
 BODY_LIMIT = 60000
 RELEASE_PAGE = 30
-HOSTS = ("strix", "client", "nas")
+HOSTS = ("strix-coordinator", "strix-worker", "client", "nas")
 VERSION_RE = re.compile(r"^(\d+(?:\.\d+)*)$")
 MARKER_RE = re.compile(r"<!-- update-check (\{.*?\}) -->")
 

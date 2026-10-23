@@ -202,6 +202,11 @@
     # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
     gufo.url = "github:gufo-org/gufo/0c03748a271eab895befc0d2343aa50ca4b6d836";
 
+    # Separate, hardware-unqualified TP2 engine; the upstream single-box unit
+    # above keeps its proven build. flake.lock pins both carry-forward heads.
+    gufo-rdma.url = "github:neuhaus/gufo/rdma";
+    donnerkeule.url = "github:mecattaf/donnerkeule/codex/framework-fleet-kernels";
+
     # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
     # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
     # and, per guest, a `config.microvm.declaredRunner` package. DEFAULT USAGE is
@@ -555,6 +560,12 @@
             ;
           # `nix build .#gufo` — the engine modules/gufo.nix runs (#525).
           gufo = inputs.gufo.packages.${system}.default;
+          rdmaCoreUsb4 = pkgs.callPackage ./pkgs/rdma-core-usb4 { inherit (inputs) donnerkeule; };
+          gufo-rdma = inputs.gufo-rdma.packages.${system}.tp2-rdma.override {
+            rdma-core = self.packages.${system}.rdmaCoreUsb4;
+          };
+          thunderbolt-ibverbs =
+            self.nixosConfigurations.strix-worker.config.hardware.thunderbolt-ibverbs.resolvedPackage;
           live-iso = strixAi.live-iso;
           nas-installer-iso = nasInstaller.config.system.build.isoImage;
           # `nix build .#substrate-pusher`, `.#substrate-puller`: the strix's
@@ -594,6 +605,10 @@
         };
         closet-topology = import ./tests/closet-topology {
           inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+        gufo-rdma = import ./tests/gufo-rdma {
+          inherit pkgs self inputs;
           inherit (nixpkgs) lib;
         };
         strix-reachability =

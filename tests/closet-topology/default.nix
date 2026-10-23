@@ -33,7 +33,11 @@ assert c.networking.hosts."10.42.0.2" == alias;
 assert builtins.all (name: builtins.elem name n.networking.hosts."10.42.0.2") alias;
 assert builtins.elem "9c:bf:0d:00:f6:73,strix-coordinator,10.42.0.2,infinite"
   n.services.dnsmasq.settings.dhcp-host;
-assert builtins.attrNames s.networking.networkmanager.ensureProfiles.profiles == [ "lan" ];
+assert
+  builtins.attrNames s.networking.networkmanager.ensureProfiles.profiles == [
+    "lan"
+    "tbv0"
+  ];
 assert
   s.networking.networkmanager.ensureProfiles.profiles.lan.connection.interface-name == "enp191s0";
 assert s.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.address1 == "10.42.0.2/24";
@@ -94,7 +98,8 @@ assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.gateway == "
 assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.dns == "10.42.0.1";
 assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv6.method == "disabled";
 assert !w.services.tailscale.enable && w.services.tailscale.extraUpFlags == [ ];
-assert !w.services.k3s.enable && !w.mySecrets.enable && w.age.secrets == { };
+assert !w.services.k3s.enable && !w.mySecrets.enable;
+assert builtins.all (name: name == "gufo-tp2-control-token") (builtins.attrNames w.age.secrets);
 assert !w.myDisplay.enable && !w.services.greetd.enable;
 assert !(w.systemd.sockets ? immich-ml-access);
 assert w.services.gufo.enable && w.services.qwen-tts.enable;
@@ -130,9 +135,15 @@ assert lib.hasInfix "ip saddr 10.42.0.5 tcp dport 2049 accept"
 assert lib.hasInfix "ip saddr 10.42.0.5 tcp dport 19532 accept"
   n.networking.firewall.extraInputRules;
 assert builtins.elem "10.42.0.5" n.services.adguardhome.settings.dns.ratelimit_whitelist;
-assert builtins.all (
-  rule:
-  !(builtins.elem registry.strix-coordinator.hostKey rule.publicKeys)
-  && !(builtins.elem "" rule.publicKeys)
-) (builtins.attrValues (import ../../secrets.nix));
+assert builtins.all
+  (
+    rule:
+    !(builtins.elem registry.strix-coordinator.hostKey rule.publicKeys)
+    && !(builtins.elem "" rule.publicKeys)
+  )
+  (
+    builtins.attrValues (
+      builtins.removeAttrs (import ../../secrets.nix) [ "secrets/gufo-tp2-control-token.age" ]
+    )
+  );
 pkgs.runCommand "closet-topology" { } ''touch "$out"''

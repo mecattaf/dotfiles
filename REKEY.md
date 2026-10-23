@@ -2,9 +2,28 @@
 
 No ciphertext was printed, decrypted or changed in this PR. Both compute hosts
 have `mySecrets.enable = false`. Their public host keys must not appear in an
-agenix recipient tier. The worker host key is deliberately empty until Tom
-records the fresh public key generated at install; adding it to the mesh does
-not add any recipients.
+operator-secret recipient tier. The worker host key is deliberately empty until
+Tom records the fresh public key generated at install. Adding it grants access
+only to the new TP2 service token below, never to the operator tier.
+
+## New compute service credential
+
+Tom must create `secrets/gufo-tp2-control-token.age` with the same random,
+single-line token for both compute hosts. Record the worker's fresh SSH host
+public key in `modules/mesh-registry.nix` first, then encrypt to the admin editor
+and **only** the two compute host keys declared for this secret in `secrets.nix`.
+Do not create an admin/coordinator-only ciphertext while the worker key is empty.
+This specific service token is the sole compute recipient exception; it grants
+no operator/API authority and does not enable `mySecrets`.
+
+The ciphertext is deliberately absent here. Once Tom creates and commits it,
+the compute profile declares root-only agenix delivery independently of the
+operator tier. Until then `gufo-tp2.service` refuses to start because its
+`LoadCredential` source `/run/agenix/gufo-tp2-control-token` is absent. Its
+wrapper reads the credential at runtime; upstream accepts the value only in
+argv, so it remains visible in `/proc/<pid>/cmdline`.
+
+## Operator credential retirement
 
 This branch contracts the former agent tier to the admin editor and the shared
 delivery tier to the client. The NAS agent-host PR assigns the new NAS service
