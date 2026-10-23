@@ -251,6 +251,18 @@ let
     done
   '';
 
+  # Carry forward 352eac88 / #257's measured 100 us budget. Zero left only
+  # POLL and burned ~70 W idle on the old twins. Keep the held fd in a small
+  # root companion; the GPU process stays an unprivileged DynamicUser.
+  tp2LatencyHold = pkgs.writeShellScript "gufo-tp2-latency-hold" ''
+    set -eu
+    exec 3> /dev/cpu_dma_latency
+    v=${toString tp.cpuDmaLatencyUs}
+    printf '%b' "$(printf '\\0%03o' \
+      $((v & 255)) $(((v >> 8) & 255)) $(((v >> 16) & 255)) $(((v >> 24) & 255)))" >&3
+    exec ${pkgs.coreutils}/bin/sleep infinity
+  '';
+
   mkLlmUnit = name: m: {
     description = "Gufo text model ${m.servedModelName} (${m.artifact})";
     conflicts = (lib.remove (unitOf name) textUnits) ++ [ "gufo-image.service" ];
@@ -445,6 +457,11 @@ in
             default = -1;
             description = "-1 lets Gufo select a usable GID; verify at hardware qualification.";
           };
+          cpuDmaLatencyUs = lib.mkOption {
+            type = lib.types.nullOr (lib.types.ints.between 1 2147483647);
+            default = 100;
+            description = "Positive PM QoS budget held on both hosts only while TP2 runs; null disables the hold. Zero (POLL-only on the old twins) is forbidden. Requalify latency/power on 7.3.";
+          };
           modelName = lib.mkOption {
             type = lib.types.str;
             default = cfg.llm.servedModelName;
@@ -528,9 +545,29 @@ in
     ];
 
     systemd.services = {
+      gufo-tp2-latency = lib.mkIf (tp.enable && tp.cpuDmaLatencyUs != null) {
+        description = "Gufo TP2 CPU DMA latency budget (${toString tp.cpuDmaLatencyUs} us)";
+        wantedBy = [ ];
+        partOf = [ "gufo-tp2.service" ];
+        unitConfig.StopWhenUnneeded = true;
+        serviceConfig = {
+          Type = "exec";
+          ExecStart = "${tp2LatencyHold}";
+          Restart = "on-failure";
+          RestartSec = "5s";
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          NoNewPrivileges = true;
+          CapabilityBoundingSet = "";
+          DevicePolicy = "closed";
+          DeviceAllow = [ "/dev/cpu_dma_latency rw" ];
+        };
+      };
       gufo-tp2 = lib.mkIf tp.enable {
         description = "Gufo TP2 rank ${toString tp.rank}, USB4 RDMA (on demand)";
         wantedBy = [ ];
+        requires = lib.optional (tp.cpuDmaLatencyUs != null) "gufo-tp2-latency.service";
         wants = [
           "network-online.target"
           "thunderbolt-ibverbs-check.service"
@@ -538,7 +575,8 @@ in
         after = [
           "network-online.target"
           "thunderbolt-ibverbs-check.service"
-        ];
+        ]
+        ++ lib.optional (tp.cpuDmaLatencyUs != null) "gufo-tp2-latency.service";
         conflicts = (lib.remove "gufo-tp2.service" textUnits) ++ [ "gufo-image.service" ];
         serviceConfig =
           gpuServiceConfig

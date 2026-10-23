@@ -38,6 +38,11 @@ in
   services.qwen-tts.enable = true;
   services.utilityModel.enable = true;
 
+  # Each NHI has two payload ring pairs. Donnerkeule's four-rail mode owns
+  # both on each cable: the old tbnet + tbstream consumers cannot share that
+  # budget (#272/#276; 77778237). Ethernet carries management/bootstrap.
+  boot.blacklistedKernelModules = [ "thunderbolt_stream" ];
+
   hardware.thunderbolt-ibverbs = {
     enable = true;
     blacklist.enable = true;

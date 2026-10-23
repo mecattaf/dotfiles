@@ -21,6 +21,9 @@ let
         && !rdma.kernel.useProjectKernel
         && rdma.blacklist.enable
         && builtins.elem "thunderbolt_net" host.boot.blacklistedKernelModules
+        && builtins.elem "thunderbolt_stream" host.boot.blacklistedKernelModules
+        && !(builtins.elem "thunderbolt_net" host.boot.kernelModules)
+        && !(builtins.elem "thunderbolt_stream" host.boot.kernelModules)
         && rdma.check.minReadyRails == 4
         && rdma.check.expectedRailSpeed == "20Gb/s"
         && lib.all (name: !(lib.hasPrefix "dmabuf_" name)) (builtins.attrNames rdma.config)
@@ -31,6 +34,14 @@ let
         && host.services.gufo.package == inputs.gufo.packages.x86_64-linux.default
         && (unitOf host).wantedBy == [ ]
         && (unitOf host).serviceConfig.Restart == "always"
+        && tp.cpuDmaLatencyUs == 100
+        && builtins.elem "gufo-tp2-latency.service" (unitOf host).requires
+        && builtins.elem "gufo-tp2-latency.service" (unitOf host).after
+        && host.systemd.services.gufo-tp2-latency.wantedBy == [ ]
+        && host.systemd.services.gufo-tp2-latency.partOf == [ "gufo-tp2.service" ]
+        && host.systemd.services.gufo-tp2-latency.unitConfig.StopWhenUnneeded
+        && !(host.systemd.services ? usb4-stream-provision)
+        && !(host.systemd.services ? fn-rdma-modules)
         && builtins.elem "thunderbolt-ibverbs-check.service" (unitOf host).after
         && builtins.elem "thunderbolt-ibverbs-check.service" (unitOf host).wants
         && builtins.elem "gufo-tp2.service" host.systemd.services.gufo-llm.conflicts
@@ -48,6 +59,7 @@ let
   registry = import ../../modules/mesh-registry.nix;
 in
 assert c.boot.kernelPackages.kernel.version == w.boot.kernelPackages.kernel.version;
+assert lib.versions.majorMinor c.boot.kernelPackages.kernel.version == "7.3";
 assert (moduleOf c).donnerkeuleRevision == (moduleOf w).donnerkeuleRevision;
 assert (moduleOf c).drvPath == (moduleOf w).drvPath;
 assert self.packages.x86_64-linux.rdmaCoreUsb4.donnerkeuleRevision == inputs.donnerkeule.rev;
@@ -67,6 +79,9 @@ assert !(builtins.elem "" acl);
 assert !(builtins.elem registry.client.hostKey acl) && !(builtins.elem registry.nas.hostKey acl);
 pkgs.runCommand "gufo-rdma-policy" { } ''
   ${pkgs.shellcheck}/bin/shellcheck ${(unitOf c).serviceConfig.ExecStart} ${(unitOf w).serviceConfig.ExecStart} \
-    ${builtins.elemAt (unitOf c).serviceConfig.ExecStartPre 1}
+    ${builtins.elemAt (unitOf c).serviceConfig.ExecStartPre 1} \
+    ${c.systemd.services.gufo-tp2-latency.serviceConfig.ExecStart}
+  ${pkgs.python3}/bin/python3 ${./test_latency_hold.py} \
+    ${c.systemd.services.gufo-tp2-latency.serviceConfig.ExecStart} ${pkgs.bash}/bin/bash
   touch "$out"
 ''
