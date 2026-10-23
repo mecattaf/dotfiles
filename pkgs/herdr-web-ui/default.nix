@@ -13,8 +13,8 @@
   depsHash,
 }:
 let
-  # TODO(Tom): private fork rev. Do not substitute upstream or the moving local
-  # checkout: it contains the unpushed build/claude-morning customizations.
+  # Immutable private fork. Builds run on strix; an authenticated GitHub CLI
+  # prefetch can warm this fixed-output source without daemon credentials.
   src = fetchFromGitHub {
     owner = "mecattaf";
     repo = "herdr-web-ui";
@@ -32,6 +32,9 @@ let
     ];
     dontConfigure = true;
     dontBuild = true;
+    # This fixed-output tree must be independent of the builder's Nix paths.
+    # Final-package fixup patches interpreters and native libraries after copy.
+    dontFixup = true;
     installPhase = ''
       export HOME="$TMPDIR/home"
       export BUN_INSTALL_CACHE_DIR="$TMPDIR/bun-cache"
@@ -49,6 +52,7 @@ stdenv.mkDerivation {
   inherit src;
   nativeBuildInputs = [
     bun
+    nodejs_24
     autoPatchelfHook
     makeWrapper
   ];
@@ -59,6 +63,11 @@ stdenv.mkDerivation {
     export HOME="$TMPDIR/home"
     cp -R ${deps} node_modules
     chmod -R u+w node_modules
+    # Bun retains both libc variants of optional native dependencies. This
+    # GNU/Linux package uses only the GNU variants, never the musl binaries.
+    rm -r node_modules/lightningcss-linux-x64-musl node_modules/@rolldown/binding-linux-x64-musl
+    patchShebangs node_modules
+    autoPatchelf node_modules
     bun run build
     runHook postBuild
   '';

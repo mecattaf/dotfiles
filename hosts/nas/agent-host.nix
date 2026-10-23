@@ -5,7 +5,12 @@
     ../../modules/atuin.nix
   ];
 
-  services.herdr-web-ui.enable = true;
+  services.herdr-web-ui = {
+    enable = true;
+    revision = "e85ffd1ff0402e3aee9c2df6ec47e7cafefe7d60"; # build/claude-morning
+    sourceHash = "sha256-F/HeC2E4eIR4EOCMIpTbWTZWbD4DMBM5Biqrl4Vb2TQ=";
+    depsHash = "sha256-2UG94F4KbSDNAMe18joBs9ehCs40ZRvLhMZrQ4cHZyw=";
+  };
 
   # Preserve both Atuin database schemas across the home/server migration.
   # Stable is 18.15.2; the existing strix server and client are 18.17.0.
