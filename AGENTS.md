@@ -1,5 +1,5 @@
-**Claude seats (2026-09-22).** Two Claude Code logins live on the strix
-and nowhere else: `cc` is `~/.claude` (the personal Claude Max login, config file
+**Claude seats (2026-09-22; fleet target updated 2026-10-23).** Two Claude Code
+logins belong on the NAS agent host: `cc` is `~/.claude` (the personal Claude Max login, config file
 `~/.claude.json`), `cc2` is `~/.claude-work` (the leger.run Claude Max login,
 config file `~/.claude-work/.claude.json`), selected only by `CLAUDE_CONFIG_DIR`
 in the fish launchers (`home/dot_config/fish/config.fish`). Both share skills and writable settings at
@@ -64,17 +64,16 @@ issue/PR references must never become active GitHub Markdown in generated PR
 bodies or digest comments (2026-10-22 notification incident). Truncate source
 text before fencing it, never the rendered wrapper.
 
-**Closet and physical seat (Tom, 2026-10-08).** Strix (formerly coordinator)
-is permanently headless in the closet, with the NAS, BE550 and Freebox. Both
-closet computers use Ethernet. Strix is 10.42.0.2 on enp191s0; Wi-Fi is disabled
-on reboot. NAS advertises the closet LAN through ordinary Tailscale. Strix
-retains its own Tailscale identity as an independent fallback, per Tom's final
-decision; Zenbook is also enrolled. Use ordinary OpenSSH on both paths.
-The worker is retired and must not return.
-The Zenbook client is the physical seat, with Sway, Huion and Magic Trackpad.
-Otto is rejected. Speech defaults to client; synthesis remains on Strix.
-Preserve Herdr sessions: stage this network change for a deliberate reboot,
-never activate it during an attached working session.
+**Fleet target (Tom, 2026-10-22/23).** Rename strix to `strix-coordinator`;
+`strix-worker` returns. Both are headless Ethernet compute hosts. The NAS is
+the canonical home and agent host: Herdr, history, credentials and harnesses.
+`dsh` is the primary harness; pi is being removed. NAS retains routing, DNS,
+Tailscale and the Library. The Zenbook client is the physical seat, with Huion
+and Magic Trackpad; Otto is the incoming compositor base. strix-coordinator
+keeps its independent Tailscale fallback; use ordinary OpenSSH. Speech defaults to
+client; synthesis stays on compute. These are cutover targets, not a claim
+that the migration is live. Preserve Herdr sessions; activation and reboot
+remain deliberate, supervised steps.
 
 **Runtime isolation (2026-09-16 incident).** Tests and experiments that source
 shell-script fragments, clean runtime directories, or launch test compositors
@@ -87,15 +86,15 @@ the intended function and inspect it first. A September 16 smoke test sourced
 cleanup code along with a function and deleted the live user-service sockets.
 Do not suppress unexpected coredumps or unit failures to make tests look healthy.
 
-**Gufo replaces Halogen (Tom, 2026-10-13).** Tom: "i said let  move to
+**Gufo replaces Halogen (Tom, 2026-10-13; updated 2026-10-23).** Tom: "i said let  move to
 gufo!! not halogen!!!!" and "use that as the full collection of modles that we
-use". The engine is `gufo` from github:gufo-org/gufo (flake input `gufo`,
-`modules/gufo.nix`): one native gfx1151 binary, one systemd unit per model, no
-container. Its model collection is the fleet's model set, catalogued in
+use". The engine is the `rdma` branch of `github:neuhaus/gufo` (flake input
+`gufo`, `modules/gufo.nix`), with dual-Strix inference in scope. Its existing
+model collection is catalogued in
 `lib/gufo-models.json` at the revisions Gufo's docs pin:
 - Qwen3.8 Flash-Next (UD-Q4_K_XL GGUF with the MTP predictor and the vision
   projector): the resident text model, served as `qwen3.8-flash-next` on
-  `http://strix:8731` (`gufo-llm.service`);
+  `http://strix-coordinator:8731` (`gufo-llm.service`, target endpoint);
 - Qwen3.8-27B (UD-Q4_K_XL with the DFlash2 draft) and DeepSeek V4 Flash (with
   DSpark): alternates on the same port, started only by `gufo-switch <name>`;
 - Qwen3-TTS 12Hz 1.7B Base, Qwen3-ASR 1.7B and Qwen-Image-2.1: on-demand
@@ -128,8 +127,8 @@ pause. Do not add a `flm` invocation, an `flm serve` unit, or an NPU backend row
 back.
 
 **The `utility` slot forwards to the local text model.** The stable ID
-`utility` resolves to Strix's resident Gufo Flash-Next model, and the request-scoped `utility-model`
-wrapper — installed on the strix only — forwards a single
+`utility` resolves to the compute host's resident Gufo Flash-Next model, and
+the request-scoped `utility-model` wrapper forwards a single
 chat-completions request to it over the wired LAN. `/drain` and `/print` dial
 that seam under the same name and with the same CLI flags as before. What must
 never come back is an NPU-backed utility deployment; the slot itself is live.
@@ -171,13 +170,17 @@ re-downloaded). VibeVoice-ASR-Streaming-7B is the one diarization model, loaded
 per run by `call-diarize` (Tom, 2026-09-16); Gufo has no diarization, so it
 stays. There is no embedder row in the catalog and no embeddings server.
 
-Out, and not to be reintroduced: dual-node inference of any kind (the Thunderbolt and direct 5GbE rails are retired), the flashnext / flashnix / vLLM-fork projects (flashnext-fp8 and
-qwen38-flash-next-fp8 included), GLM, every Gemma model
+**Inference scope (Tom, 2026-10-23).** Dual-node inference on strix-coordinator
+and strix-worker, GLM and Flash-Next Q4 and Q8 are allowed. This supersedes
+their earlier bans; the neuhaus Gufo RDMA fork is the target engine.
+
+Out, and not to be reintroduced: the flashnext / flashnix / vLLM-fork projects (flashnext-fp8 and
+qwen38-flash-next-fp8 included), every Gemma model
 (supergemma included), Ornith, Muse Glimmer, IBM Granite, the GGUF
 Qwen3.6-35B-A3B and Qwen3.6-27B, Gemma 4 31B, every Qwen3-VL row (instruct, projectors and the VL
 embedder), every FARA 1.5 model (4B, 9B, 27B) together with its browser agent,
-the FLM NPU models, Flash-Next in formats other than Gufo's UD-Q4_K_XL
-(UD-IQ3_XXS, the ciru IU4 reference), qwen3-coder-next, the sherpa-onnx keyword-spotting research model,
+the FLM NPU models, Flash-Next UD-IQ3_XXS and the ciru IU4 reference,
+qwen3-coder-next, the sherpa-onnx keyword-spotting research model,
 every VibeVoice except `vibevoice-asr-streaming-7b-bf16`, every Qwen TTS variant
 except the production Base Q8 + tokenizer + K-2SO voice and Gufo's 1.7B BF16
 Base (VoiceDesign, CustomVoice, the K-2SO CustomVoice experiments, khimaros,

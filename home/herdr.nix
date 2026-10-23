@@ -91,11 +91,11 @@ in
       );
     };
     home.sessionVariables = {
-      HERDR_SWAY_LOCAL = if hostName == "strix" && osConfig.myDisplay.enable then "1" else "0";
+      HERDR_SWAY_LOCAL = if osConfig.myFleet.has "brain" && osConfig.myDisplay.enable then "1" else "0";
       HERDR_SWAY_SEAT = hostName;
     };
 
-    systemd.user.services.herdr = lib.mkIf (hostName == "strix") {
+    systemd.user.services.herdr = lib.mkIf (osConfig.myFleet.has "brain") {
       Unit = {
         Description = "herdr — terminal workspace manager for AI coding agents";
         # NO PartOf/After/Wants on graphical-session.target: this server must

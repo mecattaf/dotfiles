@@ -21,7 +21,7 @@
 #   gufo    services.gufo.enable            → gufo-llm*, /ready, /v1/models
 #   (runs, the Tally planes, went with the Tally sunset on 2026-09-30)
 #   attention  the Herdr server host (home/herdr.nix gates its unit on
-#              hostName == "strix", and so does this module; the
+#              myFleet.has "brain", and so does this module; the
 #              flake's herdr-oom-isolation check pins that shape)
 # The profile NAME is still per host, because it names the expectation set in
 # the terminal view. An unlisted hostname fails evaluation instead of quietly
@@ -49,7 +49,8 @@ let
 
   enabled = name: config.services.${name}.enable or false;
 
-  roles = lib.optional (enabled "gufo") "gufo" ++ lib.optional (host == "strix") "attention";
+  roles =
+    lib.optional (enabled "gufo") "gufo" ++ lib.optional (config.myFleet.has "brain") "attention";
 
   profile = {
     name = profileNames.${host} or "unprofiled";
@@ -86,7 +87,7 @@ let
     ln -s ${pkgs.fleet-status}/bin/fleet-status-collect "$out/bin/fleet-status-collect"
   '';
 
-  isDashboard = host == "strix";
+  isDashboard = config.myFleet.has "brain";
 in
 {
   assertions = [

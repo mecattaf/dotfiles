@@ -577,6 +577,10 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        fleet-roles = import ./tests/fleet-roles {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
         closet-topology = import ./tests/closet-topology {
           inherit pkgs self;
           inherit (nixpkgs) lib;

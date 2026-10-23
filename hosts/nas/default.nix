@@ -47,6 +47,7 @@
   ];
 
   networking.hostName = "nas";
+  myFleet.roles = [ "router" ];
   myHeadless.enable = true;
 
   # agenix ON since 2026-08-28 — and the doctrine still holds, because the

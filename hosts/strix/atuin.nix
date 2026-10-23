@@ -1,5 +1,5 @@
-{ ... }:
-{
+{ config, lib, ... }:
+lib.mkIf (config.myFleet.has "brain") {
   # Shell-history sync remains strix-local when the media core moves.
   services.atuin = {
     enable = true;
