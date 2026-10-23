@@ -16,7 +16,7 @@ let
     in
     cfg.myFleet.roles == [ "compute" ]
     && !cfg.mySecrets.enable
-    && cfg.age.secrets == { }
+    && lib.all (name: name == "gufo-tp2-control-token") (builtins.attrNames cfg.age.secrets)
     && !(home.systemd.user.services ? herdr)
     && !(home.systemd.user.services ? paper-daemon)
     && !(home.systemd.user.services ? claude-transcript-mirror)

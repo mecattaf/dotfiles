@@ -30,6 +30,7 @@
 # one large model owns the GPU.
 let
   cfg = config.services.gufo;
+  tp = cfg.tp2;
   catalog = import ../lib/local-models.nix { inherit lib; };
   modelStore = import ../lib/model-store.nix { inherit catalog lib; };
 
@@ -199,7 +200,67 @@ let
 
   alternateNames = builtins.attrNames cfg.alternates;
   unitOf = name: if name == "flash" then "gufo-llm.service" else "gufo-llm-${name}.service";
-  textUnits = map unitOf ([ "flash" ] ++ alternateNames);
+  textUnits = map unitOf ([ "flash" ] ++ alternateNames) ++ lib.optional tp.enable "gufo-tp2.service";
+
+  tp2Args =
+    llmArgs (cfg.llm // { servedModelName = tp.modelName; })
+    ++ [
+      "--tp-world-size"
+      "2"
+      "--tp-rank"
+      (toString tp.rank)
+      "--tp-bootstrap-port"
+      (toString tp.bootstrapPort)
+      "--tp-control-port"
+      (toString tp.controlPort)
+      "--tp-rdma-device"
+      tp.rdmaDevice
+      "--tp-gid-index"
+      (toString tp.gidIndex)
+    ]
+    ++ lib.optionals (tp.rank == 1) [
+      "--tp-bootstrap-host"
+      tp.peerAddress
+    ];
+
+  # Upstream only accepts --tp-control-token in argv. LoadCredential keeps it
+  # out of the Nix store and unit text; /proc/<pid>/cmdline still exposes it.
+  tp2Start = pkgs.writeShellScript "gufo-tp2-start" ''
+    set -eu
+    token="$(cat "$CREDENTIALS_DIRECTORY/control-token")"
+    if [ -z "$token" ] || [ "''${#token}" -gt 4096 ]; then
+      echo "gufo-tp2: control token must contain 1..4096 bytes" >&2
+      exit 1
+    fi
+    exec ${
+      lib.escapeShellArgs ([ (lib.getExe' tp.package "gufo") ] ++ tp2Args)
+    } --tp-control-token "$token"
+  '';
+
+  tp2WaitActive = pkgs.writeShellScript "gufo-tp2-wait-active" ''
+    set -eu
+    state=${lib.escapeShellArg "/sys/class/infiniband/${tp.rdmaDevice}/ports/1/state"}
+    deadline=$((SECONDS + 300))
+    until [ -r "$state" ] && ${pkgs.gnugrep}/bin/grep -Eq '^4:[[:space:]]+ACTIVE[[:space:]]*$' "$state"; do
+      if [ "$SECONDS" -ge "$deadline" ]; then
+        echo "gufo-tp2: RDMA port did not become ACTIVE within 300 seconds: $state" >&2
+        exit 1
+      fi
+      sleep 1
+    done
+  '';
+
+  # Carry forward 352eac88 / #257's measured 100 us budget. Zero left only
+  # POLL and burned ~70 W idle on the old twins. Keep the held fd in a small
+  # root companion; the GPU process stays an unprivileged DynamicUser.
+  tp2LatencyHold = pkgs.writeShellScript "gufo-tp2-latency-hold" ''
+    set -eu
+    exec 3> /dev/cpu_dma_latency
+    v=${toString tp.cpuDmaLatencyUs}
+    printf '%b' "$(printf '\\0%03o' \
+      $((v & 255)) $(((v >> 8) & 255)) $(((v >> 16) & 255)) $(((v >> 24) & 255)))" >&3
+    exec ${pkgs.coreutils}/bin/sleep infinity
+  '';
 
   mkLlmUnit = name: m: {
     description = "Gufo text model ${m.servedModelName} (${m.artifact})";
@@ -355,6 +416,66 @@ in
       '';
     };
 
+    tp2 = lib.mkOption {
+      default = { };
+      description = "Two-host Flash-Next over USB4 RDMA. Declares gufo-tp2.service, with no boot target.";
+      type = lib.types.submodule {
+        options = {
+          enable = lib.mkEnableOption "the on-demand Gufo TP2 rank";
+          package = lib.mkOption {
+            type = lib.types.package;
+            default = inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.gufo-rdma;
+            defaultText = lib.literalExpression "inputs.self.packages.x86_64-linux.gufo-rdma";
+          };
+          rank = lib.mkOption {
+            type = lib.types.enum [
+              0
+              1
+            ];
+            default = 0;
+          };
+          peerAddress = lib.mkOption {
+            type = lib.types.strMatching "([0-9]{1,3}\\.){3}[0-9]{1,3}";
+            default = "127.0.0.1";
+            description = "Peer's wired LAN IPv4 address for bootstrap/control and firewall admission.";
+          };
+          bootstrapPort = lib.mkOption {
+            type = lib.types.port;
+            default = 18515;
+          };
+          controlPort = lib.mkOption {
+            type = lib.types.port;
+            default = 18516;
+          };
+          rdmaDevice = lib.mkOption {
+            type = lib.types.strMatching "[a-zA-Z0-9_-]+";
+            default = "usb4_rdma0";
+          };
+          gidIndex = lib.mkOption {
+            type = lib.types.ints.between (-1) 255;
+            default = -1;
+            description = "-1 lets Gufo select a usable GID; verify at hardware qualification.";
+          };
+          cpuDmaLatencyUs = lib.mkOption {
+            type = lib.types.nullOr (lib.types.ints.between 1 2147483647);
+            default = 100;
+            description = "Positive PM QoS budget held on both hosts only while TP2 runs; null disables the hold. Zero (POLL-only on the old twins) is forbidden. Requalify latency/power on 7.3.";
+          };
+          modelName = lib.mkOption {
+            type = lib.types.str;
+            default = cfg.llm.servedModelName;
+            defaultText = lib.literalExpression "config.services.gufo.llm.servedModelName";
+            description = "Exact served id; TP2 shares services.gufo.llm's Flash-Next bundle and loading arguments on both ranks.";
+          };
+          tokenFile = lib.mkOption {
+            type = lib.types.str;
+            default = "/run/agenix/gufo-tp2-control-token";
+            description = "Shared agenix token, read with LoadCredential; never a Nix-store plaintext.";
+          };
+        };
+      };
+    };
+
     tts = {
       artifact = lib.mkOption {
         type = lib.types.str;
@@ -415,9 +536,65 @@ in
         assertion = !(cfg.alternates ? flash) && !(cfg.alternates ? off);
         message = "services.gufo.alternates may not be named `flash` (the primary) or `off` (gufo-switch's stop verb).";
       }
+      {
+        assertion =
+          !tp.enable || (tp.bootstrapPort != tp.controlPort && cfg.llm.artifact == "qwen38-flash-next-gguf");
+        message = "Gufo TP2 requires distinct bootstrap/control ports and the Flash-Next bundle (the fork only supports qwen4exp TP2).";
+      }
     ];
 
     systemd.services = {
+      gufo-tp2-latency = lib.mkIf (tp.enable && tp.cpuDmaLatencyUs != null) {
+        description = "Gufo TP2 CPU DMA latency budget (${toString tp.cpuDmaLatencyUs} us)";
+        wantedBy = [ ];
+        partOf = [ "gufo-tp2.service" ];
+        unitConfig.StopWhenUnneeded = true;
+        serviceConfig = {
+          Type = "exec";
+          ExecStart = "${tp2LatencyHold}";
+          Restart = "on-failure";
+          RestartSec = "5s";
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          NoNewPrivileges = true;
+          CapabilityBoundingSet = "";
+          DevicePolicy = "closed";
+          DeviceAllow = [ "/dev/cpu_dma_latency rw" ];
+        };
+      };
+      gufo-tp2 = lib.mkIf tp.enable {
+        description = "Gufo TP2 rank ${toString tp.rank}, USB4 RDMA (on demand)";
+        wantedBy = [ ];
+        requires = lib.optional (tp.cpuDmaLatencyUs != null) "gufo-tp2-latency.service";
+        wants = [
+          "network-online.target"
+          "thunderbolt-ibverbs-check.service"
+        ];
+        after = [
+          "network-online.target"
+          "thunderbolt-ibverbs-check.service"
+        ]
+        ++ lib.optional (tp.cpuDmaLatencyUs != null) "gufo-tp2-latency.service";
+        conflicts = (lib.remove "gufo-tp2.service" textUnits) ++ [ "gufo-image.service" ];
+        serviceConfig =
+          gpuServiceConfig
+          // {
+            Restart = "always";
+            MemoryHigh = "96G";
+            MemoryMax = "104G";
+            MemorySwapMax = 0;
+            LoadCredential = [ "control-token:${tp.tokenFile}" ];
+            ExecStartPre = [
+              "${bundleCheckFor (artifactsOf cfg.llm)}"
+              "${tp2WaitActive}"
+            ];
+            ExecStart = "${tp2Start}";
+          }
+          // lib.optionalAttrs (tp.rank == 0) {
+            ExecStartPost = "${waitReady cfg.port}";
+          };
+      };
       gufo-llm = mkLlmUnit "flash" cfg.llm;
 
       gufo-tts = mkAuxUnit {
@@ -463,5 +640,12 @@ in
     networking.firewall.interfaces = lib.mkIf cfg.openLanPort {
       ${cfg.lanInterface}.allowedTCPPorts = [ cfg.port ];
     };
+
+    # TP2's control sockets bind all addresses upstream. Admit only the peer
+    # over Ethernet, never an unrestricted port or a USB4 IP interface.
+    networking.nftables.enable = lib.mkIf tp.enable true;
+    networking.firewall.extraInputRules = lib.mkIf tp.enable ''
+      iifname "${cfg.lanInterface}" ip saddr ${tp.peerAddress} tcp dport { ${toString tp.bootstrapPort}, ${toString tp.controlPort} } accept
+    '';
   };
 }
