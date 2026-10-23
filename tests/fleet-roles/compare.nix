@@ -1,6 +1,8 @@
-# Evaluation only: nix eval --impure --json --file tests/fleet-roles/compare.nix
-# --argstr base 'git+file:///path/to/repo?rev=<base-sha>'
-# --argstr candidate '/path/to/worktree' --option allow-import-from-derivation false
+# Evaluation only: nix eval --impure --json --expr '
+#   import ./tests/fleet-roles/compare.nix {
+#     base = "git+file:///path/to/repo?rev=<base-sha>";
+#     candidate = "/path/to/worktree";
+#   }' --option allow-import-from-derivation false
 { base, candidate }:
 let
   baseFlake = builtins.getFlake base;
