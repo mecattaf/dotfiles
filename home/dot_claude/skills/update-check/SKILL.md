@@ -85,6 +85,7 @@ judge it. Read them against what this repo does with the program:
 | llm-agents: claude-code | `home/dot_claude/settings.json` (the template), `home/claude-settings.py` (the initializer), the `cc`/`cc2` launchers and their env in `home/dot_config/fish/config.fish`, `home/dot_claude/skills/`, the `no-claude-code-hooks` flake check, the seats paragraph in AGENTS.md |
 | llm-agents: codex | `home/home.nix` (`.codex` links), the codex runtimes in `modules/substrate.nix` and `hosts/strix/default.nix`, `seats` (`home/dot_local/bin/seats`) |
 | llm-agents: pi | `home/pi.nix` (the wrapper and its extension roster), the pi runtimes in `modules/substrate.nix` |
+| llm-agents: dsh | `pkgs/dsh` (the wrapper, the policy overlays in `config.nix`, `sessions.patch.yml`, the `dsh-bwrap` runner), `home/dsh.nix`, `checks.dsh-config` and `tests/dsh-config/`, the dsh reader in `seats` (`dsh_qwen_usage`; its field names follow the session format). A row id the policy names that a release drops shows as stderr in the check |
 | herdr | `home/herdr.nix`, `home/dot_config/herdr/`, the herdr pin comment in `flake.nix` |
 | gufo | `modules/gufo.nix`, `lib/gufo-models.json`, `lib/local-models.nix`, and Gufo's own docs at the new tag (its model collection is the fleet's model set) |
 | vicinae | `home/vicinae.nix` (client only) |
