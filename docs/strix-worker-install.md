@@ -68,11 +68,10 @@ Prerequisites before executing the following stages:
    credentials/state stay outside Nix and Git; `authKeyFile` stays null. Do not
    copy the coordinator's Tailscale state or silently reuse an old retired
    worker node. An auth key's lifetime alone does not prove device key expiry.
-   A fresh worker needs its one-time login after first boot; the offline
-   install does not enroll it. If tailnet access is required immediately on
-   that very first boot, the NAS procedure must additionally provide an
-   explicitly authorized pre-enrollment step. No temporary daemon was started
-   to produce a node identity in this task.
+   The offline OS install does not enroll it. Use the optional pre-enrollment
+   stage below to do that same interactive login before the move, or accept
+   a one-time login after first boot. No temporary daemon was started by this
+   task. See #607's `docs/nas-agent-transport.md` for the four-node procedure.
 
 After permission, the supervised preserving installation is:
 
@@ -126,9 +125,69 @@ recorded worker closure, its `etc/hostname` is `strix-worker`, the ESP contains
 `EFI/BOOT/BOOTX64.EFI`, and loader entries reference the new kernel/initrd.
 Check authorized SSH access and account state without printing credentials;
 `--no-root-passwd` does not create a usable login. Follow the shared registration
-procedure for first boot. Then `sync`, unmount the ESP and root, and leave the
-disk unmounted until the coordinated shutdown. Record the install result and
-public host-key fingerprint. A successful build alone is not this proof.
+procedure below before unmounting if immediate tailnet membership is required.
+Then `sync`, unmount the ESP and root, and leave the disk unmounted until the
+coordinated shutdown. Record the install result and public host-key fingerprint.
+A successful build alone is not this proof.
+
+### Optional pre-enrollment on the mounted final worker root
+
+This uses the **same interactive user login and console non-expiry mechanism
+as #607**, with a fresh worker state directory. It is a prepared, unexecuted
+procedure, requiring the disk-write authorization above plus Tom's supervised
+tailnet login. It changes the tailnet and writes private worker node state.
+Do not experiment with the live coordinator daemon or its socket/state.
+
+Prerequisites: the NAS node is already named `nas` and its exit/subnet role is
+approved as in #607; the worker's retired state has been securely archived;
+the target directory is not a symlink to a live path. The installed closure's
+Tailscale must support the flags below (`--help` was checked on 1.98.8).
+The Tailscale policy must permit an initially portable, unencrypted node state;
+if policy requires hardware attestation/TPM binding, enroll on the actual
+worker instead. State encrypted with the coordinator's TPM cannot move to the
+worker. Keep this state root-only and never copy it off its final worker SSD.
+
+In one supervised terminal, with the previous mount/closure variables:
+
+```sh
+# Future supervised operation only; fresh state, never the coordinator state.
+sudo install -d -m 0700 "$worker_root/var/lib/tailscale"
+sudo test ! -e "$worker_root/var/lib/tailscale/tailscaled.state"
+worker_socket_dir=$(sudo mktemp -d /var/tmp/strix-worker-enroll.XXXXXX)
+sudo "$worker_system/sw/bin/tailscaled" \
+  --tun=userspace-networking --port=0 \
+  --socket="$worker_socket_dir/tailscaled.sock" \
+  --statedir="$worker_root/var/lib/tailscale" \
+  --state="$worker_root/var/lib/tailscale/tailscaled.state" \
+  --encrypt-state=false --hardware-attestation=false
+```
+
+Run the daemon in the foreground, with no proxy listeners. Userspace mode
+creates no TUN interface or host routing changes. In a second supervised
+terminal, use those same `worker_system` and `worker_socket_dir` values:
+
+```sh
+sudo "$worker_system/sw/bin/tailscale" --socket="$worker_socket_dir/tailscaled.sock" \
+  login --login-server=https://controlplane.tailscale.com \
+  --hostname=strix-worker --accept-dns=false --ssh=false \
+  --accept-routes=true --exit-node=nas --exit-node-allow-lan-access=true
+```
+
+Tom opens that login URL, approves this fresh worker identity and disables its
+device key expiry in the Machines console. Record its stable device ID and
+non-expiry receipt; check the temporary daemon's status through **only its
+private socket** and use #607's read-only checker. This can prove enrollment,
+not the actual worker's firmware, NIC, kernel, SSH or RDMA operation.
+
+When complete, Ctrl-C **only this foreground temporary daemon**, wait for it
+to exit and flush state, and do not log out: logging out would invalidate the
+identity being staged. It must be stopped before unmounting or moving the SSD.
+Never run it alongside the real worker using that identity. The normal worker
+daemon will use this same `/var/lib/tailscale/` on first boot; its normal
+`tailscaled-set` applies #607's complete preferences. Recheck identity and
+expiry after the move. If pre-enrollment is not performed, first-boot LAN SSH
+plus Tom's interactive login is still required; do not claim unattended
+tailnet readiness.
 
 ## Fallback: installer after the move
 
@@ -180,4 +239,7 @@ all been proved. This PR prepares those steps; it has not performed them.
 References: [NixOS installation manual](https://nixos.org/manual/nixos/stable/),
 [Tailscale device expiry](https://tailscale.com/docs/features/access-control/key-expiry),
 [auth keys](https://tailscale.com/docs/features/access-control/auth-keys),
-[bootctl install and EFI options](https://www.freedesktop.org/software/systemd/man/latest/bootctl.html).
+[bootctl install and EFI options](https://www.freedesktop.org/software/systemd/man/latest/bootctl.html),
+[userspace networking](https://tailscale.com/docs/concepts/userspace-networking),
+[daemon flags](https://tailscale.com/docs/reference/tailscaled),
+[TPM-bound node state](https://tailscale.com/docs/features/secure-node-state-storage).
