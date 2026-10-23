@@ -83,7 +83,7 @@
         "donnerkeule source": "inputs.donnerkeule.rev",
         "rdma-core-usb4": "packages.x86_64-linux.rdmaCoreUsb4.version"
       },
-      "switch": "Tracks mecattaf/donnerkeule codex/framework-fleet-kernels. Updates the module and matching usb4_rdma provider on both compute hosts. Stage/reboot both onto the same kernel and rerun the attended rail/throughput qualification before TP2 use. Never reload or reboot from the update routine."
+      "switch": "Tracks mecattaf/donnerkeule codex/framework-7-3. Updates the module and matching usb4_rdma provider on both compute hosts. Stage/reboot both onto the same kernel and rerun the attended rail/throughput qualification before TP2 use. Never reload or reboot from the update routine."
     },
     {
       "name": "vicinae",

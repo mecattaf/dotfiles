@@ -203,7 +203,7 @@
     # Separate, hardware-unqualified TP2 engine; the upstream single-box unit
     # above keeps its proven build. flake.lock pins both carry-forward heads.
     gufo-rdma.url = "github:neuhaus/gufo/rdma";
-    donnerkeule.url = "github:mecattaf/donnerkeule/codex/framework-fleet-kernels";
+    donnerkeule.url = "github:mecattaf/donnerkeule/codex/framework-7-3";
 
     # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
     # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
