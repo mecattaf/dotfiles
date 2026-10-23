@@ -2203,10 +2203,13 @@
               nativeBuildInputs = [ pkgs.ripgrep ];
             }
             ''
-              # Two exclusions, both narrow and both earned:
+              # Exclusions are narrow and cover non-executable material:
               #
               #   go.sum   — base64 hashes, on which a case-insensitive sweep for
               #              three-letter substrings false-positives endlessly.
+              #
+              #   secrets/*.age — encrypted payloads and recipient stanzas are
+              #              random bytes/base64, not platform declarations.
               #
               #   docs/**/*.md — RESEARCH PROSE, not tree content that runs. Added
               #              2026-08-21 (#229) after this check turned out to have
@@ -2234,7 +2237,7 @@
               # source tree, which is why the pattern list above is assembled from
               # split string literals.
               if rg --ignore-case --line-number \
-                --glob '!go.sum' --glob '!**/docs/**/*.md' \
+                --glob '!go.sum' --glob '!**/secrets/*.age' --glob '!**/docs/**/*.md' \
                 '${retiredPlatformPattern}' ${self}; then
                 echo "retired platform residue found in the canonical NixOS tree" >&2
                 exit 1
