@@ -10,6 +10,9 @@
   networking.hostName = "strix-worker";
   myFleet.roles = [ "compute" ];
   mySecrets.enable = false;
+  # First boot must use the reviewed closure's helpers, not the retired
+  # worker's checkout (or a network bootstrap of main).
+  home-manager.users.tom.rawDotfiles.inStore = true;
   # Offline installation must not change the coordinator's EFI NVRAM. bootctl
   # still installs EFI/BOOT/BOOTX64.EFI on the worker's own ESP for first boot.
   boot.loader.efi.canTouchEfiVariables = lib.mkForce false;

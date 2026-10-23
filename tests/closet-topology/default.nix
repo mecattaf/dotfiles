@@ -107,6 +107,8 @@ assert
   w.disko.devices.disk.w1t.content.partitions.root.uuid == "e4869fbf-f6c5-4bf5-960f-cf19376e139d";
 assert w.fileSystems."/".device == "/dev/disk/by-partuuid/e4869fbf-f6c5-4bf5-960f-cf19376e139d";
 assert !w.boot.loader.efi.canTouchEfiVariables;
+assert w.home-manager.users.tom.rawDotfiles.inStore;
+assert !(w.systemd.services ? dotfiles-bootstrap);
 assert
   w.disko.devices.disk.w1t.content.partitions.ESP.uuid
   != s.disko.devices.disk.main.content.partitions.ESP.uuid;

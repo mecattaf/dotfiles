@@ -48,6 +48,8 @@ Prerequisites before executing the following stages:
    Donnerkeule/Gufo RDMA work, NAS home/agent changes and the common Tailscale
    registration mechanism. Record its commit and worker toplevel path. #608
    alone is not a complete fleet cutover image.
+   Worker raw helpers are carried in the Nix store, like the client's, so
+   first boot does not depend on the old checkout or cloning `main`.
 2. Build the worker closure on the coordinator before the shutdown. Run
    `df -h /` immediately before any `nix build`; stop below 25 GB available.
    Keep the built closure rooted until installation and proof complete.
@@ -167,4 +169,5 @@ all been proved. This PR prepares those steps; it has not performed them.
 
 References: [NixOS installation manual](https://nixos.org/manual/nixos/stable/),
 [Tailscale device expiry](https://tailscale.com/docs/features/access-control/key-expiry),
-[auth keys](https://tailscale.com/docs/features/access-control/auth-keys).
+[auth keys](https://tailscale.com/docs/features/access-control/auth-keys),
+[bootctl install and EFI options](https://www.freedesktop.org/software/systemd/man/latest/bootctl.html).
