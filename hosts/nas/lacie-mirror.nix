@@ -1,4 +1,14 @@
-{ lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+# Retired by the 2026-10-23 full-estate file backup. The old job below copies
+# only five library trees and writes a second historical layout. It must not
+# start on a future plug event alongside estate-2026-10-23. Preserve it solely
+# behind an explicit opt-in for the old layout; the default has no service or
+# udev trigger. The running pre-cutover NAS still needs its temporary hold.
 # Cold-storage dump (Tom's ruling 2026-08-21, superseding the 2026-08-02
 # bisync ruling): the LaCie 4TB lives unplugged in a drawer; roughly once a
 # month — or slower; the cadence is entirely whenever Tom plugs it in — it
@@ -81,19 +91,23 @@ let
   '';
 in
 {
-  services.udev.extraRules = ''
-    ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="${lacieUuid}", TAG+="systemd", ENV{SYSTEMD_WANTS}+="lacie-mirror.service"
-  '';
+  options.myNas.legacyLacieMirror.enable = lib.mkEnableOption "the retired partial-library LaCie layout and its automatic plug trigger";
 
-  systemd.services.lacie-mirror = {
-    description = "Monthly cold-plug dump: /mnt/nas -> LaCie, one way";
-    # A monthly delta over USB can legitimately run for hours.
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = mirror;
-      TimeoutStartSec = "infinity";
-      Nice = 10;
-      IOSchedulingClass = "idle";
+  config = lib.mkIf config.myNas.legacyLacieMirror.enable {
+    services.udev.extraRules = ''
+      ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="${lacieUuid}", TAG+="systemd", ENV{SYSTEMD_WANTS}+="lacie-mirror.service"
+    '';
+
+    systemd.services.lacie-mirror = {
+      description = "Monthly cold-plug dump: /mnt/nas -> LaCie, one way";
+      # A monthly delta over USB can legitimately run for hours.
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = mirror;
+        TimeoutStartSec = "infinity";
+        Nice = 10;
+        IOSchedulingClass = "idle";
+      };
     };
   };
 }
