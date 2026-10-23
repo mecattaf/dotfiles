@@ -5,7 +5,7 @@
       "name": "llm-agents",
       "follow": "branch",
       "hosts": [
-        "strix-coordinator",
+        "nas",
         "client"
       ],
       "build": [
@@ -49,7 +49,7 @@
       "name": "herdr",
       "follow": "release",
       "hosts": [
-        "strix-coordinator"
+        "nas"
       ],
       "versions": {
         "herdr": "inputs.herdr.packages.x86_64-linux.herdr.version"
@@ -156,7 +156,8 @@
       "versions": {
         "linux (strix)": "nixosConfigurations.strix-coordinator.config.boot.kernelPackages.kernel.version",
         "linux (client)": "nixosConfigurations.client.config.boot.kernelPackages.kernel.version",
-        "linux (nas)": "nixosConfigurations.nas.config.boot.kernelPackages.kernel.version"
+        "linux (nas)": "nixosConfigurations.nas.config.boot.kernelPackages.kernel.version",
+        "linux (worker)": "nixosConfigurations.strix-worker.config.boot.kernelPackages.kernel.version"
       },
       "reason": "This is a new stable major.minor series, not a point release. The fleet currently selects its kernel from nixpkgs-fresh. Kernel-series adoption and reboot are explicit daytime decisions; this watcher changes neither."
     }
