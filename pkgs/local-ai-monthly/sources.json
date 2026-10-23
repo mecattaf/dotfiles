@@ -3,10 +3,10 @@
   "accepted_through": "2026-07-21",
   "inference": {
     "provider": "halogen",
-    "url": "http://strix:8731",
+    "url": null,
     "model": "qwen3.8-flash-next",
-    "execution_host": "strix",
-    "compute_host": "strix",
+    "execution_host": "nas",
+    "compute_host": "strix-coordinator",
     "tally_pool": "strix-gpu"
   },
   "limits": {
@@ -31,20 +31,47 @@
   "hardware_context": {
     "nodes": [
       {
-        "name": "strix",
+        "name": "strix-coordinator",
         "hardware": "AMD Ryzen AI MAX+ 395, Radeon 8060S gfx1151, 128 GiB unified RAM",
         "policy": "NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)",
         "roles": [
-          "Herdr and agent sessions",
-          "Pi harness",
+          "compute",
           "VibeVoice-ASR-Streaming-7B diarization",
           "Qwen TTS",
-          "resident Gufo Flash-Next / operator-switched Qwen3.8-27B and DeepSeek V4 Flash (gufo-switch)",
-          "Git and PR mechanics"
+          "resident Gufo Flash-Next / operator-switched alternates",
+          "temporary browser and media relay services"
+        ]
+      },
+      {
+        "name": "strix-worker",
+        "hardware": "AMD Strix Halo, 128 GiB unified RAM (verify at install)",
+        "policy": "wired LAN only; no operator credentials or tailnet",
+        "roles": [
+          "compute",
+          "Gufo",
+          "Qwen TTS"
+        ]
+      },
+      {
+        "name": "nas",
+        "hardware": "NAS",
+        "policy": "canonical home and agent host after supervised handover",
+        "roles": [
+          "router",
+          "Library",
+          "agent sessions"
+        ]
+      },
+      {
+        "name": "client",
+        "hardware": "ASUS Zenbook Duo",
+        "policy": "physical seat",
+        "roles": [
+          "seat"
         ]
       }
     ],
-    "runtime_policy": "Every automated local LLM call goes through the local model server on Strix (http://strix:8731), serving qwen3.8-flash-next; the alternates (qwen3.8-27b, deepseek-v4-flash) are operator-switched only.",
+    "runtime_policy": "Every automated local LLM call goes through the local model server on Strix (the endpoint in lib/local-model.nix), serving qwen3.8-flash-next; the alternates (qwen3.8-27b, deepseek-v4-flash) are operator-switched only.",
     "change_policy": "The monthly workflow proposes catalog and source-pin changes only. It never downloads, installs, removes, or activates models."
   },
   "model_selection_policy": {

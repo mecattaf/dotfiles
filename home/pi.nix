@@ -278,7 +278,7 @@ let
     exec ${pi}/bin/pi ${lib.escapeShellArgs loadArgs} "$@"
   '';
 in
-{
+lib.mkIf (osConfig.myFleet.has "brain" || osConfig.myFleet.has "seat") {
   # Replaces the bare `pi` that home/home.nix used to pull from the llm-agents
   # buildEnv (that entry is dropped there so this is the only `pi` on PATH).
   home.packages = [ piWrapped ];

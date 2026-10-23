@@ -1,7 +1,7 @@
 { ... }:
 let
   preferences = [
-    "--hostname=strix"
+    "--hostname=strix-coordinator"
     "--accept-routes=false"
     "--accept-dns=false"
     "--ssh=false"

@@ -173,7 +173,7 @@ export function credentialMount(config: RuntimesConfig, runtime: Runtime, harnes
  * no auth; the apiKey is a placeholder. The strix serves it since the worker's
  * retirement (dotfiles, 2026-10-08; carried as a local patch until 2026-10-10).
  */
-export const HALOGEN_BASE_URL = "http://strix:8731/v1";
+export const HALOGEN_BASE_URL = `${process.env.LOCAL_MODEL_ENDPOINT ?? ""}/v1`;
 export function piHalogenModels(): string {
   return JSON.stringify({
     providers: {

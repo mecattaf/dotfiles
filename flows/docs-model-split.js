@@ -28,7 +28,7 @@ export const meta = {
     [
       "Documentation wave in this worktree, three moves. (1) Refresh",
       "docs/local-ai/model-roster.md (and local-ai/README.md where affected) to",
-      "the declared reality: Gufo on Strix at http://strix:8731 (model id",
+      "the declared reality: Gufo on Strix at http://strix-coordinator:8731 (model id",
       "qwen3.8-flash-next, served by modules/gufo.nix); the catalogue is in",
       "lib/local-models.nix and lib/gufo-models.json; wanted sets are",
       "services.local-models.artifacts and bytes move only through",

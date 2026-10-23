@@ -27,10 +27,10 @@ cat > "$registry" <<'JSON'
   "accepted_through": "2026-07-01",
   "inference": {
     "provider": "halogen",
-    "url": "http://strix:8731",
+    "url": "http://strix-coordinator:8731",
     "model": "qwen3.8-flash-next",
-    "execution_host": "strix",
-    "compute_host": "strix",
+    "execution_host": "strix-coordinator",
+    "compute_host": "strix-coordinator",
     "tally_pool": "strix-gpu"
   },
   "limits": {
@@ -46,8 +46,8 @@ cat > "$registry" <<'JSON'
   },
   "hardware_context": {
     "nodes": [
-      {"name":"strix","hardware":"128 GiB test host","policy":"NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)","roles":["Tally strix"]},
-      {"name":"worker","hardware":"128 GiB test twin","policy":"wired LAN only, another room","roles":["Halogen Flash server"]}
+      {"name":"strix-coordinator","hardware":"128 GiB test host","policy":"NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)","roles":["Tally strix"]},
+      {"name":"strix-worker","hardware":"128 GiB test twin","policy":"wired LAN only, another room","roles":["Halogen Flash server"]}
     ],
     "runtime_policy": "test runtime policy: every LLM call goes to the worker",
     "change_policy": "test change policy: propose only"
@@ -144,8 +144,16 @@ if "$LOCAL_AI_PURE_STAGE" prepare "$registry" "$unadvertised" "$work/unadvertise
 fi
 
 "$LOCAL_AI_PURE_STAGE" prepare "$registry" "$capture" "$prepared"
+
+# A null policy URL follows the Nix-supplied endpoint without writing that
+# resolved address back into the source-pin proposal.
+jq '.inference.url = null' "$registry" > "$work/env-sources.json"
+LOCAL_MODEL_ENDPOINT=http://endpoint-fixture:9876 "$LOCAL_AI_PURE_STAGE" prepare \
+  "$work/env-sources.json" "$capture" "$work/env-prepared"
+jq -e '.endpoint == "http://endpoint-fixture:9876"' "$work/env-prepared/model.json" >/dev/null
+jq -e '.inference.url == null' "$work/env-prepared/next-sources.json" >/dev/null
 jq -e '.provider == "halogen" and .model_id == "qwen3.8-flash-next"
-  and .endpoint == "http://strix:8731" and .compute_host == "strix"' "$prepared/model.json" >/dev/null
+  and .endpoint == "http://strix-coordinator:8731" and .compute_host == "strix-coordinator"' "$prepared/model.json" >/dev/null
 jq -e '.data[0].id == "qwen3.8-flash-next"' "$prepared/inference-models.json" >/dev/null
 jq -e '[.[].repository] == ["example/best-gguf", "example/new-model", "example/served-bundle"]' \
   "$prepared/hf-requests.json" >/dev/null
@@ -153,13 +161,13 @@ jq -e '.sources[0].baseline == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
   "$prepared/next-sources.json" >/dev/null
 grep -q 'Add candidate model' "$prepared/evidence.md"
 grep -Fq -- '- test mono-model policy' "$prepared/context.md"
-grep -Fq -- 'Served model: `qwen3.8-flash-next` through provider `halogen` at `http://strix:8731` on `strix`' \
+grep -Fq -- 'Served model: `qwen3.8-flash-next` through provider `halogen` at `http://strix-coordinator:8731` on `strix-coordinator`' \
   "$prepared/context.md"
 grep -Fq -- 'Kept small Library artifacts: `best-q8`' "$prepared/context.md"
 grep -q 'best-Q8_0.gguf \[Q8_0\]' "$prepared/context.md"
 grep -q 'served.hgn \[native\]' "$prepared/context.md"
 grep -Fq -- 'NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)' "$prepared/context.md"
-grep -Fq -- '| `worker` | 128 GiB test twin | wired LAN only, another room | Halogen Flash server |' \
+grep -Fq -- '| `strix-worker` | 128 GiB test twin | wired LAN only, another room | Halogen Flash server |' \
   "$prepared/context.md"
 grep -Fq -- 'Runtime policy: test runtime policy' "$prepared/context.md"
 
@@ -246,7 +254,7 @@ judge_state="$work/judge-state"
 judge_output="$work/judge/commentary.md"
 mkdir -p "$agent_dir"
 cat > "$agent_dir/models.json" <<'JSON'
-{"providers":{"halogen":{"baseUrl":"http://strix:8731/v1","models":[{"id":"qwen3.8-flash-next"}]}}}
+{"providers":{"halogen":{"baseUrl":"http://strix-coordinator:8731/v1","models":[{"id":"qwen3.8-flash-next"}]}}}
 JSON
 # The shebang names the bash running this test: inside the build sandbox
 # there is no /usr/bin/env to resolve one.

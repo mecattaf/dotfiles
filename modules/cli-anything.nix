@@ -1,4 +1,9 @@
-{ pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   cliAnything = pkgs.cli-anything-hub;
@@ -28,10 +33,12 @@ in
   # Upstream ships separate integrations for the three fleet agents. Link each
   # immutable store tree into its native discovery path, keeping agent-owned
   # settings and credentials writable alongside it.
-  home-manager.users.tom.home.file = {
-    ".codex/skills/cli-anything".source = "${resources}/codex-skill";
-    ".codex/skills/cli-hub-meta-skill".source = "${resources}/cli-hub-meta-skill";
-    ".claude/plugins/cli-anything".source = "${resources}/claude-plugin";
-    ".pi/agent/extensions/cli-anything".source = "${resources}/pi-extension";
-  };
+  home-manager.users.tom.home.file =
+    lib.mkIf (config.myFleet.has "brain" || config.myFleet.has "seat")
+      {
+        ".codex/skills/cli-anything".source = "${resources}/codex-skill";
+        ".codex/skills/cli-hub-meta-skill".source = "${resources}/cli-hub-meta-skill";
+        ".claude/plugins/cli-anything".source = "${resources}/claude-plugin";
+        ".pi/agent/extensions/cli-anything".source = "${resources}/pi-extension";
+      };
 }

@@ -883,6 +883,7 @@ in
       ++ cfg.puller.extraPath
       ++ userProfilePath;
       environment = {
+        LOCAL_MODEL_ENDPOINT = (import ../lib/local-model.nix).endpoint;
         CLAUDE_CONFIG_DIR = cfg.puller.claudeConfigDir;
         TALLY_SEAT = cfg.puller.claudeSeat;
       };

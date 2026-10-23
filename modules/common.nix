@@ -8,6 +8,7 @@
 # anything a host or nixos-hardware module may override.
 {
   imports = [
+    ./fleet-hosts.nix
     ./fleet-role.nix
     ./browser-trust.nix
     ./headless.nix # opt-in appliance profile without home-manager or desktop
@@ -49,6 +50,11 @@
       "^/home/tom/\\.cache/tally-wf/[^ /]+/(debug|release)/deps/tally-[0-9a-f]+ --exact cli::campaign::tests::release_execute_crash_child --nocapture --test-threads=1$"
     ];
   };
+
+  # Raw helpers, system/user services and SSH login shells share one endpoint.
+  environment.variables.LOCAL_MODEL_ENDPOINT = (import ../lib/local-model.nix).endpoint;
+  environment.etc."local-model.json".text = builtins.toJSON (import ../lib/local-model.nix);
+  systemd.globalEnvironment.LOCAL_MODEL_ENDPOINT = (import ../lib/local-model.nix).endpoint;
 
   # --- identity / base ---
   networking.networkmanager.enable = true;
@@ -141,26 +147,6 @@
       "fleet:igImm/3XfdWs2g7L0j94HKcCh9ndv1WtJ5fVK6Svwz4="
     ];
   };
-
-  # The NAS by name, fleet-wide: the substituter URL above and every service
-  # that dials `nas` must resolve it identically on all hosts — the LAN
-  # resolver doesn't serve bare hostnames and mDNS isn't universal, so a
-  # static pin is the boring, correct answer (moved here from
-  # hosts/strix/uplink-nas.nix at the 2026-08-21 attic move).
-  networking.hosts."10.42.0.1" = [ "nas" ];
-
-  # The `worker` -> 10.42.0.5 pin that lived here from 2026-08-21 (#229) MOVED
-  # to hosts/nas/network.nix on 2026-08-31 (#277), and the twins answer the
-  # same name from modules/fleet-hosts.nix (#273). Every host agrees on
-  # 10.42.0.5, but the pin stays host-scoped on purpose: with nsswitch running
-  # `resolve` ahead of `files`,
-  # two /etc/hosts entries for one name are ordered by systemd-resolved, not by
-  # the file, and a fleet-wide copy here would double the twins' entry and the
-  # NAS's. One answer per name per host, host-scoped.
-  # Do not move it back: nothing on the twins dials the worker by name over the
-  # LAN (the deploy node, home/ssh.nix and the journal ACL all name addresses),
-  # and the flake's fleet-connectivity check asserts BOTH halves — presence on
-  # the NAS and absence on each twin.
 
   # #106 proposed also setting `nix.registry.nixpkgs.flake` and `nix.nixPath`
   # here. Deliberately NOT done: nixpkgs' own misc/nixpkgs-flake.nix already

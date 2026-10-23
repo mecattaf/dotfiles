@@ -16,6 +16,7 @@ require_sha1() {
 
 prepare() {
   local registry="$1"
+  local source_registry="$registry"
   local capture="$2"
   local out="$3"
   local manifest="$capture/manifest.json"
@@ -23,6 +24,10 @@ prepare() {
   local models="$capture/models.json"
 
   mkdir -p "$out"
+  # NixOS supplies the endpoint; explicit fixture/custom registry URLs still win.
+  jq --arg endpoint "${LOCAL_MODEL_ENDPOINT:-}" '.inference.url //= $endpoint' \
+    "$registry" > "$out/resolved-registry.json"
+  registry="$out/resolved-registry.json"
   jq -e '.schema_version == 1 and (.sources | length > 0)' "$manifest" >/dev/null
   jq -e 'all(.sources[];
     (.baseline | test("^[0-9a-f]{40}$"))
@@ -39,7 +44,7 @@ prepare() {
     and (.model_selection_policy.summary | type == "string" and length > 0)
     and (.model_selection_policy.kept_small_artifacts | type == "array")
     and (.hardware_context.nodes | type == "array")
-    and ([.hardware_context.nodes[].name] | index("strix") != null)
+    and ([.hardware_context.nodes[].name] | index("strix-coordinator") != null)
   ' "$registry" >/dev/null
   if ! jq -e --slurpfile catalog "$catalog" '
     .model_selection_policy.kept_small_artifacts - ($catalog[0].artifacts | keys) | length == 0
@@ -63,7 +68,7 @@ prepare() {
   fi
   jq -n --arg provider "$(jq -r '.inference.provider' "$registry")" \
     --arg endpoint "$(jq -r '.inference.url' "$registry")" \
-    --arg compute_host "$(jq -r '.inference.compute_host // "strix"' "$registry")" \
+    --arg compute_host "$(jq -r '.inference.compute_host // "strix-coordinator"' "$registry")" \
     --arg model "$model_id" \
     '{provider: $provider, endpoint: $endpoint, compute_host: $compute_host, model_id: $model}' \
     > "$out/model.json"
@@ -109,7 +114,7 @@ prepare() {
     | .accepted_through = $manifest[0].cutoff
     | .sources |= map(
         if $heads[.slug] != null then .baseline = $heads[.slug] else . end)
-  ' "$registry" > "$out/next-sources.json"
+  ' "$source_registry" > "$out/next-sources.json"
 
   local relevant_count needs_split_count evidence_source_count changed_count excerpt_limit total_limit per_source
   local inventory_source_count inventory_total_limit per_inventory_source
@@ -229,7 +234,7 @@ prepare() {
       "$model_id" \
       "$(jq -r '.inference.provider' "$registry")" \
       "$(jq -r '.inference.url' "$registry")" \
-      "$(jq -r '.inference.compute_host // "strix"' "$registry")"
+      "$(jq -r '.inference.compute_host // "strix-coordinator"' "$registry")"
     printf -- '- Kept small Library artifacts: %s.\n' \
       "$(jq -r '.model_selection_policy.kept_small_artifacts | if length == 0 then "none" else "`" + join("`, `") + "`" end' "$registry")"
     printf -- '- Runtime policy: %s\n' "$(jq -r '.hardware_context.runtime_policy' "$registry")"

@@ -63,7 +63,7 @@ export interface MicrovmOptions {
   readonly memMiB?: number;
   /**
    * /etc/hosts text whose non-loopback entries the guest gets, so it resolves fleet short
-   * names (pi's Halogen base URL is http://strix:8731) the way the host does. The qemu
+   * names (pi's Halogen base URL is http://strix-coordinator:8731) the way the host does. The qemu
    * user-net DNS forwards to the host resolver without the host's hosts file (G1 follow-up,
    * MEASURED 2026-09-23: "worker" did not resolve in the guest). Default: the host's /etc/hosts.
    */

@@ -6,7 +6,7 @@
 # `modelId`. The alternates answer on the same port only while an operator has
 # switched them in, never alongside the default.
 {
-  endpoint = "http://strix:8731";
+  endpoint = "http://strix-coordinator:8731";
   modelId = "qwen3.8-flash-next";
   alternates = [
     "qwen3.8-27b"

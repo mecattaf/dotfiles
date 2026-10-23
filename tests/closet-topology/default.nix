@@ -4,18 +4,20 @@
   self,
 }:
 let
-  s = self.nixosConfigurations.strix.config;
+  s = self.nixosConfigurations.strix-coordinator.config;
+  w = self.nixosConfigurations.strix-worker.config;
   n = self.nixosConfigurations.nas.config;
   c = self.nixosConfigurations.client.config;
   registry = import ../../modules/mesh-registry.nix;
   names = [
     "client"
     "nas"
-    "strix"
+    "strix-coordinator"
+    "strix-worker"
   ];
   alias = [
+    "strix-coordinator"
     "strix"
-    "coordinator"
   ];
   settings = builtins.fromJSON (builtins.readFile ../../home/dot_claude/settings.json);
 in
@@ -24,13 +26,12 @@ assert builtins.attrNames self.deploy.nodes == names;
 assert builtins.attrNames registry == names;
 assert
   s.myFleet.roles == [
-    "brain"
     "compute"
   ];
 assert s.networking.hosts."10.42.0.2" == alias;
 assert c.networking.hosts."10.42.0.2" == alias;
 assert builtins.all (name: builtins.elem name n.networking.hosts."10.42.0.2") alias;
-assert builtins.elem "9c:bf:0d:00:f6:73,strix,10.42.0.2,infinite"
+assert builtins.elem "9c:bf:0d:00:f6:73,strix-coordinator,10.42.0.2,infinite"
   n.services.dnsmasq.settings.dhcp-host;
 assert builtins.attrNames s.networking.networkmanager.ensureProfiles.profiles == [ "lan" ];
 assert
@@ -57,8 +58,8 @@ assert
   c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.routing-rule1
   == "priority 2500 to 10.42.0.0/24 table 254";
 assert s.services.gufo.autoStart;
-assert s.services.utilityModel.endpoint == "http://strix:8731";
-assert n.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://strix:3003";
+assert s.services.utilityModel.endpoint == "http://strix-coordinator:8731";
+assert n.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://strix-coordinator:3003";
 assert s.systemd.services.immich-machine-learning.wantedBy == [ ];
 assert s.systemd.services.immich-machine-learning.unitConfig.StopWhenUnneeded;
 assert s.systemd.sockets ? immich-ml-access;
@@ -66,10 +67,10 @@ assert s.services.immich.package.version == n.services.immich.package.version;
 assert s.hardware.printers.ensureDefaultPrinter == "Brother_HL_L2445DW";
 assert
   (builtins.head s.hardware.printers.ensurePrinters).deviceUri == "ipp://10.42.0.4:631/ipp/print";
-assert s.home-manager.users.tom.systemd.user.paths ? paper-daemon;
-assert s.home-manager.users.tom.systemd.user.services.herdr.Unit.X-SwitchMethod == "keep-old";
+assert !(s.home-manager.users.tom.systemd.user.paths ? paper-daemon);
+assert !(s.home-manager.users.tom.systemd.user.services ? herdr);
 assert !(settings ? model) && !(settings ? effortLevel) && !(settings ? modelSettings);
-assert builtins.all (host: !lib.hasInfix "10.42.0.5" host.services.nfs.server.exports) [ n ];
+assert builtins.all (host: lib.hasInfix "10.42.0.5" host.services.nfs.server.exports) [ n ];
 assert !n.services.k3s.enable && !s.services.k3s.enable;
 assert !n.services.dockerRegistry.enable;
 assert builtins.elem "user@1000.service" s.systemd.services.keyring-unlock-boot.wantedBy;
@@ -77,4 +78,61 @@ assert builtins.elem "user@1001.service" c.systemd.services.keyring-unlock-boot.
 assert builtins.elem "user@1001.service" c.systemd.services.keyring-unlock-boot.partOf;
 assert builtins.elem "sys-subsystem-net-devices-wlo1.device"
   c.systemd.services.wpa_supplicant.after;
+assert builtins.elem "9c:bf:0d:01:cc:65,strix-worker,10.42.0.5,infinite"
+  n.services.dnsmasq.settings.dhcp-host;
+assert builtins.all (cfg: cfg.networking.hosts."10.42.0.5" == [ "strix-worker" ]) [
+  s
+  w
+  n
+  c
+];
+assert w.networking.hosts."127.0.0.2" == [ ];
+assert
+  w.networking.networkmanager.ensureProfiles.profiles.lan.connection.interface-name == "enp191s0";
+assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.address1 == "10.42.0.5/24";
+assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.gateway == "10.42.0.3";
+assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.dns == "10.42.0.1";
+assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv6.method == "disabled";
+assert !w.services.tailscale.enable && w.services.tailscale.extraUpFlags == [ ];
+assert !w.services.k3s.enable && !w.mySecrets.enable && w.age.secrets == { };
+assert !w.myDisplay.enable && !w.services.greetd.enable;
+assert !(w.systemd.sockets ? immich-ml-access);
+assert w.services.gufo.enable && w.services.qwen-tts.enable;
+assert w.boot.kernelPackages.kernel.version == s.boot.kernelPackages.kernel.version;
+assert builtins.attrNames w.disko.devices.disk == [ "w1t" ];
+assert w.disko.devices.disk.w1t.device == "/dev/disk/by-id/nvme-WD_BLACK_SN7100_1TB_26051Y809195";
+assert
+  w.disko.devices.disk.w1t.content.partitions.ESP.uuid
+  != s.disko.devices.disk.main.content.partitions.ESP.uuid;
+assert
+  w.disko.devices.disk.w1t.content.partitions.root.uuid
+  != s.disko.devices.disk.main.content.partitions.root.uuid;
+assert w.fileSystems."/".fsType == "ext4" && w.fileSystems."/boot".fsType == "vfat";
+assert builtins.elem "umask=0077" w.fileSystems."/boot".options;
+assert builtins.all
+  (
+    cfg:
+    cfg.fileSystems."/mnt/library".device == "nas:/models"
+    && builtins.elem "ro" cfg.fileSystems."/mnt/library".options
+  )
+  [
+    s
+    w
+  ];
+assert w.fileSystems."/mnt/nas/documents".device == "nas:/documents";
+assert builtins.elem "ro" w.fileSystems."/mnt/nas/documents".options;
+assert lib.hasInfix "10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)"
+  n.services.nfs.server.exports;
+assert lib.hasInfix "10.42.0.5(ro,sync,fsid=3,no_subtree_check,root_squash)"
+  n.services.nfs.server.exports;
+assert lib.hasInfix "ip saddr 10.42.0.5 tcp dport 2049 accept"
+  n.networking.firewall.extraInputRules;
+assert lib.hasInfix "ip saddr 10.42.0.5 tcp dport 19532 accept"
+  n.networking.firewall.extraInputRules;
+assert builtins.elem "10.42.0.5" n.services.adguardhome.settings.dns.ratelimit_whitelist;
+assert builtins.all (
+  rule:
+  !(builtins.elem registry.strix-coordinator.hostKey rule.publicKeys)
+  && !(builtins.elem "" rule.publicKeys)
+) (builtins.attrValues (import ../../secrets.nix));
 pkgs.runCommand "closet-topology" { } ''touch "$out"''

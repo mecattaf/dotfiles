@@ -30,7 +30,8 @@ let
   host = config.networking.hostName;
 
   profileNames = {
-    strix = "strix-server";
+    strix-coordinator = "strix-compute";
+    strix-worker = "strix-compute";
 
     nas = "appliance";
     client = "thin-client";
@@ -39,7 +40,8 @@ let
   # The fan-out order is the reading order of the view: the desk first, then
   # the inference box, the appliance and the laptop, which may be asleep.
   order = [
-    "strix"
+    "strix-coordinator"
+    "strix-worker"
 
     "nas"
     "client"

@@ -7,8 +7,8 @@ model ID ``utility``.  Nix supplies the endpoint of the fleet's local model
 server and the concrete served model ID (modules/utility-model.nix, from
 lib/local-model.nix).
 
-Installed on the strix only, the box that serves the local model.  This file
-forwards one request there and rewrites ``utility`` to the concrete served ID
+Installed by the fleet profile, with strix-coordinator as the upstream. This
+file forwards one request there and rewrites ``utility`` to the concrete served ID
 on the way out and back; the server answers 404 to any other ID.  No lock and
 no child process: the server is resident for the life of its unit, so the only
 thing left here is the bounded request itself.  It can still take minutes when
@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.parse
@@ -33,7 +34,7 @@ from typing import BinaryIO
 STABLE_MODEL_ID = "utility"
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
-DEFAULT_ENDPOINT = "http://strix:8731"
+DEFAULT_ENDPOINT = os.environ.get("LOCAL_MODEL_ENDPOINT", "")
 CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 # A request that arrives during the server's cold load can wait most of that
 # load out before a single token is generated; leave room for the generation.
