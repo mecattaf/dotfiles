@@ -52,13 +52,15 @@ let
   havePasswordHash = builtins.pathExists ciphertext;
 in
 {
-  # ...and never the nas. The appliance turned mySecrets.enable ON 2026-08-28 for
-  # huggingface-token alone; tom-password-hash is a `delivered`-tier ciphertext
-  # that excludes it by construction, so without this guard the flip would have
-  # pointed `users.users.tom.hashedPasswordFile` at a secret the box cannot
-  # decrypt — locking the account out of the appliance, not merely failing loudly.
+  # Brain and seat only, matching `delivered` in secrets.nix. Compute uses
+  # authorized SSH public keys and keeps no shared login credential.
   config =
-    lib.mkIf (config.mySecrets.enable && havePasswordHash && config.networking.hostName != "nas")
+    lib.mkIf
+      (
+        config.mySecrets.enable
+        && havePasswordHash
+        && (config.myFleet.has "brain" || config.myFleet.has "seat")
+      )
       {
         age.secrets.tom-password-hash = {
           file = ciphertext;

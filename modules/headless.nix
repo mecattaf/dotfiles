@@ -17,7 +17,7 @@ in
     # ./display.nix declares, and this force agrees with it rather than fights it.
     services.greetd.enable = lib.mkForce false;
     services.getty.autologinUser = "tom";
-    users.users.tom.linger = lib.mkForce false;
+    users.users.tom.linger = lib.mkForce (config.myFleet.has "brain");
 
     security.rtkit.enable = lib.mkForce false;
     services.pipewire.enable = lib.mkForce false;
@@ -39,7 +39,9 @@ in
     # Never open it indiscriminately on every future interface.
     services.openssh.openFirewall = lib.mkForce false;
 
-    zramSwap.memoryMax = lib.mkForce (4 * 1024 * 1024 * 1024);
+    zramSwap.memoryMax = lib.mkForce (
+      (if config.myFleet.has "brain" then 10 else 4) * 1024 * 1024 * 1024
+    );
 
     # Appliance tooling is ADDED, never mkForce'd: forcing this option also
     # discards the packages the NixOS module system itself contributes —

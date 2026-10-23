@@ -28,7 +28,11 @@ assert
     "brain"
     "compute"
   ];
-assert configs.nas.config.myFleet.roles == [ "router" ];
+assert
+  configs.nas.config.myFleet.roles == [
+    "router"
+    "brain"
+  ];
 assert configs.client.config.myFleet.roles == [ "seat" ];
 # Placement survives the upcoming rename, including both system and HM units.
 assert agents renamed ? herdr;
