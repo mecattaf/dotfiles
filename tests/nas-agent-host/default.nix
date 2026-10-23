@@ -12,6 +12,30 @@ let
     (self.nixosConfigurations.strix.extendModules {
       modules = [ { myFleet.roles = lib.mkForce [ "compute" ]; } ];
     }).config;
+  # Before the host-rename stack lands, project the existing Strix module
+  # into each target's compute role. Once present, assert the real profiles.
+  nonBrainConfigs =
+    map
+      (
+        name:
+        if builtins.hasAttr name self.nixosConfigurations then
+          self.nixosConfigurations.${name}.config
+        else
+          (self.nixosConfigurations.strix.extendModules {
+            modules = [
+              {
+                networking.hostName = lib.mkForce name;
+                myFleet.roles = lib.mkForce [ "compute" ];
+              }
+            ];
+          }).config
+      )
+      [
+        "strix-coordinator"
+        "strix-worker"
+        "client"
+      ];
+  dshPackages = home: builtins.filter (p: lib.getName p == "dsh") home.home.packages;
   # Assert the refusal with an explicitly unfilled fixture so this check
   # still passes after Tom supplies the production source pin and hashes.
   unfilled =
@@ -62,6 +86,20 @@ assert h.home.enableNixpkgsReleaseCheck;
 assert h.home.version.release == "26.05";
 assert !h.rawDotfiles.inStore;
 assert h.rawDotfiles.repoDir == "/home/tom/mecattaf/dotfiles";
+# dsh, including all Nix-pinned plugins, follows the NAS brain and its key.
+assert h.programs.dsh.enable;
+assert map (p: p.qwenKeyFile or null) (dshPackages h) == [ c.age.secrets.qwencloud-token.path ];
+assert h.home.file ? ".agents/AGENTS.md";
+assert builtins.all (
+  cfg:
+  let
+    home = cfg.home-manager.users.tom;
+  in
+  !home.programs.dsh.enable
+  && dshPackages home == [ ]
+  && !(home.home.file ? ".agents/AGENTS.md")
+  && !(cfg.age.secrets ? qwencloud-token)
+) nonBrainConfigs;
 assert !h.gtk.enable && !h.programs.obs-studio.enable;
 assert !(h.xdg.configFile ? "sway-local.conf");
 assert !(h.systemd.user.services ? vicinae);

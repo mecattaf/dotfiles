@@ -1,0 +1,20 @@
+--- a/packages/dsh/src/index.ts
++++ b/packages/dsh/src/index.ts
+@@ -55,7 +55,7 @@
+  * through `ctx.get('skills')` instead, and its absence is a warning rather than a
+  * failure.
+  */
+-export const inject = ['tools', 'credentials']
++export const inject = ['tools']
+ 
+ /**
+  * The configuration schema, as Cordis consumes it.
+@@ -170,7 +170,7 @@
+ }
+ 
+ const readCredentials = (ctx: Context): CredentialsLike | undefined => {
+-  const service = (ctx as unknown as { credentials?: CredentialsLike }).credentials
++  const service = ctx.get('credentials') as CredentialsLike | undefined
+   return typeof service?.resolve === 'function' ? service : undefined
+ }
+ 

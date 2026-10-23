@@ -1,0 +1,20 @@
+{
+  "name": "@mecattaf/herdr-guard",
+  "version": "1.0.0",
+  "description": "Dotfiles gate in front of the dsh-herdr tools: id checks, own-pane writes, HERDR_ENV, ask.",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.1-0 <0.3.0-0"
+  }
+}
