@@ -22,7 +22,9 @@
       # The static LAN address (hosts/strix-coordinator/uplink-nas.nix).
       "10.42.0.2"
     ];
-    hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFPCZFlnHQSNH3D0R1/qs9A/W498f8xTNUNBtLWZgU2A root@strix";
+    # Fresh compute identity: historical operator ciphertexts must not be
+    # decryptable by the key installed on the rebuilt coordinator.
+    hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHW/ewZ8oVtSfS9OGVd9rBs3E/ROgUEebxkRH3rYfGG2 strix-coordinator-cutover-20261023";
     userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";
   };
 

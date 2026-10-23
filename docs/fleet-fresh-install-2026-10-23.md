@@ -16,7 +16,7 @@ flash, service activation, reboot or shutdown was performed by this change.
 
 1. Independently back up and verify all retained data on LaCie, including the
    entire old coordinator home and occupied secondary 1 TB. Preserve service
-   databases, credentials, Git refs/worktrees and same-machine identities.
+   databases, credentials, Git refs/worktrees and old identities for rollback.
    `nas-home-migrate` is a curated migration helper, **not** this full backup.
 2. Prove native NAS-local harness/Herdr residence from Zenbook using the
    existing NAS home/256 GB fast tier. Capture final source deltas and native
@@ -43,8 +43,8 @@ flash, service activation, reboot or shutdown was performed by this change.
    or temporarily boot its old OS solely as SSH transport for a separately
    pinned/reviewed nixos-anywhere kexec installation from NAS. No operator
    agent sessions belong on that temporary compute OS.
-7. Fresh-install coordinator's anchor from NAS/installer, preserving only
-   its same-machine host/Tailscale identities. Reboot into the fresh 7.3
+7. Fresh-install coordinator's anchor from NAS/installer, installing its fresh host key and preserving only
+   its own Tailscale identity. Reboot into the fresh 7.3
    system, finish BIOS/tailnet enrollment as required, then run fleet/model
    acceptance. Keep USB recovery for failed SSH/kexec/firmware paths.
 
@@ -121,10 +121,14 @@ target_root=/mnt/strix-worker-install  # worker prep; /mnt on coordinator USB
 # target_system is the recorded final reviewed host closure, not the live OS.
 ```
 
-After formatting/mounting, copy only the intended same-machine identity and
-node state into the target. The fresh worker key is generated independently.
-No operator/cloud credentials, old user home, old worker identity, caches or
-old generations are copied onto either compute host. At the installer:
+After formatting/mounting, install each host's separately generated fresh
+SSH key and only its own Tailscale node state. Keep old SSH keys in the secured
+NAS/LaCie recovery archive, never on fresh compute. No operator harness/cloud
+credentials, old general user home, old worker identity, caches or generations
+are copied onto compute. Tom's latest reversal explicitly retains the existing
+coordinator Chrome/browser.internal setup as a narrow exception; preserve and
+restore its required browser profile/keyring state separately from the fresh
+compute identity. This does not introduce a NAS browser architecture. At the installer:
 
 ```sh
 sudo install -d -m 0700 "$target_root/etc/ssh"
@@ -220,9 +224,11 @@ nix run github:nix-community/nixos-anywhere/92b94751fc010eab62d07de40972cffa6937
   --target-host root@10.42.0.2
 ```
 
-`coordinator_identity_tree` contains only the same machine's preserved host
-key and its own Tailscale node state, with private modes. Never include the
-old home/operator credentials or another machine's identity. Inspect resulting
+`coordinator_identity_tree` contains only that machine's new host
+key and its own preserved Tailscale node state, with private modes. Never include the
+old general home/operator harness credentials or another machine's identity.
+Restore coordinator browser profile/keyring separately under Tom's explicit
+keep-Chrome exception. Inspect resulting
 boot/hostname/key/target serial before the deliberate final reboot. A failed
 SSH/kexec must fall back to the verified USB installer; do not infer that a
 failed connection means no mutation happened.
