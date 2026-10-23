@@ -39,7 +39,7 @@ import {
   CC_WEEKLY_RESET,
   cc3Seat,
   claudeSeat,
-  halogenSeat,
+  gufoSeat,
   plus,
   qwenSeat,
   snapshot,
@@ -474,12 +474,12 @@ describe("the admission predicate", () => {
     expect(admitSeat("cc", claudeSeat({ grade: "STALE" }), opus, T0)).toMatchObject({ reason: "stale" });
   });
 
-  it("a Halogen row admits on a free slot and refuses when every slot is held", () => {
-    expect(admitSeat("gpu-worker", halogenSeat(0), { model: null, min_headroom_pct: 0 }, T0)).toMatchObject({
+  it("a Gufo row admits on a free slot and refuses when every slot is held", () => {
+    expect(admitSeat("gpu-worker", gufoSeat(0), { model: null, min_headroom_pct: 0 }, T0)).toMatchObject({
       admit: true,
       until: plus(CC_OBSERVED, 1200)
     });
-    expect(admitSeat("gpu-worker", halogenSeat(1), { model: null, min_headroom_pct: 0 }, T0)).toMatchObject({
+    expect(admitSeat("gpu-worker", gufoSeat(1), { model: null, min_headroom_pct: 0 }, T0)).toMatchObject({
       reason: "slots-full"
     });
   });
@@ -526,7 +526,7 @@ describe("ingestion", () => {
   it("folds each seat of a snapshot on its own", () => {
     const held = ingestSnapshot(empty, snapshot([claudeSeat()]), T0).next;
     const mixed = snapshot(
-      [claudeSeat({ observed_at: plus(CC_OBSERVED, -600) }), halogenSeat(0)],
+      [claudeSeat({ observed_at: plus(CC_OBSERVED, -600) }), gufoSeat(0)],
       plus(T0, 5)
     );
     expect(ingestSnapshot(held, mixed, T0).report).toEqual({

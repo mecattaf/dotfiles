@@ -29,7 +29,7 @@ export const USAGE_PATH = "/workspace/.ax/usage.json";
 
 /**
  * The model ids a Task may run: each harness's pinned full id (runners
- * harness.ts CLAUDE_MODEL, HALOGEN_MODEL). Never an alias, never the record's
+ * harness.ts CLAUDE_MODEL, GUFO_MODEL). Never an alias, never the record's
  * own model (successor review r3: the record-to-ax watcher posted Tasks
  * running claude-fable-5-1, claude-opus-5[1m] and the alias sonnet).
  */
@@ -38,7 +38,7 @@ export const PINNED_TASK_MODELS: ReadonlySet<string> = new Set(
 );
 
 export interface TaskContext {
-  /** The seat id the Task is for (`cc`, `halogen`). */
+  /** The seat id the Task is for (`cc`, `gufo`). */
   readonly seat: string;
   /**
    * The model the harness that runs this Task is pinned to. Given, it is the

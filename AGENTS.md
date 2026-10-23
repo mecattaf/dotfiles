@@ -105,15 +105,20 @@ Gufo answers 404 to a request naming any other model id, so callers send the
 exact served id. It has no `/v1/embeddings` (501), no reranking and no
 diarization.
 
-**Until the cutover, Halogen still serves.** Halogen Flash
-(`modules/halogen.nix`: Qwen3.8-Flash-Next in Peonist's `.hgn` format, model id
-`halogen-qwen3.8-flash-next`, alternate `halogen-switch qwen38-27b`) stays the
-live endpoint at `strix:8731` until `services.gufo.enable` is switched on with
-`services.halogen.autoStart = false`. The Gufo and Halogen units conflict, so
-they never hold the GPU together. Do no Halogen-specific work (Tom,
-2026-10-13); after the cutover the `.hgn` rows and `modules/halogen.nix` are
-retired. Immich ML also runs on Strix; its socket starts it on demand, with a
-15-minute idle shutdown. There is no worker host.
+**Halogen is fully retired (Tom, 2026-10-23).** Tom: "just read in previous output of yours also: halogen is OUT fullly as inference provider (moving to gufo-rdma) and as models (we use the gufo-specific ones)"
+Gufo owns port 8731 with one execution session, 102400 tokens of context,
+thinking off and a fixed 1 GiB prefix cache. The provider, runtime, seat and
+link labels are `gufo`; no retired-provider alias is supported. Callers use
+Gufo's exact wire model IDs and the artifacts in `lib/gufo-models.json`.
+The retired model rows are absent from the active catalog and wanted sets.
+Their Strix leases were deleted with Tom's approval on 2026-10-23. Retained
+NAS Library copies under `/mnt/nas/models/weights/halogen-*` are historical
+bytes awaiting an explicit Library retirement, not active model definitions.
+`docs/gufo-cutover.md` records the coordinated Substrate/caller changes;
+mutable `models.toml` remains runtime data, never rewritten by activation.
+The RDMA engine/fleet-role rollout is separate from this declaration.
+Immich ML also runs on Strix; its socket starts it on demand with a 15-minute
+idle shutdown.
 
 **The NPU path is decommissioned — permanently, 2026-08-29.** FastFlowLM (`flm`)
 is no longer installed on any host, and the XDNA2 NPU is not an inference target
@@ -123,8 +128,7 @@ pause. Do not add a `flm` invocation, an `flm serve` unit, or an NPU backend row
 back.
 
 **The `utility` slot forwards to the local text model.** The stable ID
-`utility` resolves to Strix's resident text model (Halogen Flash until the
-Gufo cutover, then Gufo's Flash-Next), and the request-scoped `utility-model`
+`utility` resolves to Strix's resident Gufo Flash-Next model, and the request-scoped `utility-model`
 wrapper — installed on the strix only — forwards a single
 chat-completions request to it over the wired LAN. `/drain` and `/print` dial
 that seam under the same name and with the same CLI flags as before. What must
@@ -149,7 +153,7 @@ Word accuracy is insufficient: inspect repeated onset artifacts and listen to
 quality feedback before treating a broader reference as an improvement.
 TTS inference runs on the strix GPU; the ASUS Zenbook (`client`) only
 plays the returned audio. Speech weights follow NAS Library/explicit borrowing.
-`modules/qwen-tts.nix` owns on-demand synthesis, separate from Halogen; it idles
+`modules/qwen-tts.nix` owns on-demand synthesis, separate from the Gufo text server; it idles
 out and has no boot target. Deterministic text chunks are stitched into one WAV.
 The human is **Tom**; use his name naturally in assistant-written addresses,
 without rewriting quoted documents or verbatim transcripts.
@@ -223,7 +227,7 @@ annotation menu, declared by `modules/handwriting-annotation.nix`: NAS DNS,
 strix Caddy and a CPU-only service. Preserve `/var/lib/handwriting-annotation`
 and its append-only writer/model-review history across updates. Model-assisted
 resolutions are not writer labels. Huion sources arrive in `~/Paper/inbox`;
-`~/Paper/intake` is the printing route. Use the existing Halogen Flash for serial
+`~/Paper/intake` is the printing route. Use the resident Gufo Flash-Next model for serial
 OCR with thinking explicitly off. `docs/handwriting-intake.md` records the
 recipe, correction-evidence rules and real-Huion commissioning boundary. Do not
 reseed live review state or treat stable legacy capture files as proof of device

@@ -130,7 +130,7 @@ export type CapacityWindow = typeof CapacityWindow.Type;
 /**
  * The provider a seat belongs to, as data: a lower-case slug such as the
  * pusher's config names it. The floor never enumerates product names (the house
- * fence, tools/check-fences.mjs F1); only `halogen` is read here, because a
+ * fence, tools/check-fences.mjs F1); only `gufo` is read here, because a
  * slot-counted seat projects differently from a windowed one.
  */
 const SeatProvider = Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-z][a-z0-9-]{0,31}$/)));
@@ -151,7 +151,7 @@ export const SeatCapacity = Schema.Struct({
   dispatchable_reason: Schema.NullOr(Schema.String),
   /** A plan with an end date (the Qwen cloud plan); null when none is known. */
   plan: Schema.NullOr(Schema.Struct({ expires_at: Instant })),
-  /** Slot capacity, for a Halogen row only. */
+  /** Slot capacity, for a Gufo row only. */
   slots: Schema.NullOr(
     Schema.Struct({
       capacity: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),

@@ -40,7 +40,7 @@ import { MachineSlots } from "./slots.ts";
 const USAGE =
   "usage: conwip-run <script.js> --dir <dir> --seat <seat> --runtimes <file> [--capacity-floor <url> | --capacity-snapshot <file> | --meters <dir> | --no-capacity] [--model <id>] [--cap N] [--concurrency N] [--max-attempts N] [--capacity-wait-ms N] [--budget N] [--args <json>] [--resume-failures retry|replay]";
 
-/** Seats that spend a real login or the one Halogen slot: never run ungated. */
+/** Seats that spend a real login or the one Gufo slot: never run ungated. */
 export const REAL_SEATS: ReadonlySet<string> = new Set(deployConfig().realSeats);
 
 /** How long a SIGINT/SIGTERM waits for in-flight calls to clean up before the groups are killed. */
@@ -106,7 +106,7 @@ export async function main(argv: readonly string[], signal?: AbortSignal): Promi
     ...(flags.has("--budget") ? { budgetTotal: int("--budget", 0) } : {}),
     ...(flags.has("--args") ? { args: JSON.parse(flags.get("--args")!) } : {}),
     ...(signal ? { signal } : {}),
-    // Slot seats (Halogen) hold a machine-wide slot per call. AX_CONWIP_SLOT_DIR moves the holds (tests).
+    // Slot seats (Gufo) hold a machine-wide slot per call. AX_CONWIP_SLOT_DIR moves the holds (tests).
     machineSlots: new MachineSlots(process.env["AX_CONWIP_SLOT_DIR"] || undefined),
   });
   process.stdout.write(readFileSync(`${run.dir}/result.json`, "utf8"));

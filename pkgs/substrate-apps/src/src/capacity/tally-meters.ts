@@ -17,7 +17,7 @@
  *    `model_scoped` windows (OI-3). Only `limits[]` is read; `usage.spend` is
  *    never touched. `model_windows_complete` is claimed only when the cache is
  *    at least as new as the meter's reading: an older cache may miss a limit.
- *  - slot rows (`gpu-worker.json`) become a halogen seat with `slots`.
+ *  - slot rows (`gpu-worker.json`) become a gufo seat with `slots`.
  *  - `codex.json` is a third party's login: read, never dispatchable.
  */
 import { readFileSync } from "node:fs";
@@ -25,13 +25,13 @@ import { join } from "node:path";
 import { decodeSeatCapacity, type SeatCapacity } from "@substrate/planning";
 import type { CapacitySource, SeatCapacityRead } from "./source.ts";
 
-type Provider = "claude" | "halogen" | "codex";
+type Provider = "claude" | "gufo" | "codex";
 
 /** This scheduler's seat ids onto the feeder's file stems and providers. */
 export const TALLY_SEAT_FILES: Readonly<Record<string, { readonly stem: string; readonly provider: Provider }>> = {
   cc: { stem: "cc", provider: "claude" },
   cc2: { stem: "cc2", provider: "claude" },
-  halogen: { stem: "gpu-worker", provider: "halogen" },
+  gufo: { stem: "gpu-worker", provider: "gufo" },
   codex: { stem: "codex", provider: "codex" },
 };
 
@@ -93,7 +93,7 @@ export function seatFromTallyFiles(
   const grade = str(m["grade"]) ?? str(m["running_grade"]);
   const statedAge = num(m["reading_age_seconds"]) !== null || instant(m["reading_observed_at"]) !== null;
   const measured = grade === "MEASURED" || (grade === "STALE-MEASURED" && statedAge);
-  const observed = provider === "halogen" ? instant(m["observed_at"]) : readingObservedAt(m);
+  const observed = provider === "gufo" ? instant(m["observed_at"]) : readingObservedAt(m);
   if (observed === null) return { ok: false, error: "meter row carries no reading instant" };
 
   const draft: Record<string, unknown> = {
@@ -111,7 +111,7 @@ export function seatFromTallyFiles(
     stale_reason: str(m["stale_reason"]),
   };
 
-  if (provider === "halogen") {
+  if (provider === "gufo") {
     const capacity = num(m["capacity"]);
     const holders = num(m["holders"]);
     draft["slots"] = capacity !== null && holders !== null ? { capacity, holders } : null;

@@ -16,9 +16,9 @@
  *   ceilings = { model_scoped = 90 }
  *
  * A pi entry belongs to one pi PROVIDER (`provider = "openrouter"`; absent
- * means `halogen`): a call on a runtime whose table names that provider
+ * means `gufo`): a call on a runtime whose table names that provider
  * resolves against that provider's entries only, so an OpenRouter runtime
- * can never run a Halogen id or the reverse.
+ * can never run a Gufo id or the reverse.
  *
  * Absent `[[models]]`, DEFAULT_MODEL_ALLOWLIST applies.
  *
@@ -73,7 +73,7 @@ export interface PiModelMeta {
 export interface ModelEntry {
   readonly id: string;
   readonly harness: HarnessName;
-  /** pi only: the provider this id is served by (harness.ts PI_PROVIDERS). Absent: halogen. */
+  /** pi only: the provider this id is served by (harness.ts PI_PROVIDERS). Absent: gufo. */
   readonly provider?: PiProvider;
   readonly aliases?: readonly string[];
   /** The harness default when a call names no allowed model. At most one per harness (per provider for pi). */
@@ -92,7 +92,7 @@ export type ModelAllowlist = readonly ModelEntry[];
  * codex use its own configured default.
  *
  * pi, per provider (2026-09-30, Tom's budget rulings for the overnight run):
- *   - halogen: the worker's Flash model, unchanged.
+ *   - gufo: the resident Gufo Flash-Next model.
  *   - qwen-token-plan: qwen3.8-max, the plan's flagship (weekly credits, not dollars).
  *   - openrouter (paid, soft cap $12 on the seat): ids and prices from the
  *     anonymous GET https://openrouter.ai/api/v1/models on 2026-09-30, USD per
@@ -107,7 +107,7 @@ export type ModelAllowlist = readonly ModelEntry[];
 export const DEFAULT_MODEL_ALLOWLIST: ModelAllowlist = [
   { id: "claude-opus-5-5", harness: "claude", aliases: ["opus"], default: true },
   { id: "claude-fable-5-1", harness: "claude", aliases: ["fable"], ceilings: { model_scoped: 90 } },
-  { id: "halogen-qwen3.8-flash-next", harness: "pi", default: true },
+  { id: "qwen3.8-flash-next", harness: "pi", default: true },
   { id: "qwen3.8-max", harness: "pi", provider: "qwen-token-plan", default: true },
   { id: "deepseek/deepseek-v4-pro", harness: "pi", provider: "openrouter", aliases: ["deepseek"], default: true },
   { id: "minimax/minimax-m3", harness: "pi", provider: "openrouter", aliases: ["minimax"] },
@@ -115,8 +115,8 @@ export const DEFAULT_MODEL_ALLOWLIST: ModelAllowlist = [
   { id: "anthropic/claude-sonnet-5.5", harness: "pi", provider: "openrouter" },
 ];
 
-/** The provider an entry belongs to: its own for pi (default halogen), none for the other harnesses. */
-const providerOf = (e: ModelEntry): PiProvider | undefined => (e.harness === "pi" ? (e.provider ?? "halogen") : undefined);
+/** The provider an entry belongs to: its own for pi (default gufo), none for the other harnesses. */
+const providerOf = (e: ModelEntry): PiProvider | undefined => (e.harness === "pi" ? (e.provider ?? "gufo") : undefined);
 
 export interface ResolvedModel {
   /** The full id that runs; undefined only for a harness with no default (codex's own default). */
@@ -127,7 +127,7 @@ export interface ResolvedModel {
 }
 
 export function resolveModel(list: ModelAllowlist, harness: HarnessName, declared: string | undefined, provider?: PiProvider): ResolvedModel {
-  const want = harness === "pi" ? (provider ?? "halogen") : undefined;
+  const want = harness === "pi" ? (provider ?? "gufo") : undefined;
   const mine = list.filter((e) => e.harness === harness && providerOf(e) === want);
   const hit =
     declared === undefined
@@ -243,7 +243,7 @@ export function catalogFor(config: { readonly models?: ModelAllowlist; readonly 
 /** The entry that `resolveModel` chose, for its metadata (ceilings, pi). */
 export function entryFor(list: ModelAllowlist, harness: HarnessName, id: string | undefined, provider?: PiProvider): ModelEntry | undefined {
   if (id === undefined) return undefined;
-  const want = harness === "pi" ? (provider ?? "halogen") : undefined;
+  const want = harness === "pi" ? (provider ?? "gufo") : undefined;
   return list.find((e) => e.harness === harness && providerOf(e) === want && e.id === id);
 }
 

@@ -25,7 +25,7 @@ import type { SeatAdapter, SpawnFn } from "./seats.ts";
  * exactly "1". Item 26 chose the variable; this item keeps it and adds no
  * second way in.
  */
-export const LIVE_ENV_VAR = "AX_CONWIP_LIVE_HALOGEN";
+export const LIVE_ENV_VAR = "AX_CONWIP_LIVE_GUFO";
 
 export class LiveDisabledError extends Error {}
 
@@ -80,7 +80,7 @@ export interface LiveOutcome {
  *
  * There is deliberately NO `allowSpawnSeats` member on `LiveOutcomeOptions`.
  * The live path cannot express a widened allow list, so
- * `DEFAULT_LIVE_SPAWN_SEATS`, which is `["halogen"]`, always applies and `cc`
+ * `DEFAULT_LIVE_SPAWN_SEATS`, which is `["gufo"]`, always applies and `cc`
  * and `codex` are refused by the allow list rather than by convention. Widening
  * it would be an edit to `src/seats.ts`, in the open, and not a call-site flag.
  *
@@ -92,7 +92,7 @@ export interface LiveOutcome {
  * The scheduler still originates no command line: the adapter carries the argv,
  * the item carries the prompt, and the prompt travels on stdin.
  */
-export function makeHalogenOutcomeOf(
+export function makeGufoOutcomeOf(
   opts: LiveOutcomeOptions,
 ): (item: WorkItem) => Promise<LiveOutcome> {
   const decl: SeatDeclaration = {
@@ -100,7 +100,7 @@ export function makeHalogenOutcomeOf(
     slots: 1,
     bounds: {
       stalenessBoundSeconds: opts.stalenessBoundSeconds,
-      // halogen is a slot row of capacity one with NO budget row. A missing
+      // gufo is a slot row of capacity one with NO budget row. A missing
       // budget figure is not a refusal for it, and that is a property of this
       // declaration rather than an exception inside the rule.
       utilizationField: "none",

@@ -38,8 +38,8 @@ stdenvNoCC.mkDerivation {
 
     # env.sh is generated, not copied: every tool resolves its binaries
     # through these pins, so the whole ladder rebuilds against nixpkgs. The
-    # inference base URL is the fleet's one server, Halogen Flash on the
-    # worker, overridable at run time through ACADEMIC_OCR_INFERENCE_URL.
+    # inference base URL is the fleet's one server, the local model on the
+    # strix, overridable at run time through ACADEMIC_OCR_INFERENCE_URL.
     cat > $lib/env.sh <<EOF
     POPPLER=${poppler-utils}/bin
     MUPDF=${mupdf-headless}/bin

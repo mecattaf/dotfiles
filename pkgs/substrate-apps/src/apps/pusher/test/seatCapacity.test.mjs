@@ -119,7 +119,7 @@ describe("building the snapshot from today's meter shapes", () => {
       ["cc2", "claude", true, null],
       ["cc3", "claude", false, "evicted"],
       ["codex", "codex", false, "third-party"],
-      ["gpu-worker", "halogen", true, null],
+      ["gpu-worker", "gufo", true, null],
       ["pi-qwencloud", "qwen", true, null]
     ])
     expect(skipped).toEqual([
@@ -458,7 +458,7 @@ describe("review round 1: a restamp is not a change for any provider", () => {
     }
   }
 
-  it("moving only the codex, qwen and halogen rows' observed_at does not push", () => {
+  it("moving only the codex, qwen and gufo rows' observed_at does not push", () => {
     const paths = fleet()
     const first = build(paths).snapshot
     const state = stateAfterPush(first, NOW)
@@ -471,7 +471,7 @@ describe("review round 1: a restamp is not a change for any provider", () => {
     }
   })
 
-  it("a changed codex utilization or halogen holder count still pushes", () => {
+  it("a changed codex utilization or gufo holder count still pushes", () => {
     const paths = fleet()
     const state = stateAfterPush(build(paths).snapshot, NOW)
     const path = join(paths.meters, "gpu-worker.json")
@@ -487,7 +487,7 @@ describe("review round 1: a restamp is not a change for any provider", () => {
     expect(decidePush(state, snapshot, at + 9 * minute)).toMatchObject({ push: false })
     expect(decidePush(state, snapshot, at + 10 * minute)).toMatchObject({ push: true, reason: "heartbeat" })
     // Without a dispatchable slot row, the 1800 s heartbeat stands.
-    const noSlots = { ...snapshot, seats: snapshot.seats.filter((seat) => seat.provider !== "halogen") }
+    const noSlots = { ...snapshot, seats: snapshot.seats.filter((seat) => seat.provider !== "gufo") }
     const stateNoSlots = stateAfterPush({ ...build(paths).snapshot, seats: noSlots.seats }, NOW)
     expect(decidePush(stateNoSlots, noSlots, at + 10 * minute)).toMatchObject({ push: false, reason: "unchanged" })
   })

@@ -81,7 +81,7 @@ export const readLinkEnv = (env: Env): LinkEnv => {
   const outMin = int(env, "LINK_OUTBOX_BACKOFF_MIN_SECONDS", 60, 1, 86_400)
   const outMax = int(env, "LINK_OUTBOX_BACKOFF_MAX_SECONDS", 900, 1, 86_400)
   if (outMax < outMin) throw new ConfigInvalid("LINK_OUTBOX_BACKOFF_MAX_SECONDS", "below LINK_OUTBOX_BACKOFF_MIN_SECONDS")
-  const servedLabels = str(env, "LINK_SERVED_LABELS", "seat:halogen,runtime:gvisor").split(",").map((l) => l.trim()).filter((l) => l !== "")
+  const servedLabels = str(env, "LINK_SERVED_LABELS", "seat:gufo,runtime:gvisor").split(",").map((l) => l.trim()).filter((l) => l !== "")
   if (servedLabels.length === 0) throw new ConfigInvalid("LINK_SERVED_LABELS", "empty")
   const termRetry = int(env, "LINK_TERMINATING_RETRY_SECONDS", 60, 1, 3600)
   const termEscalate = int(env, "LINK_TERMINATING_ESCALATE_SECONDS", 300, 1, 86_400)
@@ -94,10 +94,10 @@ export const readLinkEnv = (env: Env): LinkEnv => {
     servedLabels,
     atespace: str(env, "AX_ATESPACE", "fleet"),
     image: str(env, "LINK_IMAGE", "ax-agent"),
-    gateway: str(env, "LINK_GATEWAY", "halogen"),
+    gateway: str(env, "LINK_GATEWAY", "gufo"),
     axServer: str(env, "AX_SERVER", "10.201.0.80:8080"),
     guestCompleteUrl: env.LINK_GUEST_COMPLETE_URL ? env.LINK_GUEST_COMPLETE_URL : undefined,
-    seatCommands: seatCommands(env, "LINK_SEAT_COMMANDS", '{"halogen":["ax-agent","pi"]}'),
+    seatCommands: seatCommands(env, "LINK_SEAT_COMMANDS", '{"gufo":["ax-agent","pi"]}'),
     completion: literal(env, "LINK_COMPLETION", "auto", ["auto", "p1", "guest"]),
     resyncSeconds: int(env, "LINK_RESYNC_SECONDS", 15, 1, 3600),
     pendingTimeoutSeconds: int(env, "LINK_PENDING_TIMEOUT_SECONDS", 900, 1, 86_400),

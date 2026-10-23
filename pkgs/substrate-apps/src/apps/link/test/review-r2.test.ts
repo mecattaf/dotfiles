@@ -22,8 +22,8 @@ const job = (n: string): AgentJob => ({
   apiVersion: "ultracode.mecattaf.dev/v1alpha1", kind: "AgentJob",
   metadata: { name: `wf-test-${n}`, labels: { [A + "run-id"]: "wf-test", [A + "workflow"]: "link-test", [A + "phase-index"]: "1" },
     annotations: { [A + "run-id-raw"]: "wf_test", [A + "label"]: `probe:${n}`, [A + "item-key"]: `wf_test#${n}`, [A + "journal-key"]: JK, [A + "phase-title"]: "Probe" } },
-  spec: { "runs-on": ["seat:halogen", "runtime:gvisor"],
-    with: { prompt: `say ${n}`, prompt_ref: { sha256: "ab".repeat(32), bytes: 5, uri: `journal://wf_test/${n}/prompt.md` }, model: "halogen-qwen3.8-flash-next" } }
+  spec: { "runs-on": ["seat:gufo", "runtime:gvisor"],
+    with: { prompt: `say ${n}`, prompt_ref: { sha256: "ab".repeat(32), bytes: 5, uri: `journal://wf_test/${n}/prompt.md` }, model: "qwen3.8-flash-next" } }
 })
 const world = (o: Partial<FloorConfig> = {}) => ({
   floor: new FakeFloor({ cap: 2, leaseSeconds: 6, graceSeconds: 15, pollSeconds: 1, heartbeatSeconds: 2, maxAttempts: 3, secondMs: SEC, tokens: { "tok-nas": "nas-link-1" }, ...o }),
@@ -34,8 +34,8 @@ function start(w: World, dir: string, over: Partial<LinkConfig> = {}, fetch?: ty
   const logs: Array<Record<string, unknown>> = []
   const stop = Effect.runSync(Deferred.make<void>())
   const cfg: LinkConfig = {
-    holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:halogen", "runtime:gvisor"],
-    shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] },
+    holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:gufo", "runtime:gvisor"],
+    shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] },
     completion: "auto", secondMs: SEC, resyncMs: 30, pendingTimeoutMs: 1500, deleteAfterMs: 0, deadlineBackstopMs: 300,
     createAttempts: 3, outboxBackoffMs: [20, 100], initialPollSeconds: 1, initialHeartbeatSeconds: 2, fenceTimeoutMs: 300, resultReadTries: 3, ...over
   }
@@ -89,8 +89,8 @@ const runStub = async (over: Partial<LinkConfig>, ax: FakeAx, floor: any, ms: nu
   const dir = mkdtempSync(join(tmpdir(), "conwip-link-r2s-"))
   const logs: Array<Record<string, any>> = []
   const stop = Effect.runSync(Deferred.make<void>())
-  const cfg: LinkConfig = { holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:halogen", "runtime:gvisor"],
-    shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] },
+  const cfg: LinkConfig = { holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:gufo", "runtime:gvisor"],
+    shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] },
     completion: "auto", secondMs: SEC, resyncMs: 30, pendingTimeoutMs: 60_000, deleteAfterMs: 60_000, deadlineBackstopMs: 300,
     createAttempts: 3, outboxBackoffMs: [20, 100], initialPollSeconds: 1, initialHeartbeatSeconds: 2, ...over }
   const f = Effect.runFork(runLink(cfg, { ax, floor, journal: Journal.open(dir), log: (ev, x) => logs.push({ t: Date.now(), ev, ...x }), stop }))
@@ -362,7 +362,7 @@ describe("review round 2: fixed", () => {
 
   it("R2-7b guest mode with a public name that starts with a private prefix: no Task, no token handed out", async () => {
     const ax = new FakeAx(); ax.p1 = false
-    const logs = await runStub({ completion: "guest", shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"], completeUrl: "https://10.evil.example/guest" } },
+    const logs = await runStub({ completion: "guest", shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"], completeUrl: "https://10.evil.example/guest" } },
       ax, stubFloor([grantOf("g", { leaseToken: "tok" })]), 400)
     expect([logs.some((l) => l.ev === "guest-url-invalid"), ax.tasks.has("wf-test-g-a1")]).toEqual([true, false])
   })
@@ -376,7 +376,7 @@ describe("review round 2: fixed", () => {
     expect(gatewayAllowsAll(gw(["worker", "10.201.0.0/24", "fd7a:115c:a1e0::/48"]))).toBe(false)
     expect([cidrIsOpen("8.0.0.0/8"), cidrIsOpen("10.1.0.0/16"), cidrIsOpen("2000::/3"), cidrIsOpen("fd00::/64")]).toEqual([true, false, true, false])
     const ax = new FakeAx()
-    ax.gateways.set("halogen", gw(["worker", "::/0"]))
+    ax.gateways.set("gufo", gw(["worker", "::/0"]))
     const logs = await runStub({}, ax, stubFloor([grantOf("w")]), 400)
     // critique D.2 item 5: an existing Gateway that allows everything is logged gateway-open, not gateway-missing
     expect([logs.some((l) => l.ev === "gateway-open"), ax.tasks.has("wf-test-w-a1")]).toEqual([true, false])
@@ -390,8 +390,8 @@ describe("review round 2: fixed", () => {
     ax.getGateway = (name: string) => outageOver ? Effect.sleep(300).pipe(Effect.andThen(origGw(name))) : origGw(name)
     setTimeout(() => { ax.up = false }, 150)
     setTimeout(() => { release = true }, 170)
-    setTimeout(() => { ax.gateways.delete("halogen"); outageOver = true; ax.up = true }, 400)
-    const logs = await runStub({ completion: "guest", shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"], completeUrl: "http://link.fleet.internal/guest" } },
+    setTimeout(() => { ax.gateways.delete("gufo"); outageOver = true; ax.up = true }, 400)
+    const logs = await runStub({ completion: "guest", shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"], completeUrl: "http://link.fleet.internal/guest" } },
       ax, stubFloor([grantOf("u", { leaseToken: "tok" })], () => release), 1200)
     expect(ax.tasks.has("wf-test-u-a1"), JSON.stringify(logs.map((l) => l.ev))).toBe(false)
     expect(logs.some((l) => l.ev === "gateway-missing")).toBe(true)

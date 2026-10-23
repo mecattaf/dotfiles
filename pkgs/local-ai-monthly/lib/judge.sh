@@ -14,7 +14,7 @@ mkdir -p "$state_dir" "$(dirname "$output")"
 temporary="$output.tmp"
 
 # Pi resolves the provider and model through its declared models.json, which
-# names the Halogen Flash server; the judge selects them by id only. The run
+# names the local model server; the judge selects them by id only. The run
 # gets a private agent directory, so that declaration is copied in first.
 models_json="${PI_CODING_AGENT_DIR:-${HOME:?}/.pi/agent}/models.json"
 if ! jq -e --arg provider "$provider" --arg model "$model" \

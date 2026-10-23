@@ -8,7 +8,7 @@
  *   1. selects the runtime: `opts.runtime`, else the phase default, else the
  *      file default, else `host` (config.ts `selectRuntime`);
  *   2. builds the harness invocation (claude pinned to claude-opus-5-5, or pi on
- *      Halogen) with the prompt on stdin;
+ *      Gufo) with the prompt on stdin;
  *   3. mounts the seat credential where that runtime's harness looks for it,
  *      as a mount (never a copy), and points CLAUDE_CONFIG_DIR at it so the
  *      seat is chosen explicitly rather than inherited;
@@ -31,7 +31,7 @@ import { DEFAULT_TIMEOUT_MS } from "./host.ts";
 import { isRefusal, JOB_ID, type Mount, type ProcessJob, type Runner } from "./job.ts";
 import { runnerFor } from "./registry.ts";
 import { catalogEntry, catalogFor, entryFor, resolveModel, type ModelAllowlist, type ModelCeilings, type ModelEntry } from "./models.ts";
-import { CLAUDE_MODEL, HALOGEN_MODEL, HALOGEN_PROVIDER, HARNESS_OPTIONS, invocationFor, parseFor, PI_PROVIDERS, type HarnessName, type HarnessSession, type PiProvider, type Usage } from "./harness.ts";
+import { CLAUDE_MODEL, GUFO_MODEL, GUFO_PROVIDER, HARNESS_OPTIONS, invocationFor, parseFor, PI_PROVIDERS, type HarnessName, type HarnessSession, type PiProvider, type Usage } from "./harness.ts";
 import { spawnSync } from "node:child_process";
 import { axTaskSpec } from "./ax.ts";
 import { SANDBOX_HOME } from "./gvisor.ts";
@@ -165,25 +165,18 @@ export function credentialMount(config: RuntimesConfig, runtime: Runtime, harnes
  * the shadow holds a hard link to the credential (same inode: an in-place
  * refresh reaches the seat; a rename-replace stays in the shadow, INFERRED).
  */
-/**
- * The Halogen provider a sandboxed pi needs (final verification 2026-09-23:
- * pi in gVisor exited 1 "Unknown provider halogen", because the sandbox HOME
- * is empty). It is generated from constants, never copied from the host's
- * models.json (which also names cloud providers and their keys). Halogen has
- * no auth; the apiKey is a placeholder. The strix serves it since the worker's
- * retirement (dotfiles, 2026-10-08; carried as a local patch until 2026-10-10).
- */
-export const HALOGEN_BASE_URL = "http://strix:8731/v1";
-export function piHalogenModels(): string {
+/** A sandbox gets a generated Gufo-only catalog, never the host's cloud provider credentials. */
+export const GUFO_BASE_URL = "http://strix:8731/v1";
+export function piGufoModels(): string {
   return JSON.stringify({
     providers: {
-      [HALOGEN_PROVIDER]: {
+      [GUFO_PROVIDER]: {
         api: "openai-completions",
         apiKey: "no-auth",
         authHeader: true,
-        baseUrl: HALOGEN_BASE_URL,
-        compat: { supportsDeveloperRole: false, supportsReasoningEffort: false, supportsStore: false },
-        models: [{ id: HALOGEN_MODEL, name: "Halogen (strix)", reasoning: true, input: ["text"], contextWindow: 262144, maxTokens: 32768 }],
+        baseUrl: GUFO_BASE_URL,
+        compat: { supportsDeveloperRole: false, supportsReasoningEffort: true, supportsStore: false },
+        models: [{ id: GUFO_MODEL, name: "Qwen3.8 Flash-Next (Gufo, Strix)", reasoning: false, input: ["text", "image"], contextWindow: 102400, maxTokens: 16384 }],
       },
     },
   }, null, 1) + "\n";
@@ -264,7 +257,7 @@ export function credentialMounts(config: RuntimesConfig, runtime: Runtime, harne
   if (harness === "pi" && (runtime.type === "gvisor" || runtime.type === "microvm")) {
     const agentDir = join(shadow, "pi-agent");
     mkdirSync(agentDir, { recursive: true, mode: 0o700 });
-    writeFileSync(join(agentDir, "models.json"), piHalogenModels(), { mode: 0o600 });
+    writeFileSync(join(agentDir, "models.json"), piGufoModels(), { mode: 0o600 });
     const home = runtime.type === "gvisor" ? SANDBOX_HOME : "/root";
     return withContext([{ source: agentDir, target: `${home}/.pi/agent`, mode: "rw", purpose: "other" }]);
   }
@@ -483,7 +476,7 @@ function sessionHarnessProblem(sel: Selection, opts: { readonly session?: unknow
   const entry = catalogEntry(catalog(), opts.model);
   if (entry === undefined) return `model ${opts.model} has no catalog entry, so runtime ${sel.name} cannot serve it`;
   if (entry.harness !== h) return `model ${opts.model} is served by the ${entry.harness} harness; runtime ${sel.name} runs ${h}`;
-  const provider = entry.harness === "pi" ? (entry.provider ?? "halogen") : undefined;
+  const provider = entry.harness === "pi" ? (entry.provider ?? "gufo") : undefined;
   if (provider !== piProviderOf(sel.runtime)) return `model ${opts.model} is served by pi provider ${provider}; runtime ${sel.name} runs pi provider ${piProviderOf(sel.runtime)}`;
   return undefined;
 }
@@ -590,13 +583,13 @@ export class RunnerBackend {
     const h: HarnessName = sel.runtime.harness ?? "claude";
     if (sel.runtime.type === "ax") {
       // The ax seam renders the Task for the harness the table names (final
-      // verification 2026-09-23). pi renders a Halogen Task on the halogen seat.
-      if (h === "pi") return { selection: sel, harness: "pi", ...pick("pi", HALOGEN_MODEL), seat };
+      // verification 2026-09-23). pi renders a Gufo Task on the gufo seat.
+      if (h === "pi") return { selection: sel, harness: "pi", ...pick("pi", GUFO_MODEL), seat };
       if (h === "codex") return { selection: sel, harness: "codex", ...pick("codex", "codex"), seat: undefined };
       return { selection: sel, harness: "ax", ...pick("claude", CLAUDE_MODEL), seat };
     }
     if (h === "pi") {
-      const p = provider ?? HALOGEN_PROVIDER;
+      const p = provider ?? GUFO_PROVIDER;
       // No pinned fallback for pi (2026-10-10): a provider the catalog does not list is PARKED and refused here,
       // before admission, so a route policy falls through at once.
       const r = resolveModel(catalog, h, declared, p);
@@ -674,7 +667,7 @@ export class RunnerBackend {
     if (sel.runtime.type === "ax") {
       const route = this.route(call);
       if (route.harness === "codex") {
-        const why = "the ax seam renders Claude and Halogen Tasks only; a codex Task would spend a third party's login";
+        const why = "the ax seam renders Claude and Gufo Tasks only; a codex Task would spend a third party's login";
         receipt({ refused: why });
         return { error: `runtime ${sel.name} refused: ${why}` };
       }
@@ -785,7 +778,7 @@ export class RunnerBackend {
       return refuse((e as Error).message);
     }
     const resolved = resolveModel(catalog, harness, declaredModel, piProvider);
-    if (harness === "pi" && resolved.id === undefined) return refuse(parkedReason(sel.name, piProvider ?? HALOGEN_PROVIDER, this.config.modelsFile).replace(/^runtime \S+: /, ""));
+    if (harness === "pi" && resolved.id === undefined) return refuse(parkedReason(sel.name, piProvider ?? GUFO_PROVIDER, this.config.modelsFile).replace(/^runtime \S+: /, ""));
     // The seat shadow lives OUTSIDE the run dir and is removed when the job
     // is over, refused or not (successor review r3: a hard link to the seat
     // credential was left in <run dir>/jobs/<id>.seat/, and run dirs under
@@ -800,7 +793,7 @@ export class RunnerBackend {
     let turn: { session: SessionArg; dir: string; cwd: string; harnessSession: HarnessSession; env: Record<string, string> } | undefined;
     if (session !== undefined) {
       try {
-        turn = this.#sessionTurn(session, harness, piProvider ?? HALOGEN_PROVIDER, entryFor(catalog, harness, resolved.id, piProvider), seat, fromRunSeat);
+        turn = this.#sessionTurn(session, harness, piProvider ?? GUFO_PROVIDER, entryFor(catalog, harness, resolved.id, piProvider), seat, fromRunSeat);
       } catch (e) {
         return refuse(`cannot prepare the session dir of ${session.id}: ${(e as Error).message}`);
       }
@@ -823,7 +816,7 @@ export class RunnerBackend {
         } catch {
           host = undefined;
         }
-        writeFileSync(join(agentDir, "models.json"), piAgentModelsJson(host, piProvider ?? HALOGEN_PROVIDER, entry), { mode: 0o600 });
+        writeFileSync(join(agentDir, "models.json"), piAgentModelsJson(host, piProvider ?? GUFO_PROVIDER, entry), { mode: 0o600 });
         piDirs.piAgentDir = agentDir;
       }
     }

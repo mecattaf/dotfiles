@@ -34,7 +34,7 @@ const A = "ultracode.mecattaf.dev/"
 const job = (n: string): AgentJob => ({
   apiVersion: "ultracode.mecattaf.dev/v1alpha1", kind: "AgentJob",
   metadata: { name: `wf-int-${n}`, labels: { [A + "workflow"]: "link-int", [A + "phase-index"]: "1" }, annotations: { [A + "run-id-raw"]: "wf_int", [A + "label"]: `int:${n}`, [A + "item-key"]: `wf_int#${n}`, [A + "journal-key"]: `${"cd".repeat(32)}:1`, [A + "phase-title"]: "Integration" } },
-  spec: { "runs-on": ["seat:halogen", "runtime:gvisor"], with: { prompt: `say ${n}`, prompt_ref: { sha256: "cd".repeat(32), bytes: 5, uri: `journal://wf_int/${n}/prompt.md` }, model: "halogen-qwen3.8-flash-next" } }
+  spec: { "runs-on": ["seat:gufo", "runtime:gvisor"], with: { prompt: `say ${n}`, prompt_ref: { sha256: "cd".repeat(32), bytes: 5, uri: `journal://wf_int/${n}/prompt.md` }, model: "qwen3.8-flash-next" } }
 })
 
 // ---------------------------------------------------------------- the ax gRPC server (P1 wire)
@@ -56,8 +56,8 @@ async function startAx() {
     UpdateTask: (c: any, cb: any) => guard(cb, () => { tasks.set(c.request.task.metadata.name, { ...c.request.task, status: { phase: "Pending" } }); cb(null, c.request.task) }),
     ListTasks: (c: any, cb: any) => guard(cb, () => { const n = Number(c.request.limit) > 0 ? Number(c.request.limit) : 50, o = Number(c.request.offset) || 0; cb(null, { tasks: [...tasks.values()].reverse().slice(o, o + n) }) }),
     DeleteTask: (c: any, cb: any) => guard(cb, () => { tasks.delete(c.request.name); results.delete(c.request.name); cb(null, {}) }),
-    GetGateway: (c: any, cb: any) => guard(cb, () => c.request.name === "halogen"
-      ? cb(null, { apiVersion: "ax.io/v1alpha1", kind: "Gateway", metadata: { name: "halogen", atespace: "fleet" }, spec: { egress: { allowlist: { hosts: [{ host: "worker", port: 8731 }] } } } })
+    GetGateway: (c: any, cb: any) => guard(cb, () => c.request.name === "gufo"
+      ? cb(null, { apiVersion: "ax.io/v1alpha1", kind: "Gateway", metadata: { name: "gufo", atespace: "fleet" }, spec: { egress: { allowlist: { hosts: [{ host: "worker", port: 8731 }] } } } })
       : cb(nf("gateway"))),
     GetTaskResult: (c: any, cb: any) => guard(cb, () => { const b = results.get(c.request.name); b ? cb(null, { content: b, sha256: createHash("sha256").update(b).digest("hex") }) : cb(nf("result")) })
   })
@@ -103,8 +103,8 @@ function startLink(token = TOKEN) {
   const stop = Effect.runSync(Deferred.make<void>())
   const ax = grpcAx(`127.0.0.1:${axPort}`, "fleet", 5_000, P1_PROTO)
   const cfg: LinkConfig = {
-    holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:halogen", "runtime:gvisor"],
-    shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] },
+    holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:gufo", "runtime:gvisor"],
+    shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] },
     completion: "p1", secondMs: 1000, resyncMs: 500, pendingTimeoutMs: 60_000, deleteAfterMs: 0, deadlineBackstopMs: 60_000,
     createAttempts: 3, outboxBackoffMs: [200, 1000], fenceTimeoutMs: 5_000, initialPollSeconds: 1, initialHeartbeatSeconds: 2
   }

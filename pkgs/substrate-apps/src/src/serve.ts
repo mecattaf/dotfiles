@@ -13,9 +13,9 @@
  * `src/cli.ts` is not edited by this item and does not import this module.
  *
  * Dispatch is DRY RUN by default. The live path is gated three ways: `--live`,
- * then AX_CONWIP_LIVE_HALOGEN=1 through `assertLiveEnabled` (reused from
+ * then AX_CONWIP_LIVE_GUFO=1 through `assertLiveEnabled` (reused from
  * `src/live.ts`, not reimplemented), then the seat's membership of
- * `DEFAULT_LIVE_SPAWN_SEATS`, which is ["halogen"]. All three are checked at
+ * `DEFAULT_LIVE_SPAWN_SEATS`, which is ["gufo"]. All three are checked at
  * startup, so a watcher that would refuse later never starts.
  *
  * The engine below is exported and takes an injected client, so a test drives
@@ -27,7 +27,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AxClient, type AxTask } from "./axclient.ts";
-import { HALOGEN_MODEL, procStartTicks, sameProcess } from "@substrate/runners";
+import { GUFO_MODEL, procStartTicks, sameProcess } from "@substrate/runners";
 import {
   SEAT_LEDGER_KEYS,
   SPAWN_LEDGER_KEYS,
@@ -43,7 +43,7 @@ import {
   SUGGESTED_STALENESS_BOUND_SECONDS,
   SUGGESTED_WRAPPER_TIMEOUT_SECONDS,
   assertLiveEnabled,
-  makeHalogenOutcomeOf,
+  makeGufoOutcomeOf,
 } from "./live.ts";
 import { DEFAULT_HOLD_BUDGET, defaultSleep, dependencyStatus, itemKey, taskNameFor, type HoldBudget, type ItemState } from "./loop.ts";
 import { buildTask } from "./taskspec.ts";
@@ -58,12 +58,12 @@ function isNotFound(e: unknown): boolean {
 const TASK_MODEL = "claude-opus-5-5";
 /**
  * The model a Task posted for `seat` runs, and the harness that spends it
- * (successor review r4: on seat halogen serve posted claude-opus-5-5 Tasks,
- * admitted on the Halogen slot row, while the halogen adapter runs Halogen).
- * Halogen's pinned id comes from runners harness.ts HALOGEN_MODEL.
+ * (successor review r4: on seat gufo serve posted claude-opus-5-5 Tasks,
+ * admitted on the Gufo slot row, while the gufo adapter runs Gufo).
+ * Gufo's pinned id comes from runners harness.ts GUFO_MODEL.
  */
 export function taskRouteForSeat(seat: string): { readonly model: string; readonly harness: "ax" | "pi" } {
-  return seat === "halogen" ? { model: HALOGEN_MODEL, harness: "pi" } : { model: TASK_MODEL, harness: "ax" };
+  return seat === "gufo" ? { model: GUFO_MODEL, harness: "pi" } : { model: TASK_MODEL, harness: "ax" };
 }
 
 /**
@@ -101,7 +101,7 @@ import {
   ccAdapter,
   codexAdapter,
   executeDispatch,
-  halogenAdapter,
+  gufoAdapter,
   renderArgv,
   type SeatAdapter,
 } from "./seats.ts";
@@ -140,7 +140,7 @@ export const SERVE_USAGE =
 /** Defaults. Every one of them is data at the call site, never derived here. */
 export const DEFAULT_ADDR = "127.0.0.1:8080";
 export const DEFAULT_CAP = 1;
-export const DEFAULT_SEAT = "halogen";
+export const DEFAULT_SEAT = "gufo";
 export const DEFAULT_POLL_INTERVAL_MS = 2000;
 export const DEFAULT_IMAGE = "substrate/placeholder:v1";
 export const DEFAULT_MAX_READING_AGE_MS = 60_000;
@@ -150,13 +150,13 @@ export const STARTUP_PROBE_MS = 5_000;
 
 /**
  * The bounds each seat is admitted under, as data, copied from the same table
- * `src/seats-cli.ts` declares. `halogen` declares a slot row of capacity one
+ * `src/seats-cli.ts` declares. `gufo` declares a slot row of capacity one
  * and NO budget row, so a missing budget figure is not a refusal for it.
  */
 export const SEAT_BOUNDS: Readonly<Record<string, MeterBounds>> = {
   cc: { stalenessBoundSeconds: SUGGESTED_STALENESS_BOUND_SECONDS, utilizationField: "weekly_utilization_pct", capPct: 95 },
   codex: { stalenessBoundSeconds: SUGGESTED_STALENESS_BOUND_SECONDS, utilizationField: "utilization_pct", capPct: 90 },
-  halogen: { stalenessBoundSeconds: SUGGESTED_STALENESS_BOUND_SECONDS, utilizationField: "none", capPct: null },
+  gufo: { stalenessBoundSeconds: SUGGESTED_STALENESS_BOUND_SECONDS, utilizationField: "none", capPct: null },
 };
 
 /** The run log: a FOURTH representation, with its own key list. */
@@ -216,12 +216,12 @@ export interface ServeOptions {
   readonly outcomeOf?: (item: WorkItem) => Promise<{ readonly phase: "Completed" | "Failed"; readonly reason: string }>;
   /**
    * Machine-wide slot holds (the same flock files conwip-run takes). On a slot
-   * seat (halogen) an item is admitted only with a hold, kept until it is
+   * seat (gufo) an item is admitted only with a hold, kept until it is
    * released or refused (successor review r5: serve dispatched while a
-   * conwip-run held the one Halogen slot).
+   * conwip-run held the one Gufo slot).
    */
   readonly machineSlots?: MachineSlots;
-  /** Machine-wide slot count for the seat. Default 1 (Halogen's one slot). */
+  /** Machine-wide slot count for the seat. Default 1 (Gufo's one slot). */
   readonly machineSlotCapacity?: number;
   readonly now?: () => string;
   readonly nowMs?: () => number;
@@ -491,7 +491,7 @@ export class Serve {
     if (gate === undefined) return undefined;
     // The Task runs its seat's pinned model, so that is the model gated, and
     // the seat must be one that model's harness spends (successor review r4: serve gated
-    // the record's model, and a halogen seat admitted Opus Tasks).
+    // the record's model, and a gufo seat admitted Opus Tasks).
     const route = taskRouteForSeat(this.opts.adapter.seatId);
     const hit = cache.get(route.model);
     if (hit !== undefined) return hit;
@@ -840,7 +840,7 @@ export class Serve {
  * DESIGN section 17 already spends 2 (usage), 3 (the live gate) and 4 (connect
  * unreachable), so 1 is the free code and is the conventional "the program
  * failed". Every DELIBERATE reason -- a signal, a max-ticks stop -- keeps 0,
- * which is the thing dotfiles#413's halogen-switch fix cared about.
+ * which is the thing dotfiles#413's gufo-switch fix cared about.
  */
 export const TICK_FAILED_REASON = "tick-failed";
 
@@ -849,19 +849,19 @@ export function stopExitCode(reason: string): number {
 }
 
 export function adapterForSeat(seat: string, metersDir: string, repoRoot: string): SeatAdapter {
-  if (seat === "halogen") return halogenAdapter(join(metersDir, "gpu-worker.json"), SUGGESTED_WRAPPER_TIMEOUT_SECONDS);
+  if (seat === "gufo") return gufoAdapter(join(metersDir, "gpu-worker.json"), SUGGESTED_WRAPPER_TIMEOUT_SECONDS);
   if (seat === "cc") return ccAdapter(join(metersDir, "cc.json"));
   if (seat === "codex") return codexAdapter(repoRoot, join(metersDir, "codex.json"));
-  throw new Error(`unknown seat ${JSON.stringify(seat)}: known seats are halogen, cc, codex`);
+  throw new Error(`unknown seat ${JSON.stringify(seat)}: known seats are gufo, cc, codex`);
 }
 
 /**
  * The three gates on `--live`, checked together at startup.
  *
- * Gate one is the flag itself. Gate two is AX_CONWIP_LIVE_HALOGEN=1, through
+ * Gate one is the flag itself. Gate two is AX_CONWIP_LIVE_GUFO=1, through
  * item 32's own `assertLiveEnabled`, which is reused rather than reimplemented.
- * Gate three is `DEFAULT_LIVE_SPAWN_SEATS`, which is ["halogen"]; nothing here
- * can widen it, and `makeHalogenOutcomeOf` passes no `allowSpawnSeats` either,
+ * Gate three is `DEFAULT_LIVE_SPAWN_SEATS`, which is ["gufo"]; nothing here
+ * can widen it, and `makeGufoOutcomeOf` passes no `allowSpawnSeats` either,
  * so `executeDispatch` enforces the same list again at the point of spawn.
  */
 export function assertServeLiveAllowed(
@@ -951,7 +951,7 @@ async function main(): Promise<void> {
     return;
   }
   const bounds: MeterBounds = {
-    ...(SEAT_BOUNDS[seat] ?? SEAT_BOUNDS.halogen!),
+    ...(SEAT_BOUNDS[seat] ?? SEAT_BOUNDS.gufo!),
     stalenessBoundSeconds,
   };
 
@@ -978,7 +978,7 @@ async function main(): Promise<void> {
   let capacitySource: CapacitySource;
   try {
     capacitySource = snapshotPath !== ""
-      ? capacitySourceFrom({ kind: "snapshot", path: snapshotPath, seatIds: { halogen: "gpu-worker" } })
+      ? capacitySourceFrom({ kind: "snapshot", path: snapshotPath, seatIds: { gufo: "gpu-worker" } })
       : floorUrl !== ""
         ? configuredFloorSource(floorUrl)
         : process.argv.includes("--meters")
@@ -1004,7 +1004,7 @@ async function main(): Promise<void> {
   console.log(`SERVE seat=${seat} meters=${metersDir} meterPath=${adapter.meterPath}`);
   console.log(`SERVE bounds stalenessBoundSeconds=${bounds.stalenessBoundSeconds} utilizationField=${bounds.utilizationField} capPct=${String(bounds.capPct)}`);
   console.log(`SERVE capacity source=${capacitySource.name} dispatchMaxAgeSeconds=${capacity.policy.dispatchMaxAgeSeconds} minHeadroomPct=${capacity.policy.minHeadroomPct}`);
-  console.log(`SERVE live=${live} (dry run by default; the live path needs --live, AX_CONWIP_LIVE_HALOGEN=1 and a seat on [${DEFAULT_LIVE_SPAWN_SEATS.join(", ")}])`);
+  console.log(`SERVE live=${live} (dry run by default; the live path needs --live, AX_CONWIP_LIVE_GUFO=1 and a seat on [${DEFAULT_LIVE_SPAWN_SEATS.join(", ")}])`);
   console.log(`LEDGER loop:  ${loopPath}`);
   console.log(`LEDGER seat:  ${seatPath}`);
   console.log(`LEDGER run:   ${runPath}`);
@@ -1031,7 +1031,7 @@ async function main(): Promise<void> {
   }
 
   const outcomeOf = live
-    ? makeHalogenOutcomeOf({
+    ? makeGufoOutcomeOf({
         adapter,
         stalenessBoundSeconds,
         spawnTimeoutMs: SUGGESTED_CHILD_TIMEOUT_MS,
@@ -1071,7 +1071,7 @@ async function main(): Promise<void> {
    * buffered, but the handler still has to finish for the stop line to exist.
    *
    * EXIT 0 on a deliberate stop. A signal-shaped 143 from a clean stop is the
-   * bug dotfiles#413's halogen-switch fix already fought once on this fleet.
+   * bug dotfiles#413's gufo-switch fix already fought once on this fleet.
    */
   const stop = async (reason: string): Promise<void> => {
     if (stopped) {

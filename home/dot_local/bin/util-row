@@ -595,18 +595,16 @@ def intervals_for(samples, start_epoch, end_epoch):
 def token_ledger(samples):
     """Tokens per arm per day, from two sources.  Returns (fields, grade).
 
-    1. Journal token windows (util-sample/3, dotfiles#312) — Halogen's per-request
-       log lines, summed by the sampler per 60 s window and chained by journal
-       cursor, so a day's windows add up to the day.  Per arm (the probe's single
+    1. Recorded token windows (util-sample/3) from replay fixtures. The live
+       Gufo sampler publishes UNKNOWN until its telemetry is calibrated.
+       Windows are disjoint so a day's windows add up to the day.  Per arm (the probe's single
        served id, else `unattributed`):
          tokens_in        = prompt - cached   (tokens actually prefilled; the
                             semantics llamacpp:prompt_tokens_total had)
          tokens_in_cached = cached prompt tokens
          tokens_out       = completion tokens (reasoning included)
          tokens_requests  = completed requests
-         prefill_tokens_per_s = (prompt - cached) / prefill_s — NOT the server's
-                            prompt_per_second, which does not discount cache_n
-                            (peonist-ai/halogen-flash-server#48)
+         prefill_tokens_per_s = (prompt - cached) / prefill_s
          decode_tokens_per_s  = completion / decode_s
        A sample of a journal probe that carries no error-free window is a MISSING
        window; a window read without a previous cursor (after a gap or a boot) is

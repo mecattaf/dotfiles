@@ -120,21 +120,21 @@ describe("final verification: under the test guard, codex runs only a fake it ca
 });
 
 describe("final verification: the ax seam renders the Task for the table's harness", () => {
-  it("pi renders a Halogen Task on the halogen seat; codex is refused; claude stays Opus", async () => {
+  it("pi renders a Gufo Task on the gufo seat; codex is refused; claude stays Opus", async () => {
     const saved = process.env[TEST_SEAT_ENV];
     process.env[TEST_SEAT_ENV] = "1";
     try {
-      const pi = parseRuntimesToml(`default = "a"\n[runtime.a]\ntype = "ax"\nharness = "pi"\nseat = "halogen"\n`, "t");
+      const pi = parseRuntimesToml(`default = "a"\n[runtime.a]\ntype = "ax"\nharness = "pi"\nseat = "gufo"\n`, "t");
       const bp = new RunnerBackend(pi, { jobsRoot: tmp(), runId: "r" });
-      expect(bp.route(call())).toMatchObject({ harness: "pi", model: "halogen-qwen3.8-flash-next", seat: "halogen" });
+      expect(bp.route(call())).toMatchObject({ harness: "pi", model: "qwen3.8-flash-next", seat: "gufo" });
       const root = tmp();
       const outP = await new RunnerBackend(pi, { jobsRoot: root, runId: "r" }).run(call());
       expect(outP.error).toMatch(/spec-only|refused/);
       const task = JSON.parse(readFileSync(join(root, readdirSync(root).find((d) => !d.endsWith(".json"))!, "ax-task.json"), "utf8"));
-      expect(task.spec.env.find((e: { name: string }) => e.name === "AX_CONWIP_MODEL").value).toBe("halogen-qwen3.8-flash-next");
+      expect(task.spec.env.find((e: { name: string }) => e.name === "AX_CONWIP_MODEL").value).toBe("qwen3.8-flash-next");
       const cx = parseRuntimesToml(`default = "a"\n[runtime.a]\ntype = "ax"\nharness = "codex"\n`, "t");
       const outC = await new RunnerBackend(cx, { jobsRoot: tmp(), runId: "r", defaultSeat: "fake" }).run(call());
-      expect(outC.error).toMatch(/renders Claude and Halogen Tasks only/);
+      expect(outC.error).toMatch(/renders Claude and Gufo Tasks only/);
       const cl = parseRuntimesToml(`default = "a"\n[runtime.a]\ntype = "ax"\n`, "t");
       expect(new RunnerBackend(cl, { jobsRoot: tmp(), runId: "r", defaultSeat: "cc" }).route(call())).toMatchObject({ harness: "ax", model: "claude-opus-5-5", seat: "cc" });
     } finally {
@@ -144,16 +144,18 @@ describe("final verification: the ax seam renders the Task for the table's harne
   });
 });
 
-describe("final verification: a sandboxed pi gets the Halogen provider, generated, never copied", () => {
-  it("gVisor and microvm get a models.json naming only halogen on the worker; host gets nothing", () => {
+describe("final verification: a sandboxed pi gets the Gufo provider, generated, never copied", () => {
+  it("gVisor and microvm get a models.json naming only gufo on the worker; host gets nothing", () => {
     const c = parseRuntimesToml(`default = "g"\n[runtime.g]\ntype = "gvisor"\nrunsc = "/nix/store/x/bin/runsc"\nharness = "pi"\n`, "t");
     const shadow = join(tmp(), "shadow");
     const m = credentialMounts(c, c.runtimes["g"]!, "pi", shadow);
     expect(Array.isArray(m) && m).toMatchObject([{ target: "/home/agent/.pi/agent" }]);
     const models = JSON.parse(readFileSync(join(shadow, "pi-agent", "models.json"), "utf8"));
-    expect(Object.keys(models.providers)).toEqual(["halogen"]);
-    expect(models.providers.halogen.baseUrl).toBe("http://strix:8731/v1");
-    expect(models.providers.halogen.models.map((x: { id: string }) => x.id)).toEqual(["halogen-qwen3.8-flash-next"]);
+    expect(Object.keys(models.providers)).toEqual(["gufo"]);
+    expect(models.providers.gufo.baseUrl).toBe("http://strix:8731/v1");
+    expect(models.providers.gufo.models.map((x: { id: string }) => x.id)).toEqual(["qwen3.8-flash-next"]);
+    expect(models.providers.gufo.models[0]).toMatchObject({ reasoning: false, input: ["text", "image"], contextWindow: 102400, maxTokens: 16384 });
+    expect(models.providers.gufo.compat.supportsReasoningEffort).toBe(true);
     const mv = parseRuntimesToml(`default = "v"\n[runtime.v]\ntype = "microvm"\nharness = "pi"\n`, "t");
     expect(credentialMounts(mv, mv.runtimes["v"]!, "pi", join(tmp(), "s2"))).toMatchObject([{ target: "/root/.pi/agent" }]);
     const h = parseRuntimesToml(`default = "h"\n[runtime.h]\ntype = "host"\nharness = "pi"\n`, "t");

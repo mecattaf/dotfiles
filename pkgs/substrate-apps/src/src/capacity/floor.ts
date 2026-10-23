@@ -28,8 +28,8 @@ import type { CapacityJob, CapacityPrepare, CapacitySource, SeatCapacityRead, Up
 /**
  * This scheduler's seat ids onto the floor's. Identity: the gentle pusher
  * (apps/pusher, seat-capacity/1 -> /2) publishes the runs-on seat names, so the
- * worker's Halogen row is `halogen` on the floor. A floor fed by the legacy
- * meters pusher names it `gpu-worker`; pass `seatIds: { halogen: "gpu-worker" }` there.
+ * worker's Gufo row is `gufo` on the floor. A floor fed by the legacy
+ * meters pusher names it `gpu-worker`; pass `seatIds: { gufo: "gpu-worker" }` there.
  */
 export const FLOOR_SEAT_IDS: Readonly<Record<string, string>> = {};
 

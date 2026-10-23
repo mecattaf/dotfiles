@@ -12,8 +12,7 @@
 #   * nix-strix-halo supplies every other GPU/runtime package below: the
 #     llama.cpp ROCm and Vulkan builds an operator serves the small GGUF
 #     artifacts with by hand, amdtop, and the MES firmware. The big model is
-#     not served from here at all — it is Halogen Flash, a self-contained OCI
-#     image on Strix (modules/halogen.nix).
+#     served separately by the native Gufo engine (modules/gufo.nix).
 #
 # XRT is intentionally absent here. hardware.amd-npu already composes and exports
 # nix-amd-ai's XRT + amdxdna plugin on strix. Hellas currently pins the exact
@@ -58,7 +57,7 @@ in
     # pulls therock-rocm-sdk-gfx1151 — an 8.3 GiB NAR that no upstream cache
     # serves — into the closure, where it was the dominant term of every cold
     # nightly update-center push (#234's arithmetic), and nothing on the fleet
-    # runs them. The fleet is mono-model on Halogen; llama.cpp covers the
+    # runs them. Gufo serves the resident text model; llama.cpp covers the
     # small artifacts.
 
     # One TUI for CPU, Radeon iGPU, and XDNA NPU telemetry. Upstream packaged it

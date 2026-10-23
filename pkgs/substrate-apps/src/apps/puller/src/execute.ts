@@ -1,7 +1,7 @@
 // What a leased run becomes. Two executors, one contract (puller.ts Executor):
 //
 //   local  the interpreter with the repo's runners on this host (src/integrated.ts runIntegrated): host,
-//          runtime-test, herdr, gvisor, ssh:worker for pi on Halogen, microvm, workerd, as runtimes.toml names them.
+//          runtime-test, herdr, gvisor, ssh:worker for pi on Gufo, microvm, workerd, as runtimes.toml names them.
 //          The run directory is the puller's runs/<runId>/, so a second attempt resumes from the first one's journal.
 //          An ax runtime is refused with the reason: ax Tasks are rendered and dispatched by the link on the NAS,
 //          which this host is not; use node_dispatch = "floor" to send nodes there.
@@ -172,7 +172,7 @@ export interface FloorBackendOptions {
   readonly defaultModel: string
   /**
    * The puller's runtimes file, when it has one: agent({runtime: X}) is labelled with the seat X's table spends
-   * (critique pass 2026-09-24, RG-3: it borrowed node_runs_on's seat, so {runtime:'codex'} became seat:halogen).
+   * (critique pass 2026-09-24, RG-3: it borrowed node_runs_on's seat, so {runtime:'codex'} became seat:gufo).
    */
   readonly runtimes?: RuntimesConfig
   readonly pollMs?: number

@@ -29,8 +29,8 @@ it("one failed journal write in a dispatch fiber strands the lease for the life 
   const logs: Array<any> = []
   const stop = Effect.runSync(Deferred.make<void>())
   const cfg: LinkConfig = {
-    holder: "nas-link-1", maxInFlight: 1, servedLabels: ["seat:halogen", "runtime:gvisor"],
-    shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] },
+    holder: "nas-link-1", maxInFlight: 1, servedLabels: ["seat:gufo", "runtime:gvisor"],
+    shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] },
     completion: "auto", secondMs: SEC, resyncMs: 30, pendingTimeoutMs: 1500, deleteAfterMs: 0, deadlineBackstopMs: 300,
     createAttempts: 3, outboxBackoffMs: [20, 100], initialPollSeconds: 1, initialHeartbeatSeconds: 2, fenceTimeoutMs: 300, resultReadTries: 3
   }
@@ -75,8 +75,8 @@ it("R4-7b: a dispatch defect whose fail-back also fails ends the link", async ()
   const logs: Array<any> = []
   const stop = Effect.runSync(Deferred.make<void>())
   const cfg: LinkConfig = {
-    holder: "nas-link-1", maxInFlight: 1, servedLabels: ["seat:halogen", "runtime:gvisor"],
-    shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] },
+    holder: "nas-link-1", maxInFlight: 1, servedLabels: ["seat:gufo", "runtime:gvisor"],
+    shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] },
     completion: "auto", secondMs: SEC, resyncMs: 30, pendingTimeoutMs: 1500, deleteAfterMs: 0, deadlineBackstopMs: 300,
     createAttempts: 3, outboxBackoffMs: [20, 100], initialPollSeconds: 1, initialHeartbeatSeconds: 2, fenceTimeoutMs: 300, resultReadTries: 3
   }

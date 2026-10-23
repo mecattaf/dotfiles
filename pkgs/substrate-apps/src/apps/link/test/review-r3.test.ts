@@ -23,8 +23,8 @@ const job = (n: string, spec: Record<string, unknown> = {}): AgentJob => ({
   apiVersion: "ultracode.mecattaf.dev/v1alpha1", kind: "AgentJob",
   metadata: { name: `wf-test-${n}`, labels: { [A + "run-id"]: "wf-test", [A + "workflow"]: "link-test", [A + "phase-index"]: "1" },
     annotations: { [A + "run-id-raw"]: "wf_test", [A + "label"]: `probe:${n}`, [A + "item-key"]: `wf_test#${n}`, [A + "journal-key"]: JK, [A + "phase-title"]: "Probe" } },
-  spec: { "runs-on": ["seat:halogen", "runtime:gvisor"],
-    with: { prompt: `say ${n}`, prompt_ref: { sha256: "ab".repeat(32), bytes: 5, uri: `journal://wf_test/${n}/prompt.md` }, model: "halogen-qwen3.8-flash-next" }, ...spec } as AgentJob["spec"]
+  spec: { "runs-on": ["seat:gufo", "runtime:gvisor"],
+    with: { prompt: `say ${n}`, prompt_ref: { sha256: "ab".repeat(32), bytes: 5, uri: `journal://wf_test/${n}/prompt.md` }, model: "qwen3.8-flash-next" }, ...spec } as AgentJob["spec"]
 })
 const world = (o: Partial<FloorConfig> = {}) => ({
   floor: new FakeFloor({ cap: 2, leaseSeconds: 6, graceSeconds: 15, pollSeconds: 1, heartbeatSeconds: 2, maxAttempts: 3, secondMs: SEC, tokens: { "tok-nas": "nas-link-1" }, ...o }),
@@ -35,8 +35,8 @@ function start(w: World, dir: string, over: Partial<LinkConfig> = {}, fetch?: ty
   const logs: Array<Record<string, unknown>> = []
   const stop = Effect.runSync(Deferred.make<void>())
   const cfg: LinkConfig = {
-    holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:halogen", "runtime:gvisor"],
-    shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] },
+    holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:gufo", "runtime:gvisor"],
+    shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] },
     completion: "auto", secondMs: SEC, resyncMs: 30, pendingTimeoutMs: 1500, deleteAfterMs: 0, deadlineBackstopMs: 300,
     createAttempts: 3, outboxBackoffMs: [20, 100], initialPollSeconds: 1, initialHeartbeatSeconds: 2, fenceTimeoutMs: 300, resultReadTries: 3, ...over
   }
@@ -90,14 +90,14 @@ const deep = (f: (o: Record<string, unknown>) => void) => { const walk = (x: any
 // A floor stub that grants one lease named after a Task someone else owns (scratch-r3-1).
 const stats = { seq: 1, cap: 2, wip: 0, queued: 0, done: 0 }
 const foreignTask = (name: string) => ({ apiVersion: "ax.io/v1alpha1" as const, kind: "Task" as const, metadata: { name, atespace: "fleet" },
-  spec: { image: "someone-else", command: ["long-job"], env: [{ name: "AX_CONWIP_HOLDER", value: "nas-link-2" }], gateway: { name: "halogen" } } })
+  spec: { image: "someone-else", command: ["long-job"], env: [{ name: "AX_CONWIP_HOLDER", value: "nas-link-2" }], gateway: { name: "gufo" } } })
 const foreignGrant = (name: string) => ({ leaseId: name, attempt: 1, job: job("x"),
   lease: { holderIdentity: "nas-link-1", leaseDurationSeconds: 30, acquireTime: Date.now(), renewTime: Date.now(), leaseTransitions: 0 } })
 const runStub = async (dir: string, ax: FakeAx, floor: any, ms: number, over: Partial<LinkConfig> = {}) => {
   const logs: Array<Record<string, any>> = []
   const stop = Effect.runSync(Deferred.make<void>())
-  const cfg: LinkConfig = { holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:halogen", "runtime:gvisor"],
-    shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] },
+  const cfg: LinkConfig = { holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:gufo", "runtime:gvisor"],
+    shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] },
     completion: "auto", secondMs: SEC, resyncMs: 30, pendingTimeoutMs: 60_000, deleteAfterMs: 600_000, deadlineBackstopMs: 300,
     createAttempts: 3, outboxBackoffMs: [20, 100], initialPollSeconds: 1, initialHeartbeatSeconds: 2, ...over }
   const f = Effect.runFork(runLink(cfg, { ax, floor, journal: Journal.open(dir), log: (ev, x) => logs.push({ t: Date.now(), ev, ...x }), stop }))
@@ -467,8 +467,8 @@ describe("review round 3", () => {
     const switched: Array<string> = []
     const logs: Array<Record<string, unknown>> = []
     const stop = Effect.runSync(Deferred.make<void>())
-    const cfg: LinkConfig = { holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:halogen", "runtime:gvisor"],
-      shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] },
+    const cfg: LinkConfig = { holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:gufo", "runtime:gvisor"],
+      shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] },
       completion: "auto", secondMs: SEC, resyncMs: 30, pendingTimeoutMs: 1500, deleteAfterMs: 0, deadlineBackstopMs: 300,
       createAttempts: 3, outboxBackoffMs: [20, 100], initialPollSeconds: 1, initialHeartbeatSeconds: 2, floorUrls: ["http://floor.test", "http://floor2.test"] }
     const fiber = Effect.runFork(Effect.scoped(Effect.gen(function*() {
