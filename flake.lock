@@ -209,11 +209,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1792775186,
-        "narHash": "sha256-CkYSdgiJqhPXyc4UGV25ng6XQr2FcYTlSpBbjFft9pc=",
+        "lastModified": 1792775567,
+        "narHash": "sha256-5m0GjYvNwYWvC1plfmN16qtkO7P/onzhaKkFGX9bd5A=",
         "owner": "mecattaf",
         "repo": "donnerkeule",
-        "rev": "938e5ac01038bd677800b6de7c9092285eed4986",
+        "rev": "a36a6cc2b8a36e59e0ada17578b52d57849bdf07",
         "type": "github"
       },
       "original": {
