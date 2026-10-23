@@ -1,100 +1,64 @@
-# NAS central credentials: Tom's rekey step
+# NAS credentials and fresh compute identities
 
-Part of #600 and the fleet cutover umbrella #597. This branch changes public
-recipient lists only. No ciphertext was printed, decrypted or re-encrypted.
+The migration ciphertexts are re-encrypted and verified as of 23 October 2026.
+This tree contains the completed recipient change. Deployment and actual NAS
+credential delivery remain separate steps.
 
-No ciphertext was printed, decrypted or changed in this PR. Both compute hosts
-have `mySecrets.enable = false`. Their public host keys must not appear in an
-operator-secret recipient tier. The worker host key is deliberately empty until
-Tom records the fresh public key generated at install. Adding it grants access
-only to the new TP2 service token below, never to the operator tier.
+## Completed operator recipient change
 
-## New compute service credential
+All 18 operator ciphertexts retain Tom's admin recovery recipient. Their final
+host recipients are:
 
-Tom must create `secrets/gufo-tp2-control-token.age` with the same random,
-single-line token for both compute hosts. Record the worker's fresh SSH host
-public key in `modules/mesh-registry.nix` first, then encrypt to the admin editor
-and **only** the two compute host keys declared for this secret in `secrets.nix`.
-Do not create an admin/coordinator-only ciphertext while the worker key is empty.
-This specific service token is the sole compute recipient exception; it grants
-no operator/API authority and does not enable `mySecrets`.
-
-The ciphertext is deliberately absent here. Once Tom creates and commits it,
-the compute profile declares root-only agenix delivery independently of the
-operator tier. Until then `gufo-tp2.service` refuses to start because its
-`LoadCredential` source `/run/agenix/gufo-tp2-control-token` is absent. Its
-wrapper reads the credential at runtime; upstream accepts the value only in
-argv, so it remains visible in `/proc/<pid>/cmdline`.
-
-## Operator credential retirement
-
-Merge together with the strix-coordinator/strix-worker PR; never deploy strix
-from a main that has this PR but not that one. Tom's latest ruling is one
-simultaneous fleet power-off: all three NixOS machines return in their final
-roles after the SSD/cable move. Stage and qualify NAS home, credentials,
-transport and the combined generations before that power-off; there is no
-intermediate coordinator brain boot. See `docs/nas-agent-transport.md` for
-transport and offload gates. This document authorizes no deployment or reboot.
-
-The admin recovery recipient stays on every secret. All 18 files below lose
-strix's host recipient. The first three gain NAS and retain client; the next
-14 gain NAS; Hugging Face already had NAS and now loses strix. Neither compute
-host receives shared secrets. Login needs only mesh authorized public keys,
-so strix-coordinator is not retained in the delivered tier. Existing home
-copies remain until the supervised cutover; changing recipients does not
-revoke old plaintext or historical ciphertext.
-
-| File | Host recipients after rekey (plus admin) |
+| Ciphertext | Host recipients, in addition to admin |
 | --- | --- |
-| `secrets/ssh-user-key.age` | nas, client |
-| `secrets/atuin-key.age` | nas, client |
-| `secrets/tom-password-hash.age` | nas, client |
-| `secrets/atticd-server-token.age` | nas |
-| `secrets/substrate-floor-token.age` | nas |
-| `secrets/substrate-link-token-strix.age` | nas |
-| `secrets/soundcloud-cookies.age` | nas |
-| `secrets/youtube-music-cookies.age` | nas |
-| `secrets/navidrome-credentials.age` | nas |
-| `secrets/immich-api-key.age` | nas |
-| `secrets/printer-admin.age` | nas |
-| `secrets/gh-hosts.age` | nas |
-| `secrets/wrangler-config.age` | nas |
-| `secrets/cloudflare-api-token.age` | nas |
-| `secrets/qwencloud-token.age` | nas |
-| `secrets/openrouter-token.age` | nas |
-| `secrets/codex-auth.age` | nas |
-| `secrets/huggingface-token.age` | nas |
+| `ssh-user-key`, `atuin-key`, `tom-password-hash` | NAS and Zenbook |
+| `atticd-server-token`, `substrate-floor-token`, `substrate-link-token-strix` | NAS |
+| `soundcloud-cookies`, `youtube-music-cookies`, `navidrome-credentials` | NAS |
+| `immich-api-key`, `printer-admin`, `gh-hosts`, `wrangler-config` | NAS |
+| `cloudflare-api-token`, `qwencloud-token`, `openrouter-token` | NAS |
+| `codex-auth`, `huggingface-token` | NAS |
 
-Run from the reviewed combined cutover checkout on strix, with Tom's recovery
-age identity saved in a mode-0600 file outside the repository. Replace the
-identity path below. Do not use a delivered SSH private key as the identity.
-The pinned agenix CLI's `EDITOR=:` mode re-encrypts without opening an editor
-or printing plaintext. Running it per file limits the operation to these 18
-files and avoids the absent optional NAS DNS ciphertext in the full ruleset.
+The previous Strix SSH **host** identity was already an authorized decryption
+recipient. It was used once to decrypt and re-encrypt directly through memory.
+NAS-side decryption was verified privately for every result. No delivered SSH
+user key was used as an editor identity; no plaintext credential, plaintext
+digest or private key was printed or written to a temporary file. Tom's admin
+private key was not needed or retrieved.
 
-```sh
-nix develop -c bash <<'SH'
-set -euo pipefail
-admin_identity=/absolute/path/to/toms-admin.agekey
-for secret in \
-  ssh-user-key atuin-key tom-password-hash \
-  atticd-server-token substrate-floor-token substrate-link-token-strix \
-  soundcloud-cookies youtube-music-cookies navidrome-credentials \
-  immich-api-key printer-admin gh-hosts wrangler-config cloudflare-api-token \
-  qwencloud-token openrouter-token codex-auth huggingface-token
-do
-  test -f "secrets/$secret.age"
-  EDITOR=: agenix --identity "$admin_identity" --edit "secrets/$secret.age"
-done
-SH
-```
+Both compute hosts have fresh public SSH host identities in
+`modules/mesh-registry.nix`. Private extra-files installation trees remain
+outside Git in protected fleet-move staging. Install each fresh key only on its
+named host. Preserve old keys in protected recovery, and do not restore the old
+operator-capable coordinator identity onto fresh compute.
 
-Review filenames only with `git diff --name-only -- secrets/`, then commit the
-18 re-encrypted files. Do this before any NAS activation; otherwise the new
-secret declarations cannot decrypt their old ciphertext. Do not seed Claude
-OAuth through agenix: preserve both seat directories and use hand `/login`s
-when needed. The copied live Codex auth wins over its seed-once ciphertext.
-Substrate's recipient changes are escrow only: no Substrate service or
-credential delivery is added to NAS. Attic retains its existing live signing
-key and state. Wi-Fi, the optional NAS DNS token and operator vault recipient
-lists do not change.
+## Compute service credential
+
+`secrets/gufo-tp2-control-token.age` now exists: one random scoped Gufo control
+token encrypted only to admin and the two fresh compute host keys. Both private
+host identities decrypted it successfully. It grants no operator, GitHub,
+Cloudflare, Claude or Codex authority.
+
+Delivery uses root-only agenix credentials. Upstream accepts the value in argv,
+so a running TP2 process exposes it in process arguments; keep this token limited
+to Gufo control. Hardware qualification and model staging remain required.
+
+## Handover
+
+- Stage tested, merged source and needed closures on NAS before compute install.
+  Verify actual NAS secret delivery after activation.
+- Preserve both Claude seats and shared settings. Claude OAuth has no agenix
+  seed. Live Codex/GitHub/Wrangler auth wins over stale seed-once files; never
+  overwrite a refreshed live credential.
+- Take a final capture with harness writers quiescent. Initial online database
+  captures are preservation copies, not an atomic final handover.
+- Substrate stays paused. Its rekey provides central escrow; it does not enable
+  a runner or finish the DSH runner contract.
+- Keep coordinator Chrome per Tom's latest instruction. Preserve its profiles
+  and encrypted NAS/admin keyring recovery escrow before firmware changes. A
+  board-bound TPM blob alone cannot recover after a fresh install or PCR change.
+- Future edits can use the admin recovery identity with `secrets.nix`. Optional
+  DNS, Wi-Fi and operator-vault ciphertexts are unchanged.
+
+Recipient changes do not revoke old plaintext or archived ciphertext. Protect
+that archive and install fresh compute keys and declared roles, without copying
+the old home back wholesale.
