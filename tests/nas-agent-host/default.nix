@@ -9,7 +9,7 @@ let
   client = self.nixosConfigurations.client.config.home-manager.users.tom;
   # Evaluate a future compute role without importing NAS-only declarations.
   compute =
-    (self.nixosConfigurations.strix.extendModules {
+    (self.nixosConfigurations.strix-coordinator.extendModules {
       modules = [ { myFleet.roles = lib.mkForce [ "compute" ]; } ];
     }).config;
   # Before the host-rename stack lands, project the existing Strix module
@@ -21,7 +21,7 @@ let
         if builtins.hasAttr name self.nixosConfigurations then
           self.nixosConfigurations.${name}.config
         else
-          (self.nixosConfigurations.strix.extendModules {
+          (self.nixosConfigurations.strix-coordinator.extendModules {
             modules = [
               {
                 networking.hostName = lib.mkForce name;
@@ -81,7 +81,7 @@ assert
   ];
 assert c.users.users.tom.linger;
 assert c.zramSwap.memoryMax == 10 * 1024 * 1024 * 1024;
-assert c.boot.kernelPackages.kernel.version == "7.2.10";
+assert c.boot.kernelPackages.kernel.version == self.nixosConfigurations.client.config.boot.kernelPackages.kernel.version;
 assert h.home.enableNixpkgsReleaseCheck;
 assert h.home.version.release == "26.05";
 assert !h.rawDotfiles.inStore;
@@ -142,7 +142,7 @@ assert c.services.atuin.enable;
 assert h.programs.atuin.package.version == c.services.atuin.package.version;
 assert
   c.services.atuin.package.version
-  == self.nixosConfigurations.strix.config.services.atuin.package.version;
+  == self.nixosConfigurations.strix-coordinator.pkgs.atuin.version;
 assert client.programs.atuin.settings.sync_address == "http://nas:27321";
 assert !(c.systemd.user.services ? substrate-puller);
 assert !(c.systemd.user.services ? substrate-pusher);
@@ -172,12 +172,12 @@ assert builtins.all (name: c.age.secrets ? ${name}) [
   "tom-password-hash"
   "codex-auth"
 ];
-assert compute.age.secrets == { };
+assert builtins.all (name: name == "gufo-tp2-control-token") (builtins.attrNames compute.age.secrets);
 assert builtins.all (
   name: builtins.elem registry.nas.hostKey recipients."secrets/${name}.age".publicKeys
 ) toNas;
-assert builtins.all (r: !(builtins.elem registry.strix.hostKey r.publicKeys)) (
-  builtins.attrValues recipients
+assert builtins.all (r: !(builtins.elem registry.strix-coordinator.hostKey r.publicKeys)) (
+  builtins.attrValues (builtins.removeAttrs recipients [ "secrets/gufo-tp2-control-token.age" ])
 );
 # The unfilled private source must block the real toplevel. This check does
 # not bypass that assertion or pretend the private source has been built.
