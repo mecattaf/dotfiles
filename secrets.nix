@@ -38,8 +38,15 @@ let
   # NOT folded into `delivered`: it is a recipient of one ciphertext and no
   # other, and the standing authority the aug04 ruling withdrew stays withdrawn.
   nasOnly = nonEmpty [ registry.nas.hostKey ];
+  computeTp2 = nonEmpty [
+    registry.strix-coordinator.hostKey
+    registry.strix-worker.hostKey
+  ];
 in
 {
+  # Machine-to-machine Gufo control only; no operator credentials on compute.
+  # Tom creates this AFTER recording the worker's fresh host key (REKEY.md).
+  "secrets/gufo-tp2-control-token.age".publicKeys = editors ++ computeTp2;
   # --- delivered tier (every host that runs agenix — i.e. all but the nas) ---
   # (hermes-credentials removed 2026-08-04: the Nous Research harness is no longer
   # in use anywhere in the fleet — no package, no service, no consumer left.)

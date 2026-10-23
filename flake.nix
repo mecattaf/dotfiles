@@ -7,11 +7,11 @@
 
     # nixpkgs-fresh — a second nixpkgs used ONLY to keep a handful of
     # fast-moving user packages (currently google-chrome and uv, see overlays
-    # list below) and the twins'/NAS's linuxPackages_7_2 kernel series current
+    # list below) and the fleet's linuxPackages_7_3 kernel series current
     # independent of the `nixpkgs` pin above. That pin is deliberately
     # lagging — the exact-candidate fleet deploy keeps it as the only door
     # Mesa/ROCm churn enters through, bumped manually. Browser point releases
-    # and 7.2.y kernel point fixes carry none of that risk, so they shouldn't
+    # and kernel point fixes stay within the selected series, so they shouldn't
     # have to wait on it.
     #
     # nixos-unstable-SMALL since 2026-08-30 (#244): the same rolling resolver,
@@ -26,13 +26,11 @@
     # rollingInputOverrides remains available to explicit fleet candidates.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
-    # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
-    # the NAS is a frozen self-sustaining appliance on standard stable nixpkgs,
-    # maintained manually every few years. It never rides the unstable
-    # kernel/Mesa churn the strix's pin exists to gate, and it accepts
-    # EOL-pin CVE exposure because it is reachable only from the strix
-    # over the private /30. Bump deliberately with
-    # `nix flake update nixpkgs-stable` on the same few-years cadence.
+    # nixpkgs-stable — the NAS userspace base (issue #135 ruling).
+    # Its kernel follows the fleet's current series from nixpkgs-fresh
+    # (Tom, 2026-10-23, #584); ./hosts/nas/kernel.nix owns that exception.
+    # Bump the stable userspace deliberately with
+    # `nix flake update nixpkgs-stable`.
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     home-manager = {
@@ -201,6 +199,11 @@
     # (v0.20.0). No nixpkgs.follows: upstream qualifies its build against its own
     # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
     gufo.url = "github:gufo-org/gufo/0c03748a271eab895befc0d2343aa50ca4b6d836";
+
+    # Separate, hardware-unqualified TP2 engine; the upstream single-box unit
+    # above keeps its proven build. flake.lock pins both carry-forward heads.
+    gufo-rdma.url = "github:neuhaus/gufo/rdma";
+    donnerkeule.url = "github:mecattaf/donnerkeule/codex/framework-7-3";
 
     # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
     # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
@@ -555,6 +558,12 @@
             ;
           # `nix build .#gufo` — the engine modules/gufo.nix runs (#525).
           gufo = inputs.gufo.packages.${system}.default;
+          rdmaCoreUsb4 = pkgs.callPackage ./pkgs/rdma-core-usb4 { inherit (inputs) donnerkeule; };
+          gufo-rdma = inputs.gufo-rdma.packages.${system}.tp2-rdma.override {
+            rdma-core = self.packages.${system}.rdmaCoreUsb4;
+          };
+          thunderbolt-ibverbs =
+            self.nixosConfigurations.strix-worker.config.hardware.thunderbolt-ibverbs.resolvedPackage;
           live-iso = strixAi.live-iso;
           nas-installer-iso = nasInstaller.config.system.build.isoImage;
           # `nix build .#substrate-pusher`, `.#substrate-puller`: the strix's
@@ -594,6 +603,10 @@
         };
         closet-topology = import ./tests/closet-topology {
           inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+        gufo-rdma = import ./tests/gufo-rdma {
+          inherit pkgs self inputs;
           inherit (nixpkgs) lib;
         };
         strix-reachability =
@@ -2341,9 +2354,11 @@
           # transition, which is exactly when a wedged box needs it.
           assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" strix.boot.kernelParams;
 
-          # The twins ride linux 7.2 from nixpkgs-fresh (modules/strix.nix).
-          # hasPrefix, not equality: the versioned attr advances within 7.2.x.
-          assert nixpkgs.lib.hasPrefix "7.2" strix.boot.kernelPackages.kernel.version;
+          # Every host follows Linux 7.3, including the NAS's stable userspace.
+          # Compare major.minor so point releases pass but 7.30 cannot match.
+          assert builtins.all (
+            host: nixpkgs.lib.versions.majorMinor host.config.boot.kernelPackages.kernel.version == "7.3"
+          ) (builtins.attrValues self.nixosConfigurations);
 
           # `assert !{strix,worker}.services.npu-llm.enable` stood here
           # until 2026-08-31 (#270): with modules/npu-llm.nix deleted the
