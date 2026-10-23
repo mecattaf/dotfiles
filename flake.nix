@@ -2845,8 +2845,8 @@
 
         huggingface-cli-smoke =
           let
-            hf = pkgs.huggingface-cli;
-            expectedVersion = "1.16.0";
+            hf = self.nixosConfigurations.nas.pkgs.huggingface-cli;
+            expectedVersion = "1.10.2"; # NAS stable userspace; same metadata/cache contract.
             smokeRevision = "0123456789abcdef0123456789abcdef01234567";
             mockHub = pkgs.writeText "huggingface-metadata-mock.py" ''
               import json
@@ -2916,11 +2916,11 @@
               server.handle_request()
               server.server_close()
             '';
-            strixPackages =
-              self.nixosConfigurations.strix-coordinator.config.home-manager.users.tom.home.packages;
+            brainPackages =
+              self.nixosConfigurations.nas.config.home-manager.users.tom.home.packages;
           in
           assert hf.version == expectedVersion;
-          assert builtins.elem hf strixPackages;
+          assert builtins.elem hf brainPackages;
           pkgs.runCommand "huggingface-cli-smoke"
             {
               nativeBuildInputs = [
