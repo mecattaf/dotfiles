@@ -89,7 +89,7 @@ id = "claude-opus-5-5"
 harness = "claude"
 default = true
 [[models]]
-id = "halogen-qwen3.8-flash-next"
+id = "qwen3.8-flash-next"
 harness = "pi"
 default = true
 [[models]]
@@ -102,18 +102,18 @@ id = "gpt-5.5-codex"
 harness = "codex"
 `;
 
-/** A runtimes file with [sessions] (unless `sessions: false`), a claude, a pi (Halogen) and a codex host runtime. */
+/** A runtimes file with [sessions] (unless `sessions: false`), a claude, a pi (Gufo) and a codex host runtime. */
 function world(o: { sessions?: boolean; extra?: string } = {}) {
   const root = tmp("axc-sessions-");
   const seat = join(root, "seat");
   mkdirSync(seat);
   mkdirSync(join(root, "pihost"));
-  writeFileSync(join(root, "pihost", "models.json"), JSON.stringify({ providers: { halogen: { baseUrl: "http://strix:8731/v1", models: [{ id: "halogen-qwen3.8-flash-next", contextWindow: 262144 }] } } }) + "\n");
+  writeFileSync(join(root, "pihost", "models.json"), JSON.stringify({ providers: { gufo: { baseUrl: "http://strix:8731/v1", models: [{ id: "qwen3.8-flash-next", contextWindow: 262144 }] } } }) + "\n");
   const sessions = o.sessions === false ? "" : `[sessions]\nproject_bin = "/opt/project/bin/project"\nproject_url = "https://project.test"\nproject_token_file = "${root}/token"\n`;
   const config = parseRuntimesToml(`default = "opus"\n${MODELS}\n[credentials]\nclaude = "${seat}"\n${sessions}
 [runtime.opus]
 type = "host"
-[runtime.halogen]
+[runtime.gufo]
 type = "host"
 harness = "pi"
 [runtime.cx]
@@ -160,10 +160,10 @@ describe("agent({session}) is honoured or refused, never dropped", () => {
     const c = call({ runtime, model, session: session() });
     expect((await bare.backend.run(c)).error).toMatch(/needs the \[sessions\] table/);
     expect(bare.receipt(c.index).refused).toMatch(/\[sessions\]/);
-    i = await refused({ runtime: "halogen", model: "halogen-qwen3.8-flash-next", session: session({ harness: "claude" }) }, /pinned to the claude harness; runtime halogen runs pi/);
+    i = await refused({ runtime: "gufo", model: "qwen3.8-flash-next", session: session({ harness: "claude" }) }, /pinned to the claude harness; runtime gufo runs pi/);
     expect(w.receipt(i).refused).toMatch(/pinned to the claude harness/);
     // EXCHANGE section 11: a session never changes harness, so a model the catalog serves elsewhere is refused too.
-    i = await refused({ runtime: "opus", model: "halogen-qwen3.8-flash-next", session: session({ harness: "claude" }) }, /served by the pi harness; runtime opus runs claude/);
+    i = await refused({ runtime: "opus", model: "qwen3.8-flash-next", session: session({ harness: "claude" }) }, /served by the pi harness; runtime opus runs claude/);
     expect(w.receipt(i).refused).toMatch(/served by the pi harness/);
     expect(since(k)).toEqual([]);
   });
@@ -171,9 +171,9 @@ describe("agent({session}) is honoured or refused, never dropped", () => {
   it("pinned runtime: a model it does not serve is refused, never swapped for the runtime's default (EXCHANGE section 7)", async () => {
     const w = world();
     const k = logged().length;
-    // switch_model on a pi session pinned to halogen: qwen3.8-max is a pi model of another provider
-    let c = call({ runtime: "halogen", model: "qwen3.8-max", schema: SUMMARY, session: session({ harness: "pi", role: "coordinator" }) });
-    expect((await w.backend.run(c)).error).toMatch(/model qwen3.8-max is served by pi provider qwen-token-plan; runtime halogen runs pi provider halogen/);
+    // switch_model on a pi session pinned to gufo: qwen3.8-max is a pi model of another provider
+    let c = call({ runtime: "gufo", model: "qwen3.8-max", schema: SUMMARY, session: session({ harness: "pi", role: "coordinator" }) });
+    expect((await w.backend.run(c)).error).toMatch(/model qwen3.8-max is served by pi provider qwen-token-plan; runtime gufo runs pi provider gufo/);
     expect(w.receipt(c.index).refused).toMatch(/pi provider qwen-token-plan/);
     // a claude session pinned to opus and an id the catalog does not know
     c = call({ runtime: "opus", model: "nope-1", schema: SUMMARY, session: session({ harness: "claude" }) });
@@ -181,11 +181,11 @@ describe("agent({session}) is honoured or refused, never dropped", () => {
     expect(w.receipt(c.index).refused).toMatch(/no catalog entry/);
     // the route names why and keeps the runtime's own model and seat for admission, so the call reaches run() and its
     // receipt (CARRIED item 13); the integrated path's model policy keeps the declared model (test/integrated.test.ts "route:")
-    expect(w.backend.route({ opts: { runtime: "halogen", model: "qwen3.8-max", session: session({ harness: "pi" }) }, phase: undefined }))
-      .toMatchObject({ selection: { name: "halogen" }, model: "halogen-qwen3.8-flash-next", sessionRefused: expect.stringMatching(/pi provider qwen-token-plan/) });
-    expect(w.backend.route({ opts: { runtime: "halogen", model: "qwen3.8-max", session: session({ harness: "claude" }) }, phase: undefined }).sessionRefused)
-      .toMatch(/pinned to the claude harness; runtime halogen runs pi/);
-    expect(w.backend.route({ opts: { runtime: "halogen", model: "halogen-qwen3.8-flash-next", session: session({ harness: "pi" }) }, phase: undefined }).sessionRefused).toBeUndefined();
+    expect(w.backend.route({ opts: { runtime: "gufo", model: "qwen3.8-max", session: session({ harness: "pi" }) }, phase: undefined }))
+      .toMatchObject({ selection: { name: "gufo" }, model: "qwen3.8-flash-next", sessionRefused: expect.stringMatching(/pi provider qwen-token-plan/) });
+    expect(w.backend.route({ opts: { runtime: "gufo", model: "qwen3.8-max", session: session({ harness: "claude" }) }, phase: undefined }).sessionRefused)
+      .toMatch(/pinned to the claude harness; runtime gufo runs pi/);
+    expect(w.backend.route({ opts: { runtime: "gufo", model: "qwen3.8-flash-next", session: session({ harness: "pi" }) }, phase: undefined }).sessionRefused).toBeUndefined();
     expect(since(k)).toEqual([]);
   });
 });
@@ -196,22 +196,22 @@ describe("the runtime of a session call that names none", () => {
     const cat = DEFAULT_MODEL_ALLOWLIST;
     expect(sessionRuntime(w.config, cat, "claude-opus-5-5", undefined)).toMatchObject({ name: "opus", via: "model" });
     expect(sessionRuntime(w.config, cat, "opus", "claude").name).toBe("opus");
-    expect(sessionRuntime(w.config, cat, "halogen-qwen3.8-flash-next", "pi")).toMatchObject({ name: "halogen", runtime: { type: "host", harness: "pi" } });
+    expect(sessionRuntime(w.config, cat, "qwen3.8-flash-next", "pi")).toMatchObject({ name: "gufo", runtime: { type: "host", harness: "pi" } });
     expect(() => sessionRuntime(w.config, cat, "qwen3.8-max", undefined)).toThrow(/no host runtime this file permits serves model qwen3.8-max \(harness pi, pi provider qwen-token-plan\)/);
     expect(() => sessionRuntime(w.config, cat, "nope-1", undefined)).toThrow(/model nope-1 has no catalog entry/);
-    expect(() => sessionRuntime(w.config, cat, "halogen-qwen3.8-flash-next", "claude")).toThrow(/served by the pi harness; this session runs on claude/);
+    expect(() => sessionRuntime(w.config, cat, "qwen3.8-flash-next", "claude")).toThrow(/served by the pi harness; this session runs on claude/);
     expect(() => sessionRuntime(w.config, [...cat, { id: "gpt-5.5-codex", harness: "codex" }], "gpt-5.5-codex", undefined)).toThrow(/codex harness, which runs no session/);
     expect(() => sessionRuntime(w.config, cat, undefined, undefined)).toThrow(/must name its model/);
 
     // Through the backend: the route names the runtime, the outcome carries it; refusals are outcomes.
     expect(w.backend.route({ opts: { model: "claude-opus-5-5", session: session() }, phase: undefined }).selection.name).toBe("opus");
-    expect(w.backend.route({ opts: { model: "halogen-qwen3.8-flash-next", session: session() }, phase: undefined })).toMatchObject({ harness: "pi", selection: { name: "halogen" } });
-    const out = await w.backend.run(call({ model: "halogen-qwen3.8-flash-next", schema: SUMMARY, session: session({ id: "routefrommodel1" }) }));
-    expect(out.route).toEqual({ runtime: "halogen", harness: "pi" });
+    expect(w.backend.route({ opts: { model: "qwen3.8-flash-next", session: session() }, phase: undefined })).toMatchObject({ harness: "pi", selection: { name: "gufo" } });
+    const out = await w.backend.run(call({ model: "qwen3.8-flash-next", schema: SUMMARY, session: session({ id: "routefrommodel1" }) }));
+    expect(out.route).toEqual({ runtime: "gufo", harness: "pi" });
     expect(out.object).toEqual(REPLY);
     expect((await w.backend.run(call({ model: "gpt-5.5-codex", session: session() }))).error).toMatch(/codex harness, which runs no session/);
     expect((await w.backend.run(call({ model: "qwen3.8-max", session: session() }))).error).toMatch(/no host runtime this file permits/);
-    expect(w.backend.route({ opts: { runtime: "opus", model: "halogen-qwen3.8-flash-next", session: session() }, phase: undefined }))
+    expect(w.backend.route({ opts: { runtime: "opus", model: "qwen3.8-flash-next", session: session() }, phase: undefined }))
       .toMatchObject({ model: "claude-opus-5-5", sessionRefused: expect.stringMatching(/served by the pi harness/) });
   });
 });
@@ -220,7 +220,7 @@ describe("the session's own dir and cwd", () => {
   it("session dir: <transcript root>/sessions/<id>/ (0700) outlives the job; pi gets --session-dir <id>/pi, --session-id and its own agent dir", async () => {
     const w = world();
     const k = logged().length;
-    const out = await w.backend.run(call({ model: "halogen-qwen3.8-flash-next", schema: SUMMARY, session: session() }));
+    const out = await w.backend.run(call({ model: "qwen3.8-flash-next", schema: SUMMARY, session: session() }));
     expect(out.error).toBeUndefined();
     const dir = w.dir();
     expect(statSync(dir).mode & 0o777).toBe(0o700);
@@ -284,7 +284,7 @@ describe("resume by id, per harness", () => {
     const cl = call({ model: "claude-opus-5-5", schema: SUMMARY, session: session({ id: "retryheld01", harnessSessionId: "1b0e7a9c-1d2e-4f30-8a41-5b6c7d8e9f01" }) }, { prompt: "ENVELOPES" });
     await w.backend.run(cl);
     await w.backend.run({ ...cl, attempt: 2, previousErrors: errors });
-    const pi = call({ model: "halogen-qwen3.8-flash-next", schema: SUMMARY, session: session({ id: "retryheldpi01", harnessSessionId: "2b0e7a9c-1d2e-4f30-8a41-5b6c7d8e9f02" }) }, { prompt: "ENVELOPES" });
+    const pi = call({ model: "qwen3.8-flash-next", schema: SUMMARY, session: session({ id: "retryheldpi01", harnessSessionId: "2b0e7a9c-1d2e-4f30-8a41-5b6c7d8e9f02" }) }, { prompt: "ENVELOPES" });
     await w.backend.run(pi);
     await w.backend.run({ ...pi, attempt: 2, previousErrors: errors });
     // a session nothing has run in yet (no transcript found by id): the prompt and the corrections, as any retry
@@ -301,11 +301,11 @@ describe("resume by id, per harness", () => {
   it("pi argv: effort becomes --thinking; a coordinator gets read and the project tools only, no skills or context files; a thread no --tools; the schema rides in the prompt", async () => {
     const w = world();
     const k = logged().length;
-    await w.backend.run(call({ model: "halogen-qwen3.8-flash-next", effort: "low", schema: SUMMARY, session: session({ role: "coordinator" }) }, { prompt: "WAKE" }));
-    await w.backend.run(call({ model: "halogen-qwen3.8-flash-next", schema: SUMMARY, session: session({ id: "threadsession01" }) }));
+    await w.backend.run(call({ model: "qwen3.8-flash-next", effort: "low", schema: SUMMARY, session: session({ role: "coordinator" }) }, { prompt: "WAKE" }));
+    await w.backend.run(call({ model: "qwen3.8-flash-next", schema: SUMMARY, session: session({ id: "threadsession01" }) }));
     const [coord, thread] = since(k);
     const dir = w.dir();
-    expect(coord!.argv).toEqual(["-p", "--session-dir", join(dir, "pi"), "--session-id", HSID, "--provider", "halogen", "--model", "halogen-qwen3.8-flash-next",
+    expect(coord!.argv).toEqual(["-p", "--session-dir", join(dir, "pi"), "--session-id", HSID, "--provider", "gufo", "--model", "qwen3.8-flash-next",
       "--thinking", "low", "--tools", COORDINATOR_TOOLS.join(","), "--no-skills", "--no-context-files", "--mode", "text"]);
     expect(COORDINATOR_TOOLS.join(",")).toBe("read,mcp__project__start_thread_session,mcp__project__message_thread,mcp__project__list_thread_sessions,mcp__project__fetch_thread,mcp__project__fetch_project_timeline,mcp__project__fetch_messages,mcp__project__post_message,mcp__project__read_memory,mcp__project__update_memory,mcp__project__send_later,mcp__project__list_triggers,mcp__project__create_trigger,mcp__project__update_trigger,mcp__project__delete_trigger");
     expect(thread!.argv).not.toContain("--tools");
@@ -343,7 +343,7 @@ describe("the one project MCP", () => {
     const w = world();
     const k = logged().length;
     await w.backend.run(call({ model: "claude-opus-5-5", schema: SUMMARY, session: session() }));
-    await w.backend.run(call({ model: "halogen-qwen3.8-flash-next", schema: SUMMARY, session: session({ id: "pisession00001", role: "coordinator" }) }));
+    await w.backend.run(call({ model: "qwen3.8-flash-next", schema: SUMMARY, session: session({ id: "pisession00001", role: "coordinator" }) }));
     const env = { PROJECT_URL: "https://project.test", PROJECT_TOKEN_FILE: `${w.root}/token`, PROJECT_SESSION_ID: SID, PROJECT_ROLE: "thread" };
     expect(JSON.parse(readFileSync(join(w.dir(), "mcp.json"), "utf8"))).toEqual({ mcpServers: { project: { command: "/opt/project/bin/project", args: ["mcp"], env } } });
     const piEnv = { ...env, PROJECT_SESSION_ID: "pisession00001", PROJECT_ROLE: "coordinator" };
@@ -374,8 +374,8 @@ describe("what a session call reports", () => {
     expect(out.usage).toEqual({ inputTokens: 11, outputTokens: 7, cacheReadTokens: 5, costUsd: 0.25 });
     expect(out.route).toEqual({ runtime: "opus", harness: "claude" });
     expect(out.sessionFile).toBe(join(w.seat, "projects", "-sess-slug", `${HSID}.jsonl`));
-    const pi = await w.backend.run(call({ model: "halogen-qwen3.8-flash-next", schema: SUMMARY, session: session({ id: "pisession00002" }) }));
-    expect(pi.route).toEqual({ runtime: "halogen", harness: "pi" });
+    const pi = await w.backend.run(call({ model: "qwen3.8-flash-next", schema: SUMMARY, session: session({ id: "pisession00002" }) }));
+    expect(pi.route).toEqual({ runtime: "gufo", harness: "pi" });
     expect(pi.sessionFile).toBe(join(w.dir("pisession00002"), "pi", `2026-10-12T21-00-00-000Z_${HSID}.jsonl`));
     // a call without a session reports neither
     const plain = await w.backend.run(call({ model: "claude-opus-5-5" }));

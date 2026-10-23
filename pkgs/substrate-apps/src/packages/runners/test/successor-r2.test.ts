@@ -113,7 +113,7 @@ describe("schema retries", () => {
   it("attempt 2 and later carry the previous errors in the prompt, for every harness", () => {
     const errs = ["/n: must be integer"];
     expect(claudeInvocation({ prompt: "count", previousErrors: errs }).stdin).toMatch(/count[\s\S]*rejected: \/n: must be integer/);
-    expect(piInvocation({ prompt: "count", model: "halogen-qwen3.8-flash-next", schema: { type: "object" }, previousErrors: errs }).stdin).toMatch(/rejected: \/n: must be integer/);
+    expect(piInvocation({ prompt: "count", model: "qwen3.8-flash-next", schema: { type: "object" }, previousErrors: errs }).stdin).toMatch(/rejected: \/n: must be integer/);
     expect(claudeInvocation({ prompt: "count" }).stdin).toBe("count");
   });
   it("RunnerBackend passes call.previousErrors to the harness", async () => {

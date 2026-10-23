@@ -27,8 +27,7 @@ REPO_DIR="$HOME/mecattaf/dotfiles"
 # real box sets it, and a probe run with it set is a test run, not evidence.
 HOST="${L8_FLASH_HOST:-$(hostname)}"
 COORDINATOR="strix"
-# The box that serves inference: the Halogen Flash server's podman unit lives
-# there (modules/halogen.nix), and `worker` resolves from every host.
+# The native Gufo text unit serves inference on Strix.
 COMPUTE_HOST="strix"
 
 pass=0
@@ -176,45 +175,41 @@ else
   no "[P] tally.nix readable" "test -r $tallynix"
 fi
 
-# ── 4. the fleet's one inference serve: podman-halogen on the WORKER ────────
-# The strix serves nothing; the Halogen Flash server is the worker's
-# podman-halogen.service (modules/halogen.nix), declared Restart=on-failure so
-# the engine's own watchdog exit is recovered. The unit is read on the worker's
-# own system bus: directly when this probe runs there, over `ssh worker`
-# otherwise. A box that cannot reach that bus reports UNKNOWN with the reason —
-# a row nobody measured is not a FAIL, and it is not a PASS either.
-HALOGEN_UNIT="podman-halogen.service"
-halogen_ctl=()
-halogen_via=""
+# ── 4. the fleet's native Gufo text unit on Strix ─────────────────────────
+# Read locally on the compute host, or over SSH from another seat. An
+# unreachable bus is UNKNOWN; an observed inactive unit is FAIL.
+GUFO_UNIT="gufo-llm.service"
+gufo_ctl=()
+gufo_via=""
 if [ "$HOST" = "$COMPUTE_HOST" ]; then
-  halogen_ctl=(systemctl)
-  halogen_via="systemctl"
+  gufo_ctl=(systemctl)
+  gufo_via="systemctl"
 elif command -v ssh >/dev/null 2>&1; then
-  halogen_ctl=(ssh -o BatchMode=yes -o ConnectTimeout=5 "$COMPUTE_HOST" systemctl)
-  halogen_via="ssh $COMPUTE_HOST systemctl"
+  gufo_ctl=(ssh -o BatchMode=yes -o ConnectTimeout=5 "$COMPUTE_HOST" systemctl)
+  gufo_via="ssh $COMPUTE_HOST systemctl"
 fi
-if [ -z "$halogen_via" ]; then
-  unk "[P] $HALOGEN_UNIT active on $COMPUTE_HOST (no ssh on this box)" "ssh $COMPUTE_HOST systemctl is-active $HALOGEN_UNIT"
-  unk "[P] $HALOGEN_UNIT Restart=on-failure (no ssh on this box)" "ssh $COMPUTE_HOST systemctl show $HALOGEN_UNIT -p Restart"
+if [ -z "$gufo_via" ]; then
+  unk "[P] $GUFO_UNIT active on $COMPUTE_HOST (no ssh on this box)" "ssh $COMPUTE_HOST systemctl is-active $GUFO_UNIT"
+  unk "[P] $GUFO_UNIT Restart=on-failure (no ssh on this box)" "ssh $COMPUTE_HOST systemctl show $GUFO_UNIT -p Restart"
 else
-  state="$("${halogen_ctl[@]}" is-active "$HALOGEN_UNIT" 2>/dev/null)"
+  state="$("${gufo_ctl[@]}" is-active "$GUFO_UNIT" 2>/dev/null)"
   rc=$?
   if [ "$HOST" != "$COMPUTE_HOST" ] && [ "$rc" -eq 255 ]; then
     # 255 is ssh's own exit for a connection it could not make; systemctl
     # never returns it. The worker is unreachable, so nothing was measured.
-    unk "[P] $HALOGEN_UNIT active on $COMPUTE_HOST ($COMPUTE_HOST unreachable over ssh)" "$halogen_via is-active $HALOGEN_UNIT"
-    unk "[P] $HALOGEN_UNIT Restart=on-failure ($COMPUTE_HOST unreachable over ssh)" "$halogen_via show $HALOGEN_UNIT -p Restart"
+    unk "[P] $GUFO_UNIT active on $COMPUTE_HOST ($COMPUTE_HOST unreachable over ssh)" "$gufo_via is-active $GUFO_UNIT"
+    unk "[P] $GUFO_UNIT Restart=on-failure ($COMPUTE_HOST unreachable over ssh)" "$gufo_via show $GUFO_UNIT -p Restart"
   else
     if [ "$state" = "active" ]; then
-      ok "[P] $HALOGEN_UNIT active on $COMPUTE_HOST" "$halogen_via is-active $HALOGEN_UNIT"
+      ok "[P] $GUFO_UNIT active on $COMPUTE_HOST" "$gufo_via is-active $GUFO_UNIT"
     else
-      no "[P] $HALOGEN_UNIT active on $COMPUTE_HOST (got '$state')" "$halogen_via is-active $HALOGEN_UNIT"
+      no "[P] $GUFO_UNIT active on $COMPUTE_HOST (got '$state')" "$gufo_via is-active $GUFO_UNIT"
     fi
-    restart="$("${halogen_ctl[@]}" show "$HALOGEN_UNIT" -p Restart 2>/dev/null)"
+    restart="$("${gufo_ctl[@]}" show "$GUFO_UNIT" -p Restart 2>/dev/null)"
     if [ "$restart" = "Restart=on-failure" ]; then
-      ok "[P] $HALOGEN_UNIT Restart=on-failure" "$halogen_via show $HALOGEN_UNIT -p Restart"
+      ok "[P] $GUFO_UNIT Restart=on-failure" "$gufo_via show $GUFO_UNIT -p Restart"
     else
-      no "[P] $HALOGEN_UNIT Restart=on-failure (got '$restart')" "$halogen_via show $HALOGEN_UNIT -p Restart"
+      no "[P] $GUFO_UNIT Restart=on-failure (got '$restart')" "$gufo_via show $GUFO_UNIT -p Restart"
     fi
   fi
 fi

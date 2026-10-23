@@ -33,22 +33,22 @@ function recorder(name: string, type = "host"): Runner & { jobs: ProcessJob[] } 
   };
 }
 
-/** The live prove/runtimes.toml shape (three host runtimes, seats cc2/halogen/codex) plus `extra`. */
+/** The live prove/runtimes.toml shape (three host runtimes, seats cc2/gufo/codex) plus `extra`. */
 const PROVE = `default = "opus"
-allow = ["opus", "halogen", "codex"]
+allow = ["opus", "gufo", "codex"]
 [seats]
 claude = "cc2"
-pi = "halogen"
+pi = "gufo"
 codex = "codex"
 [runtime.opus]
 type = "host"
 harness = "claude"
 seat = "cc2"
 timeoutMs = 900000
-[runtime.halogen]
+[runtime.gufo]
 type = "host"
 harness = "pi"
-seat = "halogen"
+seat = "gufo"
 timeoutMs = 1800000
 [runtime.codex]
 type = "host"
@@ -130,18 +130,18 @@ describe("RG-2: a seat is honoured or refused, never dropped (seat routing)", ()
   const home = seatDirs();
   const c = parseRuntimesToml(`${PROVE}[credentials.seats]\ncc2 = "~/.claude-work"\n`, "prove", home);
 
-  it("seat:codex runs codex exec, seat:halogen runs pi, seat:cc2 runs claude -p; each on the runtime that spends it", async () => {
-    const opus = recorder("opus"), halogen = recorder("halogen"), codex = recorder("codex");
-    const { b, root } = backendFor(c, { opus, halogen, codex }, "cc2");
-    const a = call({ seat: "codex" }), h = call({ runsOn: ["seat:halogen"] }), o = call({ seat: "cc2" });
+  it("seat:codex runs codex exec, seat:gufo runs pi, seat:cc2 runs claude -p; each on the runtime that spends it", async () => {
+    const opus = recorder("opus"), gufo = recorder("gufo"), codex = recorder("codex");
+    const { b, root } = backendFor(c, { opus, gufo, codex }, "cc2");
+    const a = call({ seat: "codex" }), h = call({ runsOn: ["seat:gufo"] }), o = call({ seat: "cc2" });
     expect(await b.run(a)).toMatchObject({ text: "42", agentId: "th-9" });
     expect(await b.run(h)).toMatchObject({ text: "Au" });
     expect(await b.run(o)).toMatchObject({ text: "ok" });
     expect(codex.jobs.map((j) => j.argv.slice(0, 2))).toEqual([["codex", "exec"]]);
-    expect(halogen.jobs.map((j) => j.argv.slice(0, 2))).toEqual([["pi", "-p"]]);
+    expect(gufo.jobs.map((j) => j.argv.slice(0, 2))).toEqual([["pi", "-p"]]);
     expect(opus.jobs.map((j) => j.argv.slice(0, 2))).toEqual([["claude", "-p"]]);
     // No Claude wrapper and no Claude credential around codex or pi.
-    for (const j of [...codex.jobs, ...halogen.jobs]) {
+    for (const j of [...codex.jobs, ...gufo.jobs]) {
       expect(j.mounts ?? []).toEqual([]);
       expect(j.env?.CLAUDE_CONFIG_DIR).toBeUndefined();
     }
@@ -149,24 +149,24 @@ describe("RG-2: a seat is honoured or refused, never dropped (seat routing)", ()
     expect(receiptOf(root, o.index)).toMatchObject({ runtime: "opus", via: "default", seat: "cc2" });
     // The capacity gate reads the same route.
     expect(b.route({ opts: { seat: "codex" }, phase: undefined })).toMatchObject({ harness: "codex", seat: "codex" });
-    expect(b.route({ opts: { runsOn: ["seat:halogen"] }, phase: undefined })).toMatchObject({ harness: "pi", seat: "halogen" });
+    expect(b.route({ opts: { runsOn: ["seat:gufo"] }, phase: undefined })).toMatchObject({ harness: "pi", seat: "gufo" });
   });
 
   it("an unserved seat, a foreign label, a contradiction and an ambiguous seat are refused before anything runs", async () => {
     const opus = recorder("opus");
     const { b } = backendFor(c, { opus }, "cc2");
-    expect((await b.run(call({ seat: "cc" }))).error).toMatch(/no runtime this file permits the call spends seat cc \(runtime=seat: opus=cc2, halogen=halogen, codex=codex\)/);
+    expect((await b.run(call({ seat: "cc" }))).error).toMatch(/no runtime this file permits the call spends seat cc \(runtime=seat: opus=cc2, gufo=gufo, codex=codex\)/);
     expect((await b.run(call({ runsOn: ["gpu:1"] }))).error).toMatch(/neither seat:<id> nor runtime:<name>/);
-    expect((await b.run(call({ runtime: "codex", seat: "halogen" }))).error).toMatch(/runtime codex spends seat codex, not halogen/);
+    expect((await b.run(call({ runtime: "codex", seat: "gufo" }))).error).toMatch(/runtime codex spends seat codex, not gufo/);
     expect((await b.run(call({ runsOn: ["runtime:codex", "runtime:opus"] }))).error).toMatch(/contradicts/);
     expect(opus.jobs).toHaveLength(0);
-    const two = parseRuntimesToml(`${PROVE}[runtime.halogen2]\ntype = "host"\nharness = "pi"\nseat = "halogen"\n[credentials.seats]\ncc2 = "~/.claude-work"\n`.replace(`allow = ["opus", "halogen", "codex"]`, `allow = ["opus", "halogen", "halogen2", "codex"]`), "t", home);
-    expect(() => selectForCall(two, { seat: "halogen" }, "cc2")).toThrow(/seat halogen is spent by 2 permitted runtimes \(halogen, halogen2\)/);
+    const two = parseRuntimesToml(`${PROVE}[runtime.gufo2]\ntype = "host"\nharness = "pi"\nseat = "gufo"\n[credentials.seats]\ncc2 = "~/.claude-work"\n`.replace(`allow = ["opus", "gufo", "codex"]`, `allow = ["opus", "gufo", "gufo2", "codex"]`), "t", home);
+    expect(() => selectForCall(two, { seat: "gufo" }, "cc2")).toThrow(/seat gufo is spent by 2 permitted runtimes \(gufo, gufo2\)/);
   });
 
   it("a seat never escapes the confinement rules: a sandboxed default cannot be left for a host runtime by naming its seat", () => {
-    const g = parseRuntimesToml(`default = "gv"\n[seats]\npi = "halogen"\n[runtime.gv]\ntype = "gvisor"\nrunsc = "/x/runsc"\nharness = "claude"\nseat = "cc2"\n[runtime.hp]\ntype = "host"\nharness = "pi"\n[credentials.seats]\ncc2 = "~/.claude-work"\n`, "t", home);
-    expect(() => selectForCall(g, { seat: "halogen" })).toThrow(/no runtime this file permits the call spends seat halogen/);
+    const g = parseRuntimesToml(`default = "gv"\n[seats]\npi = "gufo"\n[runtime.gv]\ntype = "gvisor"\nrunsc = "/x/runsc"\nharness = "claude"\nseat = "cc2"\n[runtime.hp]\ntype = "host"\nharness = "pi"\n[credentials.seats]\ncc2 = "~/.claude-work"\n`, "t", home);
+    expect(() => selectForCall(g, { seat: "gufo" })).toThrow(/no runtime this file permits the call spends seat gufo/);
   });
 });
 

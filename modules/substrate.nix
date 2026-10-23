@@ -17,7 +17,7 @@
 #           posts seat-capacity/2 snapshots to the floor's POST /capacity/snapshots. A dead pusher fails closed
 #           at the floor: readings grade STALE after 1200 s and admission stops.
 #   puller  the interpreter host: leases runs (runtime:interpreter) from the floor with its per-link token, runs
-#           each workflow's agent() calls on the runtimes this module renders into runtimes.toml (opus, halogen,
+#           each workflow's agent() calls on the runtimes this module renders into runtimes.toml (opus, gufo,
 #           codex, codex-rw: all host runtimes, the shape proven live on 2026-09-24; plus one type = "ssh" table
 #           per puller.sshRuntimes entry, e.g. ssh:strix since 2026-09-25), each claude seat spending
 #           its own config dir by path ([credentials.seats], RG-1), heartbeats, completes, resumes from the run's
@@ -120,15 +120,15 @@ let
   # puller.sshRuntimes, rendered as [runtime."ssh:<host>"] tables in the shape of SshRuntime in
   # packages/runners/src/config.ts:116-121 (type "ssh", host, plus the common harness, seat and timeoutMs of
   # :44-58). MERGED into the default runtimes below and appended to its allow list: a host that instead sets
-  # puller.runtimes.runtime."ssh:strix" REPLACES the whole default and drops opus, halogen, codex, codex-rw,
+  # puller.runtimes.runtime."ssh:strix" REPLACES the whole default and drops opus, gufo, codex, codex-rw,
   # allow, seats and credentials (MEASURED 2026-09-25 by nix eval through extendModules).
   # The name is the loader's SSH_SHORTHAND (config.ts:284); builtins.match anchors the whole string.
   sshRuntimeNameRe = "ssh:[A-Za-z0-9][A-Za-z0-9_.@-]*";
   sshRuntimeTables = lib.mapAttrs (name: r: {
     type = "ssh";
     inherit (r) host harness seat;
-    # A runtime with no callTimeoutMs entry of its own gets halogen's ceiling (the seat ssh:strix spends).
-    timeoutMs = cfg.puller.callTimeoutMs.${name} or cfg.puller.callTimeoutMs.halogen;
+    # A runtime with no callTimeoutMs entry of its own gets gufo's ceiling (the seat ssh:strix spends).
+    timeoutMs = cfg.puller.callTimeoutMs.${name} or cfg.puller.callTimeoutMs.gufo;
   }) cfg.puller.sshRuntimes;
 
   # The deploy config (src/deploy-config.ts) with the bearer path left as a placeholder; the unit fills it from
@@ -281,7 +281,7 @@ in
           "cc2"
           "codex"
           "pi-qwencloud"
-          "halogen"
+          "gufo"
           # 2026-09-30: credit-metered seats read by `seats` from OpenRouter's /credits and /key endpoints.
           "openrouter"
           "openrouter-free"
@@ -292,7 +292,7 @@ in
       seatIds = mkOption {
         type = types.attrsOf types.str;
         default = {
-          gpu-strix = "halogen";
+          gpu-strix = "gufo";
         };
         description = "Oracle seat id to runs-on seat id.";
       };
@@ -326,12 +326,12 @@ in
         # and the free model 8 are the chosen parallelism. Slots on a credit seat need substrate >= the providers
         # change (pusher: slots on any configured seat; floor/puller: the credit branch of admitSeat).
         default = {
-          halogen = 1;
+          gufo = 1;
           pi-qwencloud = 4;
           openrouter = 4;
           openrouter-free = 8;
         };
-        description = "Slot capacity per seat (rule 15: the floor and the puller subtract their own WIP). Halogen is a slot row whenever it is up (1 unless set here); any other seat is one only when it is named here.";
+        description = "Slot capacity per seat (rule 15: the floor and the puller subtract their own WIP). Gufo is a slot row whenever it is up (1 unless set here); any other seat is one only when it is named here.";
       };
 
       estimatedProviders = mkOption {
@@ -406,7 +406,7 @@ in
       nodeRunsOn = mkOption {
         type = types.listOf types.str;
         default = [
-          "seat:halogen"
+          "seat:gufo"
           "runtime:gvisor"
         ];
         description = "[puller].node_runs_on: runs-on for a node that names none (floor dispatch).";
@@ -511,7 +511,7 @@ in
               };
               seat = mkOption {
                 type = types.str;
-                example = "halogen";
+                example = "gufo";
                 description = "The capacity seat a call on this runtime spends. An ssh runtime spends the REMOTE login (config.ts common.seat), so it is named here, never inherited from [seats].";
               };
             };
@@ -523,11 +523,11 @@ in
             "ssh:strix" = {
               host = "strix";
               harness = "pi";
-              seat = "halogen";
+              seat = "gufo";
             };
           }
         '';
-        description = "Extra type = \"ssh\" runtimes, one [runtime.\"<name>\"] table each (name ^ssh:[A-Za-z0-9][A-Za-z0-9_.@-]*$), MERGED into the default `runtimes` and appended to its allow list; timeoutMs is callTimeoutMs.<name>, else callTimeoutMs.halogen. The runner (packages/runners/src/ssh.ts) runs the job in its own remote session, kills that process group on timeout or abort over a second ssh, and reaps leftover groups after a runner crash. Setting `runtimes` by hand drops these (an assertion says so).";
+        description = "Extra type = \"ssh\" runtimes, one [runtime.\"<name>\"] table each (name ^ssh:[A-Za-z0-9][A-Za-z0-9_.@-]*$), MERGED into the default `runtimes` and appended to its allow list; timeoutMs is callTimeoutMs.<name>, else callTimeoutMs.gufo. The runner (packages/runners/src/ssh.ts) runs the job in its own remote session, kills that process group on timeout or abort over a second ssh, and reaps leftover groups after a runner crash. Setting `runtimes` by hand drops these (an assertion says so).";
       };
 
       runtimes = mkOption {
@@ -547,7 +547,7 @@ in
           };
           allow = [
             "opus"
-            "halogen"
+            "gufo"
             "codex"
             "codex-rw"
             "qwen"
@@ -557,7 +557,7 @@ in
           ++ builtins.attrNames cfg.puller.sshRuntimes;
           seats = {
             claude = cfg.puller.claudeSeat;
-            pi = "halogen";
+            pi = "gufo";
             codex = "codex";
           };
           credentials = {
@@ -580,18 +580,13 @@ in
               seat = cfg.puller.claudeSeat;
               timeoutMs = cfg.puller.callTimeoutMs."opus";
             };
-            # pi on the strix against the Halogen server on the worker (the proven pattern). A pi that must
-            # run ON the worker is an ssh runtime from puller.sshRuntimes (ssh:strix, merged below). The proof's
-            # ssh refusal ("Bad owner or permissions on ~/.ssh/config", ~/today/wednesday-prep-2026-09-23/
-            # substrate/PROVE.md:68) came from runtime-test's user namespace, where the home-manager ssh config
-            # belongs to an unmapped uid; the unit runs without that wrapper (header, NO runtime-test WRAPPER), and
-            # on 2026-09-25 `ssh -o BatchMode=yes worker ...` from inside the unit ran with rc 0 (MEASURED: run
-            # 96b9568118826fac, journal entry 3, gate[0].rc).
-            halogen = {
+            # Local calls use the host's Gufo provider. Remote execution uses
+            # an explicit SSH runtime with its own configured seat.
+            gufo = {
               type = "host";
               harness = "pi";
-              seat = "halogen";
-              timeoutMs = cfg.puller.callTimeoutMs."halogen";
+              seat = "gufo";
+              timeoutMs = cfg.puller.callTimeoutMs."gufo";
             };
             codex = {
               type = "host";
@@ -616,7 +611,7 @@ in
             #   qwen             pi --provider qwen-token-plan   seat pi-qwencloud (4 slots)
             #   openrouter       pi --provider openrouter        seat openrouter ($12 soft cap, 4)
             #   openrouter-free  pi --provider openrouter        seat openrouter-free (8); PARKED while models.toml has no entry
-            # A puller older than that substrate change drops `provider` and runs pi against Halogen: the gate then
+            # A puller older than that substrate change drops `provider` and runs pi against Gufo: the gate then
             # refuses the call as a seat-provider mismatch (fail closed), so land the re-vendor with this.
             qwen = {
               type = "host";
@@ -642,7 +637,7 @@ in
           }
           // sshRuntimeTables;
         };
-        description = "The runtimes file (packages/runners/src/config.ts), rendered to TOML and named by [puller].runtimes (and AX_CONWIP_RUNTIMES). Default: the shape proven live on 2026-09-24, plus models_file = puller.modelsFile (2026-10-10), plus [sessions], the project MCP for substrate sessions (project_bin, project_url, project_token_file) (2026-10-13). opus (host, claude on claudeSeat), halogen (host, pi against the worker's Halogen server), codex (read-only) and codex-rw (workspace-write), default opus, each claude seat bound to its config dir in [credentials.seats], plus one ssh table per puller.sshRuntimes entry (on allow too). herdr and gvisor tables are not declared by default (never exercised); override this option to add them, and restate the ssh tables when you do.";
+        description = "The runtimes file (packages/runners/src/config.ts), rendered to TOML and named by [puller].runtimes (and AX_CONWIP_RUNTIMES). Default: the shape proven live on 2026-09-24, plus models_file = puller.modelsFile (2026-10-10), plus [sessions], the project MCP for substrate sessions (project_bin, project_url, project_token_file) (2026-10-13). opus (host, claude on claudeSeat), gufo (host, pi against the local Gufo server), codex (read-only) and codex-rw (workspace-write), default opus, each claude seat bound to its config dir in [credentials.seats], plus one ssh table per puller.sshRuntimes entry (on allow too). herdr and gvisor tables are not declared by default (never exercised); override this option to add them, and restate the ssh tables when you do.";
       };
 
       runtimesFile = mkOption {
@@ -669,7 +664,7 @@ in
           #   [[models]]
           #   id = "<full model id>"          # what goes on the wire, never an alias
           #   harness = "claude" | "pi" | "codex"
-          #   provider = "halogen" | "qwen-token-plan" | "openrouter" | "openrouter-free"   # pi only; absent means halogen
+          #   provider = "gufo" | "qwen-token-plan" | "openrouter" | "openrouter-free"   # pi only; absent means gufo
           #   aliases = ["short"]             # optional
           #   default = true                  # at most one per harness (per provider for pi); the model a call gets when it names none
           #   ceilings = { model_scoped = 90 } # optional utilization ceilings in percent
@@ -694,7 +689,7 @@ in
           ceilings = { model_scoped = 90 }
 
           [[models]]
-          id = "halogen-qwen3.8-flash-next"
+          id = "qwen3.8-flash-next"
           harness = "pi"
           default = true
 
@@ -761,7 +756,7 @@ in
             "cc"
             "cc2"
             "cc3"
-            "halogen"
+            "gufo"
             "codex"
             "pi-qwencloud"
             "openrouter"
@@ -776,14 +771,14 @@ in
         type = types.attrsOf types.ints.positive;
         default = {
           opus = 1800000;
-          halogen = 1800000;
+          gufo = 1800000;
           codex = 1800000;
           codex-rw = 2700000;
           qwen = 3600000;
           openrouter = 3600000;
           openrouter-free = 3600000;
         };
-        description = "Per-runtime wall-clock ceiling for one agent() call (timeoutMs in runtimes.toml). A call may shorten it, never extend it. Raised from 15 min on 2026-09-24 17:35: three codex-rw implement nodes of the crm and email builds hit exit 124 at 900000 ms while still executing commands. A puller.sshRuntimes entry with no key here gets the halogen value. A host that sets this option replaces the whole default, so it names every runtime it declares.";
+        description = "Per-runtime wall-clock ceiling for one agent() call (timeoutMs in runtimes.toml). A call may shorten it, never extend it. Raised from 15 min on 2026-09-24 17:35: three codex-rw implement nodes of the crm and email builds hit exit 124 at 900000 ms while still executing commands. A puller.sshRuntimes entry with no key here gets the gufo value. A host that sets this option replaces the whole default, so it names every runtime it declares.";
       };
       workingDirectory = mkOption {
         type = types.str;
@@ -870,6 +865,9 @@ in
     };
 
     systemd.user.services.substrate-puller = mkIf cfg.puller.enable {
+      # Running factory jobs outlive configuration switches. The mutable model
+      # catalog is reread per call; apply new runner code only after a drain.
+      restartIfChanged = false;
       description = "substrate-puller: the Substrate interpreter host on this box";
       wantedBy = [ "default.target" ];
       unitConfig.ConditionUser = cfg.user;

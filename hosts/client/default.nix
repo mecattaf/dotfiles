@@ -21,7 +21,7 @@
 # WHAT IT IS, in one line: a thin client. It shows Tom Sway, kitty, Chrome and
 # the dock's peripherals, and everything that thinks runs on the strix
 # (herdr server, the Claude/Codex/pi seats, tally, the artifact and microVM
-# planes) or the worker (Halogen). Mod+Return on this box is a herdr window
+# planes) or the worker (Gufo). Mod+Return on this box is a herdr window
 # INTO the strix (~/.local/bin/herdr-projector, `herdr --remote
 # strix`, driven by herdr-chord from sway/binds.conf, #385); `desk` is the fish
 # spelling of the same thing.

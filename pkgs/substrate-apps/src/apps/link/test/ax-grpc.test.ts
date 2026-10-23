@@ -14,7 +14,7 @@ import { axTaskFromGrant } from "../src/jobs.ts"
 
 const stored = new Map<string, any>()
 const gateways = new Map<string, any>([
-  ["halogen", { apiVersion: "ax.io/v1alpha1", kind: "Gateway", metadata: { name: "halogen", atespace: "fleet" }, spec: { egress: { allowlist: { hosts: [{ host: "worker", port: 8731 }] } } } }],
+  ["gufo", { apiVersion: "ax.io/v1alpha1", kind: "Gateway", metadata: { name: "gufo", atespace: "fleet" }, spec: { egress: { allowlist: { hosts: [{ host: "worker", port: 8731 }] } } } }],
   ["open", { apiVersion: "ax.io/v1alpha1", kind: "Gateway", metadata: { name: "open", atespace: "fleet" }, spec: {} }]
 ])
 let server: grpc.Server, port = 0
@@ -42,16 +42,16 @@ it("G1 grpcAx speaks ax.proto: create-only round trip, NotFound as undefined, a 
   const job = {
     apiVersion: "ultracode.mecattaf.dev/v1alpha1" as const, kind: "AgentJob" as const,
     metadata: { name: "wf-g-1-abababab", annotations: { "ultracode.mecattaf.dev/item-key": "wf_g#1", "ultracode.mecattaf.dev/journal-key": `${"cd".repeat(32)}:1` } },
-    spec: { "runs-on": ["seat:halogen"], with: { prompt: "hi", prompt_ref: { sha256: "ab".repeat(32), bytes: 2, uri: "journal://wf_g/1/prompt.md" }, model: "halogen-qwen3.8-flash-next" } }
+    spec: { "runs-on": ["seat:gufo"], with: { prompt: "hi", prompt_ref: { sha256: "ab".repeat(32), bytes: 2, uri: "journal://wf_g/1/prompt.md" }, model: "qwen3.8-flash-next" } }
   }
   const built = axTaskFromGrant({ leaseId: "wf-g-1-abababab-a1", attempt: 1, job, lease: { holderIdentity: "nas-link-1", leaseDurationSeconds: 90, acquireTime: 0, renewTime: 0, leaseTransitions: 0 } },
-    { atespace: "fleet", image: "localhost:5000/ax-agent@sha256:00", gateway: "halogen", command: () => ["ax-agent", "pi"] })
+    { atespace: "fleet", image: "localhost:5000/ax-agent@sha256:00", gateway: "gufo", command: () => ["ax-agent", "pi"] })
   if (built._tag !== "ok") throw new Error(built.reason)
   const run = <A, E>(e: Effect.Effect<A, E>) => Effect.runPromise(e)
   expect(await run(ax.getTask("wf-g-1-abababab-a1"))).toBeUndefined()
   await run(ax.createTask(built.task))
   const back = stored.get("wf-g-1-abababab-a1")
-  expect([back.apiVersion, back.metadata.atespace, back.spec.gateway.name, back.spec.command]).toEqual(["ax.io/v1alpha1", "fleet", "halogen", ["ax-agent", "pi"]])
+  expect([back.apiVersion, back.metadata.atespace, back.spec.gateway.name, back.spec.command]).toEqual(["ax.io/v1alpha1", "fleet", "gufo", ["ax-agent", "pi"]])
   expect(back.spec.env.find((e: any) => e.name === "AX_CONWIP_ITEM_KEY").value).toBe("wf_g#1")
   const seen = await run(ax.getTask("wf-g-1-abababab-a1"))
   expect(seen?.phase).toBe("Pending")
@@ -61,7 +61,7 @@ it("G1 grpcAx speaks ax.proto: create-only round trip, NotFound as undefined, a 
   const all = await run(listAll(ax))
   expect([all.length, all.some((t) => t.name === "wf-g-1-abababab-a1")]).toEqual([121, true])
   for (let i = 0; i < 120; i++) stored.delete(`bulk-${i}`)
-  const gw = await run(ax.getGateway("halogen")) // B10 wire mapping
+  const gw = await run(ax.getGateway("gufo")) // B10 wire mapping
   expect([gw?.hasAllowlist, gw?.hosts, gatewayAllowsAll(gw!)]).toEqual([true, [{ host: "worker", port: 8731 }], false])
   const open = await run(ax.getGateway("open"))
   expect([open?.hasAllowlist, gatewayAllowsAll(open!)]).toEqual([false, true]) // no egress: ax applies *:443

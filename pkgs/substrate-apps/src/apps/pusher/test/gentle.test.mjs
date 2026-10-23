@@ -24,10 +24,10 @@ const convert = (config = {}, doc = v1(), now = NOW) => snapshotFromSeatsV1(doc,
 const bySeat = (snapshot) => Object.fromEntries(snapshot.seats.map((seat) => [seat.seat, seat]))
 
 describe("seat-capacity/1 to seat-capacity/2", () => {
-  it("covers cc, cc2, codex, pi-qwencloud and halogen, and decodes as seat-capacity/2", () => {
+  it("covers cc, cc2, codex, pi-qwencloud and gufo, and decodes as seat-capacity/2", () => {
     const { snapshot, skipped } = convert()
     expect(decode(snapshot)).toBeTruthy()
-    expect(snapshot.seats.map((seat) => seat.seat)).toEqual(["cc", "cc2", "codex", "halogen", "pi-qwencloud"])
+    expect(snapshot.seats.map((seat) => seat.seat)).toEqual(["cc", "cc2", "codex", "gufo", "pi-qwencloud"])
     expect(skipped).toEqual([])
     expect(snapshot.published_at).toBe(NOW)
     expect(snapshot.host).toBe("example-box")
@@ -62,9 +62,9 @@ describe("seat-capacity/1 to seat-capacity/2", () => {
   it("owners, rulings, slots and estimated providers follow the config; the oracle's owner field can be overridden", () => {
     const plain = bySeat(convert().snapshot)
     expect([plain.codex.owner, plain.codex.dispatchable, plain.codex.dispatchable_reason]).toEqual(["third-party", false, "third-party"])
-    const ruled = bySeat(convert({ owners: { codex: "tom" }, slots: { halogen: 2 }, plans: { "pi-qwencloud": "2026-11-07T00:00:00Z" } }).snapshot)
+    const ruled = bySeat(convert({ owners: { codex: "tom" }, slots: { gufo: 2 }, plans: { "pi-qwencloud": "2026-11-07T00:00:00Z" } }).snapshot)
     expect([ruled.codex.owner, ruled.codex.dispatchable]).toEqual(["tom", true])
-    expect(ruled.halogen).toMatchObject({ provider: "halogen", owner: "tom", slots: { capacity: 2, holders: 0 }, grade: "MEASURED", dispatchable: true })
+    expect(ruled.gufo).toMatchObject({ provider: "gufo", owner: "tom", slots: { capacity: 2, holders: 0 }, grade: "MEASURED", dispatchable: true })
     expect(ruled["pi-qwencloud"]).toMatchObject({ grade: "ESTIMATED", plan: { expires_at: "2026-11-07T00:00:00Z" } })
     const cc3 = bySeat(convert({ seats: ["cc3"] }).snapshot).cc3
     expect([cc3.dispatchable, cc3.dispatchable_reason, cc3.grade]).toEqual([false, "evicted", "UNKNOWN"])
@@ -75,7 +75,7 @@ describe("seat-capacity/1 to seat-capacity/2", () => {
   })
 
   it("no local path, endpoint or credential location leaves the box", () => {
-    const out = JSON.stringify(convert({ seats: ["cc", "cc2", "cc3", "codex", "pi-qwencloud", "halogen"] }).snapshot)
+    const out = JSON.stringify(convert({ seats: ["cc", "cc2", "cc3", "codex", "pi-qwencloud", "gufo"] }).snapshot)
     expect(out).not.toMatch(/\/home\/|\/run\/|agenix|credentials|worker\.example|config_dir|key_source/)
     expect(out).toContain("<path>")
   })
@@ -86,7 +86,7 @@ describe("seat-capacity/1 to seat-capacity/2", () => {
   })
 
   it("the admit rule on the converted seats: model-scoped refusal, stale refusal, estimated refusal, slot admission", () => {
-    const seats = bySeat(convert({ owners: { codex: "tom" }, slots: { halogen: 1 } }).snapshot)
+    const seats = bySeat(convert({ owners: { codex: "tom" }, slots: { gufo: 1 } }).snapshot)
     const at = NOW
     expect(admitSeat("cc", seats.cc, { model: "claude-fable-5-1", min_headroom_pct: 0 }, at)).toMatchObject({ admit: true })
     // cc2's reading is 1505 s old at NOW: STALE, which refuses and asks for a fresh read.
@@ -96,7 +96,7 @@ describe("seat-capacity/1 to seat-capacity/2", () => {
     expect(admitSeat("cc2", fresh, { model: "claude-fable-5-1", min_headroom_pct: 0 }, at).admit).toBe(false)
     expect(admitSeat("cc2", fresh, { model: "claude-opus-5", min_headroom_pct: 0 }, at)).toMatchObject({ admit: true })
     expect(admitSeat("pi-qwencloud", seats["pi-qwencloud"], { model: null, min_headroom_pct: 0 }, at)).toMatchObject({ admit: false, reason: "estimated" })
-    expect(admitSeat("halogen", seats.halogen, { model: null, min_headroom_pct: 0 }, at)).toMatchObject({ admit: true })
+    expect(admitSeat("gufo", seats.gufo, { model: null, min_headroom_pct: 0 }, at)).toMatchObject({ admit: true })
   })
 })
 
@@ -139,7 +139,7 @@ describe("the refresh policy the pusher reads under", () => {
     expect(again.events.map((e) => e.event)).toEqual(["read", "not-pushed"])
     const beat = await read(again.state, T0 + 1800 * S, claudeOnly)
     expect(beat.events.at(-1)).toMatchObject({ event: "pushed", reason: "heartbeat" })
-    // A published Halogen slot row beats every 600 s, so the floor never grades it STALE (1200 s).
+    // A published Gufo slot row beats every 600 s, so the floor never grades it STALE (1200 s).
     const slots = await read((await read(initialGentleState(), T0)).state, T0 + 900 * S)
     expect(slots.events.at(-1)).toMatchObject({ event: "pushed", reason: "heartbeat" })
   })

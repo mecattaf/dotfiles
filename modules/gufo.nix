@@ -5,9 +5,8 @@
   pkgs,
   ...
 }:
-# Gufo: the fleet's local inference engine on the strix, replacing Halogen
-# (dotfiles #525). Tom, 2026-10-13: "i said let  move to gufo!! not
-# halogen!!!!" and "use that as the full collection of modles that we use".
+# Gufo: the fleet's native inference engine on Strix (dotfiles #525).
+# The fleet uses its model collection (lib/gufo-models.json).
 #
 # Upstream is github:gufo-org/gufo (flake input `gufo`, pinned in flake.nix):
 # one native `gufo` binary for gfx1151 with the model graphs, tokenizers and
@@ -15,7 +14,7 @@
 # loads exactly ONE model, so this module runs one systemd unit per model:
 #
 #   gufo-llm.service          the resident text model (Flash-Next), at boot
-#                             when autoStart, on Halogen's address and port
+#                             when autoStart, on the fleet address and port
 #   gufo-llm-<name>.service   an alternate text model (the 27B, DeepSeek V4
 #                             Flash), started only by `gufo-switch <name>`
 #   gufo-tts / gufo-asr / gufo-image.service
@@ -27,9 +26,8 @@
 # /var/lib/local-models. Neither build nor startup downloads anything; each
 # unit checks its files before starting.
 #
-# Halogen and Gufo never hold the GPU together: every text unit here carries
-# Conflicts= on the Halogen units (systemd applies a conflict in both
-# directions), and an assertion refuses a config where both start at boot.
+# Text model units conflict with one another and the image unit, so only
+# one large model owns the GPU.
 let
   cfg = config.services.gufo;
   catalog = import ../lib/local-models.nix { inherit lib; };
@@ -39,7 +37,7 @@ let
   primaryOf = id: modelStore.materialized.${id}.primary;
 
   # Every file of the named artifacts present at its catalog size, or a clear
-  # refusal naming the borrow command. Same contract as Halogen's bundleCheck.
+  # refusal naming the explicit borrow command.
   bundleCheckFor =
     ids:
     pkgs.writeShellScript "gufo-bundle-check" ''
@@ -199,21 +197,18 @@ let
     RestartSec = "30s";
   };
 
-  halogenUnits = lib.optionals (config.services ? halogen && config.services.halogen.enable) (
-    [ "podman-halogen.service" ]
-    ++ map (n: "podman-halogen-${n}.service") (builtins.attrNames config.services.halogen.alternates)
-  );
-
   alternateNames = builtins.attrNames cfg.alternates;
   unitOf = name: if name == "flash" then "gufo-llm.service" else "gufo-llm-${name}.service";
   textUnits = map unitOf ([ "flash" ] ++ alternateNames);
 
   mkLlmUnit = name: m: {
     description = "Gufo text model ${m.servedModelName} (${m.artifact})";
-    conflicts = (lib.remove (unitOf name) textUnits) ++ halogenUnits ++ [ "gufo-image.service" ];
-    after = halogenUnits;
+    conflicts = (lib.remove (unitOf name) textUnits) ++ [ "gufo-image.service" ];
     wantedBy = lib.optionals (name == "flash" && cfg.autoStart) [ "multi-user.target" ];
     serviceConfig = gpuServiceConfig // {
+      MemoryHigh = "96G";
+      MemoryMax = "104G";
+      MemorySwapMax = 0;
       ExecStartPre = "${bundleCheckFor (artifactsOf m)}";
       ExecStart = lib.escapeShellArgs ([ (lib.getExe' cfg.package "gufo") ] ++ llmArgs m);
       ExecStartPost = "${waitReady cfg.port}";
@@ -307,7 +302,7 @@ in
     port = lib.mkOption {
       type = lib.types.port;
       default = 8731;
-      description = "The text server's port: Halogen's, so callers keep their URL across the cutover.";
+      description = "The fleet text server port, shared by the resident model and its alternates.";
     };
 
     lanInterface = lib.mkOption {
@@ -330,8 +325,22 @@ in
         servedModelName = "qwen3.8-flash-next";
         mmproj = "mmproj-BF16.gguf";
         mtp = "MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf";
-        sessions = 2;
-        context = 131072;
+        sessions = 1;
+        context = 102400;
+        extraArgs = [
+          "--think"
+          "off"
+          "--cache-ram-bytes"
+          "1073741824"
+          "--max-tokens"
+          "16384"
+          "--max-pending"
+          "8"
+          "--request-timeout-ms"
+          "1200000"
+          "--stall-timeout-ms"
+          "180000"
+        ];
       };
       description = "The resident text model (gufo-llm.service).";
     };
@@ -397,7 +406,7 @@ in
     assertions = [
       {
         # The resident model only. An alternate whose artifacts this host does
-        # not want yet (DeepSeek V4 Flash until Halogen's loans are pruned) is
+        # not want yet (DeepSeek V4 Flash until explicitly borrowed) is
         # refused at start by its bundle check, which names the borrow command.
         assertion = lib.all (a: lib.elem a config.services.local-models.artifacts) (artifactsOf cfg.llm);
         message = "The resident Gufo model's artifacts (services.gufo.llm) must be in this host's services.local-models.artifacts.";
@@ -405,16 +414,6 @@ in
       {
         assertion = !(cfg.alternates ? flash) && !(cfg.alternates ? off);
         message = "services.gufo.alternates may not be named `flash` (the primary) or `off` (gufo-switch's stop verb).";
-      }
-      {
-        assertion =
-          !(
-            cfg.autoStart
-            && config.services ? halogen
-            && config.services.halogen.enable
-            && config.services.halogen.autoStart
-          );
-        message = "Gufo and Halogen cannot both start at boot on the GPU: set services.halogen.autoStart (or enable) to false when Gufo takes over.";
       }
     ];
 

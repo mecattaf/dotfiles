@@ -18,7 +18,7 @@
 #
 # Roles come from the configuration, not from hostnames, so a moved service
 # moves its facts with it:
-#   halogen    services.halogen.enable            → podman-halogen*, /health, /cache
+#   gufo    services.gufo.enable            → gufo-llm*, /ready, /v1/models
 #   (runs, the Tally planes, went with the Tally sunset on 2026-09-30)
 #   attention  the Herdr server host (home/herdr.nix gates its unit on
 #              hostName == "strix", and so does this module; the
@@ -49,7 +49,7 @@ let
 
   enabled = name: config.services.${name}.enable or false;
 
-  roles = lib.optional (enabled "halogen") "halogen" ++ lib.optional (host == "strix") "attention";
+  roles = lib.optional (enabled "gufo") "gufo" ++ lib.optional (host == "strix") "attention";
 
   profile = {
     name = profileNames.${host} or "unprofiled";
@@ -57,7 +57,7 @@ let
     # The NAS is built with withHomeManager = false (flake.nix mkHost).
     user_manager = config ? home-manager;
     inherit roles;
-    halogen_port = config.services.halogen.port or 8731;
+    gufo_port = config.services.gufo.port or 8731;
     # Declared mounts are checked against the live mount table.
     # noauto/automount mounts may legitimately be absent.
     mounts = lib.mapAttrsToList (_: fs: {

@@ -238,14 +238,14 @@ class SeatsTest(unittest.TestCase):
         # Qwen: a reset four days ago, the window opened by first use three
         # days ago, and 96,250 billable tokens spent inside it — 500 credits at
         # the calibrated 192.5 tokens/credit, so 5.0% of the 10,000 allowance.
-        # The cache reads and the locally served (halogen) message must not be billed.
+        # The cache reads and the locally served (gufo) message must not be billed.
         self.qwen_reset = NOW - timedelta(days=4)
         self.qwen_opened = NOW - timedelta(days=3)
         self.box.qwen(
             messages=[
                 (self.qwen_reset - timedelta(hours=1), 500_000, 0, 0, "qwen-token-plan"),
                 (self.qwen_opened, 90_000, 6_250, 9_000_000, "qwen-token-plan"),
-                (self.qwen_opened + timedelta(hours=1), 999_999, 999_999, 0, "halogen"),
+                (self.qwen_opened + timedelta(hours=1), 999_999, 999_999, 0, "gufo"),
             ],
             refusals=[(self.qwen_reset - timedelta(days=2), self.qwen_reset)])
 
@@ -342,7 +342,7 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(qwen["grade"], "ESTIMATED")
         credits = qwen["credits"]
         # 90,000 + 6,250 = 96,250 billable; the 9,000,000 cache reads, the
-        # halogen message and the pre-window message are all excluded.
+        # gufo message and the pre-window message are all excluded.
         self.assertEqual(credits["billable_tokens"], 96_250)
         self.assertEqual(credits["used"], 500)
         self.assertEqual(credits["remaining"], 9_500)
@@ -387,7 +387,7 @@ class SeatsTest(unittest.TestCase):
 
     def test_qwen_local_traffic_is_never_billed(self):
         _, seats = self.box.report()
-        # The halogen message carries ~2M tokens and would dominate both
+        # The gufo message carries ~2M tokens and would dominate both
         # the credit estimate and the spend row if the provider went unchecked.
         self.assertEqual(seats["pi-qwencloud"]["spend"]["tokens_in"], 90_000)
 
@@ -608,13 +608,13 @@ class SeatsTest(unittest.TestCase):
 
     def test_offline_reports_the_gpu_rows_without_guessing(self):
         _, seats = self.box.report()
-        # The worker's row is the Halogen server's liveness probe; with the
+        # The worker's row is the Gufo server's liveness probe; with the
         # network off it is offline, graded UNKNOWN, and names where it asked.
-        self.assertEqual(seats["gpu-strix"]["provider"], "halogen")
+        self.assertEqual(seats["gpu-strix"]["provider"], "gufo")
         self.assertEqual(seats["gpu-strix"]["state"], "offline")
         self.assertEqual(seats["gpu-strix"]["grade"], "UNKNOWN")
         self.assertFalse(seats["gpu-strix"]["windows"])
-        self.assertEqual(seats["gpu-strix"]["source"]["endpoint"], "http://strix:8731/health")
+        self.assertEqual(seats["gpu-strix"]["source"]["endpoint"], "http://strix:8731/ready")
         # The strix serves nothing: not-applicable, never headroom, and
         # the row says why rather than pretending to have probed something.
 

@@ -39,7 +39,7 @@ export const defaultConfigPath = () => join(homedir(), ".config", "substrate", "
 /**
  * Refresh policy defaults, in seconds.
  *
- * `slotHeartbeatSeconds` is the beat for a dispatchable Halogen slot row. Its
+ * `slotHeartbeatSeconds` is the beat for a dispatchable Gufo slot row. Its
  * `observed_at` is the kernel's own observation, and the lake grades a reading
  * STALE after 1200 s (MEASURED_MAX_AGE_S in packages/planning), so a slot row
  * re-sent only every 1800 s would be refused for half of every beat.
@@ -49,12 +49,12 @@ export const DEFAULT_POLICY = { heartbeatSeconds: 1800, slotHeartbeatSeconds: 60
 /**
  * Seats Tom has ruled out of dispatch. Built in, so a missing or partial config
  * can never publish them as dispatchable; a config may add rulings and reword
- * these, never lift them. cc3: evicted. gpu-coordinator: Halogen is declared on
+ * these, never lift them. cc3: evicted. gpu-coordinator: Gufo is declared on
  * the coordinator but never resident there (ruling in ~/today/CLAUDE.md).
  */
 const RULED_NOT_DISPATCHABLE = Object.freeze({
   cc3: "evicted",
-  "gpu-coordinator": "halogen is declared but not resident on the coordinator"
+  "gpu-coordinator": "gufo is declared but not resident on the coordinator"
 })
 
 const ZONED = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/
@@ -288,7 +288,7 @@ const qwenSeat = (seat, meter, config) => {
   }
 }
 
-const halogenSeat = (seat, meter, config) => {
+const gufoSeat = (seat, meter, config) => {
   const observed = instant(meter.observed_at)
   if (observed === null) return { skip: "the meter states no observed_at" }
   const capacity = Number.isInteger(meter.capacity) && meter.capacity >= 0 ? meter.capacity : null
@@ -296,7 +296,7 @@ const halogenSeat = (seat, meter, config) => {
   return {
     seat: {
       seat,
-      provider: "halogen",
+      provider: "gufo",
       owner: "tom",
       ...dispatchOf(seat, "tom", null, config),
       plan: planOf(seat, config),
@@ -352,7 +352,7 @@ const seatFromMeter = (seat, meter, cache, config) => {
   if (typeof meter.source?.hold_record === "string" || seat.startsWith("pi-qwen")) {
     return qwenSeat(seat, meter, config)
   }
-  if (seat.startsWith("gpu-") && meter.window?.kind === "none") return halogenSeat(seat, meter, config)
+  if (seat.startsWith("gpu-") && meter.window?.kind === "none") return gufoSeat(seat, meter, config)
   return { skip: "not a compute seat this pusher knows" }
 }
 
@@ -441,7 +441,7 @@ const canonical = (value) =>
 /**
  * Providers whose `observed_at` is a provider's answer. For the others it is a
  * feeder or kernel restamp (codex: the feeder's re-read of a local rollout;
- * qwen: a hold record; halogen: the kernel's slot row), which moves every tick
+ * qwen: a hold record; gufo: the kernel's slot row), which moves every tick
  * without the reading changing, so it is left out of the fingerprint and the
  * heartbeats carry it instead.
  */
@@ -464,7 +464,7 @@ export const fingerprint = (seat) =>
 /**
  * The refresh policy: push when any seat's reading changed, and at least every
  * `heartbeatSeconds` as a liveness beat (every `slotHeartbeatSeconds` while a
- * dispatchable Halogen slot row is published); never twice within
+ * dispatchable Gufo slot row is published); never twice within
  * `minIntervalSeconds`.
  */
 export const decidePush = (state, snapshot, nowMs, policy = DEFAULT_POLICY) => {
@@ -487,7 +487,7 @@ export const decidePush = (state, snapshot, nowMs, policy = DEFAULT_POLICY) => {
   // A slot row, or a credit counter (whose fingerprint may sit still while no one spends), is re-sent on the
   // slot beat so the floor's copy never ages past MEASURED while the seat is dispatchable.
   const liveSlots = snapshot.seats.some(
-    (seat) => seat.dispatchable && (seat.provider === "halogen" || (seat.slots ?? null) !== null || seat.credits !== undefined)
+    (seat) => seat.dispatchable && (seat.provider === "gufo" || (seat.slots ?? null) !== null || seat.credits !== undefined)
   )
   if (liveSlots && since >= slotBeat) {
     return { push: true, reason: "heartbeat", changed: [] }

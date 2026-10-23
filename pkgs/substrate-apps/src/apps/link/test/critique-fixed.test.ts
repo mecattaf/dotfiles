@@ -30,8 +30,8 @@ const job = (n: string, spec: Partial<AgentJob["spec"]> = {}): AgentJob => ({
     annotations: { [A + "run-id-raw"]: "wf_test", [A + "label"]: `probe:${n}`, [A + "item-key"]: `wf_test#${n}`, [A + "journal-key"]: JK, [A + "phase-title"]: "Probe" }
   },
   spec: {
-    "runs-on": ["seat:halogen", "runtime:gvisor"],
-    with: { prompt: `say ${n}`, prompt_ref: { sha256: "ab".repeat(32), bytes: 5, uri: `journal://wf_test/${n}/prompt.md` }, model: "halogen-qwen3.8-flash-next" },
+    "runs-on": ["seat:gufo", "runtime:gvisor"],
+    with: { prompt: `say ${n}`, prompt_ref: { sha256: "ab".repeat(32), bytes: 5, uri: `journal://wf_test/${n}/prompt.md` }, model: "qwen3.8-flash-next" },
     ...spec
   }
 })
@@ -47,8 +47,8 @@ function start(w: World, dir: string, over: Partial<LinkConfig> = {}, x: Extra =
   const logs: Array<Record<string, unknown>> = []
   const stop = Effect.runSync(Deferred.make<void>())
   const cfg: LinkConfig = {
-    holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:halogen", "runtime:gvisor"],
-    shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] },
+    holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:gufo", "runtime:gvisor"],
+    shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] },
     completion: "auto", secondMs: SEC, resyncMs: 30, pendingTimeoutMs: 1500, deleteAfterMs: 0, deadlineBackstopMs: 300,
     createAttempts: 3, outboxBackoffMs: [20, 100], initialPollSeconds: 1, initialHeartbeatSeconds: 2, fenceTimeoutMs: 300, resultReadTries: 3, ...over
   }
@@ -224,7 +224,7 @@ describe("critique 2026-09-23: the defects, fixed", () => {
   it("C6c (B6, A5) guest mode with a workers.dev Complete URL leases nothing", async () => {
     expect([isFleetInternalUrl("https://conwip-floor.x.workers.dev/guest"), isFleetInternalUrl("http://link.fleet.internal/guest"), isFleetInternalUrl("http://10.201.0.9:8732/g"), isFleetInternalUrl("https://example.com/")]).toEqual([false, true, true, false])
     const w = W(); w.floor.enqueue(job("1")); w.ax.p1 = false
-    const l = start(w, dir, { completion: "guest", shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"], completeUrl: "https://conwip-floor.x.workers.dev/guest" } })
+    const l = start(w, dir, { completion: "guest", shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"], completeUrl: "https://conwip-floor.x.workers.dev/guest" } })
     await until("refused", () => l.has("guest-url-invalid"))
     await sleep(5 * SEC)
     expect(w.floor.calls.filter((c) => c.rpc === "Lease").every((c) => c.capacity === 0)).toBe(true)
@@ -235,9 +235,9 @@ describe("critique 2026-09-23: the defects, fixed", () => {
     const w = W({ cap: 3 })
     expect(w.floor.enqueue(job("1", { "runs-on": [] }))).toBe(false)
     w.floor.enqueueUnchecked(job("1", { "runs-on": [] }))
-    w.floor.o.tokens["tok-nas"] = { holder: "nas-link-1", labels: ["seat:halogen", "seat:cc", "runtime:gvisor"] }
-    w.floor.enqueueUnchecked(job("2", { "runs-on": ["seat:halogen", "seat:cc"] }))
-    const l = start(w, dir, { maxInFlight: 3, servedLabels: ["seat:halogen", "seat:cc", "runtime:gvisor"] })
+    w.floor.o.tokens["tok-nas"] = { holder: "nas-link-1", labels: ["seat:gufo", "seat:cc", "runtime:gvisor"] }
+    w.floor.enqueueUnchecked(job("2", { "runs-on": ["seat:gufo", "seat:cc"] }))
+    const l = start(w, dir, { maxInFlight: 3, servedLabels: ["seat:gufo", "seat:cc", "runtime:gvisor"] })
     await until("both done", () => J(w).state === "done" && J(w, "2").state === "done")
     expect([(J(w).output as { reason: string }).reason, (J(w, "2").output as { reason: string }).reason]).toEqual(["pre-start/runs-on-invalid", "pre-start/runs-on-invalid"])
     expect(w.ax.updates.size).toBe(0)
@@ -299,14 +299,14 @@ describe("critique 2026-09-23: the defects, fixed", () => {
 
   it("B10 a missing Gateway, or one that allows everything, leases nothing; a restricted one does", async () => {
     const w = W(); w.floor.enqueue(job("1"))
-    const halogen = w.ax.gateways.get("halogen")!
-    w.ax.gateways.delete("halogen")
+    const gufo = w.ax.gateways.get("gufo")!
+    w.ax.gateways.delete("gufo")
     const l = start(w, dir)
     await until("gateway-missing", () => l.has("gateway-missing"))
-    w.ax.gateways.set("halogen", { hasAllowlist: true, hosts: [{ host: "*", port: 443 }] })
+    w.ax.gateways.set("gufo", { hasAllowlist: true, hosts: [{ host: "*", port: 443 }] })
     await sleep(5 * SEC)
     expect([w.ax.updates.size, w.floor.calls.filter((c) => c.rpc === "Lease").every((c) => c.capacity === 0)]).toEqual([0, true])
-    w.ax.gateways.set("halogen", halogen)
+    w.ax.gateways.set("gufo", gufo)
     await until("created", () => w.ax.tasks.has("wf-test-1-a1"))
     expect(l.has("gateway-ok")).toBe(true)
     await l.drain()

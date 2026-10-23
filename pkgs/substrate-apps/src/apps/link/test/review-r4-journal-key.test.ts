@@ -10,9 +10,9 @@ import { axTaskFromGrant } from "../src/jobs.ts"
 import { job } from "./review-r4-harness.ts"
 
 const TASKSPEC = {
-  halogen1: "29a9c6cb8956c07073345109161d0e7eaa08708f4c2039f4e4af7a09d212ee07:1", // journalKey("same prompt", {model: halogen}, 1)
+  gufo1: "29a9c6cb8956c07073345109161d0e7eaa08708f4c2039f4e4af7a09d212ee07:1", // journalKey("same prompt", {model: gufo}, 1)
   opus1: "bd381a2d66f7a1d93c7df296954218de4c9749a0feb9d94719b9c484f8c06718:1", // journalKey("same prompt", {model: opus}, 1)
-  halogen2: "29a9c6cb8956c07073345109161d0e7eaa08708f4c2039f4e4af7a09d212ee07:2" // the same call, second occurrence
+  gufo2: "29a9c6cb8956c07073345109161d0e7eaa08708f4c2039f4e4af7a09d212ee07:2" // the same call, second occurrence
 }
 const sha = (s: string) => createHash("sha256").update(s).digest("hex")
 const A = "ultracode.mecattaf.dev/"
@@ -25,23 +25,23 @@ const grant = (n: string, model: string, key: string | undefined) => {
   else j.metadata.annotations[A + "journal-key"] = key
   return { leaseId: `wf-test-${n}-a1`, attempt: 1, job: j, lease: { holderIdentity: "h", leaseDurationSeconds: 90, acquireTime: 1, renewTime: 1, leaseTransitions: 0 } }
 }
-const shape = { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] }
+const shape = { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] }
 const env = (g: any) => { const b: any = axTaskFromGrant(g, shape); expect(b._tag).toBe("ok"); return Object.fromEntries(b.task.spec.env.map((e: any) => [e.name, e.value])) }
 
 it("R4-8a: AX_CONWIP_JOURNAL_KEY is the taskspec journal key for two calls that share a prompt", () => {
-  const a = env(grant("1", "halogen-qwen3.8-flash-next", TASKSPEC.halogen1))
+  const a = env(grant("1", "qwen3.8-flash-next", TASKSPEC.gufo1))
   const b = env(grant("2", "claude-opus-5-5", TASKSPEC.opus1))
-  const c = env(grant("3", "halogen-qwen3.8-flash-next", TASKSPEC.halogen2))
-  expect(a.AX_CONWIP_JOURNAL_KEY).toBe(TASKSPEC.halogen1)
+  const c = env(grant("3", "qwen3.8-flash-next", TASKSPEC.gufo2))
+  expect(a.AX_CONWIP_JOURNAL_KEY).toBe(TASKSPEC.gufo1)
   expect(b.AX_CONWIP_JOURNAL_KEY).toBe(TASKSPEC.opus1)
-  expect(c.AX_CONWIP_JOURNAL_KEY).toBe(TASKSPEC.halogen2)
+  expect(c.AX_CONWIP_JOURNAL_KEY).toBe(TASKSPEC.gufo2)
   expect(a.AX_CONWIP_JOURNAL_KEY).not.toBe(a.AX_CONWIP_PROMPT_SHA256)
   expect(a.AX_CONWIP_PROMPT_SHA256).toBe(b.AX_CONWIP_PROMPT_SHA256) // the prompt digest is shared; the journal key is not
 })
 
 it("R4-8b: a grant without the annotation, or with a malformed one, is refused pre-start/invalid-spec", () => {
   for (const key of [undefined, "", sha("same prompt"), `${sha("x")}:`, `${sha("x").toUpperCase()}:1`]) {
-    const b = axTaskFromGrant(grant("4", "halogen-qwen3.8-flash-next", key) as any, shape)
+    const b = axTaskFromGrant(grant("4", "qwen3.8-flash-next", key) as any, shape)
     expect(b._tag).toBe("refused")
     if (b._tag === "refused") expect(b.reason).toBe("pre-start/invalid-spec")
   }

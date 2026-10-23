@@ -25,7 +25,7 @@ import {
   CC_OBSERVED,
   cc3Seat,
   claudeSeat,
-  halogenSeat,
+  gufoSeat,
   plus,
   qwenSeat,
   snapshot
@@ -35,7 +35,7 @@ import { artifactBytes, artifactDigest, emptyFactory, reading, releaseState, run
 const encodeReading = Schema.encodeSync(CapacityReading);
 const T0 = plus(CC_OBSERVED, 60);
 /** Today's fleet, as the pusher would publish it. */
-const today = () => snapshot([claudeSeat(), cc3Seat(), qwenSeat(), halogenSeat(0)]);
+const today = () => snapshot([claudeSeat(), cc3Seat(), qwenSeat(), gufoSeat(0)]);
 
 const request = (path: string, method: "GET" | "POST", body?: unknown, authenticated = true) =>
   new Request(`https://factory.invalid${path}`, {
@@ -213,7 +213,7 @@ describe("the capacity feed Layers", () => {
       makeFactory(releaseState([], { plans: [] })).pipe(Effect.provideService(PlanningStore, store))
     );
     await run(factory.observeSeats(today(), T0));
-    await run(factory.observeSeats(snapshot([halogenSeat(1)], plus(T0, 1), "worker"), T0));
+    await run(factory.observeSeats(snapshot([gufoSeat(1)], plus(T0, 1), "worker"), T0));
     const snapshots = await run(
       Effect.gen(function* () {
         const feed = yield* FactoryCapacityFeed;

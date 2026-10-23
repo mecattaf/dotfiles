@@ -1,6 +1,6 @@
 /**
  * 2026-09-30: pi runtimes with a provider parameter. The pi harness used to
- * hard-code `--provider halogen`; a runtime table now names its provider and
+ * hard-code `--provider gufo`; a runtime table now names its provider and
  * the model resolves against that provider's allowlist.
  *
  * 2026-10-10: the pinned per-provider defaults (PI_DEFAULT_MODEL) are gone. The
@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { piAgentModelsJson, RunnerBackend } from "../src/backend.ts";
 import { parseRuntimesToml, seatOf } from "../src/config.ts";
-import { invocationFor, piInvocation, PI_PROVIDERS } from "../src/harness.ts";
+import { invocationFor, isPiProvider, piInvocation, PI_PROVIDERS } from "../src/harness.ts";
 import type { Job, ProcessJob, Runner } from "../src/job.ts";
 import { DEFAULT_MODEL_ALLOWLIST, resolveModel } from "../src/models.ts";
 import { tmp } from "./helpers.ts";
@@ -20,10 +20,10 @@ import { tmp } from "./helpers.ts";
 /** The runtimes the coordinator's dotfiles render for the overnight run (modules/substrate.nix). */
 const TOML = `
 default = "opus"
-allow = ["opus", "halogen", "qwen", "openrouter", "openrouter-free"]
+allow = ["opus", "gufo", "qwen", "openrouter", "openrouter-free"]
 [seats]
 claude = "cc2"
-pi = "halogen"
+pi = "gufo"
 [credentials]
 claude = "/home/t/.claude-work"
 [credentials.seats]
@@ -32,10 +32,10 @@ cc2 = "/home/t/.claude-work"
 type = "host"
 harness = "claude"
 seat = "cc2"
-[runtime.halogen]
+[runtime.gufo]
 type = "host"
 harness = "pi"
-seat = "halogen"
+seat = "gufo"
 [runtime.qwen]
 type = "host"
 harness = "pi"
@@ -56,8 +56,13 @@ seat = "openrouter-free"
 const argvTail = (argv: readonly string[]) => argv.slice(0, 8);
 
 describe("pi harness argv per provider", () => {
-  it("halogen: --provider halogen --model <the catalog's id>; no session unless a dir is given", () => {
-    expect(piInvocation({ prompt: "p", model: "halogen-qwen3.8-flash-next" }).argv).toEqual(["pi", "-p", "--no-session", "--provider", "halogen", "--model", "halogen-qwen3.8-flash-next", "--mode", "text"]);
+  it("the retired provider is rejected instead of aliased onto Gufo", () => {
+    expect(isPiProvider("gufo")).toBe(true);
+    expect(isPiProvider("halogen")).toBe(false);
+    expect(() => parseRuntimesToml(`default = "old"\n[runtime.old]\ntype = "host"\nharness = "pi"\nprovider = "halogen"\n`, "t")).toThrow();
+  });
+  it("gufo: --provider gufo --model <the catalog's id>; no session unless a dir is given", () => {
+    expect(piInvocation({ prompt: "p", model: "qwen3.8-flash-next" }).argv).toEqual(["pi", "-p", "--no-session", "--provider", "gufo", "--model", "qwen3.8-flash-next", "--mode", "text"]);
   });
 
   it("qwen: pi -p --session-dir <job dir> --provider qwen-token-plan --model qwen3.8-max", () => {
@@ -88,9 +93,9 @@ describe("the model allowlist is per pi provider", () => {
     expect(resolveModel(DEFAULT_MODEL_ALLOWLIST, "pi", "anthropic/claude-sonnet-5.5", "openrouter")).toEqual({ id: "anthropic/claude-sonnet-5.5" });
     expect(resolveModel(DEFAULT_MODEL_ALLOWLIST, "pi", "minimax", "openrouter")).toEqual({ id: "minimax/minimax-m3", requested: "minimax" });
     expect(resolveModel(DEFAULT_MODEL_ALLOWLIST, "pi", "openai/gpt-6.1-sol", "openrouter")).toEqual({ id: "deepseek/deepseek-v4-pro", requested: "openai/gpt-6.1-sol" });
-    // A Halogen id never runs on OpenRouter, nor an OpenRouter id on Halogen.
-    expect(resolveModel(DEFAULT_MODEL_ALLOWLIST, "pi", "halogen-qwen3.8-flash-next", "openrouter").id).toBe("deepseek/deepseek-v4-pro");
-    expect(resolveModel(DEFAULT_MODEL_ALLOWLIST, "pi", "deepseek/deepseek-v4-pro", undefined).id).toBe("halogen-qwen3.8-flash-next");
+    // A Gufo id never runs on OpenRouter, nor an OpenRouter id on Gufo.
+    expect(resolveModel(DEFAULT_MODEL_ALLOWLIST, "pi", "qwen3.8-flash-next", "openrouter").id).toBe("deepseek/deepseek-v4-pro");
+    expect(resolveModel(DEFAULT_MODEL_ALLOWLIST, "pi", "deepseek/deepseek-v4-pro", undefined).id).toBe("qwen3.8-flash-next");
     // The free lane ships PARKED (2026-10-10): no entry, so no id, whatever the call asks for.
     expect(resolveModel(DEFAULT_MODEL_ALLOWLIST, "pi", "anthropic/claude-sonnet-5.5", "openrouter-free").id).toBeUndefined();
     expect(resolveModel(DEFAULT_MODEL_ALLOWLIST, "pi", undefined, "openrouter-free").id).toBeUndefined();
@@ -111,13 +116,13 @@ describe("runtime tables with a provider", () => {
     expect(b.route({ opts: { runtime: "openrouter", model: "qwen/qwen3.8-max-0902" }, phase: undefined })).toMatchObject({ provider: "openrouter", model: "qwen/qwen3.8-max-0902", seat: "openrouter", seatProvider: "openrouter" });
     // Parked: refused at the route (the CONWIP turns a route throw into an immediate "conwip refused the route" null).
     expect(() => b.route({ opts: { runtime: "openrouter-free" }, phase: undefined })).toThrow(/runtime openrouter-free: no model configured for pi provider openrouter-free \(the lane is parked\)/);
-    expect(b.route({ opts: { runtime: "halogen" }, phase: undefined })).toMatchObject({ provider: "halogen", model: "halogen-qwen3.8-flash-next", seat: "halogen", seatProvider: "halogen" });
+    expect(b.route({ opts: { runtime: "gufo" }, phase: undefined })).toMatchObject({ provider: "gufo", model: "qwen3.8-flash-next", seat: "gufo", seatProvider: "gufo" });
     // A seat alone picks the one runtime that spends it (selection; the parked route itself is refused above).
     expect(b.select({ opts: { seat: "openrouter-free" }, phase: undefined }).name).toBe("openrouter-free");
   });
 
   it("a provider table with no seat spends its provider's own seat, never [seats].pi", () => {
-    const c = parseRuntimesToml(`default = "q"\n[seats]\npi = "halogen"\n[runtime.q]\ntype = "host"\nharness = "pi"\nprovider = "qwen-token-plan"\n`, "t");
+    const c = parseRuntimesToml(`default = "q"\n[seats]\npi = "gufo"\n[runtime.q]\ntype = "host"\nharness = "pi"\nprovider = "qwen-token-plan"\n`, "t");
     expect(seatOf(c, c.runtimes["q"]!)).toBe("pi-qwencloud");
   });
 
@@ -176,8 +181,8 @@ describe("the model catalog is runtime data (models_file, 2026-10-10)", () => {
     const c = parseRuntimesToml(`models_file = "${file}"\n${TOML}`, "t");
     return { c, file, d };
   };
-  const FREE = `[[models]]\nid = "halogen-qwen3.8-flash-next"\nharness = "pi"\ndefault = true\n[[models]]\nid = "stealth/new-bunny"\nharness = "pi"\nprovider = "openrouter-free"\ndefault = true\n[models.pi]\nname = "New Bunny (stealth, free)"\nreasoning = true\ninput = ["text", "image"]\ncontext_window = 1000000\nmax_tokens = 524288\n`;
-  const PARKED = `[[models]]\nid = "halogen-qwen3.8-flash-next"\nharness = "pi"\ndefault = true\n`;
+  const FREE = `[[models]]\nid = "qwen3.8-flash-next"\nharness = "pi"\ndefault = true\n[[models]]\nid = "stealth/new-bunny"\nharness = "pi"\nprovider = "openrouter-free"\ndefault = true\n[models.pi]\nname = "New Bunny (stealth, free)"\nreasoning = true\ninput = ["text", "image"]\ncontext_window = 1000000\nmax_tokens = 524288\n`;
+  const PARKED = `[[models]]\nid = "qwen3.8-flash-next"\nharness = "pi"\ndefault = true\n`;
 
   it("a set models_file must exist and parse at load (the puller fails at start, not on its first call)", () => {
     expect(() => parseRuntimesToml(`models_file = "/nonexistent/models.toml"\n${TOML}`, "t")).toThrow(/models file \/nonexistent\/models.toml does not exist/);
@@ -199,11 +204,11 @@ describe("the model catalog is runtime data (models_file, 2026-10-10)", () => {
 
   it("a file that stops parsing refuses every call with its own error (fail closed, never a silent fallback)", async () => {
     const { c, file } = withFile(PARKED);
-    const b = new RunnerBackend(c, { jobsRoot: tmp(), runId: "r", seatShadowRoot: tmp(), runners: { halogen: recorder().r } });
+    const b = new RunnerBackend(c, { jobsRoot: tmp(), runId: "r", seatShadowRoot: tmp(), runners: { gufo: recorder().r } });
     writeFileSync(file, "[[models]\nid = ");
-    expect(() => b.route({ opts: { runtime: "halogen" }, phase: undefined })).toThrow(/TOML/);
-    const out = await b.run({ index: 0, attempt: 1, key: "k", prompt: "hi", opts: { runtime: "halogen" }, phase: undefined } as never);
-    expect(out.error).toMatch(/runtime halogen refused: .*TOML/);
+    expect(() => b.route({ opts: { runtime: "gufo" }, phase: undefined })).toThrow(/TOML/);
+    const out = await b.run({ index: 0, attempt: 1, key: "k", prompt: "hi", opts: { runtime: "gufo" }, phase: undefined } as never);
+    expect(out.error).toMatch(/runtime gufo refused: .*TOML/);
   });
 
   it("a parked provider is refused before dispatch in run() too, with the same reason", async () => {
@@ -219,7 +224,7 @@ describe("the model catalog is runtime data (models_file, 2026-10-10)", () => {
     const { c } = withFile(FREE);
     const hostAgent = tmp();
     // The host file's key is a `!cat` REFERENCE; it must come through as the same string, never resolved.
-    writeFileSync(join(hostAgent, "models.json"), JSON.stringify({ providers: { openrouter: { apiKey: "!cat /run/agenix/openrouter-token" }, halogen: { api: "openai-completions", apiKey: "halogen-no-auth", models: [{ id: "halogen-qwen3.8-flash-next" }] } } }));
+    writeFileSync(join(hostAgent, "models.json"), JSON.stringify({ providers: { openrouter: { apiKey: "!cat /run/agenix/openrouter-token" }, gufo: { api: "openai-completions", apiKey: "gufo-no-auth", models: [{ id: "qwen3.8-flash-next" }] } } }));
     const rec = recorder();
     const shadows = tmp();
     const transcripts = tmp();
@@ -234,7 +239,7 @@ describe("the model catalog is runtime data (models_file, 2026-10-10)", () => {
     const doc = JSON.parse(agentJson!) as { providers: Record<string, { apiKey?: string; models?: { id: string; name: string; baseUrl?: string; contextWindow?: number }[] }> };
     expect(doc.providers["openrouter"]!.apiKey).toBe("!cat /run/agenix/openrouter-token");
     expect(doc.providers["openrouter"]!.models).toEqual([expect.objectContaining({ id: "stealth/new-bunny", name: "New Bunny (stealth, free)", api: "openai-completions", baseUrl: "https://openrouter.ai/api/v1", reasoning: true, contextWindow: 1000000, maxTokens: 524288 })]);
-    expect(doc.providers["halogen"]!.models).toEqual([{ id: "halogen-qwen3.8-flash-next" }]);
+    expect(doc.providers["gufo"]!.models).toEqual([{ id: "qwen3.8-flash-next" }]);
     // The session pi wrote into the job's shadow is archived under the transcripts root (what the seats oracle reads).
     const archived = join(transcripts, "r", "r-0-a1", "pi-s1.jsonl");
     expect(existsSync(archived)).toBe(true);

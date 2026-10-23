@@ -6,7 +6,7 @@ const record = (overrides: Record<string, unknown> = {}): Record<string, unknown
   run_id: "wf_0001",
   task: "wf-0001-3",
   harness: "pi",
-  model: "halogen-flash",
+  model: "gufo-flash",
   runtime: { class: "gvisor", declared_by: "floor-default" },
   placement: { node: "worker", decided_by: "puller", reason: "seat-less box goes to the worker" },
   egress: { policy: "allowlist", allow: [{ host: "worker:8731", purpose: "model endpoint" }] },
@@ -37,7 +37,7 @@ describe("RunRecord (ES-6)", () => {
     expect(
       decodeRunRecord(record({ credential: { lane: "seat-config-mount", seat: "cc", mode: "rw" } })).ok
     ).toBe(true)
-    expect(decodeRunRecord(record({ credential: { lane: "credential-file", ref: "halogen-api-key" } })).ok).toBe(
+    expect(decodeRunRecord(record({ credential: { lane: "credential-file", ref: "gufo-api-key" } })).ok).toBe(
       true
     )
   })

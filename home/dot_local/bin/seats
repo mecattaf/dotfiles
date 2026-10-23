@@ -68,7 +68,7 @@ THE SEATS, and where each one's truth lives:
                 GET /api/v1/key free_model_daily_requests {used, limit,
                 remaining}. A counter of requests that resets at 00:00 UTC.
 
-  gpu-strix    The fleet's one inference server, Halogen Flash on Strix
+  gpu-strix    The fleet's one inference server, the local model on Strix
                 (http://strix:8731, GET /health). No window, no quota: the
                 row says whether the server is up and which model id it
                 answers to.
@@ -136,8 +136,8 @@ OPENROUTER_KEY_FILE = os.environ.get("SEATS_OPENROUTER_KEY_FILE") or "/run/ageni
 # factory stops dispatching. Overridable without editing the program.
 OPENROUTER_CAP_USD = 12.0
 
-# The fleet's one inference server, Halogen Flash on Strix
-# (modules/halogen.nix). The base URL follows the *_INFERENCE_URL convention;
+# The fleet's one inference server, the local model on Strix
+# (lib/local-model.nix). The base URL follows the *_INFERENCE_URL convention;
 # the override is for a hand-run llama-server, not a second declared server.
 INFERENCE_URL = (os.environ.get("SEATS_INFERENCE_URL") or "http://strix:8731").rstrip("/")
 
@@ -236,7 +236,7 @@ DEFAULT_SEATS = [
      "owner": "tom", "meter": "usd"},
     {"id": "openrouter-free", "provider": "openrouter", "label": "OpenRouter free model (daily requests)",
      "owner": "tom", "meter": "free-requests"},
-    {"id": "gpu-strix", "provider": "halogen", "label": "Local GPU (Strix, Halogen Flash)",
+    {"id": "gpu-strix", "provider": "gufo", "label": "Local GPU (Strix, local model)",
      "owner": "kernel", "endpoint": INFERENCE_URL},
 ]
 
@@ -1113,7 +1113,7 @@ def qwen_events(roots):
 
     events  sorted [(epoch, input, output)] for messages billed to the token
             plan — and ONLY those. The same session store carries locally
-            served traffic (the Halogen server on Strix, a hand-run
+            served traffic (the Gufo server on Strix, a hand-run
             llama-server), which costs this subscription nothing; counting it
             would inflate the meter with locally-served tokens.
     resets  every reset stamp the provider has ever stated in a refusal here.
@@ -1382,10 +1382,10 @@ def read_qwen(spec, opts):
     return classify(seat)
 
 
-# ── provider: halogen (the worker's inference server) ───────────────────────
+# ── provider: gufo ───────────────────────
 
-def _halogen_model_ids(payload):
-    """Model ids out of a /health or /v1/models answer, whatever shape it takes."""
+def _gufo_model_ids(payload):
+    """Model ids out of a /ready or /v1/models answer, whatever shape it takes."""
     if not isinstance(payload, dict):
         return []
     ids = []
@@ -1407,24 +1407,24 @@ def _halogen_model_ids(payload):
     return sorted(set(ids))
 
 
-def read_halogen(spec, opts):
+def read_gufo(spec, opts):
     """Up or not, and which model id answers. Two GETs, nothing spent.
 
-    /health is the liveness probe. The model id comes from that answer when it
+    /ready is the liveness probe. The model id comes from that answer when it
     carries one and from /v1/models otherwise; a server that is up but names
     no model is reported as up with the id unknown, never guessed.
     """
     seat = blank_seat(spec, "unknown", "UNKNOWN")
     endpoint = (spec.get("endpoint") or INFERENCE_URL).rstrip("/")
-    seat["source"] = {"kind": "halogen-health", "endpoint": endpoint + "/health"}
-    health, error = http_json(endpoint + "/health", timeout=3)
+    seat["source"] = {"kind": "gufo-ready", "endpoint": endpoint + "/ready"}
+    health, error = http_json(endpoint + "/ready", timeout=3)
     if health is None:
         seat["state"], seat["detail"] = "offline", error or "no answer"
         return seat
-    models = _halogen_model_ids(health)
+    models = _gufo_model_ids(health)
     if not models:
         listed, _ = http_json(endpoint + "/v1/models", timeout=3)
-        models = _halogen_model_ids(listed)
+        models = _gufo_model_ids(listed)
     seat["grade"] = "MEASURED"
     seat["running"] = models
     seat["state"] = "open"
@@ -1609,7 +1609,7 @@ def read_openrouter(spec, opts):
 
 
 READERS = {"claude": read_claude, "codex": read_codex,
-           "qwen": read_qwen, "halogen": read_halogen, "openrouter": read_openrouter,
+           "qwen": read_qwen, "gufo": read_gufo, "openrouter": read_openrouter,
            "none": read_none}
 
 
@@ -1712,7 +1712,7 @@ def _events_codex(path):
 def _events_pi(path):
     """pi, token-plan traffic only.
 
-    The same session store carries locally served messages — the Halogen
+    The same session store carries locally served messages — the Gufo
     server on Strix, a hand-run llama-server. Those cost the subscription
     nothing, so counting them here would inflate a meter with local tokens.
     """
@@ -2032,7 +2032,7 @@ def headroom(seat, discount_estimates=True):
 def recommend(seats):
     best = None
     for seat in seats:
-        if seat["provider"] in ("halogen", "none") or seat["owner"] != "tom":
+        if seat["provider"] in ("gufo", "none") or seat["owner"] != "tom":
             continue
         if seat["state"] not in ("open", "tight"):
             continue

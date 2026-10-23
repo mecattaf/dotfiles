@@ -37,7 +37,7 @@ export interface SeatDeclaration {
   readonly adapter: SeatAdapter;
   readonly bounds: MeterBounds;
   /**
-   * How many items this seat may hold at once. `halogen` declares one, because
+   * How many items this seat may hold at once. `gufo` declares one, because
    * the model is resident on a single worker and a second concurrent request
    * contends for the same GPU.
    */
@@ -150,7 +150,7 @@ export interface SeatDryRunOptions {
   readonly cap: number;
   /**
    * Dry run is the default. The only caller that passes "spawn" is
-   * `makeHalogenOutcomeOf` in `src/live.ts`; no test passes it against a real
+   * `makeGufoOutcomeOf` in `src/live.ts`; no test passes it against a real
    * seat, and the two that exercise the spawn path inject a spawner.
    */
   readonly mode?: SeatMode;
@@ -172,7 +172,7 @@ export interface SeatDryRunOptions {
    * `mode: "spawn"` is refused.
    */
   readonly allowSpawn?: boolean;
-  /** Gate three. Defaults to ["halogen"] inside `executeDispatch`. */
+  /** Gate three. Defaults to ["gufo"] inside `executeDispatch`. */
   readonly allowSpawnSeats?: readonly string[];
   /** The child timeout, as data at the call site rather than a constant. */
   readonly spawnTimeoutMs?: number;
@@ -202,8 +202,8 @@ export interface SeatDryRunResult {
  * prints the argv and the first 200 characters of stdin and returns
  * `spawned: false`; the spawn path is not reachable from here without
  * `mode: "spawn"`, which exactly one caller in this repository passes:
- * `makeHalogenOutcomeOf` in `src/live.ts`, reachable only from
- * `src/e2e-live.ts` and only with AX_CONWIP_LIVE_HALOGEN=1. `src/cli.ts` does
+ * `makeGufoOutcomeOf` in `src/live.ts`, reachable only from
+ * `src/e2e-live.ts` and only with AX_CONWIP_LIVE_GUFO=1. `src/cli.ts` does
  * not import that module and cannot dispatch anything.
  */
 /**

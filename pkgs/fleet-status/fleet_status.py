@@ -19,7 +19,7 @@ The rules that make the output honest rather than pretty:
   exits 255 is `unreachable`; one that answers garbage is `error`. All three
   carry no facts, and the renderer prints them LOUDLY.
 * The planes stay separate. Tally and Herdr contribute IDs, states and counts,
-  never copies of their lakes or transcripts; Halogen contributes its own
+  never copies of their lakes or transcripts; Gufo contributes its own
   /health; journald and /var/lib/failure-markers stay the source of failures.
 * The Herdr server's RSS is reported apart from herdr.service's cgroup, because
   the cgroup is dominated by pane descendants (the 2026-09-08 incident, #357):
@@ -545,36 +545,22 @@ def http_json(url: str, timeout: float = 2.5):
 
 
 def c_inference(profile: dict) -> dict:
-    roles = profile.get("roles", [])
+    if "gufo" not in profile.get("roles", []):
+        return {"server": by_design("profile roles", f"profile {profile.get('name')} serves no model")}
     out: dict = {}
-    if "halogen" in roles:
-        src = "systemctl list-units --all podman-halogen*"
+    src = "systemctl list-units --all gufo-llm*"
+    try:
+        units = json.loads(run(["systemctl", "list-units", "--all", "--output=json", "--no-pager", "gufo-llm*"]) or "[]")
+        out["gufo_units"] = fact({u["unit"]: u.get("active") for u in units}, src)
+    except (CmdError, ValueError) as exc:
+        out["gufo_units"] = unknown(src, str(exc))
+    port = profile.get("gufo_port", 8731)
+    for name, path in (("health", "/ready"), ("models", "/v1/models")):
+        source = f"GET 127.0.0.1:{port}{path}"
         try:
-            units = json.loads(run(["systemctl", "list-units", "--all", "--output=json", "--no-pager", "podman-halogen*"]) or "[]")
-            out["halogen_units"] = fact({u["unit"]: u.get("active") for u in units}, src)
-        except (CmdError, ValueError) as exc:
-            out["halogen_units"] = unknown(src, str(exc))
-        port = profile.get("halogen_port", 8731)
-        units = out["halogen_units"]
-        if units["grade"] == "measured" and "active" not in units["value"].values():
-            # An on-demand host (the strix) with every Halogen unit down
-            # is serving nothing by design, not failing to answer.
-            for name in ("health", "cache"):
-                out[name] = by_design(src, "no Halogen unit is active; start one with halogen-switch")
-            return out
-        try:
-            h = http_json(f"http://127.0.0.1:{port}/health")
-            keep = ("status", "model", "context", "busy", "in_flight", "queued", "slots")
-            out["health"] = fact({k: h.get(k) for k in keep}, f"GET 127.0.0.1:{port}/health")
-        except Exception as exc:  # noqa: BLE001 — any failure is simply "unknown"
-            out["health"] = unknown(f"GET 127.0.0.1:{port}/health", str(exc)[:160])
-        try:
-            c = http_json(f"http://127.0.0.1:{port}/cache")
-            out["cache"] = fact({k: c.get(k) for k in ("entries", "bytes", "hits", "misses", "hit_rate")}, f"GET 127.0.0.1:{port}/cache")
-        except Exception as exc:  # noqa: BLE001
-            out["cache"] = unknown(f"GET 127.0.0.1:{port}/cache", str(exc)[:160])
-    if not out:
-        out["server"] = by_design("profile roles", f"profile {profile.get('name')} serves no model")
+            out[name] = fact(http_json(f"http://127.0.0.1:{port}{path}"), source)
+        except Exception as exc:  # noqa: BLE001 — failed readiness stays visible
+            out[name] = unknown(source, str(exc)[:160])
     return out
 
 
@@ -1155,8 +1141,8 @@ def render_node(n: dict, color: bool) -> list[str]:
 
     if F.has("inference", "health"):
         h = F("inference", "health")
-        lines.append("  inference " + val(h, lambda v: f"halogen {v.get('status')} {v.get('model')} busy={v.get('busy')} in_flight={v.get('in_flight')} queued={v.get('queued')}", f"halogen UNKNOWN ({h.get('reason')})"))
-        units = F("inference", "halogen_units")
+        lines.append("  inference " + val(h, lambda v: f"gufo {v.get('status')} {v.get('model')}", f"gufo UNKNOWN ({h.get('reason')})"))
+        units = F("inference", "gufo_units")
         if units["grade"] == "measured":
             lines[-1] += "  " + " ".join(f"{k.replace('.service', '')}={v}" for k, v in units["value"].items())
 
