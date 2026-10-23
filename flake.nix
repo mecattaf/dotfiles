@@ -1171,8 +1171,9 @@
               swayBinds = nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/sway/binds.conf);
             in
             builtins.all (l: builtins.elem l swayBinds) [
-              "bindsym $mod+Return exec ~/.local/bin/herdr-chord new"
-              "bindsym $mod+Ctrl+Shift+Return exec ~/.local/bin/herdr-chord sidebar"
+              "bindsym $mod+Ctrl+space exec env HERDR_PROJECTOR_TARGET=nas HERDR_PICKER_HOSTNAME=nas HERDR_SWAY_LOCAL=0 ~/.local/bin/herdr-picker"
+              "bindsym $mod+Return exec env HERDR_PROJECTOR_TARGET=nas HERDR_PICKER_HOSTNAME=nas HERDR_SWAY_LOCAL=0 ~/.local/bin/herdr-chord new"
+              "bindsym $mod+Ctrl+Shift+Return exec env HERDR_PROJECTOR_TARGET=nas HERDR_PICKER_HOSTNAME=nas HERDR_SWAY_LOCAL=0 ~/.local/bin/herdr-chord sidebar"
               "bindsym $mod+Shift+Return exec kitty -e fish"
               # AGENTS.md seat rule: Alt+H/L left/right monitor, Alt+J/K down/up.
               "bindsym Alt+h focus output left"

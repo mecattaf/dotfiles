@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shlex
 import struct
 import subprocess
 import unittest
@@ -47,7 +48,7 @@ def workspace_form(value='today'):
 
 class SwayPicker(unittest.TestCase):
     def setUp(self):
-        self.environment = patch.dict(os.environ, {'HERDR_SWAY_LOCAL': '0', 'HERDR_SWAY_SEAT': 'client'})
+        self.environment = patch.dict(os.environ, {'HERDR_SWAY_LOCAL': '0', 'HERDR_SWAY_SEAT': 'client', 'HERDR_PROJECTOR_TARGET': 'strix', 'HERDR_PICKER_HOSTNAME': 'strix'})
         self.environment.start()
         self.addCleanup(self.environment.stop)
 
@@ -98,6 +99,47 @@ class SwayPicker(unittest.TestCase):
         data = root(*(ws(i, [view(i, slot=i)]) for i in range(1, 10)))
         with self.assertRaisesRegex(picker.BridgeError, 'All nine'):
             picker.available_slot(data)
+
+    def test_nas_handover_reuses_only_foreign_projector_slots(self):
+        data = root(*(ws(i, [view(i, slot=i)]) for i in range(1, 10)))
+        # A normal application still owns its workspace during handover.
+        data['nodes'][0]['nodes'].append(view(30, app='ordinary'))
+        with patch.dict(os.environ, {'HERDR_PICKER_HOSTNAME': 'nas'}):
+            self.assertEqual(picker.available_slot(data), 2)
+
+    def test_nas_handover_keeps_unidentified_projectors_reserved(self):
+        data = root(*(ws(i, [view(i, slot=i, title='kitty')]) for i in range(1, 10)))
+        with patch.dict(os.environ, {'HERDR_PICKER_HOSTNAME': 'nas'}):
+            with self.assertRaisesRegex(picker.BridgeError, 'All nine'):
+                picker.available_slot(data)
+
+    def test_nas_can_restore_beside_retained_strix_without_touching_it(self):
+        node = view(11, slot=3, title='nas: client-slot-3-abcdef')
+        data = root(ws(3, [view(12, slot=3)]), ws(-1, [node], name='__i3_scratch'))
+        commands = []
+        with patch.object(picker, 'tree', return_value=data), patch.object(picker, 'ipc', side_effect=commands.append):
+            picker.focus_view(11)
+        self.assertEqual(commands[-1], '[con_id=11] focus')
+        self.assertTrue(all('con_id=12' not in command and 'kill' not in command for command in commands))
+
+    def test_nas_creation_passes_route_through_sway_and_preserves_strix(self):
+        old = view(10, slot=2, focused=True)
+        nas = view(11, slot=2, title='nas: new workspace')
+        before, after = root(ws(2, [old])), root(ws(2, [old, nas]))
+        commands = []
+        with patch.dict(os.environ, {'HERDR_PICKER_HOSTNAME': 'nas', 'HERDR_PROJECTOR_TARGET': 'nas'}), \
+                patch.object(picker, 'tree', side_effect=[before, after]), \
+                patch.object(picker, 'ipc', side_effect=commands.append), \
+                patch.object(picker, 'client_ready', return_value=True), patch.object(picker, 'kitty') as kitty:
+            node, created = picker.ensure_projector(create_workspace=False)
+        self.assertTrue(created)
+        self.assertEqual(node['id'], 11)
+        spawn = next(command.removeprefix('exec ') for command in commands if command.startswith('exec '))
+        self.assertEqual(shlex.split(spawn)[:5], ['env', 'HERDR_PROJECTOR_TARGET=nas',
+                                                'HERDR_PICKER_HOSTNAME=nas', 'HERDR_SWAY_LOCAL=0', 'kitty'])
+        self.assertIn('[con_id=11] mark --add herdr-server-' + b'nas'.hex(), commands)
+        self.assertTrue(all('con_id=10' not in command and 'kill' not in command for command in commands))
+        kitty.assert_not_called()
 
     def test_focus_parked_restores_exact_view_without_server_focus(self):
         data = root(ws(1), ws(-1, [view(11, slot=3)], name='__i3_scratch'))
@@ -235,6 +277,27 @@ class SwayPicker(unittest.TestCase):
             duplicated = {'workspaces': [{'workspace_id': 'wB', 'label': 'today'}, {'workspace_id': 'wC', 'label': 'today'}]}
             self.assertIsNone(picker.identity(node, duplicated))
 
+    def test_server_qualified_title_rejects_colliding_old_ids_and_labels(self):
+        node = view()
+        node['marks'].extend(['herdr-workspace-wA', 'herdr-label-client-slot-1-ab1234',
+                              'herdr-server-' + b'nas'.hex()])
+        with patch.dict(os.environ, {'HERDR_PICKER_HOSTNAME': 'nas'}):
+            self.assertEqual(picker.view_server(node), 'strix')
+            self.assertIsNone(picker.identity(node, SNAPSHOT))
+            self.assertIsNone(picker.assigned_identity(node, SNAPSHOT))
+            node['name'] = 'nas: client-slot-1-ab1234'
+            self.assertEqual(picker.identity(node, SNAPSHOT)['workspace_id'], 'wA')
+
+    def test_unknown_title_requires_matching_server_mark_for_assigned_status(self):
+        node = view(title='kitty')
+        node['marks'].append('herdr-workspace-wA')
+        with patch.dict(os.environ, {'HERDR_PICKER_HOSTNAME': 'nas'}):
+            self.assertIsNone(picker.assigned_identity(node, SNAPSHOT))
+            node['marks'].append('herdr-server-' + b'strix'.hex())
+            self.assertIsNone(picker.assigned_identity(node, SNAPSHOT))
+            node['marks'][-1] = 'herdr-server-' + b'nas'.hex()
+            self.assertEqual(picker.assigned_identity(node, SNAPSHOT)['workspace_id'], 'wA')
+
     def test_titles_do_not_inject_menu_rows_or_sway_commands(self):
         node = view(title='evil\nNew Sway workspace\x1b[31m; kill')
         rows = picker.picker_rows(root(ws(1, [node])), {}, 'offline')
@@ -249,7 +312,7 @@ class SwayPicker(unittest.TestCase):
 
     def test_assigned_status_is_explicit_when_view_cannot_be_verified(self):
         node = view(title='kitty')
-        node['marks'].append('herdr-label-client-slot-1-ab1234')
+        node['marks'].extend(['herdr-label-client-slot-1-ab1234', 'herdr-server-' + b'strix'.hex()])
         rows = picker.picker_rows(root(ws(1, [node])), SNAPSHOT)
         self.assertIn('assigned working', rows[0][0])
         self.assertIsNone(picker.identity(node, SNAPSHOT))

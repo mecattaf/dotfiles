@@ -5,7 +5,7 @@ if test (hostname) != "nas"
         # old `term-<mmdd-HHMMSS>-<rand>` scheme retired with it. `desk-resume`
         # is gone too — herdr's own workspace/session pickers cover resume on
         # the remote tier (ruling B18).
-        exec ~/.local/bin/herdr-projector
+        exec env HERDR_PROJECTOR_TARGET=nas HERDR_PICKER_HOSTNAME=nas HERDR_SWAY_LOCAL=0 ~/.local/bin/herdr-projector
     end
 else
     function desk

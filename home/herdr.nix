@@ -85,6 +85,7 @@ in
     };
     home.sessionVariables = {
       HERDR_PROJECTOR_TARGET = "nas";
+      HERDR_PICKER_HOSTNAME = "nas";
       HERDR_SWAY_LOCAL = if osConfig.myFleet.has "brain" && osConfig.myDisplay.enable then "1" else "0";
       HERDR_SWAY_SEAT = hostName;
     };
