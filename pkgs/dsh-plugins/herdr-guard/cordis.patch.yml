@@ -2,4 +2,4 @@
 # `herdrGuard` service this plugin provides.
 - insert:
     - id: herdr-guard
-      name: 'herdr-guard'
+      name: '@mecattaf/herdr-guard'

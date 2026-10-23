@@ -71,3 +71,10 @@ test('a pane this process split becomes its own: pane_run then asks', async () =
     else process.env.HERDR_ENV = saved
   }
 })
+
+test('apply logs one ready line, and mounts without a logger', () => {
+  const lines = []
+  apply({ on() {}, provide() {}, logger: { info: (...args) => lines.push(args) } })
+  assert.deepEqual(lines, [['herdr-guard ready']])
+  assert.doesNotThrow(() => mount())
+})

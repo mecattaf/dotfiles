@@ -1,4 +1,4 @@
-dotfiles patch over wenhao4126/dsh-herdr v0.4.0 (3cbea69). Six changes:
+dotfiles patch over wenhao4126/dsh-herdr v0.4.0 (3cbea69). Seven changes:
 1. remove _dsh_herdr_pane_send_text: raw bytes into any pane's PTY, ungated
    (24 tools become 23);
 2. drop the `env` parameter of workspace_create, tab_create and pane_split
@@ -8,12 +8,15 @@ dotfiles patch over wenhao4126/dsh-herdr v0.4.0 (3cbea69). Six changes:
    and ocr);
 5. pass the call's exec.signal to execFile, so a dsh interrupt kills herdr;
 6. hand the herdr child a stripped env, never dsh's own (the model key);
+7. run herdr as HERDR_BIN, which ./default.nix substitutes with the flake's
+   herdr store path, never a PATH lookup the model could plant a binary in;
 plus `herdrGuard` in `inject`, so the tools stay pending unless the
-dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
+dotfiles guard plugin (../herdr-guard) is mounted, and one `dsh-herdr
+ready: N tools` info line once they are registered. Tests follow each change.
 
 --- a/src/argv.ts
 +++ b/src/argv.ts
-@@ -18,7 +18,6 @@
+@@ -18,7 +18,6 @@ export function workspaceCreate(args: Args): string[] {
      'workspace', 'create',
      '--cwd', args.cwd,
      ...(args.label ? ['--label', args.label] : []),
@@ -21,7 +24,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
      '--no-focus',
    ]
  }
-@@ -37,7 +36,6 @@
+@@ -37,7 +36,6 @@ export function tabCreate(args: Args): string[] {
      '--workspace', args.workspace,
      '--cwd', args.cwd,
      ...(args.label ? ['--label', args.label] : []),
@@ -29,7 +32,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
      '--no-focus',
    ]
  }
-@@ -64,7 +62,6 @@
+@@ -64,7 +62,6 @@ export function paneSplit(args: Args): string[] {
      '--direction', args.direction,
      ...(args.ratio === undefined ? [] : ['--ratio', String(args.ratio)]),
      ...(args.cwd ? ['--cwd', args.cwd] : []),
@@ -37,7 +40,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
      '--no-focus',
    ]
  }
-@@ -84,10 +81,6 @@
+@@ -84,10 +81,6 @@ export function paneWaitOutput(args: Args): string[] {
    ]
  }
  
@@ -48,7 +51,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
  export function paneLayout(args: Args): string[] {
    return ['pane', 'layout', '--pane', args.pane]
  }
-@@ -122,7 +115,6 @@
+@@ -122,7 +115,6 @@ export function agentStart(args: Args): string[] {
      '--kind', args.kind,
      '--pane', args.pane,
      ...(args.timeout ? ['--timeout', String(args.timeout)] : []),
@@ -58,7 +61,11 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
  
 --- a/src/index.ts
 +++ b/src/index.ts
-@@ -10,7 +10,8 @@
+@@ -7,10 +7,12 @@ interface PluginContext {
+   tools: {
+     register(tool: ReturnType<typeof defineTool>): () => void
+   }
++  logger?: { info?(format: string, ...args: unknown[]): void }
  }
  
  export const name = '@dsh-external/dsh-herdr-toolkit'
@@ -68,7 +75,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
  
  const resultSchema = {
    type: 'object' as const,
-@@ -30,7 +31,7 @@
+@@ -30,7 +32,7 @@ function tool<S extends Record<string, any>>(
    toolName: string,
    description: string,
    parameters: S,
@@ -77,7 +84,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
  ) {
    return defineTool({
      name: toolName,
-@@ -40,7 +41,7 @@
+@@ -40,16 +42,20 @@ function tool<S extends Record<string, any>>(
        schema: resultSchema,
        render: (_args: any, value: HerdrResult) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
      },
@@ -86,7 +93,20 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    })
  }
  
-@@ -58,11 +59,7 @@
++// Tools registered per context, for the ready line.
++const registered = new WeakMap<object, number>()
++
+ function register(
+   ctx: PluginContext,
+   label: string,
+   definition: ReturnType<typeof tool>,
+ ): void {
+   ctx.effect(() => ctx.tools.register(definition), `${name}: ${label}`)
++  registered.set(ctx, (registered.get(ctx) ?? 0) + 1)
+ }
+ 
+ const readSource = {
+@@ -58,11 +64,7 @@ const readSource = {
    description: 'Herdr screen source.',
  }
  
@@ -99,7 +119,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
  
  function firstLine(value: string | undefined): string | undefined {
    if (!value) return undefined
-@@ -152,14 +149,14 @@
+@@ -152,14 +154,14 @@ export function apply(
      '_dsh_herdr_workspace_list',
      'List Herdr workspaces and their current layout.',
      {},
@@ -116,7 +136,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
  
    register(ctx, 'workspace create', tool(
-@@ -168,23 +165,22 @@
+@@ -168,23 +170,22 @@ export function apply(
      {
        cwd: { type: 'string', required: true, description: 'Absolute working directory.' },
        label: { type: 'string', description: 'Optional workspace label.' },
@@ -143,7 +163,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
  
    register(ctx, 'tab create', tool(
-@@ -194,23 +190,22 @@
+@@ -194,23 +195,22 @@ export function apply(
        workspace: { type: 'string', required: true, description: 'Destination workspace ID.' },
        cwd: { type: 'string', required: true, description: 'Absolute working directory.' },
        label: { type: 'string', description: 'Optional tab label.' },
@@ -170,7 +190,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
  
    register(ctx, 'pane read', tool(
-@@ -221,7 +216,7 @@
+@@ -221,7 +221,7 @@ export function apply(
        source: readSource,
        lines: { type: 'integer', description: 'Maximum number of lines.' },
      },
@@ -179,7 +199,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
  
    register(ctx, 'pane split', tool(
-@@ -232,9 +227,8 @@
+@@ -232,9 +232,8 @@ export function apply(
        direction: { type: 'string', required: true, enum: ['right', 'down'], description: 'Split direction.' },
        ratio: { type: 'number', description: 'Optional split ratio accepted by Herdr.' },
        cwd: { type: 'string', description: 'Optional absolute working directory for the new pane.' },
@@ -190,7 +210,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
  
    register(ctx, 'pane run', tool(
-@@ -245,7 +239,7 @@
+@@ -245,7 +244,7 @@ export function apply(
        command: { type: 'string', required: true, description: 'Shell command text to execute in the pane.' },
        preview: { type: 'boolean', description: 'Return a structured preview instead of executing.' },
      },
@@ -199,7 +219,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
  
    register(ctx, 'pane wait output', tool(
-@@ -259,17 +253,7 @@
+@@ -259,17 +258,7 @@ export function apply(
        lines: { type: 'integer', description: 'Maximum screen lines to search.' },
        timeout: { type: 'integer', description: 'Wait timeout in milliseconds.' },
      },
@@ -218,7 +238,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
  
    register(ctx, 'pane layout', tool(
-@@ -278,7 +262,7 @@
+@@ -278,7 +267,7 @@ export function apply(
      {
        pane: { type: 'string', required: true, description: 'Pane ID, such as w1:p1.' },
      },
@@ -227,7 +247,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
  
    register(ctx, 'pane process info', tool(
-@@ -287,7 +271,7 @@
+@@ -287,7 +276,7 @@ export function apply(
      {
        pane: { type: 'string', required: true, description: 'Pane ID, such as w1:p1.' },
      },
@@ -236,7 +256,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
  
    register(ctx, 'pane edges', tool(
-@@ -296,20 +280,20 @@
+@@ -296,20 +285,20 @@ export function apply(
      {
        pane: { type: 'string', required: true, description: 'Pane ID, such as w1:p1.' },
      },
@@ -264,7 +284,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
        ])
        return {
          ok: true,
-@@ -329,21 +313,21 @@
+@@ -329,21 +318,21 @@ export function apply(
      '_dsh_herdr_agent_list',
      'List recognized agents running in Herdr panes.',
      {},
@@ -289,7 +309,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
    register(ctx, 'agent read', tool(
      '_dsh_herdr_agent_read',
-@@ -352,7 +336,7 @@
+@@ -352,7 +341,7 @@ export function apply(
        agent: { type: 'string', required: true, description: 'Agent name or pane ID.' },
        lines: { type: 'integer', description: 'Maximum number of lines.' },
      },
@@ -298,7 +318,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
  
    register(ctx, 'agent start', tool(
-@@ -363,10 +347,9 @@
+@@ -363,10 +352,9 @@ export function apply(
        kind: { type: 'string', required: true, enum: agentKinds, description: 'Supported Herdr agent kind.' },
        pane: { type: 'string', required: true, description: 'Available shell pane ID.' },
        timeout: { type: 'integer', description: 'Startup timeout in milliseconds.' },
@@ -310,7 +330,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
  
    register(ctx, 'agent wait', tool(
-@@ -381,7 +364,7 @@
+@@ -381,7 +369,7 @@ export function apply(
        },
        timeout: { type: 'integer', description: 'Wait timeout in milliseconds.' },
      },
@@ -319,18 +339,28 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    ))
  
    register(ctx, 'agent prompt', tool(
-@@ -393,6 +376,6 @@
+@@ -393,6 +381,9 @@ export function apply(
        timeout: { type: 'integer', description: 'Wait timeout in milliseconds.' },
        preview: { type: 'boolean', description: 'Return a structured preview instead of executing.' },
      },
 -    (args) => previewGate('herdr agent prompt', 'agent_prompt', { agent: args.agent, preview: args.preview }, () => run(argv.agentPrompt(args))),
 +    (args, signal) => previewGate('herdr agent prompt', 'agent_prompt', { agent: args.agent, preview: args.preview }, () => run(argv.agentPrompt(args), signal)),
    ))
++  // One stderr line in the herdr profile (through the stderr-log plugin), so a
++  // boot shows this plugin, and so the herdrGuard it injects, mounted.
++  ctx.logger?.info?.('dsh-herdr ready: %d tools', registered.get(ctx) ?? 0)
  }
 \ No newline at end of file
 --- a/src/runtime.ts
 +++ b/src/runtime.ts
-@@ -18,9 +18,19 @@
+@@ -15,12 +15,26 @@ const execFileAsync = promisify(execFile)
+ 
+ const MAX_BUFFER = 4 * 1024 * 1024
+ 
++// The herdr binary, by absolute store path: the dotfiles build substitutes
++// @herdr@, so no PATH entry the model can write ever picks the program.
++export const HERDR_BIN = '@herdr@'
++
  export type ExecFileRunner = (
    file: string,
    args: string[],
@@ -351,7 +381,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
  export function parseJson(value: string): any | undefined {
    if (!value) return undefined
    try {
-@@ -56,14 +66,16 @@
+@@ -56,14 +70,16 @@ export async function runHerdrWith(
    args: string[],
    runner: ExecFileRunner,
    env: NodeJS.ProcessEnv = process.env,
@@ -360,8 +390,9 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    const command = commandLabel(args)
    const timeout = readCliTimeoutMs(env)
    try {
-     const result = await runner('herdr', args, {
+-    const result = await runner('herdr', args, {
 -      env,
++    const result = await runner(HERDR_BIN, args, {
 +      env: childEnv(env),
        maxBuffer: MAX_BUFFER,
        ...(timeout === undefined ? {} : { timeout }),
@@ -369,7 +400,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
      })
      const stdout = String(result.stdout ?? '')
      const stderr = String(result.stderr ?? '')
-@@ -98,6 +110,6 @@
+@@ -98,6 +114,6 @@ export async function runHerdrWith(
    }
  }
  
@@ -381,7 +412,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
 \ No newline at end of file
 --- a/test/argv.test.mjs
 +++ b/test/argv.test.mjs
-@@ -59,10 +59,10 @@
+@@ -59,10 +59,10 @@ test('agent read always requests unwrapped output', () => {
    assert.deepEqual(argv.agentRead({ agent: 'reviewer' }), ['agent', 'read', 'reviewer', '--source', 'recent-unwrapped'])
  })
  
@@ -394,7 +425,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
    )
    assert.deepEqual(
      argv.agentStart({ name: 'reviewer', kind: 'codex', pane: 'w1:p1' }),
-@@ -91,17 +91,18 @@
+@@ -91,17 +91,18 @@ test('agent explain requests JSON output', () => {
    assert.deepEqual(argv.agentExplain({ agent: 'reviewer' }), ['agent', 'explain', 'reviewer', '--json'])
  })
  
@@ -419,7 +450,7 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
  })
 --- a/test/registration.test.mjs
 +++ b/test/registration.test.mjs
-@@ -23,12 +23,30 @@
+@@ -23,12 +23,38 @@ function fakeContext() {
    }
  }
  
@@ -443,6 +474,14 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
 +  }
 +})
 +
++test('apply logs one ready line with the tool count', () => {
++  const fake = fakeContext()
++  const lines = []
++  fake.ctx.logger = { info: (...args) => lines.push(args) }
++  apply(fake.ctx)
++  assert.deepEqual(lines, [['dsh-herdr ready: %d tools', 23]])
++})
++
 +test('execute hands the call signal to the herdr runner', async () => {
 +  const fake = fakeContext()
 +  const signals = []
@@ -455,12 +494,19 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
  test('registered tool execute routes through injected argv', async () => {
 --- a/test/runtime.test.mjs
 +++ b/test/runtime.test.mjs
-@@ -95,4 +95,18 @@
+@@ -1,6 +1,7 @@
+ import test from 'node:test'
+ import assert from 'node:assert/strict'
+-import { runHerdrWith, commandLabel, parseJson, readCliTimeoutMs } from '../lib/runtime.js'
++import { isAbsolute } from 'node:path'
++import { runHerdrWith, commandLabel, parseJson, readCliTimeoutMs, HERDR_BIN } from '../lib/runtime.js'
+ 
+ function successRunner(stdout, stderr = '') {
+   return async (_file, _args, _opts) => ({ stdout, stderr })
+@@ -95,4 +96,32 @@ test('env timeout is forwarded as a subprocess deadline', async () => {
    assert.equal(result.ok, true)
    assert.equal(captured.timeout, 30000)
    assert.equal(captured.maxBuffer, 4 * 1024 * 1024)
--})
-\ No newline at end of file
 +})
 +
 +test('the herdr child gets a stripped env and the call signal', async () => {
@@ -476,3 +522,18 @@ dotfiles guard plugin (../herdr-guard) is mounted. Tests follow each change.
 +  assert.equal(captured.signal, signal)
 +  assert.equal(captured.timeout, 600000)
 +})
++
++
++test('the runner gets herdr by absolute path, never a PATH lookup', async () => {
++  let file
++  const runner = async (f) => {
++    file = f
++    return { stdout: '{}', stderr: '' }
++  }
++  const result = await runHerdrWith(['pane', 'list'], runner, { PATH: '/model/bin' })
++  assert.equal(file, HERDR_BIN)
++  assert.ok(isAbsolute(file), `herdr runs as ${file}`)
++  assert.match(file, /\/bin\/herdr$/)
++  assert.equal(result.command, 'herdr pane list')
+ })
+\ No newline at end of file

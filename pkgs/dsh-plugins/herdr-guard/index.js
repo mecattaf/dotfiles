@@ -10,7 +10,7 @@
 // - pane_run and agent_start: only on panes this process created, else deny;
 // - every other write: ask, which headless (no answerer) turns into a deny;
 // - an unknown _dsh_herdr_ tool: deny.
-export const name = 'herdr-guard'
+export const name = '@mecattaf/herdr-guard'
 export const inject = ['tools']
 
 const PREFIX = '_dsh_herdr_'
@@ -77,4 +77,7 @@ export function apply(ctx) {
     }
   })
   ctx.provide('herdrGuard', { owned: () => [...owned] })
+  // One stderr line in the herdr profile (through stderr-log): a boot shows
+  // the guard mounted, not only the tools it gates.
+  ctx.logger?.info?.('herdr-guard ready')
 }

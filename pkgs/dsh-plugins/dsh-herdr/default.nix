@@ -5,6 +5,7 @@
   typescript,
   nodejs,
   dshTools,
+  herdr,
 }:
 # @dsh-external/dsh-herdr-toolkit: Herdr workspaces, panes and agents as dsh
 # tools, behind ./tom.patch (see its header) and the herdr-guard plugin. It
@@ -16,9 +17,14 @@
 # dsh checkout or pnpm install is needed. Its only runtime import is
 # @deepseek-ai/dsh-tools, an optional peer the running dsh supplies.
 #
+# dsh-herdr spawns herdr from dsh's own process, outside dsh-bwrap, so it is pinned
+# here to the flake's herdr store path (tom.patch's HERDR_BIN): a `herdr` the
+# model writes into any PATH entry (a project bin dir, /tmp) is never run.
+#
 # The check phase runs upstream's node tests (as patched) against the real
-# dsh-tools of the dsh this fleet runs: argv, runtime, the preview gate and the
-# 23-tool registration. None of them starts herdr.
+# dsh-tools of the dsh this fleet runs: argv, runtime (herdr by absolute
+# path), the preview gate and the 23-tool registration. None of them starts
+# herdr.
 stdenvNoCC.mkDerivation {
   pname = "dsh-herdr-toolkit";
   version = "0.4.0";
@@ -31,6 +37,11 @@ stdenvNoCC.mkDerivation {
   };
 
   patches = [ ./tom.patch ];
+
+  postPatch = ''
+    substituteInPlace src/runtime.ts \
+      --replace-fail "HERDR_BIN = '@herdr@'" "HERDR_BIN = '${lib.getExe' herdr "herdr"}'"
+  '';
 
   nativeBuildInputs = [
     typescript
@@ -51,6 +62,7 @@ stdenvNoCC.mkDerivation {
     mkdir -p node_modules/@deepseek-ai
     ln -s ${dshTools} node_modules/@deepseek-ai/dsh-tools
     node --test test/*.test.mjs
+    grep -qF "'${lib.getExe' herdr "herdr"}'" lib/runtime.js
     rm -rf node_modules
     runHook postCheck
   '';

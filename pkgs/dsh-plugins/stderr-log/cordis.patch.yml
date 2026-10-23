@@ -1,4 +1,4 @@
 # stderr-log's bundle layer: one row, no config.
 - insert:
     - id: stderr-log
-      name: 'stderr-log'
+      name: '@mecattaf/stderr-log'

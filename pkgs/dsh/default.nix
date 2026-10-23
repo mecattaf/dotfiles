@@ -79,20 +79,22 @@ let
   # stderr log sink, for Tom to run by hand inside a Herdr pane
   # (`dsh herdr "<task>"`). Substrate drives the stock `headless` profile,
   # which never mounts them. The guard comes before dsh-herdr, which cannot
-  # load without it either way.
+  # load without it either way. The owned plugins carry a private npm scope:
+  # dsh resolves a bundle name from its own installation before the profile,
+  # so a generic name could one day be shadowed by a dependency of a bump.
   nixProfiles = {
     herdr = {
       bundles = [
         "@deepseek-ai/dsh-base"
         "@deepseek-ai/dsh-headless"
-        "stderr-log"
-        "herdr-guard"
+        "@mecattaf/stderr-log"
+        "@mecattaf/herdr-guard"
         "@dsh-external/dsh-herdr-toolkit"
         "jevcore-dsh"
       ];
       packages = {
-        "stderr-log" = dsh-plugins.stderr-log;
-        "herdr-guard" = dsh-plugins.herdr-guard;
+        "@mecattaf/stderr-log" = dsh-plugins.stderr-log;
+        "@mecattaf/herdr-guard" = dsh-plugins.herdr-guard;
         "@dsh-external/dsh-herdr-toolkit" = dsh-plugins.dsh-herdr;
         "jevcore-dsh" = dsh-plugins.jevcore;
       };
@@ -304,22 +306,29 @@ writeShellApplication {
 
     # A Nix-declared profile's manifest and plugin links, rewritten in place
     # (temp name, then rename) so a concurrent boot never reads half of one.
+    # Temp links are staged in a per-process directory beside node_modules
+    # (same filesystem, so the rename stays atomic), where no other boot's
+    # sweep of undeclared store links can delete them mid-rename.
     sync_profile() {
-      local dir="$dsh_home/profiles/$1" manifest="$2" pair name link
+      local dir="$dsh_home/profiles/$1" manifest="$2" pair name link i=0
       shift 2
       if [ ! -d "$dsh_home" ]; then (umask 077 && mkdir -p -- "$dsh_home"); fi
       mkdir -p -- "$dir/node_modules"
       install -m 0600 -- "$manifest" "$dir/package.json.$$"
       mv -f -- "$dir/package.json.$$" "$dir/package.json"
-      local keep=" "
+      local stage="$dir/.sync.$$" keep=" "
+      rm -rf -- "$stage"
+      mkdir -- "$stage"
       for pair in "$@"; do
         name="''${pair%%=*}"
         link="$dir/node_modules/$name"
         mkdir -p -- "$(dirname -- "$link")"
-        ln -sfn -- "''${pair#*=}" "$link.$$"
-        mv -fT -- "$link.$$" "$link"
+        i=$((i + 1))
+        ln -sfn -- "''${pair#*=}" "$stage/$i"
+        mv -fT -- "$stage/$i" "$link"
         keep+="$link "
       done
+      rmdir -- "$stage"
       while IFS= read -r -d "" link; do
         case "$keep" in *" $link "*) ;; *) rm -f -- "$link" ;; esac
       done < <(find "$dir/node_modules" -mindepth 1 -maxdepth 2 -type l -lname '${builtins.storeDir}/*' -print0)
@@ -332,6 +341,11 @@ writeShellApplication {
     esac
     # --dump-default-config prints the bundle layers only and takes no --patch.
     if [ "$dump_default" = 1 ]; then overlays=(); fi
+  ''
+  # Without a key file nothing reads `dumping`; shellcheck would fail the build.
+  + lib.optionalString (qwenKeyFile == null) ''
+
+    : "$dumping"
   ''
   + lib.optionalString (qwenKeyFile != null) ''
 

@@ -432,6 +432,9 @@
 
       overlays.default = import ./overlays {
         torchRocm = inputs.nix-strix-halo.packages.${system}.torch-rocm;
+        # The herdr home/herdr.nix installs, for pkgs/dsh-plugins to pin by
+        # store path (dsh-herdr never looks `herdr` up on PATH).
+        herdr = inputs.herdr.packages.${system}.herdr;
       };
 
       nixosConfigurations = {
@@ -1900,11 +1903,14 @@
         # composes `herdr` with every plugin row mounted and none skipped, the
         # stock headless profile (substrate's) mounts none of them, and a boot
         # of `herdr` with a blank task (it stops before any model call) prints
-        # jevcore's ready line on stderr. Same sandbox as dsh-config: no
-        # network, a private DSH_HOME, no key, no herdr.
+        # the ready lines of herdr-guard, dsh-herdr and jevcore on stderr.
+        # Same sandbox as dsh-config: no network, a private DSH_HOME, no herdr,
+        # and no key by construction: the wrapper here is built without a key
+        # file and the key variable is unset, whatever the sandbox exposes.
         dsh-plugins =
           let
             plugins = pkgs.dsh.plugins;
+            dshNoKey = pkgs.dsh.override { qwenKeyFile = null; };
             base = {
               disabled = pkgs.dsh.disabledIds;
               runner = "${pkgs.dsh.runner}/bin/dsh-bwrap";
@@ -1955,6 +1961,12 @@
               test -f "$j/skills/typesafe-ai-dsh/SKILL.md"
               test -f "$j/node_modules/jevcore/lib/index.js"
               test ! -e "$j/node_modules/@typesafe-ai"
+
+              # The owned plugins' private scope: nothing in the dsh
+              # installation, which resolves bundle names first, may shadow it.
+              u=${pkgs.dsh.unwrapped}/lib/node_modules
+              test ! -e "$u/@mecattaf"
+              test ! -e "$u/@deepseek-ai/dsh/node_modules/@mecattaf"
               if grep -rnE 'fetch\(|node:https?' "$j/lib" "$j/node_modules/jevcore/lib"; then
                 echo "jevcore: a network call in the built JS" >&2
                 exit 1
@@ -1964,10 +1976,15 @@
               export HOME="$build/home" DSH_HOME="$build/dsh-home" TMPDIR="$build/tmp"
               export HERDR_SOCKET_PATH="$build/no-herdr.sock"
               export PYTHONDONTWRITEBYTECODE=1
+              unset QWEN_TOKEN_PLAN_API_KEY
               mkdir -p "$HOME" "$build/cwd" "$TMPDIR"
               mkdir -m 700 "$DSH_HOME"
               cd "$build/cwd"
-              dsh=${pkgs.dsh}/bin/dsh
+              dsh=${dshNoKey}/bin/dsh
+              if grep -qF qwencloud-token "$dsh"; then
+                echo "dsh-plugins: the check's wrapper reads a key file" >&2
+                exit 1
+              fi
 
               dump() {
                 name="$1" expect="$2"
@@ -1986,8 +2003,8 @@
               # The synced profile: a private manifest and store links only.
               p="$DSH_HOME/profiles/herdr"
               test "$(stat -c %a "$p/package.json")" = 600
-              test "$(readlink "$p/node_modules/stderr-log")" = ${plugins.stderr-log}
-              test "$(readlink "$p/node_modules/herdr-guard")" = ${plugins.herdr-guard}
+              test "$(readlink "$p/node_modules/@mecattaf/stderr-log")" = ${plugins.stderr-log}
+              test "$(readlink "$p/node_modules/@mecattaf/herdr-guard")" = ${plugins.herdr-guard}
               test "$(readlink "$p/node_modules/@dsh-external/dsh-herdr-toolkit")" = ${plugins.dsh-herdr}
               test "$(readlink "$p/node_modules/jevcore-dsh")" = ${plugins.jevcore}
               test ! -e "$DSH_HOME/profiles/headless/node_modules"
@@ -1998,10 +2015,13 @@
               dump herdr-again ${expectHerdr} --profile herdr --dump-config
               test ! -e "$p/node_modules/dropped-plugin"
               test "$(cat "$p/cordis.patch.yml")" = '[]'
+              # No per-boot staging directory is left behind.
+              test -z "$(find "$p" -maxdepth 1 -name '.sync.*')"
 
               # The whole tree boots: an unknown --session-id fails in headless
-              # after the loader settled and before any model call. jevcore's
-              # ready line reaches stderr through stderr-log, on the offline mock.
+              # after the loader settled and before any model call. The guard,
+              # dsh-herdr (which loads only with the guard's service) and jevcore
+              # (on the offline mock) each print a ready line through stderr-log.
               rc=0
               "$dsh" herdr --session-id session-none "reply OK" > "$TMPDIR/boot.out" 2> "$TMPDIR/boot.err" || rc=$?
               cat "$TMPDIR/boot.err" >&2
@@ -2009,6 +2029,8 @@
               test "$rc" = 1
               grep -qF 'dsh: session "session-none" does not exist' "$TMPDIR/boot.err"
               grep -qF '[jevcore] ready · provider=mock · gates: safety=off context=off' "$TMPDIR/boot.err"
+              grep -qF 'info: herdr-guard ready' "$TMPDIR/boot.err"
+              grep -qF 'info: dsh-herdr ready: 23 tools' "$TMPDIR/boot.err"
               touch "$out"
             '';
 

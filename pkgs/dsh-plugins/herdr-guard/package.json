@@ -1,5 +1,5 @@
 {
-  "name": "herdr-guard",
+  "name": "@mecattaf/herdr-guard",
   "version": "1.0.0",
   "description": "Dotfiles gate in front of the dsh-herdr tools: id checks, own-pane writes, HERDR_ENV, ask.",
   "private": true,

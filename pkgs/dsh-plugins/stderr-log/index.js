@@ -8,7 +8,7 @@
 // Plain ESM; the only import is a Node builtin.
 import { format } from 'node:util'
 
-export const name = 'stderr-log'
+export const name = '@mecattaf/stderr-log'
 
 const SHOWN = new Set(['error', 'info', 'warn'])
 const MAX_LINE = 4096

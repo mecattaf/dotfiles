@@ -1,6 +1,8 @@
 {
   callPackage,
   llm-agents,
+  # The flake's herdr (inputs.herdr, the one home/herdr.nix installs).
+  herdr,
 }:
 # The dsh plugins of the hand-run `herdr` profile (pkgs/dsh, T-31). Each is a
 # plain package directory with a `dsh.bundle` manifest; the dsh wrapper links
@@ -14,7 +16,7 @@ let
 in
 {
   # wenhao4126/dsh-herdr behind ./dsh-herdr/tom.patch.
-  dsh-herdr = callPackage ./dsh-herdr { inherit dshTools; };
+  dsh-herdr = callPackage ./dsh-herdr { inherit dshTools herdr; };
   # Owned here: the gate dsh-herdr cannot load without.
   herdr-guard = callPackage ./herdr-guard { };
   # PerryLink/jevcore's dsh plugin, offline (mock provider, no SDK).

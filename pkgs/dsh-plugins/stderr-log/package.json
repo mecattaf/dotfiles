@@ -1,5 +1,5 @@
 {
-  "name": "stderr-log",
+  "name": "@mecattaf/stderr-log",
   "version": "1.0.0",
   "description": "Dotfiles log sink for the dsh herdr profile: error, info and warn messages to stderr.",
   "private": true,
