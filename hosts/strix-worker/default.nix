@@ -10,6 +10,9 @@
   networking.hostName = "strix-worker";
   myFleet.roles = [ "compute" ];
   mySecrets.enable = false;
+  # Offline installation must not change the coordinator's EFI NVRAM. bootctl
+  # still installs EFI/BOOT/BOOTX64.EFI on the worker's own ESP for first boot.
+  boot.loader.efi.canTouchEfiVariables = lib.mkForce false;
   fileSystems."/mnt/nas/documents" = {
     device = "nas:/documents";
     fsType = "nfs4";

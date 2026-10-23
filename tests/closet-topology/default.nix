@@ -102,6 +102,12 @@ assert w.boot.kernelPackages.kernel.version == s.boot.kernelPackages.kernel.vers
 assert builtins.attrNames w.disko.devices.disk == [ "w1t" ];
 assert w.disko.devices.disk.w1t.device == "/dev/disk/by-id/nvme-WD_BLACK_SN7100_1TB_26051Y809195";
 assert
+  w.disko.devices.disk.w1t.content.partitions.ESP.uuid == "25db1b50-f51c-499b-a628-26a25fa02662";
+assert
+  w.disko.devices.disk.w1t.content.partitions.root.uuid == "e4869fbf-f6c5-4bf5-960f-cf19376e139d";
+assert w.fileSystems."/".device == "/dev/disk/by-partuuid/e4869fbf-f6c5-4bf5-960f-cf19376e139d";
+assert !w.boot.loader.efi.canTouchEfiVariables;
+assert
   w.disko.devices.disk.w1t.content.partitions.ESP.uuid
   != s.disko.devices.disk.main.content.partitions.ESP.uuid;
 assert
