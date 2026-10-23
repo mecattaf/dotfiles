@@ -56,7 +56,9 @@ Wiring: key at `secrets/qwencloud-token.age` (strix-only), delivered to
   its wrapper for the dsh process only. dsh strips credential-shaped names from
   every child it spawns, and its sandbox runner masks `/run/agenix`. Its route
   is `qwen-token-plan/deepseek-v4.1-flash`; the reasoning and limits are in the
-  comment in `modules/secrets.nix`.
+  comment in `modules/secrets.nix`. In the hand-run `dsh herdr` profile, the
+  dsh-herdr plugin starts the `herdr` CLI with a stripped environment that
+  does not carry it (`pkgs/dsh-plugins`).
 
 ## ⚠️ OpenRouter — spend the $40, and use the free stealth model
 

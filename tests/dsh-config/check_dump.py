@@ -5,7 +5,8 @@ Usage: check_dump.py <dump.yml> <expectations.json>
 The dump is dsh's composed profile tree: a YAML list of rows, some carrying
 `!!js` expressions (kept as opaque strings here; nothing is evaluated). The
 expectations come from pkgs/dsh's passthru, so the check follows the policy
-instead of restating it.
+instead of restating it. checks.dsh-plugins adds `rows`, `present` and
+`absent` for the plugin profile.
 """
 
 import json
@@ -85,6 +86,17 @@ def main(dump_path, expect_path):
     if "acp" in by_id:
         acp = by_id["acp"].get("config") or {}
         check(acp.get("provider") == "qwen-token-plan", f"acp provider is {acp.get('provider')!r}")
+
+    # Optional, for checks.dsh-plugins: rows whose whole config is pinned,
+    # rows that must mount, rows that must not exist at all.
+    for row_id, config in expect.get("rows", {}).items():
+        got = (by_id.get(row_id) or {}).get("config")
+        check(got == config, f"{row_id}: config is {got!r}, expected {config!r}")
+    for row_id in expect.get("present", []):
+        row = by_id.get(row_id)
+        check(row is not None and row.get("disabled") is not True, f"{row_id}: row missing or disabled")
+    for row_id in expect.get("absent", []):
+        check(row_id not in by_id, f"{row_id}: row present")
 
     # No row may still name the official route or its default model.
     text = json.dumps(tree, default=str)
