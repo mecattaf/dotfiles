@@ -1,0 +1,24 @@
+# Relative to /home/tom/, from survey/home-agent-state.md sections 2 and 5.
+# Preserve configs, credentials, repositories, Git admin/worktrees and history.
+.cache/
+node_modules/
+.venv/
+.next/
+.turbo/
+target/
+/.npm/
+/.cargo/registry/
+/.cargo/git/
+/.bun/install/cache/
+/.vite-plus/
+/.local/share/pnpm/store/
+/.local/share/voxtype/
+/.local/share/Trash/
+/Downloads/
+/.wt/mail/t4/.wrangler/prove-import/
+/.config/herdr/session.json
+/.config/herdr/session-snapshots/
+/.config/herdr/*.sock
+/.config/herdr/herdr-*.log
+/.config/herdr/ssh/
+/.local/state/herdr/

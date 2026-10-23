@@ -1,3 +1,6 @@
+# NEVER run disko for the nas host on a live system: it also owns the eMMC
+# and the boot-critical Fanxiang /mnt/fast + /nix. Prepare the incoming home
+# SSD by hand (#599); it is deliberately absent from this destructive layout.
 { ... }:
 {
   # VERIFIED LIVE 2026-08-01 (issue #131 destructive-action gate): 58.3GiB
