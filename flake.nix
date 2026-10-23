@@ -779,47 +779,16 @@
                 bash ${./tests/util-01/test-halogen-token-window.sh} | tee $out
             '';
 
-        # A deliberate stop of an inference server is not a failure (FDC-M4).
-        #
-        # `podman run` exits with the CONTAINER's status, so the SIGTERM of
-        # `podman stop` comes back as exit 143 — which systemd counts as a
-        # failure unless told otherwise. On this fleet a failed unit is not just
-        # a red line: the blanket OnFailure= of modules/failure-surfacing.nix
-        # writes a marker into /var/lib/failure-markers that an operator has to
-        # clear, so every `halogen-switch` between the two models left one
-        # behind. Nothing about that is visible from reading either module, and
-        # the units are only ever stopped by hand on a box with no display, so
-        # a regression here would go unnoticed exactly as the last one did.
-        #
-        # Asserted over EVERY podman-halogen* unit the worker declares, not a
-        # written-out list: the alternates are an attrset an operator extends
-        # (hosts/worker/default.nix), and a new model must not be able to join
-        # the fleet without this policy. 137 is asserted absent in the same
-        # breath — a container that is KILLED (the path
-        # --health-on-failure=kill takes on a wedged engine) must stay a
-        # failure, or Restart=on-failure has nothing left to recover from.
-        halogen-unit-policy =
+        gufo-unit-policy =
           let
-            # Both twins declare the Halogen units since 2026-09-16.
-            unitsOf =
-              host:
-              nixpkgs.lib.filterAttrs (
-                name: _: nixpkgs.lib.hasPrefix "podman-halogen" name
-              ) self.nixosConfigurations.${host}.config.systemd.services;
-            units = unitsOf "strix";
-            successCodes = unit: nixpkgs.lib.splitString " " (toString unit.serviceConfig.SuccessExitStatus);
-            succeeds = code: unit: builtins.elem code (successCodes unit);
-            declared = builtins.attrValues units;
+            strix = self.nixosConfigurations.strix.config;
           in
-          # The primary and one alternate today; the filter is what keeps this
-          # honest when that changes, so assert it found them both.
-          assert builtins.length declared >= 2;
-          assert (unitsOf "strix") ? podman-halogen;
-          assert units ? podman-halogen;
-          assert builtins.all (succeeds "143") declared;
-          assert builtins.all (unit: !(succeeds "137" unit)) declared;
-          assert builtins.all (unit: unit.serviceConfig.Restart == "on-failure") declared;
-          pkgs.runCommand "halogen-unit-policy" { } ''
+          assert !(strix.systemd.services ? podman-halogen);
+          assert strix.services.gufo.enable;
+          assert strix.services.gufo.llm.sessions == 1;
+          assert strix.services.gufo.llm.context == 102400;
+          assert strix.systemd.user.services.substrate-puller.restartIfChanged == false;
+          pkgs.runCommand "gufo-unit-policy" { } ''
             touch "$out"
           '';
 
@@ -1736,7 +1705,7 @@
           assert (profile "strix").name == "strix-server";
           assert
             (profile "strix").roles == [
-              "halogen"
+              "gufo"
               "attention"
             ];
 
@@ -2246,8 +2215,6 @@
           # once Gufo serves.
           assert
             strix.services.local-models.artifacts == [
-              "halogen-qwen38-flash-next"
-              "halogen-qwen38-27b"
               "qwen38-flash-next-gguf"
               "qwen38-27b-gguf"
               "qwen38-27b-dflash2-gguf"
@@ -2286,55 +2253,27 @@
           assert builtins.all (id: localModelCatalog.artifacts.${id}.source.gate == null) (
             builtins.filter (id: id != "minimax-h3-fl2va") (builtins.attrNames localModelCatalog.artifacts)
           );
-          # Declared, not enabled: Halogen serves until the cutover.
-          assert !strix.services.gufo.enable;
+          # The proven Gufo endpoint is the only resident text engine.
+          assert strix.services.gufo.enable;
+          # Consumers name exactly what Gufo serves (lib/local-model.nix): it
+          # answers 404 to any other id.
+          assert strix.services.gufo.llm.servedModelName == (import ./lib/local-model.nix).modelId;
+          assert
+            builtins.sort builtins.lessThan (
+              map (n: strix.services.gufo.alternates.${n}.servedModelName) (
+                builtins.attrNames strix.services.gufo.alternates
+              )
+            ) == builtins.sort builtins.lessThan (import ./lib/local-model.nix).alternates;
+          assert strix.services.utilityModel.endpoint == (import ./lib/local-model.nix).endpoint;
+          assert
+            (import ./lib/local-model.nix).endpoint == "http://strix:${toString strix.services.gufo.port}";
           assert localModelCatalog.artifacts.halogen-qwen38-flash-next.source.layout == "snapshot";
           assert builtins.length localModelCatalog.artifacts.halogen-qwen38-flash-next.source.files == 9;
 
-          assert strix.services.halogen.enable;
-
-          assert strix.services.halogen.autoStart;
-
-          assert strix.virtualisation.oci-containers.containers.halogen.autoStart;
-          assert strix.services.halogen.client.enable;
-
-          # One declaration, two hosts: the containers differ only in autoStart
-          # and the strix's two desktop memory bounds (Flash's KV pool,
-          # the 27B's prompt-cache budget).
-
-          assert
-            strix.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_KV_POOL_POSITIONS
-            == "262144";
-
-          assert
-            strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_CACHE_MB
-            == "8192";
-          # halogen-server 0.1.4 by digest; never a runtime download.
-
-          assert
-            !(strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment ? HALOGEN_DOWNLOAD);
-          assert
-            strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_TOKENIZER
-            == "/models/tokenizer";
-
-          assert strix.services.halogen.lanInterface == "enp191s0";
-
-          # The service never downloads weights (model-byte doctrine).
-
-          # The alternate 27B engine: declared, never started at boot, and
-          # never resident together with Flash (mutual Conflicts=), on the same
-          # port so clients need not care which one answers.
-
-          assert builtins.attrNames strix.services.halogen.alternates == [ "qwen38-27b" ];
-          assert !strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.autoStart;
-          assert strix.systemd.services.podman-halogen.conflicts == [ "podman-halogen-qwen38-27b.service" ];
-
-          assert
-            builtins.length (
-              nixpkgs.lib.filter (
-                package: nixpkgs.lib.getName package == "halogen-switch"
-              ) strix.environment.systemPackages
-            ) == 1;
+          assert strix.services.utilityModel.enable;
+          assert strix.services.utilityModel.modelId == "qwen3.8-flash-next";
+          assert !(strix.virtualisation.oci-containers.containers ? halogen);
+          assert !(strix.systemd.services ? podman-halogen);
 
           assert nixpkgs.lib.elem "amdgpu.gttsize=126976" strix.boot.kernelParams;
           # The utility-model wrapper lives on the strix only.

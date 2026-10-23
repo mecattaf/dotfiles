@@ -694,7 +694,7 @@ in
           ceilings = { model_scoped = 90 }
 
           [[models]]
-          id = "halogen-qwen3.8-flash-next"
+          id = "qwen3.8-flash-next"
           harness = "pi"
           default = true
 
@@ -870,6 +870,9 @@ in
     };
 
     systemd.user.services.substrate-puller = mkIf cfg.puller.enable {
+      # Running factory jobs outlive configuration switches. The mutable model
+      # catalog is reread per call; apply new runner code only after a drain.
+      restartIfChanged = false;
       description = "substrate-puller: the Substrate interpreter host on this box";
       wantedBy = [ "default.target" ];
       unitConfig.ConditionUser = cfg.user;

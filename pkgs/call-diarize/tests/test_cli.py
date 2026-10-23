@@ -12,7 +12,7 @@ from call_diarize.pipeline import CHUNK_SAMPLES, Window, load_json, write_json_e
 
 
 class EvidenceRerunTests(unittest.TestCase):
-    attempt_relative = Path("cleanup/halogen/shard-005.attempt-01.json")
+    attempt_relative = Path("cleanup/local/shard-005.attempt-01.json")
 
     def test_rerun_quarantines_partial_evidence_and_can_rewrite_attempt(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -133,7 +133,7 @@ class CleanupFallbackTests(unittest.TestCase):
                 mock.patch("call_diarize.cli.verify_checkpoint"),
                 mock.patch(
                     "call_diarize.cli.preflight_models",
-                    return_value=["halogen-qwen3.8-flash-next"],
+                    return_value=["qwen3.8-flash-next"],
                 ),
                 mock.patch("call_diarize.cli.gpu_probe", return_value=gpu),
                 mock.patch(
@@ -182,8 +182,8 @@ class CleanupFallbackTests(unittest.TestCase):
             self.assertTrue(
                 all(failure["nonfatal"] for failure in manifest["cleanup_failures"])
             )
-            report = load_json(call_dir / "asr-raw/cleanup/halogen/shard-000.failed.json")
-            self.assertEqual(report["model"], "halogen-qwen3.8-flash-next")
+            report = load_json(call_dir / "asr-raw/cleanup/local/shard-000.failed.json")
+            self.assertEqual(report["model"], "qwen3.8-flash-next")
             self.assertEqual(report["fallback"], "raw-asr")
             self.assertEqual(report["attempt_count"], 3)
 

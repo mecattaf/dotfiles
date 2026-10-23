@@ -9,7 +9,7 @@
       "adapter": "pi",
       "pools": ["worker-gpu"],
       "launch": {
-        "model": "halogen-qwen3.8-flash-next"
+        "model": "qwen3.8-flash-next"
       }
     }
   ]

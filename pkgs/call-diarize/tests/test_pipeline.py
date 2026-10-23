@@ -300,7 +300,7 @@ class CleanupContractTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(RuntimeError, "interrupted cleanup"):
                     run_model_shard(
-                        "halogen",
+                        "local",
                         "test-model",
                         shard,
                         raw_root,
@@ -310,7 +310,7 @@ class CleanupContractTests(unittest.TestCase):
                         retries=1,
                     )
 
-            first_attempt = raw_root / "cleanup/halogen/shard-000.attempt-01.json"
+            first_attempt = raw_root / "cleanup/local/shard-000.attempt-01.json"
             self.assertTrue(first_attempt.is_file())
             first_evidence = load_json(first_attempt)
             self.assertEqual(first_evidence["error"], "interrupted cleanup")
@@ -321,7 +321,7 @@ class CleanupContractTests(unittest.TestCase):
                 return_value=response,
             ):
                 decisions = run_model_shard(
-                    "halogen",
+                    "local",
                     "test-model",
                     shard,
                     raw_root,
@@ -332,7 +332,7 @@ class CleanupContractTests(unittest.TestCase):
                 )
 
             self.assertEqual(decisions[0]["action"], "keep")
-            final = load_json(raw_root / "cleanup/halogen/shard-000.json")
+            final = load_json(raw_root / "cleanup/local/shard-000.json")
             self.assertEqual(final["attempt"], 2)
             self.assertEqual(load_json(first_attempt), first_evidence)
 
@@ -391,13 +391,13 @@ class CleanupContractTests(unittest.TestCase):
             "duplicate_of": "a",
             "reason": "",
         }
-        decisions = {"halogen": {"a": keep, "b": duplicate}}
+        decisions = {"local": {"a": keep, "b": duplicate}}
         kept, dropped = reduce_decisions([first, second], decisions)
         self.assertEqual([item["source_id"] for item in kept], ["a"])
         self.assertEqual([item["source_id"] for item in dropped], ["b"])
-        self.assertEqual(dropped[0]["model_decisions"], {"halogen": duplicate})
+        self.assertEqual(dropped[0]["model_decisions"], {"local": duplicate})
 
-        decisions["halogen"]["b"] = {
+        decisions["local"]["b"] = {
             "source_id": "b",
             "action": "keep",
             "duplicate_of": None,
@@ -408,7 +408,7 @@ class CleanupContractTests(unittest.TestCase):
         self.assertEqual(dropped, [])
 
         unrelated = row("c", "Something entirely different was said.", 6, 9)
-        decisions["halogen"]["c"] = {
+        decisions["local"]["c"] = {
             "source_id": "c",
             "action": "duplicate",
             "duplicate_of": "a",

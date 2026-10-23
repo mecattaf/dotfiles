@@ -83,7 +83,7 @@ def parser() -> argparse.ArgumentParser:
         default=os.environ.get("CALL_DIARIZE_INFERENCE_URL", DEFAULT_INFERENCE_URL),
         metavar="URL",
         help=(
-            "Halogen Flash base URL or its /v1/chat/completions URL "
+            "Local model server base URL or its /v1/chat/completions URL "
             "(default: $CALL_DIARIZE_INFERENCE_URL or http://strix:8731)"
         ),
     )
