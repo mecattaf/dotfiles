@@ -62,6 +62,7 @@
   #
   # This renders because the NAS runs the nftables backend (see network.nix).
   networking.firewall.extraInputRules = ''
+    ip saddr 10.42.0.5 tcp dport 19532 accept comment "journald-remote upload from strix-worker"
     ip saddr 10.42.0.2 tcp dport 19532 accept comment "journald-remote upload from strix (LAN; /30 retired 2026-08-21)"
   '';
 }

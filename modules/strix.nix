@@ -33,7 +33,7 @@
       "vibevoice-asr-streaming-7b-bf16"
     ];
 
-    # Gufo owns the local fleet endpoint.
+    # Gufo owns the local fleet endpoint; Gufo is retired.
     services.gufo = {
       enable = true;
       lanInterface = "enp191s0";

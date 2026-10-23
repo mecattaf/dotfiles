@@ -29,11 +29,11 @@ class QueueTests(unittest.TestCase):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as temp:
                 root=Path(temp);job=root/'outbox'/name;job.mkdir(parents=True)
                 (job/'source.md').write_text('hello');(job/'spoken.txt').write_text('hello');(job/'speech.wav').write_bytes(b'test')
-                with patch.object(q,'quiet',return_value=False), patch.object(q.socket,'gethostname',return_value='strix'), patch.object(q.subprocess,'run',return_value=type('P',(),{'returncode':0})()) as run:
+                with patch.object(q,'quiet',return_value=False), patch.object(q.socket,'gethostname',return_value='strix-coordinator'), patch.object(q.subprocess,'run',return_value=type('P',(),{'returncode':0})()) as run:
                     q.sweep(root,'qwen','play')
                 self.assertEqual(run.call_args.args[0], expected)
                 receipt=json.loads((root/'spoken'/name/'receipt.json').read_text())
-                self.assertEqual(receipt['client'], 'client' if name == 'ordinary' or name.startswith('client--') else 'strix')
+                self.assertEqual(receipt['client'], 'client' if name == 'ordinary' or name.startswith('client--') else 'strix-coordinator')
     def test_invalid_default_seat_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             with self.assertRaises(ValueError):q.sweep(Path(temp),'qwen','play','unknown')

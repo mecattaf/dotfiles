@@ -29,11 +29,11 @@ class InboundReachability(unittest.TestCase):
 
     def test_home_lan_failure_is_observed(self):
         self.assertEqual(self.probe([{'dev': 'wlo1', 'prefsrc': '10.42.0.16'}], False),
-                         ('1 strix 1', True))
+                         ('1 strix-coordinator 1', True))
 
     def test_tailnet_failure_is_observed(self):
         self.assertEqual(self.probe([{'dev': 'tailscale0', 'prefsrc': '100.100.1.2'}], False),
-                         ('1 strix 1', True))
+                         ('1 strix-coordinator 1', True))
 
     def test_unrelated_wifi_is_not_a_closet_outage(self):
         self.assertEqual(self.probe([{'dev': 'wlo1', 'prefsrc': '192.168.1.30'}], False),
@@ -41,7 +41,7 @@ class InboundReachability(unittest.TestCase):
 
     def test_recovery_clears_only_its_marker(self):
         self.assertEqual(self.probe([{'dev': 'wlo1', 'prefsrc': '10.42.0.16'}], True),
-                         ('0 strix 1', False))
+                         ('0 strix-coordinator 1', False))
 
 if __name__ == '__main__':
     unittest.main()

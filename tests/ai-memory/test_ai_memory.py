@@ -267,8 +267,8 @@ class SkillBoundaryTests(unittest.TestCase):
         # configuration and retry.
         self.assertIn("local model server", drain)
         self.assertIn("qwen3.8-flash-next", drain)
-        self.assertIn("http://strix:8731", drain)
-        self.assertIn("strix only", drain)
+        self.assertIn("http://strix-coordinator:8731", drain)
+        self.assertIn("fleet profile", drain)
         self.assertNotIn("switch the strix configuration", drain)
         self.assertNotIn("distillation path is retired", drain)
 
@@ -627,7 +627,7 @@ class DrainTests(unittest.TestCase):
                 )
         message = str(caught.exception)
         self.assertIn("local model server", message)
-        self.assertIn("strix only", message)
+        self.assertIn("fleet profile", message)
         self.assertNotIn("NPU", message)
         self.assertNotIn("switch the strix configuration", message)
         self.assertFalse(list(self.journal.rglob("*.md")))

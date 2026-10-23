@@ -37,7 +37,10 @@ let
     runtimeInputs = shellRuntime;
     # Markdown code spans are intentionally single-quoted printf literals.
     excludeShellChecks = [ "SC2016" ];
-    text = builtins.readFile ./lib/pure-stage.sh;
+    text = ''
+      export LOCAL_MODEL_ENDPOINT="''${LOCAL_MODEL_ENDPOINT:-${(import ../../lib/local-model.nix).endpoint}}"
+      ${builtins.readFile ./lib/pure-stage.sh}
+    '';
   };
 
   capture = writeShellApplication {
@@ -82,6 +85,7 @@ let
       nix
     ];
     text = ''
+      export LOCAL_MODEL_ENDPOINT="''${LOCAL_MODEL_ENDPOINT:-${(import ../../lib/local-model.nix).endpoint}}"
       export LOCAL_AI_CAPTURE=${lib.escapeShellArg "${capture}/bin/local-ai-monthly-capture"}
       export LOCAL_AI_HF_CAPTURE=${lib.escapeShellArg "${hfCapture}/bin/local-ai-monthly-hf-capture"}
       export LOCAL_AI_JUDGE=${lib.escapeShellArg "${judge}/bin/local-ai-monthly-judge"}
@@ -106,6 +110,7 @@ let
     name = "local-ai-monthly-tests";
     runtimeInputs = shellRuntime;
     text = ''
+      export LOCAL_MODEL_ENDPOINT="''${LOCAL_MODEL_ENDPOINT:-${(import ../../lib/local-model.nix).endpoint}}"
       export LOCAL_AI_CAPTURE=${lib.escapeShellArg "${capture}/bin/local-ai-monthly-capture"}
       export LOCAL_AI_PURE_STAGE=${lib.escapeShellArg "${pureStage}/bin/local-ai-monthly-pure-stage"}
       export LOCAL_AI_SUPERVISOR_SOURCE=${./supervisor.sh}

@@ -11,7 +11,6 @@
 # Rekey after a registry change:   nix develop -c agenix -r
 let
   registry = import ./modules/mesh-registry.nix;
-  names = builtins.attrNames registry;
   nonEmpty = builtins.filter (k: k != "");
 
   # Admin age key (private half in Google Password Manager) — always a recipient so
@@ -23,9 +22,11 @@ let
   # history or future ciphertext.
   editors = [ admin ];
 
-  delivered = nonEmpty (map (h: registry.${h}.hostKey) (builtins.filter (h: h != "nas") names));
+  # Explicit recipient lists: adding a compute host must never grant credentials.
+  # NAS handover assigns its operator tier in the NAS agent-host PR.
+  delivered = nonEmpty [ registry.client.hostKey ];
 
-  strixOnly = nonEmpty [ registry.strix.hostKey ];
+  strixOnly = [ ]; # former agent tier; admin-only pending NAS handover
 
   clientOnly = nonEmpty [ registry.client.hostKey ];
   # The appliance. It held NO agenix secret at all until 2026-08-28 (see the

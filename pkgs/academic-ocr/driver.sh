@@ -1,7 +1,7 @@
 set -euo pipefail
 
 ocr_prompt='Transcribe this scanned academic page to clean GitHub-flavored Markdown. Preserve heading levels, paragraphs, footnotes, and tables (as markdown tables). Use $...$ / $$...$$ for math. Do not add commentary. If part is illegible write [illegible].'
-inference_url=${ACADEMIC_OCR_INFERENCE_URL:-http://strix:8731}
+inference_url=${ACADEMIC_OCR_INFERENCE_URL:-${LOCAL_MODEL_ENDPOINT:?LOCAL_MODEL_ENDPOINT is required}}
 # The one visual protocol: the local model on the strix, addressed by the model
 # id it serves. The protocol id doubles as the model named in every request.
 vlm_protocol_id=qwen3.8-flash-next

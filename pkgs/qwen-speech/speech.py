@@ -477,7 +477,7 @@ def speak(args):
         stop()
         return
     text = read_text(args)
-    if not args.output and socket.gethostname() not in ("client", "strix"):
+    if not args.output and socket.gethostname() not in ("client", "strix", "strix-coordinator"):
         raise RuntimeError("playback requires a physical seat; use --client client or --output FILE.wav")
     with lock("playback.lock"):
         pidfile = runtime() / "playback.json"
@@ -528,7 +528,7 @@ def main():
     play.add_argument("--file")
     play.add_argument("--output", help="save a WAV instead of playing")
     play.add_argument("--client", help="forward playback to this client (normally client)")
-    play.add_argument("--strix", default="strix")
+    play.add_argument("--strix", default="strix-coordinator")
     play.add_argument("--remote-command", default="qwen-speech")
     play.add_argument("--stop", action="store_true")
     sub.add_parser("relay")

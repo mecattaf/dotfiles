@@ -108,7 +108,7 @@ function world(o: { sessions?: boolean; extra?: string } = {}) {
   const seat = join(root, "seat");
   mkdirSync(seat);
   mkdirSync(join(root, "pihost"));
-  writeFileSync(join(root, "pihost", "models.json"), JSON.stringify({ providers: { gufo: { baseUrl: "http://strix:8731/v1", models: [{ id: "qwen3.8-flash-next", contextWindow: 262144 }] } } }) + "\n");
+  writeFileSync(join(root, "pihost", "models.json"), JSON.stringify({ providers: { gufo: { baseUrl: "http://strix-coordinator:8731/v1", models: [{ id: "qwen3.8-flash-next", contextWindow: 262144 }] } } }) + "\n");
   const sessions = o.sessions === false ? "" : `[sessions]\nproject_bin = "/opt/project/bin/project"\nproject_url = "https://project.test"\nproject_token_file = "${root}/token"\n`;
   const config = parseRuntimesToml(`default = "opus"\n${MODELS}\n[credentials]\nclaude = "${seat}"\n${sessions}
 [runtime.opus]

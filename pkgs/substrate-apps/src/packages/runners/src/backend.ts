@@ -166,7 +166,7 @@ export function credentialMount(config: RuntimesConfig, runtime: Runtime, harnes
  * refresh reaches the seat; a rename-replace stays in the shadow, INFERRED).
  */
 /** A sandbox gets a generated Gufo-only catalog, never the host's cloud provider credentials. */
-export const GUFO_BASE_URL = "http://strix:8731/v1";
+export const GUFO_BASE_URL = `${process.env.LOCAL_MODEL_ENDPOINT ?? "http://strix-coordinator:8731"}/v1`;
 export function piGufoModels(): string {
   return JSON.stringify({
     providers: {

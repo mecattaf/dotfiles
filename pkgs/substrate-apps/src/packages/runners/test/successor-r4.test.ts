@@ -152,7 +152,7 @@ describe("final verification: a sandboxed pi gets the Gufo provider, generated, 
     expect(Array.isArray(m) && m).toMatchObject([{ target: "/home/agent/.pi/agent" }]);
     const models = JSON.parse(readFileSync(join(shadow, "pi-agent", "models.json"), "utf8"));
     expect(Object.keys(models.providers)).toEqual(["gufo"]);
-    expect(models.providers.gufo.baseUrl).toBe("http://strix:8731/v1");
+    expect(models.providers.gufo.baseUrl).toBe("http://strix-coordinator:8731/v1");
     expect(models.providers.gufo.models.map((x: { id: string }) => x.id)).toEqual(["qwen3.8-flash-next"]);
     expect(models.providers.gufo.models[0]).toMatchObject({ reasoning: false, input: ["text", "image"], contextWindow: 102400, maxTokens: 16384 });
     expect(models.providers.gufo.compat.supportsReasoningEffort).toBe(true);

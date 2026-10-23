@@ -614,7 +614,7 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(seats["gpu-strix"]["state"], "offline")
         self.assertEqual(seats["gpu-strix"]["grade"], "UNKNOWN")
         self.assertFalse(seats["gpu-strix"]["windows"])
-        self.assertEqual(seats["gpu-strix"]["source"]["endpoint"], "http://strix:8731/ready")
+        self.assertEqual(seats["gpu-strix"]["source"]["endpoint"], "http://strix-coordinator:8731/ready")
         # The strix serves nothing: not-applicable, never headroom, and
         # the row says why rather than pretending to have probed something.
 
