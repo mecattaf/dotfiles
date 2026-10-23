@@ -36,7 +36,7 @@ export const main = async (env: NodeJS.ProcessEnv = process.env): Promise<number
     const state = new PullerState(stateDir)
     let execute: Executor
     if ((p.node_dispatch ?? "local") === "floor") {
-      execute = floorExecutor({ client, defaultRunsOn: p.node_runs_on ?? ["seat:halogen", "runtime:gvisor"], defaultModel: p.default_model ?? "claude-opus-5-5", pollMs: 5000,
+      execute = floorExecutor({ client, defaultRunsOn: p.node_runs_on ?? ["seat:gufo", "runtime:gvisor"], defaultModel: p.default_model ?? "claude-opus-5-5", pollMs: 5000,
         ...(p.runtimes ? { runtimes: loadRuntimes(expandHome(p.runtimes)) } : {}) })
     } else {
       if (!p.seat) throw new ConfigError("[puller] seat is required for node_dispatch = \"local\" (the seat the capacity gate reads)")

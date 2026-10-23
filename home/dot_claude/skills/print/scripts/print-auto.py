@@ -9,15 +9,15 @@ The model has no grammar enforcement, so the JSON is validated here with
 one corrective retry and a deterministic fallback.
 
 The seam behind that wrapper is the fleet's one inference server: the
-Halogen Flash server on the worker (http://strix:8731), which answers the
+local model server on the strix (http://strix-coordinator:8731), which answers the
 stable id `utility` through the wrapper. The wrapper exists on the
-strix only. The server stays resident, but a request that lands while
-the worker's unit is still starting waits on that start, so the
+fleet hosts through Nix. The server stays resident, but a request that lands while
+its unit is still starting waits on that start, so the
 classification call is given a generous timeout.
 
 Classification failure is NON-FATAL, and deliberately so: printing is the
 point of this script. Anything at all going wrong at the seam — no wrapper
-on this host, the Halogen server unreachable, a timeout, two invalid answers —
+on this host, the local model server unreachable, a timeout, two invalid answers —
 falls through to the same deterministic default that has always backed the
 model (source-serif, duplex, no one-page enforcement, kebab-case filename
 from the input stem), records provenance "fallback" in decision.json with
@@ -59,7 +59,7 @@ PRINT_PAPER = SCRIPT_DIR / "print-paper.py"
 PROFILES = {"garamond", "baskerville", "source-serif", "times"}
 SIDES = {"duplex", "one-sided"}
 
-# A request that lands while the worker's Halogen unit is still starting waits
+# A request that lands while the local model unit is still starting waits
 # on that start, and a long document is a long generation.
 UTILITY_TIMEOUT_SECONDS = 1200
 
@@ -99,7 +99,7 @@ def ask_utility(user_content: str) -> str:
     """One classification round trip through the GPU utility seam.
 
     Every way this can fail — the wrapper absent because we are not on the
-    strix, the Halogen server down or still starting past the budget, a
+    strix, the local model server down or still starting past the budget, a
     non-zero exit, an unparseable envelope — becomes one ClassifierUnavailable
     so decide() has a single thing to catch.
     """
@@ -123,8 +123,8 @@ def ask_utility(user_content: str) -> str:
     except FileNotFoundError as exc:
         raise ClassifierUnavailable(
             "utility-model is not installed here; the utility-model wrapper "
-            "(which forwards to the Halogen server on the worker) is "
-            "installed on the strix only") from exc
+            "(which forwards to the local model server) is "
+            "provided by the fleet profile") from exc
     except OSError as exc:
         raise ClassifierUnavailable(f"could not run utility-model: {exc}") from exc
     except subprocess.TimeoutExpired as exc:
@@ -199,7 +199,7 @@ def decide(text: str, intent: str | None, source: Path) -> tuple[dict, str]:
 
     Nothing here is allowed to stop a print. The seam is reached inside one
     try block, and any ClassifierUnavailable — no wrapper on this host, the
-    Halogen server unreachable, timeout, malformed envelope — lands on the
+    local model server unreachable, timeout, malformed envelope — lands on the
     same deterministic default that two invalid model answers would.
     """
     digest = doc_digest(text, intent)

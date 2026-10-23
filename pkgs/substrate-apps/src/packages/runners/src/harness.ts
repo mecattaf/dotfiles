@@ -8,7 +8,7 @@
  *   passed through `--json-schema` when the call has one. The prompt goes on
  *   stdin so it never appears in a process listing.
  * - `pi`: pi against one PROVIDER of `~/.pi/agent/models.json` (PI_PROVIDERS):
- *   Halogen on the strix (the default, unchanged), the Qwen token plan, or
+ *   Gufo on Strix (the local default), the Qwen token plan, or
  *   OpenRouter (paid models, and the free lane as its own provider key so it
  *   spends its own seat). The runtime table names the provider
  *   (`provider = "..."`, config.ts); the model comes from the catalog of that
@@ -31,8 +31,8 @@
  */
 
 export const CLAUDE_MODEL = "claude-opus-5-5";
-export const HALOGEN_PROVIDER = "halogen";
-export const HALOGEN_MODEL = "halogen-qwen3.8-flash-next";
+export const GUFO_PROVIDER = "gufo";
+export const GUFO_MODEL = "qwen3.8-flash-next";
 
 export type HarnessName = "claude" | "pi" | "codex";
 
@@ -44,7 +44,7 @@ export type HarnessName = "claude" | "pi" | "codex";
  * seat (a daily request quota, not the paid soft cap).
  */
 export const PI_PROVIDERS = {
-  halogen: { pi: "halogen", seatProvider: "halogen", seat: "halogen" },
+  gufo: { pi: "gufo", seatProvider: "gufo", seat: "gufo" },
   "qwen-token-plan": { pi: "qwen-token-plan", seatProvider: "qwen", seat: "pi-qwencloud" },
   openrouter: { pi: "openrouter", seatProvider: "openrouter", seat: "openrouter" },
   "openrouter-free": { pi: "openrouter", seatProvider: "openrouter", seat: "openrouter-free" },
@@ -76,7 +76,7 @@ export interface HarnessCall {
   readonly continued?: boolean;
   /** codex `--sandbox`; default `read-only` (a runtime table's `codexSandbox`). */
   readonly codexSandbox?: "read-only" | "workspace-write";
-  /** pi's provider (a runtime table's `provider`); default `halogen`. */
+  /** pi's provider (a runtime table's `provider`); default `gufo`. */
   readonly piProvider?: PiProvider;
   /** pi: where this job's session is written (`--session-dir`); absent means `--no-session`. */
   readonly piSessionDir?: string;
@@ -158,7 +158,7 @@ export function claudeInvocation(call: HarnessCall): HarnessInvocation {
 }
 
 export function piInvocation(call: HarnessCall): HarnessInvocation {
-  const provider: PiProvider = call.piProvider ?? HALOGEN_PROVIDER;
+  const provider: PiProvider = call.piProvider ?? GUFO_PROVIDER;
   // The backend resolves the model from the catalog and refuses a parked provider first (models.ts); a bare call
   // with no model is a programming error, never a silent default (the pinned PI_DEFAULT_MODEL table is gone).
   if (call.model === undefined) throw new Error(`pi harness: no model for provider ${provider} (the catalog has no entry for it; the lane is parked)`);

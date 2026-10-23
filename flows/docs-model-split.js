@@ -1,6 +1,6 @@
 export const meta = {
   name: "docs-model-split",
-  description: "Refresh docs/local-ai to the halogen mono-model reality: one server, fifteen catalogue rows, per-host wanted sets",
+  description: "Refresh docs/local-ai to the Gufo model collection and per-host wanted sets",
   pools: ["flow-build"],
   argsSchema: {
     type: "object",
@@ -28,13 +28,12 @@ export const meta = {
     [
       "Documentation wave in this worktree, three moves. (1) Refresh",
       "docs/local-ai/model-roster.md (and local-ai/README.md where affected) to",
-      "the current reality: the one inference server is Halogen Flash on the",
-      "Strix at http://strix:8731 (model id halogen-qwen3.8-flash-next, served",
-      "by modules/halogen.nix); the catalogue is the fifteen rows in",
-      "lib/local-models.nix; each twin's wanted set is services.local-models.artifacts",
-      "and bytes move only through local-models-borrow; the strix's small",
-      "GGUF rows, the embedders, VibeVoice and Mage have no declared server and",
-      "an operator runs llama-server by hand — one authoritative catalogue table.",
+      "the declared reality: Gufo on Strix at http://strix-coordinator:8731 (model id",
+      "qwen3.8-flash-next, served by modules/gufo.nix); the catalogue is in",
+      "lib/local-models.nix and lib/gufo-models.json; wanted sets are",
+      "services.local-models.artifacts and bytes move only through",
+      "local-models-borrow. Describe operator-switched Gufo alternates and",
+      "on-demand speech separately from the resident text model.",
       "(2) Describe the current state only: no history sections, no",
       "commented-out prose, no retired engines named as if they could return.",
       "(3) Keep docs/README.md's index in step with the pages. Where a fact is",

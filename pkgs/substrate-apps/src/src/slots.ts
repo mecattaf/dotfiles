@@ -1,7 +1,7 @@
 /**
- * Machine-wide slot holds for slot seats (Halogen's one slot), successor
+ * Machine-wide slot holds for slot seats (Gufo's one slot), successor
  * review r4: the r3 fix counted only this process's in-flight calls, so two
- * conwip-run processes on one halogen seat both admitted on "holders 0" and
+ * conwip-run processes on one gufo seat both admitted on "holders 0" and
  * held the one slot together. The reading's `holders` came from the tally
  * kernel's leases, which conwip-run never takes.
  *

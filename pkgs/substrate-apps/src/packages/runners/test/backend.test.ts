@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RunnerBackend, credentialMount } from "../src/backend.ts";
 import { parseRuntimesToml } from "../src/config.ts";
-import { CLAUDE_MODEL, HALOGEN_MODEL } from "../src/harness.ts";
+import { CLAUDE_MODEL, GUFO_MODEL } from "../src/harness.ts";
 import type { Job, ProcessJob, Runner, RunResult } from "../src/job.ts";
 import { workerdRunner } from "../src/workerd.ts";
 import { tmp } from "./helpers.ts";
@@ -87,11 +87,11 @@ describe("RunnerBackend", () => {
     expect(j.agent).toBe(true);
   });
 
-  it("pi on ssh:worker targets Halogen and mounts nothing", async () => {
+  it("pi on ssh:worker targets Gufo and mounts nothing", async () => {
     const sw = recorder("ssh:worker", "ssh", () => ({ stdout: '```json\n{"n":1}\n```' }));
     const b = new RunnerBackend(config, { jobsRoot: tmp(), runId: "r", runners: { "ssh:worker": sw.r } });
     expect(await b.run(call({ phase: "Scout", opts: { schema: { type: "object" } } }))).toEqual({ object: { n: 1 } });
-    expect(sw.jobs[0]!.argv).toEqual(expect.arrayContaining(["pi", "-p", "--no-session", "--model", HALOGEN_MODEL]));
+    expect(sw.jobs[0]!.argv).toEqual(expect.arrayContaining(["pi", "-p", "--no-session", "--model", GUFO_MODEL]));
     expect(sw.jobs[0]!.mounts).toBeUndefined();
   });
 

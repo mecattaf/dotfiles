@@ -16,7 +16,8 @@ const files = ["src", "test", "bin", "tools", "scripts"]
   .flatMap((d) => { try { return walk(join(root, d)); } catch { return []; } })
   .concat([join(root, "README.md"), join(root, "runtimes.example.toml")].filter((p) => { try { return statSync(p).isFile(); } catch { return false; } }));
 
-const SRC = (f) => /\/(src|bin)\//.test(f);
+// Scope to this package: the vendored checkout itself also has a /src/ parent.
+const SRC = (f) => /^(src|bin)\//.test(relative(root, f));
 const fences = [
   { id: "no-tally-dependency", why: "R44: tally and tally-ts-sdk are prior art, never a dependency", only: SRC, re: /from\s+["'][^"']*tally/ },
   { id: "no-systemctl-exec", why: "house rule: no systemctl from code", only: SRC, re: /\[\s*["'](?:systemctl|nixos-rebuild)["']|["']nix["']\s*,\s*["']profile["']/ },

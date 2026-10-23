@@ -60,6 +60,7 @@ let
       sqlite
     ];
     text = ''
+      export LOCAL_MODEL_ENDPOINT="''${LOCAL_MODEL_ENDPOINT:-${(import ../../lib/local-model.nix).endpoint}}"
       export ACADEMIC_OCR_CHUNK_AWK=${lib.escapeShellArg chunkAwk}
       export ACADEMIC_OCR_SQLITE_VEC=${lib.escapeShellArg "${sqlite-vec}/lib/vec0.so"}
       ${builtins.readFile ./driver.sh}

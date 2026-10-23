@@ -29,7 +29,8 @@
 let
   version = "0.1.0-unstable-2026-09-24";
   src = ./src;
-  # The upstream commit ./src was taken from. Keep in step with SYNC.md (sync.sh rewrites both).
+  # The upstream base commit; SYNC.md also records the local Gufo contract patch.
+  # A future sync must carry that patch upstream before replacing this tree.
   sourceSha = "200767b24484b3e0568795af121fb35dade05d20";
 
   pnpmDeps = pnpm_10.fetchDeps {

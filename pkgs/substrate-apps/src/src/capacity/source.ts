@@ -69,7 +69,7 @@ export interface CapacitySource {
 
 /**
  * A `seat-capacity/2` snapshot file. `seatIds` maps this scheduler's seat ids
- * onto the snapshot's (`halogen` is `gpu-worker` there).
+ * onto the snapshot's (`gufo` is `gpu-worker` there).
  */
 export function snapshotFileSource(
   path: string,

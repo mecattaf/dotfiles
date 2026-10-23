@@ -16,99 +16,38 @@
     ./strix-ai.nix
     # Typed model catalog, guarded store materialization, and host projections.
     ./local-models.nix
-    ./halogen.nix
     ./gufo.nix
+    # The utility-model seam (/drain, /print), independent of the engine.
+    ./utility-model.nix
   ];
 
   config = {
     services.local-models.artifacts = [
-      "halogen-qwen38-flash-next"
-      "halogen-qwen38-27b"
-      # Gufo (#525): Flash-Next and the 27B with its draft, loaned before the
-      # cutover with `sudo local-models-borrow --yes` (about 125 GiB). Halogen's
-      # two rows leave this list, and the strix, once Gufo serves.
+      # Gufo text bundles, borrowed from the NAS Library.
       "qwen38-flash-next-gguf"
       "qwen38-27b-gguf"
       "qwen38-27b-dflash2-gguf"
     ]
-    ++ lib.optionals (config.networking.hostName == "strix") [
+    ++ lib.optionals (config.myFleet.has "compute") [
       # The one diarization model (Tom, 2026-09-16), loaded by call-diarize.
       "vibevoice-asr-streaming-7b-bf16"
     ];
 
-    services.halogen = {
-      enable = true;
-      autoStart = true;
-      lanInterface = "enp191s0";
-      # The one serving default this fleet overrides. The image ships 8192,
-      # which bounds REASONING AND CONTENT TOGETHER against a chat template
-      # whose own effort is xhigh: a turn that thinks past the budget returns
-      # finish_reason "length" with EMPTY content and the whole reply stranded
-      # in reasoning_content. Most OpenAI clients do not render that field, and
-      # at least one agent harness reads it as "no assistant message" and
-      # retries — deterministically, at temperature 0, forever. Every client
-      # that dials these servers is agentic (utility-model, pi,
-      # academic-ocr-drain), so that failure is a matter of when.
-      #
-      # 16384 is upstream's own suggested step for agentic traffic and is what
-      # the reporter on upstream #44 runs on the same silicon. The cost is pool
-      # reservation, since a request reserves prompt + budget when admitted:
-      # four slots at 16384 is 65536 of the 524288-position pool before a
-      # single prompt token, which the box has room for many times over.
-      maxTokensDefault = 16384;
-      healthKill = true;
-      kvPoolPositions = if config.networking.hostName == "strix" then 262144 else null;
-      # The alternate model: Qwen3.8-27B under halogen-server. Never resident
-      # together with Flash — `halogen-switch qwen38-27b` stops the Flash unit
-      # and starts this one; `halogen-switch flash` goes back.
-      #
-      # halogen-server 0.1.4 (2026-09-16), reference checkout ~/today/halogen-
-      # server @ 5a0f952: a serving-only release over 0.1.3 (same kernels,
-      # checkpoint and weights) that honours chat_template_kwargs, accepts the
-      # developer role, keeps idle connections 300 s, accepts reasoning_effort
-      # "none", 400s response_format and reports /health.version. Digest
-      # re-resolved with `skopeo inspect docker://ghcr.io/peonist-ai/halogen:0.1.4`.
-      #
-      # What this engine does NOT offer, checked inside the 0.1.4 image:
-      #   * no /usr/local/bin/halogen-healthcheck, so it gets no podman health
-      #     options (Flash's observe-then-kill check cannot be copied);
-      #   * no default-budget env knob: serve_api.py hardcodes max_tokens 8192
-      #     (the /health field max_tokens_default), so the empty-content trap
-      #     Flash's maxTokensDefault = 16384 closes is open here — agentic
-      #     clients must send max_tokens themselves. HALOGEN_MAX_TOKENS_CAP
-      #     (65536) and HALOGEN_QUEUE_TIMEOUT (7200) stay the image's coupled
-      #     pair, unset here.
-      # HALOGEN_DOWNLOAD stays unset (model-byte doctrine) and the tokenizer is
-      # the bundle's flat tokenizer/ directory.
-      #
-      # No --security-opt seccomp=unconfined, although upstream's run lines
-      # still carry it: 0.1.4 was run on the strix (2026-09-17) with
-      # exactly the shared containerOptions and no seccomp flag, loaded the
-      # checkpoint, reported /health version.match true and answered a chat
-      # completion. Same conclusion upstream reached for Flash in 0.6.1.
-      alternates.qwen38-27b = {
-        image = "ghcr.io/peonist-ai/halogen@sha256:dc0a39a0016d6cfc58a197978febaafdf8d28403f724ded6111d98b5fb7ac0ea";
-        artifact = "halogen-qwen38-27b";
-        modelId = "halogen-qwen3.8-27b";
-        # KV_SLOTS stays the image's 1 (speculation on). On the strix the
-        # prompt cache gets a fixed 8 GiB budget instead of auto-sizing from
-        # MemAvailable at startup, which on a desktop would claim whatever the
-        # TTS, ASR and browser happen not to be using at that moment.
-        environment = lib.optionalAttrs (config.networking.hostName == "strix") {
-          HALOGEN_CACHE_MB = "8192";
-        };
-      };
-    };
-
-    # Gufo replaces Halogen (#525): declared here, switched on at the cutover
-    # (enable = true together with services.halogen.autoStart = false), after
-    # its weights are borrowed. Until then nothing about it exists on the box.
+    # Gufo owns the local fleet endpoint; Halogen is retired.
     services.gufo = {
-      enable = false;
+      enable = true;
       lanInterface = "enp191s0";
       alternates = {
         qwen38-27b = {
           artifact = "qwen38-27b-gguf";
+          servedModelName = "qwen3.8-27b";
+          mmproj = "mmproj-BF16.gguf";
+          dflashArtifact = "qwen38-27b-dflash2-gguf";
+          sessions = 4;
+          context = 131072;
+        };
+        qwen38-27b-q8 = {
+          artifact = "qwen38-27b-q8-gguf";
           servedModelName = "qwen3.8-27b";
           mmproj = "mmproj-BF16.gguf";
           dflashArtifact = "qwen38-27b-dflash2-gguf";
@@ -196,9 +135,10 @@
       (import inputs.nixpkgs-fresh {
         inherit (pkgs.stdenv.hostPlatform) system;
         config.allowUnfree = true;
-      }).linuxPackages_7_2;
+      }).linuxPackages_7_3;
 
     boot.kernelParams = [
+      "amdgpu.gttsize=126976"
       "amd_iommu=off"
       "ttm.pages_limit=33554432"
       "watchdog.stop_on_reboot=0"

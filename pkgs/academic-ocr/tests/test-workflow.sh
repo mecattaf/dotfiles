@@ -76,7 +76,7 @@ jq -e '
   and (.protocols | map(.id) == [
     "poppler-text",
     "mupdf-text",
-    "halogen-qwen3.8-flash-next"
+    "qwen3.8-flash-next"
   ])
   and .rasterDpi == 400
   and .maxMutationIterations == 3
@@ -231,7 +231,7 @@ fi
 grep -q 'empty or near-empty' "$work/scan.err" || fail 'mechanical failure did not explain the fail-closed gate'
 [[ $scan_sha =~ ^[0-9a-f]{64}$ ]] || fail 'scan fixture hash failed'
 
-vlm_protocol=halogen-qwen3.8-flash-next
+vlm_protocol=qwen3.8-flash-next
 vlm_artifact="$run_dir/ocr/fixture-paper/page-1/$vlm_protocol/original.json"
 jq -n \
   --arg sourcePath "$source_path" \
@@ -247,7 +247,7 @@ run_action recognize "$work/vlm-brief.json" "$work/vlm.out"
 jq -e --arg protocol "$vlm_protocol" '
   .protocolId == $protocol
   and .confidencePermille == 900
-  and .provenance.endpoint == "http://strix:8731"
+  and .provenance.endpoint == "http://strix-coordinator:8731"
   and (.provenance.promptDigest | test("^sha256:[0-9a-f]{64}$"))
   and .provenance.finishReason == "stop"
   and (.wordCount | type == "number" and . > 0)
@@ -627,7 +627,7 @@ assemble_args=$(env -u ACADEMIC_OCR_EMBEDDINGS_URL \
 jq -e '
   .paper.paperId == "fixture-paper"
   and (.pages | length == 1)
-  and (.protocols | map(.id) | index("halogen-qwen3.8-flash-next") != null)
+  and (.protocols | map(.id) | index("qwen3.8-flash-next") != null)
   and .embedding.endpoint == null
   and .embedding.model == "qwen3-embedding-8b"
   and .embedding.dimensions == 4096

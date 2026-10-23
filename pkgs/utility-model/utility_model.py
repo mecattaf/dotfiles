@@ -3,16 +3,17 @@
 
 The application-facing protocol is one OpenAI-compatible chat-completions
 request on stdin and one response on stdout.  Callers may name only the stable
-model ID ``utility``.  Nix supplies the endpoint of the fleet's Halogen Flash
-server and the concrete served model ID (modules/halogen.nix).
+model ID ``utility``.  Nix supplies the endpoint of the fleet's local model
+server and the concrete served model ID (modules/utility-model.nix, from
+lib/local-model.nix).
 
-Installed on the strix only; the request itself runs on the worker, the
-box that serves Halogen.  This file forwards one request there and rewrites
-``utility`` to the concrete served ID on the way out and back.  No lock and no
-child process: the server is resident for the life of its unit, so the only
+Installed by the fleet profile, with strix-coordinator as the upstream. This
+file forwards one request there and rewrites ``utility`` to the concrete served ID
+on the way out and back; the server answers 404 to any other ID.  No lock and
+no child process: the server is resident for the life of its unit, so the only
 thing left here is the bounded request itself.  It can still take minutes when
-it lands while the worker's unit is still cold-loading, or on a long
-generation, so the default timeout below is generous on purpose.
+it lands while the unit is still cold-loading, or on a long generation, so the
+default timeout below is generous on purpose.
 
 The ai-memory flake check imports this file by path as the module under test,
 independently of which hosts install the wrapper.
@@ -22,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.parse
@@ -32,9 +34,9 @@ from typing import BinaryIO
 STABLE_MODEL_ID = "utility"
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
-DEFAULT_ENDPOINT = "http://strix:8731"
+DEFAULT_ENDPOINT = os.environ.get("LOCAL_MODEL_ENDPOINT", "")
 CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
-# A request that arrives during the worker's cold load can wait most of that
+# A request that arrives during the server's cold load can wait most of that
 # load out before a single token is generated; leave room for the generation.
 DEFAULT_TIMEOUT_SECONDS = 1200.0
 
@@ -127,15 +129,18 @@ def send_request(
     upstream_request["model"] = concrete_model
     upstream_request["stream"] = False
     # Every consumer asks for a non-reasoning answer with the `think` flag.
-    # Halogen reasons by default and its token budget covers the thinking, so
-    # an untranslated flag would spend the budget on reasoning_content and hand
-    # back an empty answer — a silent failure for both the drain's JSON and
-    # print's classifier.  Halogen honours a top-level `enable_thinking`
-    # (its own bundled clients send exactly that); translate here, the one
-    # place that knows the concrete backend, and never leave the dead flag
-    # upstream.
+    # The local model reasons by default and its token budget covers the
+    # thinking, so an untranslated flag would spend the budget on
+    # reasoning_content and hand back an empty answer: a silent failure for
+    # both the drain's JSON and print's classifier.  The server honours
+    # `chat_template_kwargs.enable_thinking` and ignores a top-level
+    # `enable_thinking`, so translate here, the one place that knows the
+    # concrete backend, and never leave the dead flag upstream.
     if upstream_request.pop("think", None) is False:
-        upstream_request.setdefault("enable_thinking", False)
+        kwargs = upstream_request.get("chat_template_kwargs")
+        kwargs = dict(kwargs) if isinstance(kwargs, dict) else {}
+        kwargs.setdefault("enable_thinking", False)
+        upstream_request["chat_template_kwargs"] = kwargs
     encoded = json.dumps(
         upstream_request,
         ensure_ascii=False,
@@ -153,17 +158,17 @@ def send_request(
     except urllib.error.HTTPError as exc:
         detail = " ".join(exc.read(2048).decode("utf-8", errors="replace").split())
         raise UtilityModelError(
-            f"halogen returned HTTP {exc.code} for model "
+            f"the local model server returned HTTP {exc.code} for model "
             f"{concrete_model}: {detail}"
         ) from exc
     except urllib.error.URLError as exc:
         raise UtilityModelError(
-            f"halogen at {endpoint} did not answer: {exc.reason}"
+            f"the local model server at {endpoint} did not answer: {exc.reason}"
         ) from exc
     except TimeoutError as exc:
         raise UtilityModelError(
-            f"halogen at {endpoint} did not answer within {timeout:g}s; "
-            f"the worker may still be cold-loading {concrete_model}"
+            f"the local model server at {endpoint} did not answer within {timeout:g}s; "
+            f"it may still be cold-loading {concrete_model}"
         ) from exc
     except OSError as exc:
         raise UtilityModelError(
@@ -181,10 +186,10 @@ def send_request(
         TypeError,
     ) as exc:
         raise UtilityModelError(
-            f"halogen returned a malformed chat response: {exc}"
+            f"the local model server returned a malformed chat response: {exc}"
         ) from exc
     if not isinstance(result, dict) or not isinstance(content, str):
-        raise UtilityModelError("halogen chat response has no textual content")
+        raise UtilityModelError("the local model server's chat response has no textual content")
 
     # Keep the concrete deployment behind the stable boundary in both directions.
     result["model"] = STABLE_MODEL_ID

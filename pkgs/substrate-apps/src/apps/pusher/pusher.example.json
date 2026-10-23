@@ -10,12 +10,12 @@
     "cc2",
     "codex",
     "pi-qwencloud",
-    "halogen",
+    "gufo",
     "openrouter",
     "openrouter-free"
   ],
   "seatIds": {
-    "gpu-worker": "halogen"
+    "gpu-worker": "gufo"
   },
   "owners": {},
   "not_dispatchable": {
@@ -23,7 +23,7 @@
   },
   "plans": {},
   "slots": {
-    "halogen": 1,
+    "gufo": 1,
     "pi-qwencloud": 4,
     "openrouter": 4,
     "openrouter-free": 8

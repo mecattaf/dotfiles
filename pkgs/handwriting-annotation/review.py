@@ -156,7 +156,7 @@ def seed(out, collection=COLLECTION):
                 'raw':target,'reported_raw':raw,'flags':flags,'difficulty':max((u['difficulty'] for u in flags),key={'uncertain':1,'hard':2,'unreadable':3}.get),
                 'line':ctx[0]['current'] if ctx else '', 'context':ctx[0] if ctx else {'previous':'','current':'','next':''},'contexts':ctx,
                 'transcription':obj['transcription'],'occurrences':len(positions),'cancelled':cancelled,'image':shown,'full_image':full,
-                'source':str(source),'source_snapshot':source_snapshot,'source_sha256':source_sha,'model':'halogen-qwen3.8-flash-next','thinking':'off',
+                'source':str(source),'source_snapshot':source_snapshot,'source_sha256':source_sha,'model':'qwen3.8-flash-next','thinking':'off',
                 'origin':'qwen_uncertainty','reason':'Qwen reported uncertainty; no automatic acceptance.','readings':{'qwen':raw},'selection_required':True,**original_info})
     tasks.sort(key=lambda t:({'unreadable':0,'hard':1,'uncertain':2}[t['difficulty']],t['capture'],t['id']))
     return merge_queue(out,{'collection':str(collection),'assets':assets,'tasks':tasks})

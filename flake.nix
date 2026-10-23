@@ -1,5 +1,5 @@
 {
-  description = "mecattaf — one flake for the whole distribution: Strix Halo strix, headless AMD NAS, and Intel laptop.";
+  description = "mecattaf — NAS, client, strix-coordinator and strix-worker.";
 
   inputs = {
     # Unstable: Strix Halo (gfx1151) wants fresh kernels + Mesa.
@@ -7,11 +7,11 @@
 
     # nixpkgs-fresh — a second nixpkgs used ONLY to keep a handful of
     # fast-moving user packages (currently google-chrome and uv, see overlays
-    # list below) and the twins'/NAS's linuxPackages_7_2 kernel series current
+    # list below) and the fleet's linuxPackages_7_3 kernel series current
     # independent of the `nixpkgs` pin above. That pin is deliberately
     # lagging — the exact-candidate fleet deploy keeps it as the only door
     # Mesa/ROCm churn enters through, bumped manually. Browser point releases
-    # and 7.2.y kernel point fixes carry none of that risk, so they shouldn't
+    # and kernel point fixes stay within the selected series, so they shouldn't
     # have to wait on it.
     #
     # nixos-unstable-SMALL since 2026-08-30 (#244): the same rolling resolver,
@@ -26,17 +26,27 @@
     # rollingInputOverrides remains available to explicit fleet candidates.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
-    # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
-    # the NAS is a frozen self-sustaining appliance on standard stable nixpkgs,
-    # maintained manually every few years. It never rides the unstable
-    # kernel/Mesa churn the strix's pin exists to gate, and it accepts
-    # EOL-pin CVE exposure because it is reachable only from the strix
-    # over the private /30. Bump deliberately with
-    # `nix flake update nixpkgs-stable` on the same few-years cadence.
+    # nixpkgs-stable — the NAS userspace base (issue #135 ruling).
+    # Its kernel follows the fleet's current series from nixpkgs-fresh
+    # (Tom, 2026-10-23, #584); ./hosts/nas/kernel.nix owns that exception.
+    # Bump the stable userspace deliberately with
+    # `nix flake update nixpkgs-stable`.
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     home-manager = {
       url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # Stable Home Manager is isolated to the NAS's nixos-26.05 base.
+    home-manager-nas = {
+      url = "github:nix-community/home-manager/release-26.05";
+      inputs.nixpkgs.follows = "nixpkgs-stable";
+    };
+
+    # The installed Projects CLI becomes a declared brain-role GC root (#552).
+    project-cli = {
+      url = "git+https://github.com/agency-agency/backlog?rev=05e5f351ef5fdd1fc12fd5b805ee47e2e2be486a";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -183,7 +193,7 @@
     # nix-strix-halo — the broad gfx1151 package plane for the Framework Desktop:
     # llama.cpp ROCm/Vulkan, amdtop, MES firmware, and a buildable live ISO
     # (its ds4/vLLM/MLX outputs exist upstream but nothing here consumes them:
-    # the fleet is mono-model on Halogen). Consume its package
+    # the resident model is served by Gufo). Consume its package
     # outputs directly rather than applying its global overlay: that preserves its
     # own TheRock/Python provider graph and avoids replacing the already-live
     # nix-amd-ai XRT/FastFlowLM pair. The two flakes currently pin identical XRT +
@@ -193,14 +203,18 @@
     # own nixpkgs and provider pins (cache configured in common.nix).
     nix-strix-halo.url = "github:hellas-ai/nix-strix-halo";
 
-    # gufo — the fleet's local inference engine for Strix Halo (gfx1151), replacing
-    # Halogen (dotfiles #525). Tom, 2026-10-13: "i said let  move to gufo!! not
-    # halogen!!!!" and "use that as the full collection of modles that we use":
-    # its model set is the catalog in lib/local-models.nix. One native binary,
-    # no container (modules/gufo.nix). Pinned to the commit the catalog was read
-    # from. No nixpkgs.follows: upstream qualifies its build against its own
+    # gufo — the fleet's native inference engine for Strix Halo (gfx1151).
+    # Its model collection is declared in lib/local-models.nix (#525).
+    # One native binary,
+    # no container (modules/gufo.nix). Pinned to the release the catalog matches
+    # (v0.20.0). No nixpkgs.follows: upstream qualifies its build against its own
     # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
-    gufo.url = "github:gufo-org/gufo/ae26ca4a13f252a0424c23e4bd7662167f23b436";
+    gufo.url = "github:gufo-org/gufo/0c03748a271eab895befc0d2343aa50ca4b6d836";
+
+    # Separate, hardware-unqualified TP2 engine; the upstream single-box unit
+    # above keeps its proven build. flake.lock pins both carry-forward heads.
+    gufo-rdma.url = "github:neuhaus/gufo/rdma";
+    donnerkeule.url = "github:mecattaf/donnerkeule/codex/framework-7-3";
 
     # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
     # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
@@ -335,6 +349,19 @@
         config.allowUnfree = true; # google-chrome
       };
 
+      # Test-only role fixture: preserve brain service contracts through relocation.
+      agentProbe =
+        (self.nixosConfigurations.strix-coordinator.extendModules {
+          modules = [
+            {
+              myFleet.roles = nixpkgs.lib.mkForce [
+                "brain"
+                "compute"
+              ];
+            }
+          ];
+        }).config;
+
       localModelCatalog = import ./lib/local-models.nix { lib = nixpkgs.lib; };
       # The flake-level model-store binding is gone (2026-08-28, with the
       # #242 corpse removal): lib/model-store.nix still exists and is imported
@@ -342,12 +369,12 @@
       # — but the flake itself no longer projects a package set from it, because
       # the 2026-08-21 "weights leave nix" ruling means there isn't one.
 
-      # Single host-wiring point. Interactive machines add Home Manager; the NAS
-      # deliberately stops at NixOS so no user compositor or WayVNC unit exists.
+      # Single host-wiring point; roles keep desktop modules off headless hosts.
       mkHost =
         {
           hostModule,
           withHomeManager ? true,
+          hostHomeManager ? home-manager,
           # The nixpkgs universe this host's system closure evaluates from.
           # Interactive hosts ride the main unstable pin; the NAS passes
           # inputs.nixpkgs-stable (see that input's comment).
@@ -374,7 +401,7 @@
             inputs.disko.nixosModules.default
           ]
           ++ nixpkgs.lib.optionals withHomeManager [
-            home-manager.nixosModules.home-manager
+            hostHomeManager.nixosModules.home-manager
             {
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
@@ -432,21 +459,20 @@
 
       overlays.default = import ./overlays {
         torchRocm = inputs.nix-strix-halo.packages.${system}.torch-rocm;
+        # The herdr home/herdr.nix installs, for pkgs/dsh-plugins to pin by
+        # store path (dsh-herdr never looks `herdr` up on PATH).
+        herdr = inputs.herdr.packages.${system}.herdr;
       };
 
       nixosConfigurations = {
-        strix = mkHost { hostModule = ./hosts/strix; };
+        strix-coordinator = mkHost { hostModule = ./hosts/strix-coordinator; };
+        strix-worker = mkHost { hostModule = ./hosts/strix-worker; };
         nas = mkHost {
           hostModule = ./hosts/nas;
-          withHomeManager = false;
+          withHomeManager = true;
+          hostHomeManager = inputs.home-manager-nas;
           hostNixpkgs = inputs.nixpkgs-stable;
         };
-        # PERMANENT fleet member again since 2026-08-21 (#229). Plain mkHost with
-        # every default: it rides the same unstable pin as its twin (the two are
-        # identical Strix Halo silicon and the pin exists to gate exactly that
-        # kernel/Mesa churn) and it keeps Home Manager, because unlike the NAS it
-        # is an ordinary interactive NixOS box that happens to be headless.
-
         # The ASUS Zenbook Duo, Tom's thin client since 2026-09-11 (its second
         # tenure here; `zenbook-duo` left on 2026-08-30 and came back from
         # omarchy-fleet under this name). Plain mkHost: it rides the unstable
@@ -476,8 +502,8 @@
             [
               "client"
               "nas"
-              "strix"
-
+              "strix-coordinator"
+              "strix-worker"
             ]
             (host: {
               # Canonical names, every one: `nas` and `strix` through the
@@ -512,6 +538,9 @@
             browser-desktop
             chrome-stream
             fleet-status
+            # `nix build .#dsh -o .demo/dsh` is how a PR worktree runs dsh; its
+            # passthru carries `.runner`, `.smoke` and `.unwrapped` for the gate.
+            dsh
             # `nix run .#fontbuilder -- <capture-dir> <out-dir>` — the press for
             # the Anthropic suite. Exported because that IS the invocation. The
             # three anthropic-* font packages stay UNEXPORTED (matching sf-pro):
@@ -547,8 +576,21 @@
             ;
           # `nix build .#gufo` — the engine modules/gufo.nix runs (#525).
           gufo = inputs.gufo.packages.${system}.default;
+          rdmaCoreUsb4 = pkgs.callPackage ./pkgs/rdma-core-usb4 { inherit (inputs) donnerkeule; };
+          gufo-rdma = inputs.gufo-rdma.packages.${system}.tp2-rdma.override {
+            rdma-core = self.packages.${system}.rdmaCoreUsb4;
+          };
+          thunderbolt-ibverbs =
+            self.nixosConfigurations.strix-worker.config.hardware.thunderbolt-ibverbs.resolvedPackage;
           live-iso = strixAi.live-iso;
           nas-installer-iso = nasInstaller.config.system.build.isoImage;
+          # Fresh worker install while its SSD is the coordinator's inactive
+          # secondary. The generated script never mounts over the live /mnt.
+          strix-worker-disko-offline =
+            (self.nixosConfigurations.strix-worker.extendModules {
+              modules = [ { disko.rootMountPoint = "/mnt/strix-worker-install"; } ];
+            }).config.system.build.diskoScript;
+          nas-home-migrate = self.nixosConfigurations.nas.config.system.build.nas-home-migrate;
           # `nix build .#substrate-pusher`, `.#substrate-puller`: the strix's
           # gentle capacity pusher and its interpreter-host puller from the
           # pinned substrate sha (pkgs/substrate-apps), installed by
@@ -580,8 +622,32 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        fleet-agent-transport = import ./tests/fleet-agent-transport {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+        nas-agent-host = import ./tests/nas-agent-host {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+        fleet-roles = import ./tests/fleet-roles {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+        nas-home-disk = import ./tests/nas-home-disk {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
         closet-topology = import ./tests/closet-topology {
           inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+        ds4-fleet = import ./tests/ds4 {
+          inherit pkgs self inputs;
+          lib = pkgs.lib;
+        };
+        gufo-rdma = import ./tests/gufo-rdma {
+          inherit pkgs self inputs;
           inherit (nixpkgs) lib;
         };
         strix-reachability =
@@ -628,10 +694,10 @@
             hasGvisor = c: builtins.any (p: (p.pname or "") == "gvisor") c.environment.systemPackages;
             # Enabling runsc must not introduce configuration assertion failures.
             failing = c: map (a: a.message) (builtins.filter (a: !a.assertion) c.assertions);
-            strix = self.nixosConfigurations.strix.config;
+            strix = self.nixosConfigurations.strix-coordinator.config;
 
             gvisorOn =
-              (self.nixosConfigurations.strix.extendModules {
+              (self.nixosConfigurations.strix-coordinator.extendModules {
                 modules = [ { myGvisor.enable = nixpkgs.lib.mkForce true; } ];
               }).config;
           in
@@ -662,7 +728,7 @@
             '';
         qwen-speech-topology =
           let
-            coord = self.nixosConfigurations.strix.config;
+            coord = self.nixosConfigurations.strix-coordinator.config;
             speechUnit = coord.systemd.user.services.qwen-tts;
           in
           assert speechUnit.wantedBy == [ ];
@@ -755,14 +821,8 @@
         # strix, where util-row is SKIP and must never be FAIL. The count
         # is asserted too: the issue says the probe gains EXACTLY these two
         # rows. Hermetic: no systemd, no tally, no network.
-        # UTIL-01's two behaviours added 2026-09-13, each asserted on fixtures
-        # (#329, #312). util-row-closed-day: a re-run of a written night that
-        # reproduces exits 0 and rewrites nothing; a differing slice or row
-        # exits 2 and writes nothing. util-01-halogen-tokens: the sampler reads
-        # every Halogen request-line shape and never turns a failed journal read
-        # into zero; util-row sums the windows (tokens_in = prompt - cached,
-        # prefill rate per halogen-flash-server#48). Hermetic: scratch meters, a
-        # fake journalctl, python3 and coreutils.
+        # Offline replay must preserve partial/missing token windows and closed
+        # days. Gufo's uncalibrated live counts remain UNKNOWN, never zero.
         util-row-closed-day =
           pkgs.runCommand "util-row-closed-day" { nativeBuildInputs = [ pkgs.python3 ]; }
             ''
@@ -770,56 +830,34 @@
               UTIL_ROW=${./home/dot_local/bin/util-row} \
                 bash ${./tests/util-row/test-closed-day-idempotent.sh} | tee $out
             '';
-        util-01-halogen-tokens =
-          pkgs.runCommand "util-01-halogen-tokens" { nativeBuildInputs = [ pkgs.python3 ]; }
+        util-01-token-windows =
+          pkgs.runCommand "util-01-token-windows" { nativeBuildInputs = [ pkgs.python3 ]; }
             ''
               set -euo pipefail
               UTIL_SAMPLER=${./home/dot_local/bin/util-sampler} \
               UTIL_ROW=${./home/dot_local/bin/util-row} \
-                bash ${./tests/util-01/test-halogen-token-window.sh} | tee $out
+                bash ${./tests/util-01/test-token-windows.sh} | tee $out
             '';
 
-        # A deliberate stop of an inference server is not a failure (FDC-M4).
-        #
-        # `podman run` exits with the CONTAINER's status, so the SIGTERM of
-        # `podman stop` comes back as exit 143 — which systemd counts as a
-        # failure unless told otherwise. On this fleet a failed unit is not just
-        # a red line: the blanket OnFailure= of modules/failure-surfacing.nix
-        # writes a marker into /var/lib/failure-markers that an operator has to
-        # clear, so every `halogen-switch` between the two models left one
-        # behind. Nothing about that is visible from reading either module, and
-        # the units are only ever stopped by hand on a box with no display, so
-        # a regression here would go unnoticed exactly as the last one did.
-        #
-        # Asserted over EVERY podman-halogen* unit the worker declares, not a
-        # written-out list: the alternates are an attrset an operator extends
-        # (hosts/worker/default.nix), and a new model must not be able to join
-        # the fleet without this policy. 137 is asserted absent in the same
-        # breath — a container that is KILLED (the path
-        # --health-on-failure=kill takes on a wedged engine) must stay a
-        # failure, or Restart=on-failure has nothing left to recover from.
-        halogen-unit-policy =
+        gufo-unit-policy =
           let
-            # Both twins declare the Halogen units since 2026-09-16.
-            unitsOf =
-              host:
-              nixpkgs.lib.filterAttrs (
-                name: _: nixpkgs.lib.hasPrefix "podman-halogen" name
-              ) self.nixosConfigurations.${host}.config.systemd.services;
-            units = unitsOf "strix";
-            successCodes = unit: nixpkgs.lib.splitString " " (toString unit.serviceConfig.SuccessExitStatus);
-            succeeds = code: unit: builtins.elem code (successCodes unit);
-            declared = builtins.attrValues units;
+            strix = self.nixosConfigurations.strix-coordinator.config;
           in
-          # The primary and one alternate today; the filter is what keeps this
-          # honest when that changes, so assert it found them both.
-          assert builtins.length declared >= 2;
-          assert (unitsOf "strix") ? podman-halogen;
-          assert units ? podman-halogen;
-          assert builtins.all (succeeds "143") declared;
-          assert builtins.all (unit: !(succeeds "137" unit)) declared;
-          assert builtins.all (unit: unit.serviceConfig.Restart == "on-failure") declared;
-          pkgs.runCommand "halogen-unit-policy" { } ''
+          assert builtins.all (name: !(nixpkgs.lib.hasPrefix "podman-halogen" name)) (
+            builtins.attrNames strix.systemd.services
+          );
+          assert !(strix.services ? halogen);
+          assert builtins.all (name: !(nixpkgs.lib.hasPrefix "halogen-" name)) (
+            builtins.attrNames (import ./lib/local-models.nix { lib = nixpkgs.lib; }).artifacts
+          );
+          assert builtins.all (
+            artifact: builtins.all (file: !(nixpkgs.lib.hasSuffix ".hgn" file.path)) artifact.source.files
+          ) (builtins.attrValues (import ./lib/local-models.nix { lib = nixpkgs.lib; }).artifacts);
+          assert strix.services.gufo.enable;
+          assert strix.services.gufo.llm.sessions == 1;
+          assert strix.services.gufo.llm.context == 102400;
+          assert !(strix.systemd.user.services ? substrate-puller);
+          pkgs.runCommand "gufo-unit-policy" { } ''
             touch "$out"
           '';
 
@@ -841,7 +879,7 @@
         nas-topology =
           let
             nas = self.nixosConfigurations.nas.config;
-            strix = self.nixosConfigurations.strix.config;
+            strix = self.nixosConfigurations.strix-coordinator.config;
 
           in
           # ── the tailnet (2026-10-08, Tom's final closet decision) ──────────
@@ -881,7 +919,7 @@
           assert !(nas.systemd.user.services ? wayvnc);
           assert !(nas.systemd.services ? wayvnc);
           assert nas.hardware.graphics.enable;
-          assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
+          assert builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options;
           # Post-cutover topology (live since 2026-08-02, #131): the verified
           # data disk and the media stack run on the NAS; the strix only
           # relays. The pre-cutover extendModules simulation this check used
@@ -899,7 +937,8 @@
           # endpoint, and the name resolution behind it must agree, so all three
           # are asserted together: a repoint without the pin is a black hole, and
           # a pin without the endpoint is a connection refused.
-          assert nas.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://strix:3003";
+          assert
+            nas.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://strix-coordinator:3003";
 
           assert nas.services.immich.accelerationDevices == [ "/dev/dri/renderD128" ];
           # The stable-pinned NAS must keep running the SAME Immich the
@@ -949,7 +988,7 @@
           assert !(builtins.elem 8731 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
           assert !(builtins.elem 3003 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
           # Worker LAN doors: Immich ML (dialled by nas.services.immich above),
-          # the Halogen API (modules/halogen.nix) and the academic drain that
+          # the Gufo API (modules/gufo.nix) and the academic drain that
           # the strix's Caddy fronts as drain.internal
           # (hosts/worker/default.nix). Nothing else — and no
           # tailnet to hide behind, which is exactly why these stay
@@ -1072,7 +1111,7 @@
 
         home-profiles =
           let
-            strixHome = self.nixosConfigurations.strix.config.home-manager.users.tom;
+            strixHome = self.nixosConfigurations.strix-coordinator.config.home-manager.users.tom;
 
             clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
             cfgOf = h: self.nixosConfigurations.${h}.config;
@@ -1087,7 +1126,8 @@
             # the EQUALITY greetd == Sway == myDisplay, plus the three
             # topology facts below that never flip.
             displayHosts = [
-              "strix"
+              "strix-coordinator"
+              "strix-worker"
               "client"
 
               "nas"
@@ -1108,15 +1148,13 @@
           assert !(strixHome.systemd.user.services ? speech-wake);
           assert !(strixHome.systemd.user.services ? voxtype);
           assert !(strixHome.xdg.configFile ? "pipewire/pipewire.conf.d/60-client-mic.conf");
-          # ONE herdr server, strix only (ruling B5), and it must never be
-          # tied to the compositor's lifetime (ruling B6) — the PTYs outlive it.
-          assert strixHome.systemd.user.services ? herdr;
-          assert !(strixHome.systemd.user.services.herdr.Unit ? PartOf);
-          assert strixHome.systemd.user.services.herdr.Install.WantedBy == [ "default.target" ];
+          # Production compute has no Herdr server; its protection is tested on
+          # the brain role fixture in herdr-oom-isolation.
+          assert !(strixHome.systemd.user.services ? herdr);
           # The seats oracle's peer cache and substrate's metersDir outlive the
           # seat feeder that used to write it (home/harness-records.nix).
-          assert builtins.elem "d %h/.local/state/tally-rewrite/meters 0700 - - -"
-            strixHome.systemd.user.tmpfiles.rules;
+          assert
+            !(builtins.elem "d %h/.local/state/tally-rewrite/meters 0700 - - -" strixHome.systemd.user.tmpfiles.rules);
           # herdr WITHOUT the kitten (#385, 2026-09-13). herdr-kitten is gone
           # fleet-wide: no package, no generated kitty alias file.
           assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") strixHome.home.packages);
@@ -1133,8 +1171,9 @@
               swayBinds = nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/sway/binds.conf);
             in
             builtins.all (l: builtins.elem l swayBinds) [
-              "bindsym $mod+Return exec ~/.local/bin/herdr-chord new"
-              "bindsym $mod+Ctrl+Shift+Return exec ~/.local/bin/herdr-chord sidebar"
+              "bindsym $mod+Ctrl+space exec env HERDR_PROJECTOR_TARGET=nas HERDR_PICKER_HOSTNAME=nas HERDR_SWAY_LOCAL=0 ~/.local/bin/herdr-picker"
+              "bindsym $mod+Return exec env HERDR_PROJECTOR_TARGET=nas HERDR_PICKER_HOSTNAME=nas HERDR_SWAY_LOCAL=0 ~/.local/bin/herdr-chord new"
+              "bindsym $mod+Ctrl+Shift+Return exec env HERDR_PROJECTOR_TARGET=nas HERDR_PICKER_HOSTNAME=nas HERDR_SWAY_LOCAL=0 ~/.local/bin/herdr-chord sidebar"
               "bindsym $mod+Shift+Return exec kitty -e fish"
               # AGENTS.md seat rule: Alt+H/L left/right monitor, Alt+J/K down/up.
               "bindsym Alt+h focus output left"
@@ -1179,15 +1218,15 @@
           # The physical seat and the optional browser Sway are independent.
           # Restoring a strix seat must not resurrect physical-session VNC.
           # The separate browser-only Sway desktop is a strix user service.
-          assert (cfgOf "strix").systemd.user.services ? browser-desktop;
-          assert (cfgOf "strix").systemd.user.services.browser-desktop.wantedBy == [ ];
+          assert (cfgOf "strix-coordinator").systemd.user.services ? browser-desktop;
+          assert (cfgOf "strix-coordinator").systemd.user.services.browser-desktop.wantedBy == [ ];
           # FARA is retired (Tom, 2026-09-16): no model unit beside the desktop.
-          assert !((cfgOf "strix").systemd.user.services ? fara-browser-model);
+          assert !((cfgOf "strix-coordinator").systemd.user.services ? fara-browser-model);
 
           # chrome-stream is installed with that desktop and nowhere else: the
           # client reaches it over ssh with its own Chrome (R-16 keeps the
           # client closure near-static).
-          assert hasChromeStream "strix";
+          assert hasChromeStream "strix-coordinator";
 
           assert !(strixHome.systemd.user.services ? wayvnc);
           # The seat EQUALITIES: greetd == Sway == myDisplay, greetd starts the
@@ -1222,7 +1261,7 @@
           assert !strixHome.programs.waybar.enable;
           assert strixHome.home.sessionVariables.HERDR_SWAY_LOCAL == "0";
           assert clientHome.home.sessionVariables.HERDR_SWAY_LOCAL == "0";
-          assert strixHome.systemd.user.services.herdr.Unit.X-SwitchMethod == "keep-old";
+          assert !(strixHome.systemd.user.services ? herdr);
           assert (cfgOf "client").systemd.user.services.sway-physical.restartIfChanged == false;
           assert clientHome.programs.vicinae.settings.font.normal.family == "Anthropic Sans";
           assert clientHome.services.mako.settings.font == "Anthropic Sans 11";
@@ -1254,7 +1293,7 @@
           assert pkgs.sway-unwrapped.src.repo or "sway" == "sway";
           assert nixpkgs.lib.getName pkgs.sway == "sway";
           assert (cfgOf "client").myDisplay.enable;
-          assert !(cfgOf "strix").myDisplay.enable;
+          assert !(cfgOf "strix-coordinator").myDisplay.enable;
           # No Claude Desktop or ChatGPT apps and no Chrome --app launcher
           # entries on any host (Tom, 2026-10-12).
           assert builtins.all
@@ -1281,7 +1320,7 @@
             )
             [
               "client"
-              "strix"
+              "strix-coordinator"
             ];
 
           assert !(cfgOf "nas").myDisplay.enable;
@@ -1365,11 +1404,11 @@
             clientHome.xdg.configFile."sway-local.conf".text;
           assert !(nixpkgs.lib.hasInfix "$mod+Return " clientHome.xdg.configFile."sway-local.conf".text);
           assert !(nixpkgs.lib.hasInfix "$mod+Shift+n " clientHome.xdg.configFile."sway-local.conf".text);
-          assert !(nixpkgs.lib.hasInfix "bindsym" strixHome.xdg.configFile."sway-local.conf".text);
+          assert !(strixHome.xdg.configFile ? "sway-local.conf");
 
           assert
             !builtins.elem 5900 (
-              self.nixosConfigurations.strix.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
+              self.nixosConfigurations.strix-coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
                 or [ ]
             );
 
@@ -1383,7 +1422,7 @@
         # versions.
         herdr-oom-isolation =
           let
-            strixHome = self.nixosConfigurations.strix.config.home-manager.users.tom;
+            strixHome = agentProbe.home-manager.users.tom;
 
             service = strixHome.systemd.user.services.herdr;
           in
@@ -1429,9 +1468,19 @@
               touch "$out"
             '';
 
+        # Exercise the request-scoped utility seam without qmd or live models.
+        utility-model = pkgs.runCommand "utility-model" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          set -euo pipefail
+          export PYTHONDONTWRITEBYTECODE=1
+              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
+          export AI_MEMORY_UTILITY_OWNER=${./pkgs/utility-model/utility_model.py}
+          python3 -m unittest discover -s ${./tests/ai-memory} -p 'test_utility_model.py' -v
+          touch "$out"
+        '';
+
         ai-memory =
           let
-            homeConfig = self.nixosConfigurations.strix.config.home-manager.users.tom;
+            homeConfig = agentProbe.home-manager.users.tom;
             clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
             expectedJournal = "/home/tom/mecattaf/notes/journal";
           in
@@ -1461,6 +1510,7 @@
               export XDG_CONFIG_HOME="$TMPDIR/config"
               export XDG_RUNTIME_DIR="$TMPDIR/runtime"
               export PYTHONDONTWRITEBYTECODE=1
+              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
               export AI_MEMORY_ENGINE=${./home/dot_claude/skills/drain/scripts/ai_memory.py}
               export AI_MEMORY_ENQUEUE_CHECK=${./tools/enqueue-row-check.py}
               export AI_MEMORY_DRAIN_SKILL=${./home/dot_claude/skills/drain/SKILL.md}
@@ -1518,7 +1568,7 @@
         # `nix flake check --offline --no-build` evaluates and does not build.
         no-claude-code-hooks =
           let
-            homeConfig = self.nixosConfigurations.strix.config.home-manager.users.tom;
+            homeConfig = self.nixosConfigurations.strix-coordinator.config.home-manager.users.tom;
             settings = builtins.fromJSON (builtins.readFile ./home/dot_claude/settings.json);
           in
           assert !(settings ? hooks);
@@ -1541,6 +1591,7 @@
 
               export HOME="$TMPDIR/home"
               export PYTHONDONTWRITEBYTECODE=1
+              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
               export PRINT_AUTO_SCRIPT=${./home/dot_claude/skills/print/scripts/print-auto.py}
               export PRINT_PAPER_SCRIPT=${./home/dot_claude/skills/print/scripts/print-paper.py}
               export PRINT_PAPER_SKILL=${./home/dot_claude/skills/print/SKILL.md}
@@ -1572,6 +1623,7 @@
 
               export HOME="$TMPDIR/home"
               export PYTHONDONTWRITEBYTECODE=1
+              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
               export NIGHTLY_RECORD_SCRIPT=${./home/dot_local/bin/nightly-record}
               export NIGHTLY_RECORD_FIXTURES=${./tests/nightly-record/fixtures}
               mkdir -p "$HOME"
@@ -1597,13 +1649,9 @@
             lib = nixpkgs.lib;
             guard = pkgs.callPackage ./pkgs/raw-dotfiles-guard.nix { };
             homeOf = h: self.nixosConfigurations.${h}.config.home-manager.users.tom;
-            entry = (homeOf "strix").home.activation.rawDotfilesGuard;
+            entry = (homeOf "strix-coordinator").home.activation.rawDotfilesGuard;
           in
-          assert
-            (homeOf "strix").rawDotfiles.programs == [
-              "claude-transcript-mirror"
-              "nightly-record"
-            ];
+          assert (homeOf "strix-coordinator").rawDotfiles.programs == [ ];
 
           assert (homeOf "client").rawDotfiles.programs == [ ];
           # The client carries no checkout (2026-10-11): its raw dotfiles come
@@ -1617,8 +1665,8 @@
             !(builtins.any (
               f: builtins.isAttrs f.source && lib.hasInfix "/mecattaf/" (f.source.buildCommand or "")
             ) (builtins.attrValues (homeOf "client").home.file));
-          assert !(homeOf "strix").rawDotfiles.inStore;
-          assert self.nixosConfigurations.strix.config.systemd.services ? dotfiles-bootstrap;
+          assert !(homeOf "strix-coordinator").rawDotfiles.inStore;
+          assert self.nixosConfigurations.strix-coordinator.config.systemd.services ? dotfiles-bootstrap;
           assert
             entry.before == [
               "checkLinkTargets"
@@ -1674,6 +1722,7 @@
 
               export HOME="$TMPDIR/home"
               export PYTHONDONTWRITEBYTECODE=1
+              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
               export CLAUDE_SESSIONS_SCRIPT=${./home/dot_local/bin/claude-sessions}
               mkdir -p "$HOME"
 
@@ -1706,6 +1755,7 @@
 
               export HOME="$TMPDIR/home"
               export PYTHONDONTWRITEBYTECODE=1
+              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
               export UPDATE_CHECK_SCRIPT=${./home/dot_local/bin/update-check}
               export UPDATE_WATCH=${./lib/update-watch.json}
               export UPDATE_FLAKE_LOCK=${./flake.lock}
@@ -1731,18 +1781,17 @@
           let
             etc = host: self.nixosConfigurations.${host}.config.environment.etc;
             profile = host: builtins.fromJSON (etc host)."fleet-status/profile.json".text;
-            hostsJson = builtins.fromJSON (etc "strix")."fleet-status/hosts.json".text;
+            hostsJson = builtins.fromJSON agentProbe.environment.etc."fleet-status/hosts.json".text;
           in
-          assert (profile "strix").name == "strix-server";
+          assert (profile "strix-coordinator").name == "strix-compute";
           assert
-            (profile "strix").roles == [
-              "halogen"
-              "attention"
+            (profile "strix-coordinator").roles == [
+              "gufo"
             ];
 
           assert (profile "nas").name == "appliance";
-          assert !(profile "nas").user_manager;
-          assert (profile "nas").roles == [ ];
+          assert (profile "nas").user_manager;
+          assert (profile "nas").roles == [ "attention" ];
           assert (profile "client").name == "thin-client";
           assert (profile "client").user_manager;
 
@@ -1753,6 +1802,7 @@
             set -euo pipefail
             export HOME="$TMPDIR/home"
             export PYTHONDONTWRITEBYTECODE=1
+              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
             export FLEET_STATUS_PY=${pkgs.fleet-status}/share/fleet-status/fleet_status.py
             mkdir -p "$HOME"
             python3 -m unittest discover -s ${./tests/fleet-status} -p 'test_*.py' -v
@@ -1781,9 +1831,241 @@
               set -euo pipefail
               export HOME="$TMPDIR/home"
               export PYTHONDONTWRITEBYTECODE=1
+              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
               export LAND_PY=${pkgs.land}/share/land/land.py
               mkdir -p "$HOME"
               python3 -m unittest discover -s ${./tests/land} -p 'test_*.py' -v
+              touch "$out"
+            '';
+
+        # dsh-config (T-31): the wrapped dsh boots every allowed profile with
+        # the fleet policy as the last layer, and refuses what it must. Runs
+        # against the NAS package in the build sandbox: no network, private
+        # HOME and DSH_HOME under $TMPDIR, no key path in the wrapper. Each dump
+        # must leave stderr empty (a patch that matches no row warns there)
+        # and carry the policy rows; tests/dsh-config/check_dump.py reads its
+        # expectations from pkgs.dsh's passthru. lib/update-watch.json builds
+        # this on every llm-agents bump.
+        dsh-config =
+          let
+            dshPackage = self.nixosConfigurations.nas.pkgs.dsh.override { qwenKeyFile = null; };
+            expect = pkgs.writeText "dsh-config-expect.json" (
+              builtins.toJSON {
+                localProviders = dshPackage.localProviders;
+                disabled = dshPackage.disabledIds;
+                runner = "${dshPackage.runner}/bin/dsh-bwrap";
+              }
+            );
+          in
+          pkgs.runCommand "dsh-config"
+            {
+              nativeBuildInputs = [ (pkgs.python3.withPackages (ps: [ ps.pyyaml ])) ];
+            }
+            ''
+              set -euo pipefail
+              # The wrapper refuses a DSH_HOME under $TMPDIR, so the build
+              # dir holds both and TMPDIR moves one level down.
+              build="$TMPDIR"
+              export HOME="$build/home" DSH_HOME="$build/dsh-home" TMPDIR="$build/tmp"
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p "$HOME" "$build/cwd" "$TMPDIR" "$build/homes/tom"
+              mkdir -m 700 "$DSH_HOME"
+              cd "$build/cwd"
+              dsh=${dshPackage}/bin/dsh
+
+              test "$($dsh --version)" = ${dshPackage.unwrapped.version}
+
+              dump() {
+                name="$1"
+                shift
+                "$dsh" "$@" > "$TMPDIR/$name.yml" 2> "$TMPDIR/$name.err"
+                if [ -s "$TMPDIR/$name.err" ]; then
+                  echo "dsh $*: stderr not empty:" >&2
+                  cat "$TMPDIR/$name.err" >&2
+                  exit 1
+                fi
+                python3 -I ${./tests/dsh-config/check_dump.py} "$TMPDIR/$name.yml" ${expect}
+              }
+              dump headless headless --dump-config
+              dump headless-flag --profile headless --dump-config
+              dump sdk sdk --dump-config
+              dump acp acp --dump-config
+
+              refused() {
+                set +e
+                "$@" > /dev/null 2> "$TMPDIR/refused.err"
+                code=$?
+                set -e
+                if [ "$code" != 2 ] || ! grep -q 'refused by the fleet wrapper' "$TMPDIR/refused.err"; then
+                  echo "expected a refusal (exit 2), got $code from: $*" >&2
+                  cat "$TMPDIR/refused.err" >&2
+                  exit 1
+                fi
+              }
+              refused "$dsh" web --help
+              refused "$dsh" --profile=web --help
+              refused "$dsh" sdk-minimal --help
+              refused "$dsh" headless --from-default-profile web --dump-config
+              refused "$dsh" plugin --profile headless add left-pad
+              # An empty profile token must not fall through to unwrapped dsh.
+              refused "$dsh" --profile= headless --dump-config
+              refused "$dsh" --profile "" headless --dump-config
+              refused "$dsh" "" web --help
+              refused "$dsh" --dump-config
+              # A DSH_HOME the in-process write tool can reach (/tmp, $TMPDIR).
+              refused env DSH_HOME="$TMPDIR/dsh-home" "$dsh" headless --dump-config
+              refused env DSH_HOME=/tmp/dsh-home "$dsh" headless --dump-config
+              refused env DSH_PERMISSION_MODE=danger-full-access "$dsh" headless --dump-config
+              (cd "$HOME" && refused "$dsh" headless --dump-config)
+              (cd "$DSH_HOME" && refused "$dsh" headless --dump-config)
+              (cd "$build" && refused "$dsh" headless --dump-config)
+              (cd / && refused "$dsh" headless --dump-config)
+              # A parent of $HOME that does not hold DSH_HOME.
+              (cd "$build/homes" && HOME="$build/homes/tom" refused "$dsh" headless --dump-config)
+
+              # No DeepSeek identity minted by any of the boots above.
+              test ! -e "$DSH_HOME/.anonymous-user-id"
+              touch "$out"
+            '';
+
+        # dsh-plugins (T-31): the hand-run `herdr` profile. Its plugins' own
+        # check phases are part of this closure: dsh-herdr's node tests (argv,
+        # runtime, preview, the 23-tool registration against the real
+        # dsh-tools) and the herdr-guard unit test (foreign pane_run, malformed
+        # ids, writes without HERDR_ENV=1) and the stderr-log unit test. Here:
+        # jevcore's $out has the pinned build and no network path, the wrapper
+        # composes `herdr` with every plugin row mounted and none skipped, the
+        # stock headless profile (substrate's) mounts none of them, and a boot
+        # of `herdr` with a blank task (it stops before any model call) prints
+        # the ready lines of herdr-guard, dsh-herdr and jevcore on stderr.
+        # Same sandbox as dsh-config: no network, a private DSH_HOME, no herdr,
+        # and no key by construction: the wrapper here is built without a key
+        # file and the key variable is unset, whatever the sandbox exposes.
+        dsh-plugins =
+          let
+            dshNoKey = self.nixosConfigurations.nas.pkgs.dsh.override { qwenKeyFile = null; };
+            plugins = dshNoKey.plugins;
+            base = {
+              localProviders = dshNoKey.localProviders;
+              disabled = dshNoKey.disabledIds;
+              runner = "${dshNoKey.runner}/bin/dsh-bwrap";
+            };
+            pluginRows = [
+              "stderr-log"
+              "herdr-guard"
+              "dsh-herdr-toolkit"
+              "jev"
+            ];
+            expectHerdr = pkgs.writeText "dsh-plugins-herdr.json" (
+              builtins.toJSON (
+                base
+                // {
+                  rows = dshNoKey.herdrRows;
+                  present = pluginRows;
+                }
+              )
+            );
+            expectHeadless = pkgs.writeText "dsh-plugins-headless.json" (
+              builtins.toJSON (base // { absent = pluginRows; })
+            );
+            semver = "${dshNoKey.unwrapped}/lib/node_modules/@deepseek-ai/dsh/node_modules/semver";
+          in
+          pkgs.runCommand "dsh-plugins"
+            {
+              nativeBuildInputs = [
+                (pkgs.python3.withPackages (ps: [ ps.pyyaml ]))
+                pkgs.nodejs
+              ];
+            }
+            ''
+              set -euo pipefail
+              # Built, so their check phases passed.
+              : ${plugins.dsh-herdr} ${plugins.herdr-guard} ${plugins.stderr-log}
+
+              # jevcore: the git 0.4.2 that admits this dsh, core beside it,
+              # the skill, and no TypeSafe SDK or network call in the JS.
+              j=${plugins.jevcore}
+              node -e '
+                const [pkg, semver, dsh] = process.argv.slice(1)
+                const m = require(pkg)
+                if (m.version !== "0.4.2" || m.dependencies.jevcore !== "0.4.2") throw new Error("not 0.4.2")
+                if (!require(semver).satisfies(dsh, m.engines.dsh, { includePrerelease: true }))
+                  throw new Error("engines.dsh " + m.engines.dsh + " refuses " + dsh)
+              ' "$j/package.json" ${semver} ${dshNoKey.unwrapped.version}
+              test -f "$j/lib/index.js"
+              test -f "$j/skills/typesafe-ai-dsh/SKILL.md"
+              test -f "$j/node_modules/jevcore/lib/index.js"
+              test ! -e "$j/node_modules/@typesafe-ai"
+
+              # The owned plugins' private scope: nothing in the dsh
+              # installation, which resolves bundle names first, may shadow it.
+              u=${dshNoKey.unwrapped}/lib/node_modules
+              test ! -e "$u/@mecattaf"
+              test ! -e "$u/@deepseek-ai/dsh/node_modules/@mecattaf"
+              if grep -rnE 'fetch\(|node:https?' "$j/lib" "$j/node_modules/jevcore/lib"; then
+                echo "jevcore: a network call in the built JS" >&2
+                exit 1
+              fi
+
+              build="$TMPDIR"
+              export HOME="$build/home" DSH_HOME="$build/dsh-home" TMPDIR="$build/tmp"
+              export HERDR_SOCKET_PATH="$build/no-herdr.sock"
+              export PYTHONDONTWRITEBYTECODE=1
+              unset QWEN_TOKEN_PLAN_API_KEY
+              mkdir -p "$HOME" "$build/cwd" "$TMPDIR"
+              mkdir -m 700 "$DSH_HOME"
+              cd "$build/cwd"
+              dsh=${dshNoKey}/bin/dsh
+              if grep -qF qwencloud-token "$dsh"; then
+                echo "dsh-plugins: the check's wrapper reads a key file" >&2
+                exit 1
+              fi
+
+              dump() {
+                name="$1" expect="$2"
+                shift 2
+                "$dsh" "$@" > "$TMPDIR/$name.yml" 2> "$TMPDIR/$name.err"
+                if [ -s "$TMPDIR/$name.err" ]; then
+                  echo "dsh $*: stderr not empty:" >&2
+                  cat "$TMPDIR/$name.err" >&2
+                  exit 1
+                fi
+                python3 -I ${./tests/dsh-config/check_dump.py} "$TMPDIR/$name.yml" "$expect"
+              }
+              dump herdr ${expectHerdr} herdr --dump-config
+              dump headless ${expectHeadless} headless --dump-config
+
+              # The synced profile: a private manifest and store links only.
+              p="$DSH_HOME/profiles/herdr"
+              test "$(stat -c %a "$p/package.json")" = 600
+              test "$(readlink "$p/node_modules/@mecattaf/stderr-log")" = ${plugins.stderr-log}
+              test "$(readlink "$p/node_modules/@mecattaf/herdr-guard")" = ${plugins.herdr-guard}
+              test "$(readlink "$p/node_modules/@dsh-external/dsh-herdr-toolkit")" = ${plugins.dsh-herdr}
+              test "$(readlink "$p/node_modules/jevcore-dsh")" = ${plugins.jevcore}
+              test ! -e "$DSH_HOME/profiles/headless/node_modules"
+              # A store link no longer declared goes on the next boot; a
+              # profile file dsh owns stays.
+              ln -s ${plugins.jevcore} "$p/node_modules/dropped-plugin"
+              echo '[]' > "$p/cordis.patch.yml"
+              dump herdr-again ${expectHerdr} --profile herdr --dump-config
+              test ! -e "$p/node_modules/dropped-plugin"
+              test "$(cat "$p/cordis.patch.yml")" = '[]'
+              # No per-boot staging directory is left behind.
+              test -z "$(find "$p" -maxdepth 1 -name '.sync.*')"
+
+              # The whole tree boots: an unknown --session-id fails in headless
+              # after the loader settled and before any model call. The guard,
+              # dsh-herdr (which loads only with the guard's service) and jevcore
+              # (on the offline mock) each print a ready line through stderr-log.
+              rc=0
+              "$dsh" herdr --session-id session-none "reply OK" > "$TMPDIR/boot.out" 2> "$TMPDIR/boot.err" || rc=$?
+              cat "$TMPDIR/boot.err" >&2
+              echo "dsh herdr boot: exit $rc" >&2
+              test "$rc" = 1
+              grep -qF 'dsh: session "session-none" does not exist' "$TMPDIR/boot.err"
+              grep -qF '[jevcore] ready · provider=mock · gates: safety=off context=off' "$TMPDIR/boot.err"
+              grep -qF 'info: herdr-guard ready' "$TMPDIR/boot.err"
+              grep -qF 'info: dsh-herdr ready: 23 tools' "$TMPDIR/boot.err"
               touch "$out"
             '';
 
@@ -1801,6 +2083,7 @@
 
               export HOME="$TMPDIR/home"
               export PYTHONDONTWRITEBYTECODE=1
+              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
               export SEATS_SCRIPT=${./home/dot_local/bin/seats}
               mkdir -p "$HOME"
 
@@ -1815,7 +2098,7 @@
         # bin/screenshot on the client (2026-10-11): hidden spool, push to
         # strix:~/Pictures/Screenshots, local delete only after a sha256 match,
         # kept while the strix is down, never an overwrite there; other hosts
-        # unchanged. Hermetic: the "strix" is a temp home behind a fake ssh.
+        # unchanged. Hermetic: the "strix-coordinator" is a temp home behind a fake ssh.
         screenshot-spool =
           pkgs.runCommand "screenshot-spool"
             {
@@ -1853,6 +2136,7 @@
 
               export HOME="$TMPDIR/home"
               export PYTHONDONTWRITEBYTECODE=1
+              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
               export CALL_DIARIZE_START_SCRIPT=${./home/dot_local/bin/call-diarize-start}
               export CALL_RECORD_SCRIPT=${./home/dot_local/bin/call-record}
               mkdir -p "$HOME"
@@ -1871,7 +2155,7 @@
         # systemd, /var, or production weights.
         local-model-transactions =
           let
-            computeConfig = self.nixosConfigurations.strix.config;
+            computeConfig = self.nixosConfigurations.strix-coordinator.config;
             borrowPackage =
               nixpkgs.lib.findFirst (package: nixpkgs.lib.getName package == "local-models-borrow")
                 (throw "worker has no explicit local-models-borrow command")
@@ -1903,7 +2187,7 @@
               ("rpm-o" + "stree")
               ("d" + "nf")
               ("c" + "opr")
-              ("boot" + "c")
+              ("(^|[^[:alnum:]_])boot" + "c([^[:alnum:]_]|$)")
               ("yum.repos." + "d")
               ("harness" + "RPM")
               ("chez" + "moi")
@@ -1919,10 +2203,13 @@
               nativeBuildInputs = [ pkgs.ripgrep ];
             }
             ''
-              # Two exclusions, both narrow and both earned:
+              # Exclusions are narrow and cover non-executable material:
               #
               #   go.sum   — base64 hashes, on which a case-insensitive sweep for
               #              three-letter substrings false-positives endlessly.
+              #
+              #   secrets/*.age — encrypted payloads and recipient stanzas are
+              #              random bytes/base64, not platform declarations.
               #
               #   docs/**/*.md — RESEARCH PROSE, not tree content that runs. Added
               #              2026-08-21 (#229) after this check turned out to have
@@ -1950,7 +2237,7 @@
               # source tree, which is why the pattern list above is assembled from
               # split string literals.
               if rg --ignore-case --line-number \
-                --glob '!go.sum' --glob '!**/docs/**/*.md' \
+                --glob '!go.sum' --glob '!**/secrets/*.age' --glob '!**/docs/**/*.md' \
                 '${retiredPlatformPattern}' ${self}; then
                 echo "retired platform residue found in the canonical NixOS tree" >&2
                 exit 1
@@ -1960,7 +2247,7 @@
 
         fleet-connectivity =
           let
-            strix = self.nixosConfigurations.strix.config;
+            strix = self.nixosConfigurations.strix-coordinator.config;
             nas = self.nixosConfigurations.nas.config;
 
             client = self.nixosConfigurations.client.config;
@@ -2001,7 +2288,7 @@
             #   this branch wants either back.
             #
             #   retiredFlowHostPattern — the bare host name, banned from the
-            #   CODE under flows/ except in two spellings: the Halogen endpoint
+            #   CODE under flows/ except in two spellings: the local inference endpoint
             #   `http://<host>:8731` and the `<host>-gpu` pool. A flow is a
             #   script that ENQUEUES work; a flow naming the other box as a
             #   place to run is the executor half that stayed retired (Q2: one
@@ -2028,14 +2315,15 @@
             expectedHosts = [
               "client"
               "nas"
-              "strix"
+              "strix-coordinator"
+              "strix-worker"
             ];
             retiredAliases = nixpkgs.lib.concatStringsSep "|" [
               (retiredWorker + "-tb")
               ("strix-" + "tb")
             ];
             removedModel = "qwo" + "pus";
-            monthlySources = builtins.fromJSON (builtins.readFile ./pkgs/local-ai-monthly/sources.json);
+            monthlySources = import ./lib/local-ai-monthly-sources.nix;
           in
 
           assert nixpkgs.lib.all (hosts: hosts == expectedHosts) activeHostSets;
@@ -2045,14 +2333,14 @@
           # buys TOFU prompts.
 
           assert
-            meshRegistry.strix.aliases == [
+            meshRegistry.strix-coordinator.aliases == [
+              "strix-coordinator"
               "strix"
-              "coordinator"
               "10.42.0.2"
             ];
           assert meshRegistry.client.hostKey != "";
           assert !(nixpkgs.lib.hasInfix "QoQJxxP" meshRegistry.client.hostKey);
-          assert meshRegistry.client.userKey == meshRegistry.strix.userKey;
+          assert meshRegistry.client.userKey == meshRegistry.strix-coordinator.userKey;
           assert
             meshRegistry.client.aliases == [
               "client"
@@ -2062,16 +2350,15 @@
 
           assert
             client.networking.hosts."10.42.0.2" == [
+              "strix-coordinator"
               "strix"
-              "coordinator"
             ];
 
           assert client.networking.hosts."10.42.0.1" == [ "nas" ];
           assert client.networking.hosts."127.0.0.2" == [ "client" ];
           assert client.networking.hostName == "client";
-          # Thin client: no journal upload (hosts/nas/journal.nix admits the
-          # twins only), no tailnet join (daemon declared, no key, no
-          # autoconnect), no printing queue, agenix on.
+          # Thin client: no journal upload or printing queue, agenix on.
+          # Tailscale enrollment is interactive, without a delivered auth key.
           assert !client.services.journald.upload.enable;
           assert client.services.tailscale.enable;
           assert !(client.age.secrets ? tailscale-authkey);
@@ -2081,7 +2368,7 @@
           assert client.services.zenbook-duo-daemon.enable;
           assert self.deploy.nodes.client.hostname == "client";
           assert strix.networking.hosts."10.42.0.1" == [ "nas" ];
-          assert builtins.elem "strix" nas.networking.hosts."10.42.0.2";
+          assert builtins.elem "strix-coordinator" nas.networking.hosts."10.42.0.2";
           # #273: the TWINS' own names must NEVER resolve to loopback again.
           # Stock NixOS sets networking.hosts."127.0.0.2" = [ hostName ]; that
           # address resolves fine, so every gethostname()-and-bind library
@@ -2096,13 +2383,12 @@
 
           assert
             strix.networking.hosts."10.42.0.2" == [
+              "strix-coordinator"
               "strix"
-              "coordinator"
             ];
 
-          # ...and the NAS keeps the stock mapping, deliberately: it is an
-          # appliance, not a rank in a job, and it does not import
-          # modules/fleet-hosts.nix.
+          # NAS keeps its stock loopback self pin; the shared table only removes
+          # it for compute ranks.
           assert nas.networking.hosts."127.0.0.2" == [ "nas" ];
           # journald substrate (#135): the NAS receives on the NVMe, and the
           # senders are the STRIX HALO BOXES ONLY (Tom's 2026-08-21 ruling) —
@@ -2119,7 +2405,7 @@
           assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.2 tcp dport 19532 accept"
             nas.networking.firewall.extraInputRules;
 
-          assert self.deploy.nodes.strix.hostname == "strix";
+          assert self.deploy.nodes.strix-coordinator.hostname == "strix-coordinator";
           assert self.deploy.nodes.nas.hostname == "nas";
           # The worker is dialled by NAME since 2026-09-11 — it resolves to the
           # static LAN address on the strix (modules/fleet-hosts.nix),
@@ -2129,26 +2415,26 @@
 
           # The `worker` -> 10.42.0.5 NAME pin exists on every host that dials
           # it, and every host agrees on the answer: the NAS from
-          # hosts/nas/network.nix (its Immich dials http://strix:3003), the
+          # hosts/nas/network.nix (its Immich dials http://strix-coordinator:3003), the
           # twins from modules/fleet-hosts.nix. Host-scoped rather than
           # fleet-wide on purpose — two /etc/hosts lines for one name are
           # ordered by systemd-resolved, not by the file (#277), so each host
           # carries exactly one and modules/common.nix carries none.
 
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
-          # ── the strix fallback (2026-10-08) ────────────────────────────────
-          # The strix keeps its already enrolled official Tailscale identity as
-          # an independent path in when the NAS is down (hosts/strix/tailscale.nix).
-          # Exact lists, not `elem`: the flag set is the fallback's whole
-          # configuration, and a silent addition to it (a route, an exit node,
-          # Tailscale SSH) is a change of posture.
+          # The compute nodes share the NAS PR's official Tailscale policy.
+          # They consume the NAS exit/subnet route, without advertising either.
+          # Keep the coordinator's enrolled identity; enrollment/expiry is an
+          # explicit operator step, not an agenix auth key.
           assert strix.services.tailscale.enable;
           assert
             strix.services.tailscale.extraUpFlags == [
-              "--hostname=strix"
-              "--accept-routes=false"
+              "--hostname=strix-coordinator"
               "--accept-dns=false"
               "--ssh=false"
+              "--accept-routes=true"
+              "--exit-node=nas"
+              "--exit-node-allow-lan-access=true"
             ];
           assert strix.services.tailscale.extraSetFlags == strix.services.tailscale.extraUpFlags;
           # It reuses its persistent state: no enrollment key is deployed, so a
@@ -2166,14 +2452,17 @@
           assert nas.services.avahi.enable;
           assert nas.services.avahi.allowInterfaces == [ "enp1s0" ];
           assert
-            nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [
+            (nixpkgs.lib.sort builtins.lessThan nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts)
+            == [
               22
               53
+              443
               2283
               4533
+              27321
               32400
             ];
-          assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
+          assert builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options;
           assert nas.myNas.storage.enable;
           assert nas.myNas.media.enable;
           assert nas.services.immich.enable;
@@ -2214,7 +2503,7 @@
                 package: nixpkgs.lib.getName package == "local-models-borrow"
               ) strix.environment.systemPackages
             ) == 1;
-          # The Halogen unit orders after nothing model-shaped either: its
+          # The Gufo unit orders after nothing model-shaped either: its
           # pre-start CHECKS the bundle and refuses; it never fetches.
 
           # NAS downloads remain a separate timer/operator action, never an
@@ -2228,26 +2517,15 @@
           # the audit had already added the registry row.
 
           # myCluster died with the role option; per-host policy in
-          # modules/strix.nix is selected by hostname on BOTH Strix boxes now.
-          assert !(self.nixosConfigurations.strix.options ? myCluster);
+          # Both compute hosts import the same Strix hardware and engine profile.
+          assert !(self.nixosConfigurations.strix-coordinator.options ? myCluster);
 
           # ── mono-model: the wanted sets, exact ─────────────────────────────
-          # Exact lists, not membership tests, so a new hundred-gigabyte row
-          # has to be argued for here in writing before it can cost a twin its
-          # disk. Both twins want the two Halogen bundles they serve (Tom,
-          # 2026-09-16); the strix adds the streaming ASR and its speech
-          # (TTS) rows; the wake and Parakeet rows left on 2026-09-30. There is
-          # no `allow` any more: nothing is a deployment, nothing is served by a
-          # roster.
-
-          # Gufo (#525, Tom 2026-10-13: "use that as the full collection of
-          # modles that we use"): Flash-Next and the 27B with its draft join
-          # the strix's set before the cutover; Halogen's two rows leave it
-          # once Gufo serves.
+          # Exact lists keep additional model loans explicit. Gufo's text
+          # bundles join the production diarization, TTS and voice artifacts;
+          # retired engine formats are absent from both wanted set and catalog.
           assert
             strix.services.local-models.artifacts == [
-              "halogen-qwen38-flash-next"
-              "halogen-qwen38-27b"
               "qwen38-flash-next-gguf"
               "qwen38-27b-gguf"
               "qwen38-27b-dflash2-gguf"
@@ -2261,15 +2539,16 @@
           # embedder retired); no other top-level attribute — no deployments,
           # no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
-          # Plus Gufo's collection (lib/gufo-models.json), read from
-          # gufo-org/gufo at ae26ca4a; MiniMax H3 is gated until Tom accepts
+          # Plus Gufo's collection (lib/gufo-models.json), as gufo-org/gufo
+          # v0.22.0 plus Q8 and the separately pinned ds4 V4.1 model. MiniMax H3 is gated until Tom accepts
           # its licence, so library-fetch skips it and no host may want it.
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "deepseek-v4-flash-dspark-gguf"
               "deepseek-v4-flash-gguf"
-              "halogen-qwen38-27b"
-              "halogen-qwen38-flash-next"
+              "deepseek-v41-flash-1017-q2-gguf"
+              "deepseek-v41-flash-dspark-gguf"
+              "deepseek-v41-flash-vision-gguf"
               "minimax-h3-fl2va"
               "qwen-image-2.1"
               "qwen-k2so-midway-b"
@@ -2279,62 +2558,37 @@
               "qwen3-tts-tokenizer-f32"
               "qwen38-27b-dflash2-gguf"
               "qwen38-27b-gguf"
+              "qwen38-27b-q8-gguf"
               "qwen38-flash-next-gguf"
+              "qwen38-flash-next-q8-gguf"
               "vibevoice-asr-streaming-7b-bf16"
             ];
           assert localModelCatalog.artifacts.minimax-h3-fl2va.source.gate != null;
           assert builtins.all (id: localModelCatalog.artifacts.${id}.source.gate == null) (
             builtins.filter (id: id != "minimax-h3-fl2va") (builtins.attrNames localModelCatalog.artifacts)
           );
-          # Declared, not enabled: Halogen serves until the cutover.
-          assert !strix.services.gufo.enable;
-          assert localModelCatalog.artifacts.halogen-qwen38-flash-next.source.layout == "snapshot";
-          assert builtins.length localModelCatalog.artifacts.halogen-qwen38-flash-next.source.files == 9;
-
-          assert strix.services.halogen.enable;
-
-          assert strix.services.halogen.autoStart;
-
-          assert strix.virtualisation.oci-containers.containers.halogen.autoStart;
-          assert strix.services.halogen.client.enable;
-
-          # One declaration, two hosts: the containers differ only in autoStart
-          # and the strix's two desktop memory bounds (Flash's KV pool,
-          # the 27B's prompt-cache budget).
-
+          # The proven Gufo endpoint is the only resident text engine.
+          assert strix.services.gufo.enable;
+          # Consumers name exactly what Gufo serves (lib/local-model.nix): it
+          # answers 404 to any other id.
+          assert strix.services.gufo.llm.servedModelName == (import ./lib/local-model.nix).modelId;
           assert
-            strix.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_KV_POOL_POSITIONS
-            == "262144";
-
+            builtins.sort builtins.lessThan (
+              pkgs.lib.unique (
+                map (n: strix.services.gufo.alternates.${n}.servedModelName) (
+                  builtins.attrNames strix.services.gufo.alternates
+                )
+              )
+            ) == builtins.sort builtins.lessThan (import ./lib/local-model.nix).alternates;
+          assert strix.services.utilityModel.endpoint == (import ./lib/local-model.nix).endpoint;
           assert
-            strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_CACHE_MB
-            == "8192";
-          # halogen-server 0.1.4 by digest; never a runtime download.
+            (import ./lib/local-model.nix).endpoint
+            == "http://strix-coordinator:${toString strix.services.gufo.port}";
 
-          assert
-            !(strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment ? HALOGEN_DOWNLOAD);
-          assert
-            strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_TOKENIZER
-            == "/models/tokenizer";
-
-          assert strix.services.halogen.lanInterface == "enp191s0";
-
-          # The service never downloads weights (model-byte doctrine).
-
-          # The alternate 27B engine: declared, never started at boot, and
-          # never resident together with Flash (mutual Conflicts=), on the same
-          # port so clients need not care which one answers.
-
-          assert builtins.attrNames strix.services.halogen.alternates == [ "qwen38-27b" ];
-          assert !strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.autoStart;
-          assert strix.systemd.services.podman-halogen.conflicts == [ "podman-halogen-qwen38-27b.service" ];
-
-          assert
-            builtins.length (
-              nixpkgs.lib.filter (
-                package: nixpkgs.lib.getName package == "halogen-switch"
-              ) strix.environment.systemPackages
-            ) == 1;
+          assert strix.services.utilityModel.enable;
+          assert strix.services.utilityModel.modelId == "qwen3.8-flash-next";
+          assert !(strix.virtualisation.oci-containers.containers ? halogen);
+          assert !(strix.systemd.services ? podman-halogen);
 
           assert nixpkgs.lib.elem "amdgpu.gttsize=126976" strix.boot.kernelParams;
           # The utility-model wrapper lives on the strix only.
@@ -2358,15 +2612,15 @@
 
           assert !strix.services.adguardhome.enable;
           assert strix.microvm.host.enable;
-          assert !(self.nixosConfigurations.strix.options.myArtifacts ? livePortRange);
+          assert !(self.nixosConfigurations.strix-coordinator.options.myArtifacts ? livePortRange);
           # Crash surfacing (#134): the blanket OnFailure handler and both journal watchers exist.
           assert strix.systemd.services."failure-notify@".serviceConfig.Type == "oneshot";
           assert strix.systemd.timers ? tripwire-coredump;
           assert strix.systemd.timers ? tripwire-user-unit-failure;
           assert strix.systemd.timers ? failure-marker-reconcile;
-          assert monthlySources.inference.provider == "halogen";
-          assert monthlySources.inference.url == "http://strix:8731";
-          assert monthlySources.inference.compute_host == "strix";
+          assert monthlySources.inference.provider == "gufo";
+          assert monthlySources.inference.url == "http://strix-coordinator:8731";
+          assert monthlySources.inference.compute_host == "strix-coordinator";
           assert monthlySources.inference.tally_pool == "strix-gpu";
           # ── NPU decommission, 2026-08-29 (fleet-7.2) ──────────────────────
           # These used to assert the NPU stack was PRESENT. The house style for
@@ -2382,9 +2636,11 @@
           # transition, which is exactly when a wedged box needs it.
           assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" strix.boot.kernelParams;
 
-          # The twins ride linux 7.2 from nixpkgs-fresh (modules/strix.nix).
-          # hasPrefix, not equality: the versioned attr advances within 7.2.x.
-          assert nixpkgs.lib.hasPrefix "7.2" strix.boot.kernelPackages.kernel.version;
+          # Every host follows Linux 7.3, including the NAS's stable userspace.
+          # Compare major.minor so point releases pass but 7.30 cannot match.
+          assert builtins.all (
+            host: nixpkgs.lib.versions.majorMinor host.config.boot.kernelPackages.kernel.version == "7.3"
+          ) (builtins.attrValues self.nixosConfigurations);
 
           # `assert !{strix,worker}.services.npu-llm.enable` stood here
           # until 2026-08-31 (#270): with modules/npu-llm.nix deleted the
@@ -2414,7 +2670,7 @@
             fi
             if ${pkgs.ripgrep}/bin/rg --line-number --glob '!README.md' '${retiredFlowHostPattern}' \
               ${./flows} \
-              | ${pkgs.ripgrep}/bin/rg --invert-match 'http://${retiredWorker}:8731|${retiredWorker}-gpu'; then
+              | ${pkgs.ripgrep}/bin/rg --invert-match 'strix-${retiredWorker}|http://${retiredWorker}:8731|${retiredWorker}-gpu'; then
               echo "a flow names the retired execution host outside its inference endpoint or GPU pool" >&2
               exit 1
             fi
@@ -2429,7 +2685,7 @@
 
         browser-session-runtime =
           let
-            coord = self.nixosConfigurations.strix.config;
+            coord = self.nixosConfigurations.strix-coordinator.config;
             portal = name: coord.systemd.user.services.${name} or { };
           in
           assert builtins.all
@@ -2514,7 +2770,7 @@
 
         printing =
           let
-            strix = self.nixosConfigurations.strix.config;
+            strix = self.nixosConfigurations.strix-coordinator.config;
             activeHosts = [
               strix
             ];
@@ -2576,10 +2832,10 @@
               nixpkgs.lib.mapAttrs (_: host: host.config) self.nixosConfigurations
             );
             printingHosts = builtins.filter (host: host.services.printing.enable) hosts;
-            homeOf = name: self.nixosConfigurations.${name}.config.home-manager.users.tom;
-            strixHome = homeOf "strix";
+            strixHome = agentProbe.home-manager.users.tom;
             daemonService = strixHome.systemd.user.services.paper-daemon;
-            postStart = self.nixosConfigurations.strix.config.systemd.services.ensure-printers.postStart;
+            postStart =
+              self.nixosConfigurations.strix-coordinator.config.systemd.services.ensure-printers.postStart;
           in
           assert printingHosts != [ ];
           assert nixpkgs.lib.all (host: !host.services.printing.browsed.enable) printingHosts;
@@ -2610,8 +2866,8 @@
 
         huggingface-cli-smoke =
           let
-            hf = pkgs.huggingface-cli;
-            expectedVersion = "1.16.0";
+            hf = self.nixosConfigurations.nas.pkgs.huggingface-cli;
+            expectedVersion = "1.10.2"; # NAS stable userspace; same metadata/cache contract.
             smokeRevision = "0123456789abcdef0123456789abcdef01234567";
             mockHub = pkgs.writeText "huggingface-metadata-mock.py" ''
               import json
@@ -2681,10 +2937,10 @@
               server.handle_request()
               server.server_close()
             '';
-            strixPackages = self.nixosConfigurations.strix.config.home-manager.users.tom.home.packages;
+            brainPackages = self.nixosConfigurations.nas.config.home-manager.users.tom.home.packages;
           in
           assert hf.version == expectedVersion;
-          assert builtins.elem hf strixPackages;
+          assert builtins.elem hf brainPackages;
           pkgs.runCommand "huggingface-cli-smoke"
             {
               nativeBuildInputs = [

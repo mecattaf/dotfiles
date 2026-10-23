@@ -82,7 +82,7 @@ export interface CallRoute {
   readonly seat: string | undefined;
   readonly harness: string;
   readonly runtime: string;
-  /** pi only: the provider the seat's reading must carry (qwen, openrouter, halogen); the gate checks it. */
+  /** pi only: the provider the seat's reading must carry (qwen, openrouter, gufo); the gate checks it. */
   readonly seatProvider?: string;
 }
 
@@ -126,7 +126,7 @@ export interface ConwipOptions {
   /**
    * Machine-wide holds for slot seats (successor review r4): a call to a seat
    * whose reading is a slot row takes a kernel-held slot file before it
-   * dispatches, so two processes never hold Halogen's one slot together.
+   * dispatches, so two processes never hold Gufo's one slot together.
    * conwip-run always passes one; absent (unit tests), only this process's
    * in-flight calls are counted.
    */

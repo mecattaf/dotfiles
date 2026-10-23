@@ -1,5 +1,5 @@
 // Pure mapping AgentJob -> ax Task JSON (FIELD-MAP-2026-09-23.md 5a keys). Ported from the option-A prototype
-// (arc/proto/jobs.ts) with ARC-DECISION X1 applied: atespace `fleet`, image `ax-agent`, Gateway `halogen`, the names
+// (arc/proto/jobs.ts) with ARC-DECISION X1 applied: atespace `fleet`, image `ax-agent`, Gateway `gufo`, the names
 // ax-fleet DESIGN.md 10.2 uses. No I/O: the link and any converter call the same function.
 import { createHash } from "node:crypto"
 import type { AgentJob, AxTask, Grant } from "./contract.ts"
@@ -13,8 +13,8 @@ export const JOURNAL_KEY = /^[0-9a-f]{64}:\d+$/
 export interface TaskShape {
   readonly atespace: string // `fleet`
   readonly image: string // `localhost:5000/ax-agent@sha256:...` (ax-fleet-image-ref)
-  readonly gateway: string // `halogen`
-  readonly command: (job: AgentJob) => ReadonlyArray<string> | undefined // e.g. ["ax-agent", "pi"] for seat:halogen
+  readonly gateway: string // `gufo`
+  readonly command: (job: AgentJob) => ReadonlyArray<string> | undefined // e.g. ["ax-agent", "pi"] for seat:gufo
   readonly completeUrl?: string // set only in guest-completion mode (L7, pre-P1)
   readonly holder?: string // round 1: AX_CONWIP_HOLDER, the ownership mark a journal-less link checks before a fence
 }

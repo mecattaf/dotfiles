@@ -1,6 +1,6 @@
 ---
 name: drain
-description: Manually distill the exact current root Claude Code or Codex session into the local Markdown journal through the request-scoped GPU utility model (the utility-model wrapper on the strix, which forwards one request to the Halogen server on the worker). Use only when the user explicitly invokes /drain or $drain, or plainly asks to drain the current session.
+description: Manually distill the exact current root Claude Code or Codex session into the local Markdown journal through the request-scoped GPU utility model (the utility-model wrapper on the strix, which forwards one request to the local model server on strix-coordinator). Use only when the user explicitly invokes /drain or $drain, or plainly asks to drain the current session.
 ---
 
 # Drain the current session
@@ -10,17 +10,16 @@ description: Manually distill the exact current root Claude Code or Codex sessio
 Drain's distillation runs on the request-scoped GPU utility model. The stable
 model id `utility` is served by the fleet's one inference server: the
 `utility-model` wrapper forwards one chat-completions request over the wired
-LAN to the **Halogen Flash server on the worker** (`http://strix:8731`,
-model id `halogen-qwen3.8-flash-next`), and returns the answer under the
-stable id.
+LAN to the **local model server on strix-coordinator** (`http://strix-coordinator:8731`,
+model id `qwen3.8-flash-next`), and returns the answer under the stable id.
 
 Two practical consequences:
 
-- The wrapper is installed on the **strix only**. Off that box the
+- The wrapper is provided by the fleet profile. If it is absent, the
   command exits 1 with `ai-memory: local utility-model is not installed here;
-  the utility-model wrapper (which forwards to the Halogen server on the
-  worker) is installed on the strix only`. Report that and stop — do not
-  go looking for another engine.
+  the utility-model wrapper (which forwards to the local model server) is
+  provided by the fleet profile`. Report that and stop; do not look for
+  another engine.
 - The server stays resident, so a request normally answers within its own
   generation time. A request that lands while the worker's unit is still
   starting (a cold start reads ~68 GB off NVMe and is budgeted up to 45

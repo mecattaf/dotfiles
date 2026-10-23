@@ -19,19 +19,18 @@
 # the boot menu as the rollback.
 #
 # WHAT IT IS, in one line: a thin client. It shows Tom Sway, kitty, Chrome and
-# the dock's peripherals, and everything that thinks runs on the strix
-# (herdr server, the Claude/Codex/pi seats, tally, the artifact and microVM
-# planes) or the worker (Halogen). Mod+Return on this box is a herdr window
-# INTO the strix (~/.local/bin/herdr-projector, `herdr --remote
-# strix`, driven by herdr-chord from sway/binds.conf, #385); `desk` is the fish
+# the dock's peripherals. Herdr and the Claude/Codex/dsh sessions run on NAS;
+# builds and model inference run on the Strix compute pair. Mod+Return is a
+# herdr window INTO NAS (~/.local/bin/herdr-projector, `herdr --remote
+# nas`, driven by herdr-chord from sway/binds.conf, #385); `desk` is the fish
 # spelling of the same thing.
 #
 # WHAT IT IS NOT:
-#   * not an agent host — no herdr server (home/herdr.nix is strix-
-#     gated), no Claude/Codex credential (secrets.nix: strixOnly, the
+#   * not an agent host — no herdr server (home/herdr.nix is brain-
+#     gated), no Claude/Codex credential (secrets.nix: brainOnly, the
 #     jul12 "own session" ruling stands), no tally clocks, no voxtype, no
 #     transcript mirror, no paper timers. Every one of those
-#     is `hostName == "strix"`-gated in home/; the flake's home-profiles
+#     is brain-role-gated in home/; the flake's home-profiles
 #     check asserts their absence here.
 #   * not a runner of anything, with ONE exception — ./huion.nix pulls the
 #     Huion Note X10's pages over Bluetooth on connect and pushes them to
@@ -49,11 +48,9 @@
 #     imported; the two LAN names it dials are pinned below instead, and the
 #     stock 127.0.0.2 self-mapping stays because nothing here binds by
 #     hostname.
-#   * not a roaming node yet — tailscaled is declared (so the daemon exists
-#     and a later `tailscale up --login-server=…` against the NAS headscale
-#     re-uses the state on disk) but there is no auth key, no autoconnect
-#     unit and no `up` in any activation. On the LAN there is nothing but
-#     the LAN. See the tailscale block below.
+#   * official tailscale.com membership: NAS exit node and subnet router,
+#     with direct LAN access retained. Enrollment and non-expiring node keys
+#     use the admin-console procedure in docs/nas-agent-transport.md.
 #   * not a builder: updates are evaluated and built on the strix and pushed
 #     (Tom, 2026-10-11: "can't that be done on the strix side of things?
 #     since it's a much more powerful device"). From the strix:
@@ -91,6 +88,7 @@
   ];
 
   networking.hostName = "client";
+  myFleet.roles = [ "seat" ];
 
   # No dotfiles checkout on the thin client (Tom, 2026-10-11, about ~/dotfiles
   # and ~/mecattaf here: "i dnt need here"). Every raw dotfile (sway, kitty,
@@ -107,18 +105,7 @@
   # 2026-08-21 return.
   mySecrets.enable = true;
 
-  # ── names ──────────────────────────────────────────────────────────────────
-  # `nas` is fleet-wide (modules/common.nix). The two twins are pinned here
-  # by hand because modules/fleet-hosts.nix is twins-only and also deletes
-  # the 127.0.0.2 self-mapping, which this box has no reason to lose. The
-  # NAS resolver does not serve DHCP client names (checked 2026-09-11:
-  # `resolvectl query zenbook-duo` → not found while the box held a lease),
-  # so a laptop that dials `strix` needs its own answer. One answer per
-  # name per host, registry aliases both, so ssh stays TOFU-free.
-  networking.hosts."10.42.0.2" = [
-    "strix"
-    "coordinator"
-  ];
+  # Fleet names come from modules/fleet-hosts.nix, including the LAN peers.
 
   # ── the LAN identity: thomas-6ghz, DHCP ────────────────────────────────────
   # Same profile the box already associates with (the fleet delivered one by
@@ -177,9 +164,7 @@
 
   # Ordinary Tailscale for roaming access through the NAS subnet router.
   # Enrollment is interactive; no auth key is embedded or re-applied at boot.
-  services.tailscale.enable = true;
-  services.tailscale.extraUpFlags = [ "--accept-routes" ];
-  services.tailscale.extraSetFlags = [ "--accept-routes" ];
+  # modules/fleet-transport.nix owns the shared preferences.
 
   # ── failure surfacing: tom is uid 1001 here ────────────────────────────────
   # modules/failure-surfacing.nix watches the user manager of uid 1000 by
@@ -250,14 +235,14 @@
     })
   ];
 
-  # Linux 7.2 like the rest of the fleet (Tom, 2026-09-14), sourced exactly as
+  # Linux 7.3 like the rest of the fleet (Tom, 2026-10-23), sourced exactly as
   # modules/strix.nix and hosts/nas/kernel.nix do: the versioned attr moves only
-  # within 7.2.x and breaks eval loudly when the series ages out.
+  # within 7.3.x and breaks eval loudly when the series ages out.
   boot.kernelPackages =
     (import inputs.nixpkgs-fresh {
       inherit (pkgs.stdenv.hostPlatform) system;
       config.allowUnfree = true;
-    }).linuxPackages_7_2;
+    }).linuxPackages_7_3;
 
   # A short boot menu: five generations is rollback enough on a thin client
   # (the 20-entry fleet default left 19 stale entries here, 2026-09-14).

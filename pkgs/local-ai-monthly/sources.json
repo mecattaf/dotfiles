@@ -2,11 +2,11 @@
   "schema_version": 1,
   "accepted_through": "2026-07-21",
   "inference": {
-    "provider": "halogen",
-    "url": "http://strix:8731",
-    "model": "halogen-qwen3.8-flash-next",
-    "execution_host": "strix",
-    "compute_host": "strix",
+    "provider": "gufo",
+    "url": null,
+    "model": "qwen3.8-flash-next",
+    "execution_host": "nas",
+    "compute_host": "strix-coordinator",
     "tally_pool": "strix-gpu"
   },
   "limits": {
@@ -31,24 +31,51 @@
   "hardware_context": {
     "nodes": [
       {
-        "name": "strix",
+        "name": "strix-coordinator",
         "hardware": "AMD Ryzen AI MAX+ 395, Radeon 8060S gfx1151, 128 GiB unified RAM",
         "policy": "NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)",
         "roles": [
-          "Herdr and agent sessions",
-          "Pi harness",
+          "compute",
           "VibeVoice-ASR-Streaming-7B diarization",
           "Qwen TTS",
-          "resident Halogen Flash / on-demand Qwen3.8-27B (halogen-switch)",
-          "Git and PR mechanics"
+          "resident Gufo Flash-Next / operator-switched alternates",
+          "temporary browser and media relay services"
+        ]
+      },
+      {
+        "name": "strix-worker",
+        "hardware": "AMD Strix Halo, 128 GiB unified RAM (verify at install)",
+        "policy": "wired LAN only; no operator credentials or tailnet",
+        "roles": [
+          "compute",
+          "Gufo",
+          "Qwen TTS"
+        ]
+      },
+      {
+        "name": "nas",
+        "hardware": "NAS",
+        "policy": "canonical home and agent host after supervised handover",
+        "roles": [
+          "router",
+          "Library",
+          "agent sessions"
+        ]
+      },
+      {
+        "name": "client",
+        "hardware": "ASUS Zenbook Duo",
+        "policy": "physical seat",
+        "roles": [
+          "seat"
         ]
       }
     ],
-    "runtime_policy": "Every automated local LLM call goes through the Halogen Flash server on Strix (http://strix:8731); the strix declares the same Halogen engines for operator-started use only; stable diffusion is outside this route.",
+    "runtime_policy": "Every automated local LLM call goes through the local model server on Strix (the endpoint in lib/local-model.nix), serving qwen3.8-flash-next; the alternates (qwen3.8-27b, deepseek-v4-flash) are operator-switched only.",
     "change_policy": "The monthly workflow proposes catalog and source-pin changes only. It never downloads, installs, removes, or activates models."
   },
   "model_selection_policy": {
-    "summary": "The fleet's language models are the two Halogen engines (halogen-qwen3.8-flash-next and halogen-qwen3.8-27b), declared on Strix, with Flash resident on Strix. No small GGUF LLM is kept (Tom, 2026-09-16).",
+    "summary": "The fleet's models are the Gufo collection (github.com/gufo-org/gufo; Tom, 2026-10-13: \"use that as the full collection of modles that we use\"), served on Strix with qwen3.8-flash-next resident.",
     "kept_small_artifacts": []
   },
   "llm_agents_allowlist": [
@@ -367,40 +394,6 @@
         "Dockerfile",
         "**/*.py",
         "**/*.sh"
-      ]
-    },
-    {
-      "slug": "peonist-ai/halogen-flash-server",
-      "url": "https://github.com/peonist-ai/halogen-flash-server.git",
-      "category": "canonical-monthly",
-      "cadence": "monthly",
-      "enabled": true,
-      "baseline": "67da233276f437b1a69ac38a2b0d8ab3d47ec7ed",
-      "baseline_authority": "2026-09 halogen adoption",
-      "processor": "generic",
-      "partition": "top-level",
-      "watched_paths": [
-        "README.md",
-        "CHANGELOG.md",
-        "docs/**",
-        "deploy/entrypoint.sh",
-        "docker-compose.yml"
-      ]
-    },
-    {
-      "slug": "kyuz0/ai-toolbox-cockpit",
-      "url": "https://github.com/kyuz0/ai-toolbox-cockpit.git",
-      "category": "canonical-monthly",
-      "cadence": "monthly",
-      "enabled": true,
-      "baseline": "e18fd177b036bc52f1a03e52c0fde85c827452fe",
-      "baseline_authority": "2026-09 halogen adoption",
-      "processor": "generic",
-      "partition": "top-level",
-      "watched_paths": [
-        "README.md",
-        "ai_toolbox_cockpit/assets/*.json",
-        "ai_toolbox_cockpit/backends/halogen/**"
       ]
     },
     {

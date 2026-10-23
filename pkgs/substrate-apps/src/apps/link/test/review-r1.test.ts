@@ -31,8 +31,8 @@ const job = (n: string, spec: Partial<AgentJob["spec"]> = {}): AgentJob => ({
     annotations: { [A + "run-id-raw"]: "wf_test", [A + "label"]: `probe:${n}`, [A + "item-key"]: `wf_test#${n}`, [A + "journal-key"]: JK, [A + "phase-title"]: "Probe" }
   },
   spec: {
-    "runs-on": ["seat:halogen", "runtime:gvisor"],
-    with: { prompt: `say ${n}`, prompt_ref: { sha256: "ab".repeat(32), bytes: 5, uri: `journal://wf_test/${n}/prompt.md` }, model: "halogen-qwen3.8-flash-next" },
+    "runs-on": ["seat:gufo", "runtime:gvisor"],
+    with: { prompt: `say ${n}`, prompt_ref: { sha256: "ab".repeat(32), bytes: 5, uri: `journal://wf_test/${n}/prompt.md` }, model: "qwen3.8-flash-next" },
     ...spec
   }
 })
@@ -48,8 +48,8 @@ function start(w: World, dir: string, over: Partial<LinkConfig> = {}, x: Extra =
   const logs: Array<Record<string, unknown>> = []
   const stop = Effect.runSync(Deferred.make<void>())
   const cfg: LinkConfig = {
-    holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:halogen", "runtime:gvisor"],
-    shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] },
+    holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:gufo", "runtime:gvisor"],
+    shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] },
     completion: "auto", secondMs: SEC, resyncMs: 30, pendingTimeoutMs: 1500, deleteAfterMs: 0, deadlineBackstopMs: 300,
     createAttempts: 3, outboxBackoffMs: [20, 100], initialPollSeconds: 1, initialHeartbeatSeconds: 2, fenceTimeoutMs: 300, resultReadTries: 3, ...over
   }
@@ -99,8 +99,8 @@ const stubFloor = (grants: Array<any>) => {
   return { api, completes }
 }
 const cfgOf = (over: Partial<LinkConfig> = {}): LinkConfig => ({
-  holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:halogen", "runtime:gvisor"],
-  shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] },
+  holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:gufo", "runtime:gvisor"],
+  shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] },
   completion: "auto", secondMs: SEC, resyncMs: 30, pendingTimeoutMs: 60_000, deleteAfterMs: 60_000, deadlineBackstopMs: 300,
   createAttempts: 3, outboxBackoffMs: [20, 100], initialPollSeconds: 1, initialHeartbeatSeconds: 2, fenceTimeoutMs: 300, resultReadTries: 3, ...over
 })
@@ -301,7 +301,7 @@ describe("review round 1: fixed", () => {
 
   it("R1-5 an earlier attempt of the same job that carries another holder's mark is not deleted either", async () => {
     const ax = new FakeAx()
-    const built = axTaskFromGrant(grantOf("1"), { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"], holder: "other-link" })
+    const built = axTaskFromGrant(grantOf("1"), { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"], holder: "other-link" })
     if (built._tag !== "ok") throw new Error("build")
     ax.put(built.task, "Running")
     const f = stubFloor([grantOf("1", { attempt: 2, leaseId: "wf-test-1-a2", supersedes: ["wf-test-1-a1"] })])
@@ -315,7 +315,7 @@ describe("review round 1: fixed", () => {
     const ax = new FakeAx()
     let failed = false
     const orig = ax.createTask
-    ax.createTask = (task) => { if (!failed) { failed = true; ax.gateways.delete("halogen"); return Effect.fail(new AxError(UNAVAILABLE, "transient")) } return orig(task) }
+    ax.createTask = (task) => { if (!failed) { failed = true; ax.gateways.delete("gufo"); return Effect.fail(new AxError(UNAVAILABLE, "transient")) } return orig(task) }
     const f = stubFloor([grantOf("3")])
     const logs = await runStub(cfgOf(), ax, f.api, 1000)
     expect(logs.some((x) => x.ev === "gateway-missing")).toBe(true)
@@ -341,7 +341,7 @@ describe("review round 1: fixed", () => {
   it("R1-7 guest mode with no leaseToken in the grant: refused before UpdateTask, logged once", async () => {
     const ax = new FakeAx(); ax.p1 = false
     const f = stubFloor([grantOf("2")])
-    const logs = await runStub(cfgOf({ completion: "guest", shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"], completeUrl: "http://link.fleet.internal/guest" } }), ax, f.api, 600)
+    const logs = await runStub(cfgOf({ completion: "guest", shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"], completeUrl: "http://link.fleet.internal/guest" } }), ax, f.api, 600)
     expect(ax.tasks.has("wf-test-2-a1")).toBe(false)
     expect(f.completes.map((c) => c.output?.reason)).toEqual(["pre-start/lease-token-missing"])
     expect(logs.filter((x) => x.ev === "guest-token-missing").length).toBe(1)
@@ -381,11 +381,11 @@ describe("review round 1: fixed", () => {
     expect(bad({ LINK_CREATE_ATTEMPTS: "NaN" })).toBe("LINK_CREATE_ATTEMPTS")
     expect(bad({ LINK_PENDING_TIMEOUT_SECONDS: "1.5" })).toBe("LINK_PENDING_TIMEOUT_SECONDS")
     expect(bad({ LINK_COMPLETION: "gues" })).toBe("LINK_COMPLETION")
-    expect(bad({ LINK_SEAT_COMMANDS: "{halogen:[ax-agent]}" })).toBe("LINK_SEAT_COMMANDS")
-    expect(bad({ LINK_SEAT_COMMANDS: '{"halogen":[]}' })).toBe("LINK_SEAT_COMMANDS")
+    expect(bad({ LINK_SEAT_COMMANDS: "{gufo:[ax-agent]}" })).toBe("LINK_SEAT_COMMANDS")
+    expect(bad({ LINK_SEAT_COMMANDS: '{"gufo":[]}' })).toBe("LINK_SEAT_COMMANDS")
     expect(bad({ LINK_OUTBOX_BACKOFF_MIN_SECONDS: "900", LINK_OUTBOX_BACKOFF_MAX_SECONDS: "60" })).toBe("LINK_OUTBOX_BACKOFF_MAX_SECONDS")
     const ok = readLinkEnv({})
-    expect([ok.resyncSeconds, ok.maxInFlight, ok.createAttempts, ok.completion, ok.seatCommands]).toEqual([15, 2, 7, "auto", { halogen: ["ax-agent", "pi"] }])
+    expect([ok.resyncSeconds, ok.maxInFlight, ok.createAttempts, ok.completion, ok.seatCommands]).toEqual([15, 2, 7, "auto", { gufo: ["ax-agent", "pi"] }])
     try { readLinkEnv({ LINK_RESYNC_SECONDS: "secret-looking-value" }) } catch (e) { expect(String((e as Error).message)).not.toContain("secret-looking-value") }
   })
 })

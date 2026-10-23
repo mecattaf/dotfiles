@@ -24,15 +24,15 @@ export const SOURCE_SCHEMA = "seat-capacity/1"
 export const TARGET_SCHEMA = "seat-capacity/2"
 
 /** The seats the pusher publishes unless its config says otherwise (the runs-on seat names). */
-export const DEFAULT_SEATS = Object.freeze(["cc", "cc2", "codex", "pi-qwencloud", "halogen"])
-/** Oracle seat ids onto runs-on seat names: the oracle calls the worker's Halogen server `gpu-worker`. */
-export const DEFAULT_SEAT_IDS = Object.freeze({ "gpu-worker": "halogen" })
+export const DEFAULT_SEATS = Object.freeze(["cc", "cc2", "codex", "pi-qwencloud", "gufo"])
+/** Oracle seat ids onto runs-on seat names: the oracle calls the worker's Gufo server `gpu-worker`. */
+export const DEFAULT_SEAT_IDS = Object.freeze({ "gpu-worker": "gufo" })
 /** Providers whose percentages are the oracle's estimate, not a provider answer (Qwen Cloud: a credit count from local logs). */
 export const DEFAULT_ESTIMATED_PROVIDERS = Object.freeze(["qwen"])
 /** Seats ruled out of dispatch whatever a config says (a config may add rulings, never lift these). */
 export const RULED_NOT_DISPATCHABLE = Object.freeze({
   cc3: "evicted",
-  "gpu-coordinator": "halogen is declared but not resident on the coordinator"
+  "gpu-coordinator": "gufo is declared but not resident on the coordinator"
 })
 
 export class SeatsFormatError extends Error {}
@@ -142,7 +142,7 @@ const dispatchOf = (id, owner, seat, provider, settings) => {
   if (owner !== "tom") return { dispatchable: false, dispatchable_reason: "third-party" }
   if (seat.state === "unauth") return { dispatchable: false, dispatchable_reason: "auth-failed" }
   if (seat.state === "n/a") return { dispatchable: false, dispatchable_reason: scrub(text(seat.detail) ?? "not applicable") }
-  if (provider === "halogen" && seat.state !== "open") return { dispatchable: false, dispatchable_reason: `down: ${scrub(text(seat.detail) ?? seat.state ?? "unknown")}` }
+  if (provider === "gufo" && seat.state !== "open") return { dispatchable: false, dispatchable_reason: `down: ${scrub(text(seat.detail) ?? seat.state ?? "unknown")}` }
   return { dispatchable: true, dispatchable_reason: null }
 }
 
@@ -193,11 +193,11 @@ export const snapshotFromSeatsV1 = (doc, config, now) => {
           : null
     const slotCount = settings.slots[id]
     const credits = grade === "UNKNOWN" ? undefined : creditsOf(raw, windows)
-    // Halogen is a slot row whenever it is up (one slot unless configured). Any other seat is one only when the
+    // Gufo is a slot row whenever it is up (one slot unless configured). Any other seat is one only when the
     // config gives it a slot count: a credit seat's concurrency cap (the Qwen plan's four agents, OpenRouter's
     // configured parallelism), counted against the floor's and the puller's own in-flight work.
     const slots =
-      provider === "halogen"
+      provider === "gufo"
         ? raw.state === "open" ? { capacity: Number.isInteger(slotCount) && slotCount >= 0 ? slotCount : 1, holders: 0 } : null
         : Number.isInteger(slotCount) && slotCount >= 0 ? { capacity: slotCount, holders: 0 } : null
     const plan = instant(settings.plans[id])

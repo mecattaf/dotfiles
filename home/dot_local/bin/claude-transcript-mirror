@@ -14,6 +14,16 @@
 # Safe to re-run at any time.
 set -euo pipefail
 
+# The 2026-10-23 consolidation owns immutable versions for every harness.
+# Keep this hand-run entry point from recreating a second mutable archive.
+# The existing service's narrow PATH predates the Python collector; the NixOS
+# system profile supplies its runtime without activating or restarting a unit.
+if [ -f "$HOME/archives/chat-archive.py" ]; then
+  export PATH="/run/current-system/sw/bin:$PATH"
+  exec flock -x "$HOME/archives/.ai-chat.lock" \
+    python3 "$HOME/archives/chat-archive.py" harvest
+fi
+
 M="$HOME/archives/claude-code-mirror"
 
 sync_root() { # $1 = source config dir, $2 = mirror subdir

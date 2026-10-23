@@ -96,8 +96,8 @@ export interface GateContext {
   readonly harness?: string;
   /**
    * pi only: the provider the seat's reading must carry, from the route (the
-   * runtime table's pi provider: halogen, qwen, openrouter). Without it a pi
-   * call spends a halogen seat, as before.
+   * runtime table's pi provider: gufo, qwen, openrouter). Without it a pi
+   * call spends a gufo seat, as before.
    */
   readonly seatProvider?: string;
   readonly inflight?: number;
@@ -107,18 +107,18 @@ export interface GateContext {
 
 /**
  * The seat provider each harness spends (successor review r3: a claude or
- * codex call routed to a halogen seat was admitted on "slot free" while the
+ * codex call routed to a gufo seat was admitted on "slot free" while the
  * mounted cc credential paid). `ax` runs claude. codex spends a `codex`
  * seat, whose owner field still decides whether it is dispatchable.
  */
-export const HARNESS_PROVIDER: Readonly<Record<string, string | null>> = { claude: "claude", ax: "claude", pi: "halogen", codex: "codex" };
+export const HARNESS_PROVIDER: Readonly<Record<string, string | null>> = { claude: "claude", ax: "claude", pi: "gufo", codex: "codex" };
 
 /**
  * The model a capacity source is asked about. Only a model that names one known
  * family can match a model-scoped limit, and `decideCapacity` reads the model
  * only on a Claude seat, where an id naming no family is refused locally
  * (`model-unrecognized`). Any other id (`codex`, the codex harness running its
- * own configured default; a Halogen id) is asked about seat-wide, so the
+ * own configured default; a Gufo id) is asked about seat-wide, so the
  * source's own verdict cannot refuse it as "no known model family" on a seat
  * that publishes no model-scoped limit (prove lane 2026-09-23: the live floor
  * refused every codex node with window-unknown).
@@ -170,7 +170,7 @@ export function decideCapacity(
     };
   }
   // Calls this CONWIP already sent to a slot seat hold slots the reading may
-  // not show yet (successor review r3: three pi calls held Halogen's one slot).
+  // not show yet (successor review r3: three pi calls held Gufo's one slot).
   const inflight = ctx.inflight ?? 0;
   if (inflight > 0 && seat.slots !== null && seat.slots !== undefined) {
     seat = { ...seat, slots: { ...seat.slots, holders: seat.slots.holders + inflight } };
@@ -253,7 +253,7 @@ export class CapacityGate {
    * `seatId` overrides the gate's own seat: the CONWIP gates each call on the
    * seat of the harness that will run it (successor review 2026-09-23).
    */
-  /** The seat's slot capacity when its reading is a slot row (Halogen), else undefined. */
+  /** The seat's slot capacity when its reading is a slot row (Gufo), else undefined. */
   /**
    * Three answers, never two (successor review r5): a slot seat and its count,
    * a seat that is not a slot seat, or a read that failed. slotCapacity folded

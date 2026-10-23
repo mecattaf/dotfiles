@@ -6,7 +6,7 @@
 }:
 # harness-records — what the agent harnesses leave behind, kept and counted.
 #
-# Two strix-only user services, hand-run since 2026-09-30 (no scheduled
+# Two brain-role user services, hand-run since 2026-09-30 (no scheduled
 # agent work in dotfiles; the factory owns any schedule). Neither reads or
 # writes Tally state (Tally itself was removed the same day).
 #
@@ -15,11 +15,10 @@
 #   nightly-record            counts what each seat spent, per lane, per day
 #                             (dotfiles#298)
 #
-# Coordinator-gated: these read seat state that exists on this box, and an
+# Brain-gated: these read seat state that exists on this box, and an
 # ungated definition would ship the worker a unit with nothing to do.
 let
-  hostName = osConfig.networking.hostName;
-  isCoordinator = hostName == "strix";
+  isBrain = osConfig.myFleet.has "brain";
 
   # A systemd user unit does not inherit the interactive session PATH, and both
   # scripts are RAW dotfiles reached through the whole-dir ~/.local/bin
@@ -50,7 +49,7 @@ in
   # home-manager will not write over a plain file of the same name.
   #
   # The service is unchanged from the hand-written unit: oneshot, Nice=10.
-  systemd.user.services.claude-transcript-mirror = lib.mkIf isCoordinator {
+  systemd.user.services.claude-transcript-mirror = lib.mkIf isBrain {
     Unit.Description = "Additive mirror of Claude Code transcripts";
     Service = {
       Type = "oneshot";
@@ -77,7 +76,7 @@ in
   #
   # The program is home/dot_local/bin/nightly-record: python3, stdlib only, so
   # the unit needs nothing but a python3 on PATH.
-  systemd.user.services.nightly-record = lib.mkIf isCoordinator {
+  systemd.user.services.nightly-record = lib.mkIf isBrain {
     Unit.Description = "Record yesterday's per-seat token spend from the harness transcripts";
     Service = {
       Type = "oneshot";
@@ -97,15 +96,14 @@ in
   # metersDir (modules/substrate.nix). The seat feeder that used to write it
   # (home/seat-feeder.nix) went with the Tally sunset on 2026-09-30; the
   # directory stays declared so neither reader meets a missing path.
-  systemd.user.tmpfiles.rules = lib.mkIf isCoordinator [
+  systemd.user.tmpfiles.rules = lib.mkIf isBrain [
     "d %h/.local/state/tally-rewrite/meters 0700 - - -"
   ];
 
   # Tools home/tally.nix used to install on the strix, kept: call
   # diarization runs by hand now (its Tally events drop has no drain), and the
   # monthly local-AI review is hand-run too.
-  home.packages = lib.optionals isCoordinator [
-    pkgs.call-diarize
-    pkgs.local-ai-monthly
-  ];
+  home.packages =
+    lib.optionals isBrain [ pkgs.local-ai-monthly ]
+    ++ lib.optionals (osConfig.myFleet.has "compute") [ pkgs.call-diarize ];
 }

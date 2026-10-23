@@ -11,7 +11,7 @@
 # files standing in for the age files), which renders both user units, the pusher.json, the runtimes.toml and the
 # puller's config.toml without a token on disk. `nix build .#checks.<system>.substrate-modules` then parses the
 # three files against the 2026-09-24 proven deployment plus the 2026-09-25 ssh runtime: runtimes
-# opus/halogen/codex/codex-rw and ssh:strix (type ssh, host worker, harness pi, seat halogen: lane B's pi runs on
+# opus/gufo/codex/codex-rw and ssh:strix (type ssh, host worker, harness pi, seat gufo: lane B's pi runs on
 # the worker through the ssh runner, merged in from puller.sshRuntimes; still no herdr or gvisor), [credentials.seats]
 # with cc2 = ~/.claude-work, pusher.json with peerCacheDir and no tokenFile, the [puller] table with the two
 # credential placeholders, and no rendered file carrying a token-shaped key or a credential path. It also pins the
@@ -22,7 +22,47 @@
 # the store copy only when absent, the seed parses as TOML with one default per harness (per provider for pi) and no
 # openrouter-free entry (the lane is parked), and the puller PATH carries nodejs 24 and pnpm 11.17.0 for the gates.
 let
-  coord = self.nixosConfigurations.strix;
+  # Evaluation-only agent fixture; production compute imports no Substrate.
+  coord = self.nixosConfigurations.strix-coordinator.extendModules {
+    modules = [
+      ../../modules/substrate.nix
+      ../../modules/academic-drain.nix
+      {
+        myFleet.roles = lib.mkForce [
+          "brain"
+          "compute"
+        ];
+        mySecrets.enable = lib.mkForce true;
+        services.substrate = {
+          floorUrl = "https://substrate.mecattaf.dev";
+          pusher = {
+            enable = true;
+            owners.codex = "tom";
+          };
+          puller = {
+            enable = true;
+            maxRuns = 2;
+            cap = 12;
+            callTimeoutMs = {
+              opus = 3600000;
+              gufo = 1800000;
+              codex = 3600000;
+              codex-rw = 7200000;
+              qwen = 3600000;
+              openrouter = 3600000;
+              openrouter-free = 3600000;
+              "ssh:strix" = 1800000;
+            };
+            sshRuntimes."ssh:strix" = {
+              host = "strix-coordinator";
+              harness = "pi";
+              seat = "gufo";
+            };
+          };
+        };
+      }
+    ];
+  };
   declared = coord.config;
   armed =
     (coord.extendModules {
@@ -107,7 +147,7 @@ assert
   builtins.attrNames declared.services.substrate.puller.runtimes.runtime == [
     "codex"
     "codex-rw"
-    "halogen"
+    "gufo"
     "openrouter"
     "openrouter-free"
     "opus"
@@ -144,30 +184,30 @@ pkgs.runCommand "substrate-modules"
     pusher = json.load(open(sys.argv[1]))
     assert pusher["floorUrl"].startswith("https://"), pusher
     assert "tokenFile" not in pusher and not any("token" in k.lower() for k in pusher), list(pusher)
-    assert pusher["seats"] == ["cc", "cc2", "codex", "pi-qwencloud", "halogen", "openrouter", "openrouter-free"], pusher["seats"]
-    assert pusher["seatIds"] == {"gpu-strix": "halogen"}
+    assert pusher["seats"] == ["cc", "cc2", "codex", "pi-qwencloud", "gufo", "openrouter", "openrouter-free"], pusher["seats"]
+    assert pusher["seatIds"] == {"gpu-strix": "gufo"}
     assert pusher["seatsBin"] == "/home/tom/.local/bin/seats"
     rt = tomllib.load(open(sys.argv[2], "rb"))
     known = {"host", "runtime-test", "herdr", "gvisor", "microvm", "ssh", "workerd", "ax"}
     for name, table in rt["runtime"].items():
         assert table["type"] in known, (name, table)
     assert rt["default"] == "opus", rt["default"]
-    assert rt["allow"] == ["opus", "halogen", "codex", "codex-rw", "qwen", "openrouter", "openrouter-free", "ssh:strix"], rt["allow"]
-    assert set(rt["runtime"]) == {"opus", "halogen", "codex", "codex-rw", "qwen", "openrouter", "openrouter-free", "ssh:strix"}, list(rt["runtime"])
+    assert rt["allow"] == ["opus", "gufo", "codex", "codex-rw", "qwen", "openrouter", "openrouter-free", "ssh:strix"], rt["allow"]
+    assert set(rt["runtime"]) == {"opus", "gufo", "codex", "codex-rw", "qwen", "openrouter", "openrouter-free", "ssh:strix"}, list(rt["runtime"])
     assert not {"herdr", "gvisor"} & set(rt["runtime"]), list(rt["runtime"])
-    for name in ("opus", "halogen", "codex", "codex-rw", "qwen", "openrouter", "openrouter-free", "ssh:strix"):
+    for name in ("opus", "gufo", "codex", "codex-rw", "qwen", "openrouter", "openrouter-free", "ssh:strix"):
         assert isinstance(rt["runtime"][name].get("timeoutMs"), int) and rt["runtime"][name]["timeoutMs"] >= 900000, (name, rt["runtime"][name])
     strip = lambda t: {k: v for k, v in t.items() if k != "timeoutMs"}
     assert strip(rt["runtime"]["opus"]) == {"type": "host", "harness": "claude", "seat": "cc2"}
-    assert strip(rt["runtime"]["halogen"]) == {"type": "host", "harness": "pi", "seat": "halogen"}
+    assert strip(rt["runtime"]["gufo"]) == {"type": "host", "harness": "pi", "seat": "gufo"}
     assert strip(rt["runtime"]["codex"]) == {"type": "host", "harness": "codex", "seat": "codex", "codexSandbox": "read-only"}
     assert strip(rt["runtime"]["codex-rw"]) == {"type": "host", "harness": "codex", "seat": "codex", "codexSandbox": "workspace-write"}
     # SshRuntime (packages/runners/src/config.ts:116-121): type, host, and the common harness, seat, timeoutMs.
-    assert rt["runtime"]["ssh:strix"] == {"type": "ssh", "host": "strix", "harness": "pi", "seat": "halogen", "timeoutMs": 1800000}, rt["runtime"]["ssh:strix"]
+    assert rt["runtime"]["ssh:strix"] == {"type": "ssh", "host": "strix-coordinator", "harness": "pi", "seat": "gufo", "timeoutMs": 1800000}, rt["runtime"]["ssh:strix"]
     # The loader's guardrail (packages/runners/src/config.ts): codexSandbox only on the codex harness.
     for name, table in rt["runtime"].items():
         assert "codexSandbox" not in table or table.get("harness") == "codex", name
-    assert rt["seats"] == {"claude": "cc2", "pi": "halogen", "codex": "codex"}
+    assert rt["seats"] == {"claude": "cc2", "pi": "gufo", "codex": "codex"}
     cred = rt["credentials"]
     assert cred["claude"] == "/home/tom/.claude-work" and cred["mode"] == "rw" and cred["scope"] == "credential", cred
     assert cred["seats"] == {"cc": "/home/tom/.claude", "cc2": "/home/tom/.claude-work"}, cred
@@ -191,7 +231,7 @@ pkgs.runCommand "substrate-modules"
     seed = tomllib.load(open(sys.argv[6], "rb"))
     ids = [m["id"] for m in seed["models"]]
     assert len(ids) == len(set(ids)), ids
-    assert "claude-opus-5-5" in ids and "halogen-qwen3.8-flash-next" in ids and "qwen3.8-max" in ids, ids
+    assert "claude-opus-5-5" in ids and "qwen3.8-flash-next" in ids and "qwen3.8-max" in ids, ids
     assert not any(m.get("provider") == "openrouter-free" for m in seed["models"]), "openrouter-free is parked (no entry)"
     assert not any("space-bunny" in m["id"] for m in seed["models"]), "the withdrawn stealth model is gone"
     for m in seed["models"]:
@@ -200,10 +240,10 @@ pkgs.runCommand "substrate-modules"
     lanes = {}
     for m in seed["models"]:
         if m.get("default"):
-            lane = (m["harness"], m.get("provider", "halogen") if m["harness"] == "pi" else None)
+            lane = (m["harness"], m.get("provider", "gufo") if m["harness"] == "pi" else None)
             assert lane not in lanes, ("two defaults on one lane", lane, lanes[lane], m["id"])
             lanes[lane] = m["id"]
-    assert lanes[("claude", None)] == "claude-opus-5-5" and lanes[("pi", "halogen")] == "halogen-qwen3.8-flash-next", lanes
+    assert lanes[("claude", None)] == "claude-opus-5-5" and lanes[("pi", "gufo")] == "qwen3.8-flash-next", lanes
     assert ("pi", "qwen-token-plan") in lanes and ("pi", "openrouter") in lanes, lanes
     client = tomllib.load(open(sys.argv[4], "rb"))
     assert client["floor_url"].startswith("https://") and client["token_file"] == "@FLOOR_TOKEN_FILE@", client

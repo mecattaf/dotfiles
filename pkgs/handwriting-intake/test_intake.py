@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
-from intake import Intake, MODEL, SETTINGS, SYSTEM, RECIPE_ID, encoded, hash_bytes, hash_file, read_json, write_json, render
+from intake import Intake, Transport, MODEL, SETTINGS, SYSTEM, RECIPE_ID, encoded, hash_bytes, hash_file, read_json, write_json, render
 
 ANSWER={'transcription':'A written line\nQwen sample','uncertainties':[{'text':'Qwen','alternatives':['Qwen'], 'difficulty':'uncertain','reason':'Joined letters'}],'cut_edges':'none'}
 
@@ -133,6 +133,26 @@ class IntakeTests(unittest.TestCase):
         svg,png=render(self.page)
         self.assertIn(b'stroke-width="1.2"',svg);self.assertIn(b'round',svg)
         im=Image.open(io.BytesIO(png));self.assertEqual(im.size,(896,1184));self.assertEqual(im.mode,'RGB')
+
+
+class TransportHealthTests(unittest.TestCase):
+    """The local server's probes (/ready, /v1/models, /metrics) fold into the record intake checks."""
+    def transport(self,processing='0',deferred='0',modalities=('text','image'),model=MODEL):
+        bodies={'/ready':json.dumps({'status':'ready','model':model}).encode(),
+                '/v1/models':json.dumps({'data':[{'id':model,'architecture':{'input_modalities':list(modalities)}}]}).encode(),
+                '/metrics':('# TYPE llamacpp:requests_processing gauge\nllamacpp:requests_processing '+processing+'\nllamacpp:requests_deferred '+deferred+'\n').encode()}
+        transport=Transport('http://local.invalid');transport.get=lambda path:bodies[path];return transport
+    def test_idle_vision_server_reports_the_served_model(self):
+        self.assertEqual(self.transport().health(),{'status':'ready','model':MODEL,'vision':{'enabled':True},'in_flight':False,'requests_processing':0.0,'requests_deferred':0.0})
+    def test_admitted_or_deferred_requests_count_as_in_flight(self):
+        self.assertTrue(self.transport(processing='1').health()['in_flight'])
+        self.assertTrue(self.transport(deferred='2').health()['in_flight'])
+    def test_text_only_server_reports_no_vision(self):
+        self.assertFalse(self.transport(modalities=('text',)).health()['vision']['enabled'])
+    def test_settings_keep_thinking_explicitly_off(self):
+        self.assertEqual(SETTINGS['model'],'qwen3.8-flash-next')
+        self.assertEqual(SETTINGS['chat_template_kwargs'],{'enable_thinking':False})
+        self.assertNotIn('enable_thinking',SETTINGS);self.assertNotIn('reasoning_effort',SETTINGS);self.assertNotIn('drafter',SETTINGS)
 
 
 if __name__=='__main__':unittest.main()

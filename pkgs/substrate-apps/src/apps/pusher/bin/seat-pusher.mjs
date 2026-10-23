@@ -19,7 +19,7 @@
 // Push policy: push when any seat's reading changed (a Claude seat's provider
 // observed_at, grade, windows, dispatchability, slots, plan) and at least every
 // --heartbeat seconds (default 1800), or every --slot-heartbeat seconds
-// (default 600) while a dispatchable Halogen slot row is published, so the
+// (default 600) while a dispatchable Gufo slot row is published, so the
 // floor never grades a live slot row STALE; never twice within --min-interval
 // seconds (default 60). A restamp with the same reading is not a change.
 //

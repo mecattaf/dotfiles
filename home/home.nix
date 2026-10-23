@@ -21,75 +21,69 @@ let
   link = config.lib.rawDotfiles.link;
 
   hostName = osConfig.networking.hostName;
+  isSeat = osConfig.myFleet.has "seat";
+  isBrain = osConfig.myFleet.has "brain";
 
-  # Curated llm-agents.nix install. `pkgs.llm-agents` (from the flake input's
-  # overlay) is the entire ~139-agent catalog, prebuilt against upstream's own
-  # nixpkgs. The maximalist "install every buildable member" sweep (write-up
-  # retired to Git history; see docs/old/README.md) surfaced a lot we neither want nor need on the
-  # desktop, so we've pruned to an explicit ALLOWLIST — only these names are
-  # pulled from the catalog. Adding an agent is now a deliberate edit here, and
-  # agents upstream adds no longer land automatically on `nix flake update`.
-  #
-  # `meta.available` filtering (wrapped in tryEval, since evaluating meta can
-  # itself throw) skips any keeper that's broken / wrong-platform on this host.
-  # claude-code comes FROM this set, so it has no standalone home.packages entry.
-  keepFromLlmAgents = [
-    "claude-code"
-    "ccusage"
-    "ck"
-    "claude-agent-acp"
-    "claude-code-router" # bin: `ccr` — routes Claude Code requests to other model backends/providers
-    "qmd"
-    # NB: `pi` is intentionally absent — home/pi.nix ships a wrapped `pi` (real
-    # binary + declarative extension roster) as the sole `pi` on PATH. Keeping it
-    # here too would double-provide bin/pi and collide in the profile.
-    "codex"
-    "spec-kit" # bin: `specify` — GitHub Spec-Kit, spec-driven development bootstrapper
-    "cc-switch-cli" # bin: `cc-switch` — switches Claude Code/Codex/Gemini CLI provider configs
-  ];
-  llmAgentsSelected = pkgs.buildEnv {
-    name = "llm-agents-selected";
-    # Curated set is small, but a couple of members still share share/ paths;
-    # keep ignoreCollisions so the profile merges deterministically (first wins).
-    ignoreCollisions = true;
-    paths = lib.pipe pkgs.llm-agents [
-      (lib.filterAttrs (n: _: builtins.elem n keepFromLlmAgents))
-      (lib.filterAttrs (
-        _: v: (builtins.tryEval (lib.isDerivation v && (v.meta.available or true))).value
-      ))
-      builtins.attrValues
-    ];
+  # Upstream's minimal output also exposes libexec/git-core from its own Git.
+  # Share only commands so the NAS's stable programs.git owns that tree.
+  gitAiTools = pkgs.buildEnv {
+    name = "git-ai-commands";
+    paths = [ inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.minimal ];
+    pathsToLink = [ "/bin" ];
   };
 
   # Whole-dir RAW config dirs, one per ~/.config/<name>.
   configDirs = [
-    "sway" # shared physical desktop
-    "kitty"
-    "ghostty" # kitty.conf's twin, read by libghostty in cmux Browser's panes
     "fish"
     "starship"
     "yt-dlp"
+  ]
+  ++ lib.optionals isSeat [
+    "sway"
+    "kitty"
+    "ghostty"
     "kanshi"
     "qt6ct"
   ];
+
+  # Non-brain hosts keep raw hot reload per file while omitting the three agent-only
+  # wrappers on seat/compute profiles (#552). An unfiltered whole-dir link
+  # cannot express that boundary.
+  binNames = lib.filter (
+    name:
+    isBrain
+    || !(builtins.elem name [
+      "mail"
+      "crm"
+      "project"
+    ])
+  ) (builtins.attrNames (builtins.readDir ./dot_local/bin));
+  binDir = pkgs.linkFarm "dotfiles-bin" (
+    map (name: {
+      inherit name;
+      path = link "dot_local/bin/${name}";
+    }) binNames
+  );
 
   # Python interpreter backing the helper bin/ scripts (wifi-menu, fzf-nmcli, …).
   pythonForScripts = pkgs.python3.withPackages (
     ps:
     with ps;
     [
-      pycairo
-      pygobject3
       pillow
       psutil
-      pywayland
       requests
       setproctitle
       watchdog
       numpy
       ijson
     ]
-    ++ lib.optionals (hostName == "strix") [
+    ++ lib.optionals isSeat [
+      pycairo
+      pygobject3
+      pywayland
+    ]
+    ++ lib.optionals isBrain [
       # CLI-Anything's generated harnesses and validation workflow assume these
       # are importable from the ordinary `python3`, not only inside cli-hub.
       click
@@ -101,18 +95,24 @@ in
 {
   imports = [
     ./browser-trust.nix
+    ./agent-tools.nix
+    ./agent-helpers.nix
     ./ai-memory.nix
-    ./client-apps.nix
+    ./dsh.nix
     ./harness-records.nix
     ./herdr.nix
     ./nvim.nix
     ./paper.nix
-    ./pi.nix
     ./raw-dotfiles-guard.nix
     ./ssh.nix
+  ]
+  ++ lib.optionals isSeat [
+    ./client-apps.nix
     ./theme.nix
     ./vicinae.nix
-  ];
+  ]
+  # Pi retirement is a sibling task; do not introduce it onto the NAS.
+  ++ lib.optional (hostName != "nas") ./pi.nix;
 
   home.username = "tom";
   home.homeDirectory = "/home/tom";
@@ -132,7 +132,7 @@ in
     lib.genAttrs configDirs (d: {
       source = link "dot_config/${d}";
     })
-    // {
+    // lib.optionalAttrs isSeat {
       # kitty/ is a whole-dir out-of-store symlink, so the store-path fragment can't
       # nest inside it — emit at a neutral path; kitty.conf includes it by absolute
       # (env-expanded) path.
@@ -142,7 +142,7 @@ in
       '';
 
       "sway-local.conf".text =
-        lib.optionalString (hostName == "strix") ''
+        lib.optionalString (osConfig.myFleet.has "compute") ''
           output DP-4 scale 2 position 0 0
           output DP-1 scale 2 position 2560 0
         ''
@@ -178,7 +178,7 @@ in
   # → gsettings, docs/theme-switcher-2026-09-17.md), and a pinned value would
   # snap a light session back to Dark on every switch. dconf keeps whatever
   # `theme` last wrote. Fonts stay.
-  dconf.settings."org/gnome/desktop/interface" = {
+  dconf.settings."org/gnome/desktop/interface" = lib.mkIf isSeat {
     # Interface fonts for Nautilus and every other GTK app that reads
     # font-name. sf-pro ships system-wide via modules/common.nix fonts.packages
     # (the one Apple family kept in the 2026-08-21 sweep — "too good to
@@ -195,13 +195,15 @@ in
   };
 
   # bin/ scripts: whole-dir (the repo owns ~/.local/bin).
-  home.file.".local/bin".source = link "dot_local/bin";
+  home.file.".local/bin".source = if isBrain then link "dot_local/bin" else binDir;
 
   # icons for the PWA launchers (referenced by absolute path above).
-  home.file.".local/share/icons/_repo".source = link "dot_local/share/icons";
+  home.file.".local/share/icons/_repo" = lib.mkIf isSeat { source = link "dot_local/share/icons"; };
 
   # wallpapers — whole-dir at ~/.local/share/wallpapers (wallpaper.jpg + placeholder).
-  home.file.".local/share/wallpapers".source = link "dot_local/share/wallpapers";
+  home.file.".local/share/wallpapers" = lib.mkIf isSeat {
+    source = link "dot_local/share/wallpapers";
+  };
 
   # One stable $HOME path the docs can name for the Anthropic woff2 + CSS, since
   # the real one is the profile path /etc/profiles/per-user/tom/share/webfonts.
@@ -209,54 +211,14 @@ in
   # `<dir prefix="xdg">fonts</dir>` (/etc/fonts/fonts.conf:104), i.e.
   # ~/.local/share/fonts EXACTLY — so a sibling named `webfonts` is not scanned.
   # DO NOT rename this to `fonts`.
-  home.file.".local/share/webfonts".source = "${pkgs.anthropic-webfonts}/share/webfonts";
+  home.file.".local/share/webfonts" = lib.mkIf isSeat {
+    source = "${pkgs.anthropic-webfonts}/share/webfonts";
+  };
 
   # bash login files. dot_bashrc sources ~/.env (secrets) — harmless missing-file
   # warning until that file exists.
   home.file.".bashrc".source = link "dot_bashrc";
   home.file.".bash_profile".source = link "dot_bash_profile";
-
-  # Claude Code skills + settings in the standard user config directory.
-  # Deployed as individual out-of-store symlinks — NOT a whole-dir link — so
-  # ~/.claude stays a real, writable directory that modules/secrets.nix can seed
-  # .credentials.json into (a whole-dir symlink would push the credential into the
-  # PUBLIC repo tree). Without this, a fresh box has zero skills/settings.
-  home.file.".claude/skills".source = link "dot_claude/skills";
-  home.file.".claude/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
-  home.file.".codex/AGENTS.md".source = link "agent-runtime-rules.md";
-
-  # NO hook is delivered here any more. The SessionEnd harvest hook (MEM-2,
-  # dotfiles#339) was removed 2026-09-23: it blocked session exit for up to 57 s
-  # on the runs that actually harvested, and Claude Code reported the abort as
-  # "SessionEnd hook [...] failed: Hook cancelled" on every close. Of its last
-  # 101 logged runs, 54 were skips. The harvest verb itself is unchanged and
-  # still reachable on demand through the `drain` skill.
-  #
-  # ~/.claude/hooks is deliberately left as a real, writable directory owned by
-  # nobody: a hook that is not delivered from this repository can still live
-  # there (the dead SessionStart hook that once named herdr-agent-state.sh was
-  # removed the same way, 2026-09-13).
-
-  # Second Claude account (work): `cc2`/`cac2` in fish set CLAUDE_CONFIG_DIR to
-  # ~/.claude-work. Same skills + settings, separate .credentials.json/.claude.json.
-  home.file.".claude-work/skills".source = link "dot_claude/skills";
-  home.file.".claude-work/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
-
-  # Claude owns mutable preferences. One direct symlink hop reaches writable
-  # shared state, never the Nix store or Git checkout. Activation seeds only
-  # once and preserves /model and /effort changes on every later switch.
-  home.activation.claudeSettings = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-    run ${pkgs.python3}/bin/python3 ${./claude-settings.py} \
-      --home "$HOME" --template ${./dot_claude/settings.json}
-  '';
-
-  # Same canonical skill tree, exposed to Codex and `pi` (earendil-works/pi)
-  # through the vendor-neutral, always-trusted Agent-Skills directory
-  # (~/.agents/skills). Both read the same agentskills.io SKILL.md format
-  # (name/description frontmatter, symlinks followed), so ONE tree feeds every
-  # harness. pi selects on `description` only (ignores `when_to_use`), so keep
-  # triggers there.
-  home.file.".agents/skills".source = link "dot_claude/skills";
 
   # No Chrome --app launcher entries on any host (Tom, 2026-10-12: "i do not
   # want th e chrome shortcuts neither. this goes for cross-nixosfleet").
@@ -283,8 +245,8 @@ in
   # the Ctrl+E rebind stay in dot_config/fish/config.fish untouched
   # (enableFishIntegration = false avoids home-manager wiring a second one).
   #
-  # sync_address: the strix talks to its own server over localhost; every
-  # other host reaches it via MagicDNS (`strix`, tailnet-only — see the
+  # sync_address: each brain talks to its own server over localhost; every
+  # seat reaches the NAS over the LAN or tailnet (see the
   # firewall rule on the server side).
   #
   # The encryption key itself is fleet state, not per-host state: it's minted
@@ -297,25 +259,21 @@ in
     settings = {
       auto_sync = true;
       # port must match services.atuin.port in hosts/strix/services.nix.
-      sync_address = if hostName == "strix" then "http://localhost:27321" else "http://strix:27321";
+      sync_address =
+        if osConfig.myFleet.has "brain" then "http://localhost:27321" else "http://nas:27321";
     };
   };
 
   # ---------------------------------------------------------------------------
-  # `loginctl enable-linger tom` (already set on the strix) is what keeps
-  # user-level services running when no login session is open. The posture it
-  # now serves is ONE long-lived server per user, not N daemons forked per
-  # session: the strix hosts the single herdr server and every PTY lives
-  # inside it, so a laptop that reconnects later finds its panes still alive.
-  # Linger is therefore load-bearing for the strix alone — no other host
-  # runs a server (ruling B5/B6).
+  # The brain's linger keeps its user manager and Herdr panes alive without
+  # a login session. modules/headless.nix preserves it on the NAS.
   # ---------------------------------------------------------------------------
 
   # ---------------------------------------------------------------------------
   # gtk/icon/cursor theming — mactahoe (overlay). GTK dirs are
   # MacTahoe-<Color>[-solid]-grey[-(x)hdpi]; icon dirs MacTahoe[-light|-dark].
   # ---------------------------------------------------------------------------
-  gtk = {
+  gtk = lib.mkIf isSeat {
     enable = true;
     theme = {
       name = "MacTahoe-Dark-grey";
@@ -326,13 +284,13 @@ in
       package = pkgs.mactahoe-icon-theme;
     };
     cursorTheme = {
-      name = if hostName == "strix" then "Bibata-Modern-Amber" else "Bibata-Modern-Classic";
+      name = if osConfig.myFleet.has "compute" then "Bibata-Modern-Amber" else "Bibata-Modern-Classic";
       package = pkgs.bibata-cursors;
     };
     # Photos gets a plain bookmark, not an XDG dir (see xdg.userDirs below):
     # XDG_PICTURES_DIR is where screenshot tools save, and /mnt/nas/photos is
     # Immich's library root — stray screenshots must not land inside it.
-    gtk3.bookmarks = lib.optionals (hostName == "strix") [
+    gtk3.bookmarks = lib.optionals (osConfig.myFleet.has "compute") [
       "file:///mnt/nas/photos Photos"
     ];
   };
@@ -360,7 +318,7 @@ in
   # they leave for the strix (bin/screenshot, bin/call-record).
   # ---------------------------------------------------------------------------
   xdg.userDirs = lib.mkMerge [
-    (lib.mkIf (hostName == "strix") {
+    (lib.mkIf (osConfig.myFleet.has "brain") {
       enable = true;
       createDirectories = false;
       music = "/mnt/nas/music";
@@ -393,7 +351,7 @@ in
   # land on the user profile for capturing other Wayland apps, not just OBS.
   # ---------------------------------------------------------------------------
   programs.obs-studio = {
-    enable = true;
+    enable = isSeat;
     plugins = with pkgs.obs-studio-plugins; [
       obs-vkcapture
     ];
@@ -402,133 +360,80 @@ in
   # ---------------------------------------------------------------------------
   # user packages.
   # ---------------------------------------------------------------------------
-  home.packages = with pkgs; [
-    # browser
-    google-chrome
-
-    # Anthropic woff2 + the @font-face sheet. Installed path is
-    # /etc/profiles/per-user/tom/share/webfonts/{woff2,css} — NOT
-    # ~/.nix-profile/share/webfonts. flake.nix sets
-    # home-manager.useUserPackages = true (with useGlobalPkgs = true), which
-    # routes home.packages through users.users.tom.packages; home-manager
-    # creates no ~/.nix-profile at all, and the one that exists on this box is
-    # an unrelated imperative `nix profile` holding only brave. Verified
-    # 2026-09-17 on five packages already in this list (eza, zoxide, glow,
-    # bat, fd): all five resolve under /etc/profiles/per-user/tom/bin and
-    # none under ~/.nix-profile/bin. Do not "correct" this back.
-    #
-    # NOT in fonts.packages: see the comment in modules/common.nix.
-    # home-manager's generated ~/.config/fontconfig/conf.d/10-hm-fonts.conf
-    # adds only <profile>/share/fonts and <profile>/lib/X11/fonts, so
-    # share/webfonts is never indexed and cannot contend with the installed
-    # TTFs (re-verified against the built package: 13 fc-list rows, all from
-    # the control TTF, zero woff2; adding share/webfonts yields 15 extra
-    # woff2 rows). This entry is also the only thing that pulls the
-    # derivation into a host closure, so attic caches it and the nightly
-    # builds it.
-    anthropic-webfonts
-
-    # fish init + shell
-    eza
-    zoxide
-    starship
-    fzf
-    bat
-    ripgrep
-    fd
-    jq
-    yq-go
-    glow
-
-    # wayland desktop tooling (Sway has native Xwayland).
-    # bin/monitors-off: Sway does not wake outputs on input, so a one-shot
-    # swayidle resume does it.
-    swayidle
-    acpi
-    brightnessctl
-    playerctl
-    swaybg
-    wl-clipboard
-    cliphist
-    wl-gammarelay-rs
-    kanshi
-    grim
-    slurp
-    # annotates area/window screenshots (bin/screenshot)
-    satty
-    wf-recorder
-    wl-mirror
-    wmctrl
-    wtype
-    lisgd
-    ddcutil
-    cava
-    pamixer
-    pavucontrol
-    nwg-look
-
-    # the python interpreter the helper scripts need
-    pythonForScripts
-
-    # media / viewers
-    yt-dlp
-    aria2
-    mpv
-    imv
-    vlc
-    ffmpeg-full
-    ffmpegthumbnailer
-
-    # screen/game recording — exposes the vkcapture host layer + obs-gamecapture on PATH.
-    obs-studio-plugins.obs-vkcapture
-
-    # files / nautilus + open-any-terminal + archive GUI
-    nautilus
-    nautilus-open-any-terminal
-    xdg-terminal-exec
-    xarchiver
-
-    # terminal
-    kitty
-
-    # agent / dev tooling. A curated slice of the llm-agents.nix catalog
-    # (claude-code, ccusage, ck, claude-agent-acp, qmd, pi, codex, spec-kit) lands via
-    # llmAgentsSelected — see the allowlist buildEnv in the `let` block above.
-    # claude-code comes from there (newest, decoupled from nixpkgs); creds still
-    # seed via modules/secrets.nix, and DISABLE_UPDATES=1 keeps the native
-    # updater from clobbering ~/.local/bin.
-    llmAgentsSelected
-    # runtime-test masks live /run/user sockets during shell/compositor tests.
-    bubblewrap
-    # Upstream's minimal flake output: git-ai + git-og, while programs.git below
-    # remains the sole provider of the real git binary.
-    inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.minimal
-    huggingface-cli # metadata CLI; agenix authentication is strix-only
-    gh
-    google-cloud-sdk
-    cloudflared
-    wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (strix-only cred, binary fleet-wide)
-    music-acquire # evidence-gated SoundCloud → YouTube → capture acquisition
-    uv # Astral Python pkg/project manager. "hot" overlay pkg — rides nixpkgs-fresh HEAD (flake.nix), so it stays latest independent of the main pin.
-
-    # artifact system (md-artifact / presentation-beta / publish-artifact skills;
-    # knobs in modules/artifacts-defaults.nix). render = md→snapshot dir;
-    # view = bounded chrome --app window (rung 0, no publish); deck-init =
-    # scaffold reveal deck with nix-vendored assets (no CDN).
-    artifact-render
-    artifact-view
-    artifact-deck
-
-    # cursors (theme dep)
-    bibata-cursors
-
-    # codecs/gstreamer plugins for thumbnailers + portals
-    gst_all_1.gstreamer
-    gst_all_1.gst-plugins-base
-    gst_all_1.gst-plugins-good
-    gst_all_1.gst-plugins-bad
-    libjxl
-  ];
+  home.packages =
+    with pkgs;
+    [
+      eza
+      zoxide
+      starship
+      fzf
+      bat
+      ripgrep
+      fd
+      jq
+      yq-go
+      glow
+      pythonForScripts
+      yt-dlp
+      aria2
+      ffmpeg-full
+      bubblewrap
+      uv
+    ]
+    ++ lib.optionals isBrain [
+      gitAiTools
+      huggingface-cli
+      gh
+      google-cloud-sdk
+      cloudflared
+      wrangler
+      music-acquire
+      artifact-render
+      artifact-deck
+    ]
+    ++ lib.optionals isSeat [
+      google-chrome
+      anthropic-webfonts
+      swayidle
+      acpi
+      brightnessctl
+      playerctl
+      swaybg
+      wl-clipboard
+      cliphist
+      wl-gammarelay-rs
+      kanshi
+      grim
+      slurp
+      satty
+      wf-recorder
+      wl-mirror
+      wmctrl
+      wtype
+      lisgd
+      ddcutil
+      cava
+      pamixer
+      pavucontrol
+      nwg-look
+      mpv
+      imv
+      vlc
+      ffmpegthumbnailer
+      obs-studio-plugins.obs-vkcapture
+      nautilus
+      nautilus-open-any-terminal
+      xdg-terminal-exec
+      xarchiver
+      kitty
+      artifact-view
+      bibata-cursors
+      gst_all_1.gstreamer
+      gst_all_1.gst-plugins-base
+      gst_all_1.gst-plugins-good
+      gst_all_1.gst-plugins-bad
+      libjxl
+    ];
 
   # nvim → implemented in ./nvim.nix (imported above).
 

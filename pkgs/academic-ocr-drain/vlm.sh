@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # vlm.sh <png> <model> <out-md>
-# One bounded VLM transcription through Halogen Flash on the worker
-# ($INFERENCE_URL from env.sh). June-proven prompt, temp 0. The token budget
-# covers the model's reasoning as well as the page, hence the wide cap.
+# One bounded VLM transcription through the local model on the strix
+# ($INFERENCE_URL from env.sh). June-proven prompt, temp 0, thinking explicitly
+# off (chat_template_kwargs, the control the server honours). The token budget
+# would cover reasoning as well as the page, hence the wide cap.
 # All large payloads travel via files, never argv (128 KiB per-arg kernel cap).
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
@@ -14,6 +15,7 @@ prompt="Transcribe this scanned academic page to clean GitHub-flavored Markdown.
 "$CORE/base64" -w0 "$png" > "$work/b64"
 "$JQ" -n --arg model "$model" --arg prompt "$prompt" --rawfile b64 "$work/b64" \
   '{model: $model, temperature: 0, max_tokens: 16384,
+    chat_template_kwargs: {enable_thinking: false},
     messages: [{role: "user", content: [
       {type: "text", text: $prompt},
       {type: "image_url", image_url: {url: ("data:image/png;base64," + $b64)}}]}]}' \

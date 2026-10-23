@@ -42,7 +42,7 @@ from .pipeline import (
 )
 
 
-DEFAULT_INFERENCE_URL = "http://strix:8731"
+DEFAULT_INFERENCE_URL = os.environ.get("LOCAL_MODEL_ENDPOINT", "")
 DEFAULT_CONTEXT = (
     "English-language business call. Preserve personal names, organization names, "
     "acronyms, and technical vocabulary exactly as spoken."
@@ -83,8 +83,8 @@ def parser() -> argparse.ArgumentParser:
         default=os.environ.get("CALL_DIARIZE_INFERENCE_URL", DEFAULT_INFERENCE_URL),
         metavar="URL",
         help=(
-            "Halogen Flash base URL or its /v1/chat/completions URL "
-            "(default: $CALL_DIARIZE_INFERENCE_URL or http://strix:8731)"
+            "Local model server base URL or its /v1/chat/completions URL "
+            "(default: $CALL_DIARIZE_INFERENCE_URL or $LOCAL_MODEL_ENDPOINT)"
         ),
     )
     result.add_argument(

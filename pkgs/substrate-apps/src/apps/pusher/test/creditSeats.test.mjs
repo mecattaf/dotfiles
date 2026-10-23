@@ -35,14 +35,14 @@ const doc = (over = {}) => ({
       credits: { unit: "requests", used: 10, limit: 1000, counter: "provider", resets_at: "2026-10-01T00:00:00Z" },
       windows: []
     },
-    { id: "gpu-worker", provider: "halogen", owner: "kernel", grade: "MEASURED", state: "open", windows: [], source: {} },
+    { id: "gpu-worker", provider: "gufo", owner: "kernel", grade: "MEASURED", state: "open", windows: [], source: {} },
     ...(over.extra ?? [])
   ]
 })
 
 const config = {
-  seats: ["cc2", "pi-qwencloud", "openrouter", "openrouter-free", "halogen"],
-  slots: { halogen: 1, "pi-qwencloud": 4, openrouter: 4, "openrouter-free": 8 },
+  seats: ["cc2", "pi-qwencloud", "openrouter", "openrouter-free", "gufo"],
+  slots: { gufo: 1, "pi-qwencloud": 4, openrouter: 4, "openrouter-free": 8 },
   estimatedProviders: ["qwen"]
 }
 
@@ -60,8 +60,8 @@ describe("credit seats through the pusher", () => {
     })
     expect(s.openrouter).toMatchObject({ grade: "MEASURED", slots: { capacity: 4, holders: 0 }, credits: { unit: "usd", used: 1.25, limit: 12, resets_at: null, basis: "provider" } })
     expect(s["openrouter-free"]).toMatchObject({ slots: { capacity: 8, holders: 0 }, credits: { unit: "requests", limit: 1000, basis: "provider" } })
-    expect(s.halogen).toMatchObject({ slots: { capacity: 1, holders: 0 } })
-    expect(s.halogen.credits).toBeUndefined()
+    expect(s.gufo).toMatchObject({ slots: { capacity: 1, holders: 0 } })
+    expect(s.gufo.credits).toBeUndefined()
     // Nothing else from the oracle's credits object (the key's path, the token ratio) leaves the box.
     expect(JSON.stringify(snapshot)).not.toContain("agenix")
     expect(JSON.stringify(snapshot)).not.toContain("tokens_per_credit")
@@ -94,7 +94,7 @@ describe("credit seats through the pusher", () => {
     const state = stateAfterPush(a, NOW)
     expect(decidePush(state, b, Date.parse(NOW) + 120_000)).toMatchObject({ push: true, reason: "changed", changed: ["openrouter"] })
     // Unchanged for 600 s: re-sent on the slot beat so the floor's copy stays MEASURED.
-    const noHalogen = { ...a, seats: a.seats.filter((s) => s.provider !== "halogen") }
-    expect(decidePush(stateAfterPush(noHalogen, NOW), noHalogen, Date.parse(NOW) + 600_000)).toMatchObject({ push: true, reason: "heartbeat" })
+    const noGufo = { ...a, seats: a.seats.filter((s) => s.provider !== "gufo") }
+    expect(decidePush(stateAfterPush(noGufo, NOW), noGufo, Date.parse(NOW) + 600_000)).toMatchObject({ push: true, reason: "heartbeat" })
   })
 })

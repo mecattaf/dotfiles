@@ -10,7 +10,7 @@
     lib.mkIf
       (builtins.elem osConfig.networking.hostName [
         "client"
-        "strix"
+        "strix-coordinator"
       ])
       (
         lib.hm.dag.entryAfter [ "writeBoundary" ] ''

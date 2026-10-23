@@ -1,4 +1,4 @@
-"""Candidate-bounded semantic cleanup through the fleet's Halogen Flash server."""
+"""Candidate-bounded semantic cleanup through the fleet's local model server."""
 
 from __future__ import annotations
 
@@ -14,9 +14,10 @@ from .pipeline import lexical_duplicate_target, load_json, write_json_exclusive
 
 
 # Label -> served model id. The label names the evidence directory below
-# asr-raw/cleanup/; the id is the one Halogen Flash answers to.
+# asr-raw/cleanup/; the id is the one the local server answers to
+# (lib/local-model.nix). Existing completed cleanups retain their evidence paths.
 MODELS = {
-    "halogen": "halogen-qwen3.8-flash-next",
+    "local": "qwen3.8-flash-next",
 }
 CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 ALLOWED_ACTIONS = {"keep", "duplicate", "unavailable"}
@@ -261,14 +262,13 @@ def run_model_shard(
             "temperature": 0,
             "top_p": 1,
             "seed": 0,
-            # Halogen's token budget covers reasoning as well as the answer.
+            # The server's token budget covers reasoning as well as the answer.
             # These are bounded, source-accounted decisions: thinking stays off
             # so the budget goes to the object itself.
             "max_tokens": 8192,
             "chat_template_kwargs": {"enable_thinking": False},
-            # Halogen has no constrained decoding and rejects response_format
-            # with HTTP 400; the prompt asks for JSON and extract_json_object
-            # validates it.
+            # No response_format is sent: the prompt asks for JSON and
+            # extract_json_object validates it, as it did on the old engine.
         }
         started = time.monotonic()
         try:

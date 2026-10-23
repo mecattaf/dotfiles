@@ -1,19 +1,19 @@
 set -euo pipefail
 
 ocr_prompt='Transcribe this scanned academic page to clean GitHub-flavored Markdown. Preserve heading levels, paragraphs, footnotes, and tables (as markdown tables). Use $...$ / $$...$$ for math. Do not add commentary. If part is illegible write [illegible].'
-inference_url=${ACADEMIC_OCR_INFERENCE_URL:-http://strix:8731}
-# The one visual protocol: Halogen Flash on the worker, addressed by the model
+inference_url=${ACADEMIC_OCR_INFERENCE_URL:-${LOCAL_MODEL_ENDPOINT:?LOCAL_MODEL_ENDPOINT is required}}
+# The one visual protocol: the local model on the strix, addressed by the model
 # id it serves. The protocol id doubles as the model named in every request.
-vlm_protocol_id=halogen-qwen3.8-flash-next
+vlm_protocol_id=qwen3.8-flash-next
 
 # A visual transcription that hits the cap comes back as a plausible prefix, so
 # its signature still agrees with the mechanical extraction well enough for the
 # flow to converge on a page that has silently lost its tail. Fail closed below
 # 600 permille of the longest mechanical extraction of the same page, and only
 # where that extraction is long enough to vouch for the page at all. Lengths are
-# counted in the whitespace words the rest of the pipeline counts. The token
-# budget also covers the model's reasoning, so it sits well above the length of
-# any one page transcription.
+# counted in the whitespace words the rest of the pipeline counts. Thinking is
+# off, and the budget still sits well above the length of any one page
+# transcription.
 vlm_max_tokens=16384
 voucher_min_words=200
 voucher_min_permille=600
@@ -313,6 +313,7 @@ run_vlm() {
       model: $model,
       temperature: 0,
       max_tokens: $maxTokens,
+      chat_template_kwargs: {enable_thinking: false},
       messages: [{
         role: "user",
         content: [

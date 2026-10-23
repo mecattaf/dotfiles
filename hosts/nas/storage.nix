@@ -64,6 +64,16 @@ in
           device = cfg.smartDevice;
           options = "-a -n standby,q -W 4,45,50";
         }
+        {
+          device = "/dev/disk/by-id/nvme-Fanxiang_S500Pro_256GB_26040259615000015";
+          options = "-a";
+        }
+      ]
+      ++ lib.optionals config.myNas.homeDisk.enable [
+        {
+          device = config.myNas.homeDisk.device;
+          options = "-a";
+        }
       ];
     };
 
@@ -156,15 +166,16 @@ in
         # the same client (fsid=6, no longer fsid=0). Every other subvolume
         # stays invisible to it: no entry, no crossing (#131).
         ''
-          ${storageRoot} ${clients "rw,sync,fsid=0,no_subtree_check,no_root_squash"}
+          ${storageRoot} ${clients "rw,sync,fsid=0,no_subtree_check,no_root_squash"} 10.42.0.5(ro,sync,fsid=0,no_subtree_check,root_squash)
           ${storageRoot}/photos ${clients "rw,sync,fsid=1,no_subtree_check,no_root_squash"}
           ${storageRoot}/music ${clients "rw,sync,fsid=2,no_subtree_check,no_root_squash"}
-          ${storageRoot}/documents ${clients "rw,sync,fsid=3,no_subtree_check,no_root_squash"}
+          ${storageRoot}/documents ${clients "rw,sync,fsid=3,no_subtree_check,no_root_squash"} 10.42.0.5(ro,sync,fsid=3,no_subtree_check,root_squash)
           ${storageRoot}/services ${clients "rw,sync,fsid=4,no_subtree_check,no_root_squash"}
           ${storageRoot}/videos ${clients "rw,sync,fsid=5,no_subtree_check,no_root_squash"}
         '';
     };
     networking.firewall.extraInputRules = ''
+      ip saddr 10.42.0.5 tcp dport 2049 accept comment "NFSv4 from strix-worker"
       ip saddr 10.42.0.2 tcp dport 2049 accept comment "NFSv4 from strix (LAN; /30 retired 2026-08-21)"
     '';
 

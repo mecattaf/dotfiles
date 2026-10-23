@@ -25,4 +25,4 @@ drain_timeout_s = 60                                          # first SIGTERM: r
 capacity_wait_s = 600                                         # a node waits this long for capacity (a stale reading) before it fails
 # ax_server = "nas:7070"                                      # probed only to say why an ax node is refused here
 # floor
-node_runs_on = ["seat:halogen", "runtime:gvisor"]             # runs-on for a node that names none
+node_runs_on = ["seat:gufo", "runtime:gvisor"]             # runs-on for a node that names none

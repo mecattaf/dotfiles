@@ -26,6 +26,7 @@ SLOT = re.compile(r'^herdr-slot-([1-9])$')
 LABEL = re.compile(r'^herdr-label-((?:client|strix)-slot-[1-9]-[a-f0-9]{6})$')
 WORKSPACE = re.compile(r'^herdr-workspace-(w[A-Za-z0-9]+)$')
 CLOSED = re.compile(r'^herdr-closed-([0-9]+)$')
+SERVER = re.compile(r'^herdr-server-([a-f0-9]+)$')
 NAME = re.compile(r'^herdr-name-([a-f0-9]+)$')
 ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 
@@ -84,6 +85,26 @@ def projectors(root):
     return [(n, w) for n, w in views(root) if n.get('app_id') == CLASS]
 
 
+def current_server():
+    return os.environ.get('HERDR_PICKER_HOSTNAME', 'nas')
+
+
+def view_server(node):
+    # A live server-qualified title outranks a saved mark. IDs and slot labels
+    # alone are not unique across the old Strix and new NAS servers.
+    title = node.get('name', '')
+    for host in {current_server(), 'nas', 'strix', 'strix-coordinator'}:
+        if title.startswith(host + ': '):
+            return host
+    marks = [m.group(1) for value in node.get('marks', []) if (m := SERVER.fullmatch(value))]
+    if len(marks) == 1:
+        try:
+            return bytes.fromhex(marks[0]).decode('utf-8')
+        except (ValueError, UnicodeDecodeError):
+            pass
+    return None
+
+
 def focused_workspace(root):
     for node, ws in walk(root):
         if node.get('focused') and ws and ws.get('num', -1) >= 0:
@@ -101,6 +122,13 @@ def available_slot(root):
     occupied.update(slot_of(n, w) for n, w in projectors(root))
     for slot in range(1, 10):
         if slot not in occupied:
+            return slot
+    # During handover a NAS view may share a numbered Sway workspace with a
+    # retained Strix view. Preserve old views; ownership is one per server/slot.
+    for slot in range(1, 10):
+        members = [(n, w) for n, w in views(root) if slot_of(n, w) == slot]
+        if members and all(n.get('app_id') == CLASS and view_server(n) not in (None, current_server())
+                           for n, _ in members):
             return slot
     raise BridgeError('All nine Herdr slots are occupied or parked. Reopen one with Mod+Ctrl+Space; detach a view to release its slot.')
 
@@ -136,7 +164,7 @@ def focus_view(view_id, expected=None):
         slot = slot_of(node, ws)
         if slot is None:
             raise BridgeError('Parked projector has no dedicated workspace number.')
-        conflicting = [n for n, w in projectors(root) if slot_of(n, w) == slot and n['id'] != view_id]
+        conflicting = [n for n, w in projectors(root) if slot_of(n, w) == slot and n['id'] != view_id and view_server(n) == view_server(node)]
         if conflicting:
             raise BridgeError(f'Slot {slot} already owns another projector; refusing to merge them.')
         current_slots = [n for n, _ in walk(root) if n.get('type') == 'workspace' and n.get('num') == slot]
@@ -162,11 +190,11 @@ def focus_view(view_id, expected=None):
 
 def remote_snapshot():
     # Read-only on either route. Explicit local client attachment never SSHs
-    # back into the strix or enters auto-discovery/server startup.
-    if os.environ.get('HERDR_SWAY_LOCAL', '1' if socket.gethostname() == 'strix' else '0') == '1':
+    # back into the NAS or enters auto-discovery/server startup.
+    if os.environ.get('HERDR_SWAY_LOCAL', '1' if socket.gethostname() == 'nas' else '0') == '1':
         out = run(['herdr', 'api', 'snapshot'], timeout=6).stdout
     else:
-        target = os.environ.get('HERDR_PROJECTOR_TARGET', 'strix')
+        target = os.environ.get('HERDR_PROJECTOR_TARGET', 'nas')
         if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.@:-]*', target):
             raise BridgeError('Invalid HERDR_PROJECTOR_TARGET.')
         out = run(['ssh', '-n', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3',
@@ -185,7 +213,9 @@ def remote_snapshot():
 
 def identity(node, snapshot):
     title = node.get('name', '')
-    hostname = os.environ.get('HERDR_PICKER_HOSTNAME', 'strix')
+    hostname = current_server()
+    if view_server(node) != hostname:
+        return None
     matching = [w for w in snapshot.get('workspaces', [])
                 if w.get('label') and title == f'{hostname}: {w["label"]}']
     # Even marks are only hints: reconnects and native Herdr navigation can
@@ -194,6 +224,8 @@ def identity(node, snapshot):
 
 
 def assigned_identity(node, snapshot):
+    if view_server(node) != current_server():
+        return None
     labels = [m.group(1) for mark in node.get('marks', []) if (m := LABEL.fullmatch(mark))]
     ids = [m.group(1) for mark in node.get('marks', []) if (m := WORKSPACE.fullmatch(mark))]
     matching = [w for w in snapshot.get('workspaces', [])
@@ -342,7 +374,8 @@ def ensure_projector(*, create_workspace=True):
     if not 1 <= slot <= 9:
         slot = available_slot(root)
         ipc(f'workspace number {slot}')
-    existing = [(n, w) for n, w in projectors(root) if slot_of(n, w) == slot]
+    existing = [(n, w) for n, w in projectors(root)
+                if slot_of(n, w) == slot and view_server(n) == current_server()]
     if len(existing) > 1:
         raise BridgeError(f'Slot {slot} already has multiple projectors; detach extras before continuing.')
     if existing:
@@ -354,7 +387,14 @@ def ensure_projector(*, create_workspace=True):
     projector = os.environ.get('HERDR_PROJECTOR', str(Path.home() / '.local/bin/herdr-sway-projector'))
     # Spawn command contains only shell-quoted executable arguments, never data
     # taken from terminal titles, remote labels, or dmenu output.
-    command = shlex.join(['kitty', '--class', CLASS, '-e', projector])
+    # Sway executes with its login environment, not this picker's environment.
+    # Carry the selected route explicitly so an old Strix login cannot send a
+    # new NAS chord back to the previous server.
+    command = shlex.join(['env',
+                          'HERDR_PROJECTOR_TARGET=' + os.environ.get('HERDR_PROJECTOR_TARGET', 'nas'),
+                          'HERDR_PICKER_HOSTNAME=' + current_server(),
+                          'HERDR_SWAY_LOCAL=' + os.environ.get('HERDR_SWAY_LOCAL', '0'),
+                          'kitty', '--class', CLASS, '-e', projector])
     ipc('exec ' + command)
 
     def appeared():
@@ -364,6 +404,7 @@ def ensure_projector(*, create_workspace=True):
         return candidates[0] if candidates else None
 
     node = wait_for(appeared, 8, 'No projector appeared in the selected workspace.')
+    ipc(f'[con_id={int(node["id"])}] mark --add herdr-server-' + current_server().encode('utf-8').hex())
     ipc(f'[con_id={int(node["id"])}] mark --add herdr-slot-{slot}')
     wait_for(lambda: client_ready(node), 20, 'Projector did not finish attaching. Its window remains open for diagnosis.')
     if create_workspace:

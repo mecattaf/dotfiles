@@ -30,19 +30,9 @@ in
       # `/login` after a rebuild. Both Claude seats now log in by hand, once,
       # on the strix: cc into ~/.claude, cc2 into ~/.claude-work.)
 
-      # NOT ungated any more (2026-08-28). This block delivers ssh-user-key and
-      # atuin-key, whose ciphertexts are encrypted to the `delivered` tier — and
-      # `delivered` is DERIVED as "every host except the nas". The appliance flipped
-      # mySecrets.enable ON this day to receive huggingface-token, so an unguarded
-      # block here would declare two secrets it holds no key for and fail its
-      # activation. Verified before the change: the nas host key decrypts neither.
-      #
-      # THE INVARIANT, for whoever adds the next secret: the nas now runs agenix but
-      # is a recipient of exactly ONE ciphertext. Any block that is not host-gated
-      # must exclude it, or it breaks the appliance rather than the box you were
-      # thinking about. The optional personal-https module adds only its own
-      # NAS-scoped Cloudflare DNS token, not membership of this delivered tier.
-      (lib.mkIf (config.networking.hostName != "nas") {
+      # Only agent hosts and physical seats receive the shared SSH/history keys.
+      # Compute logins use mesh authorized public keys, never this private key.
+      (lib.mkIf (config.myFleet.has "brain" || config.myFleet.has "seat") {
         # (hermes-credentials — the Nous Research AI harness's OAuth state — was
         # delivered here until 2026-08-04. The harness is no longer in use fleet-wide,
         # so the secret, its ciphertext, and its recipient rule are all gone. Any
@@ -96,11 +86,11 @@ in
 
       })
 
-      # Operator CLI credentials — strix ONLY (the ciphertexts aren't decryptable
+      # Operator CLI credentials — brain only (the ciphertexts aren't decryptable
       # by other hosts, and declaring an undecryptable secret fails activation, so the
       # whole block must be host-gated). Same copy-don't-link pattern as the claude
       # cred: both CLIs rewrite their file on token refresh.
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.gh-hosts = {
           file = ../secrets/gh-hosts.age;
           owner = "tom";
@@ -170,8 +160,7 @@ in
       # means the interactive `hf` wrapper works on either box unchanged.
       (lib.mkIf
         (
-          (config.networking.hostName == "strix" || config.networking.hostName == "nas")
-          && builtins.pathExists hfTokenCiphertext
+          (config.myFleet.has "brain" || config.myFleet.has "router") && builtins.pathExists hfTokenCiphertext
         )
         {
           age.secrets.huggingface-token = {
@@ -189,7 +178,7 @@ in
       # (NAVIDROME_USER / NAVIDROME_PASSWORD). Coordinator-only, matching the
       # recipient tier in secrets.nix. (Its first reader, the cliamp TUI client,
       # was removed 2026-09-17.)
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.navidrome-credentials = {
           file = ../secrets/navidrome-credentials.age;
           owner = "tom";
@@ -198,15 +187,24 @@ in
         };
       })
 
-      # qwencloud-token: Qwen Token Plan API key, read client-side by pi through
-      # the `!cat` apiKey in ~/.pi/agent/models.json (home/pi.nix). Same shape as
+      # qwencloud-token: Qwen Token Plan API key. Two consumers, same shape as
       # huggingface-token — delivered read-only under /run and never copied into a
       # mutable dotfile, because nothing ever rewrites it (unlike the OAuth creds
-      # above, which refresh in place). Deliberately NOT exported as
-      # QWEN_TOKEN_PLAN_API_KEY in pi's environment: that would hand the key to
-      # every subprocess pi's bash tool spawns. models.json resolves it per
-      # request instead, so it never enters the agent's process environment.
-      (lib.mkIf (config.networking.hostName == "strix") {
+      # above, which refresh in place).
+      # - pi reads it client-side through the `!cat` apiKey in
+      #   ~/.pi/agent/models.json (home/pi.nix). Deliberately NOT exported as
+      #   QWEN_TOKEN_PLAN_API_KEY in pi's environment: pi's bash tool would hand
+      #   it to every subprocess. models.json resolves it per request instead.
+      # - dsh (pkgs/dsh, home/dsh.nix) DOES get it as QWEN_TOKEN_PLAN_API_KEY,
+      #   set by its wrapper at exec time for the dsh process only. dsh drops
+      #   every *KEY*/*TOKEN* name (and every DSH_* name) from the children it
+      #   spawns, which removes the reason above, and its headless profile has
+      #   no credential store, so the environment is the only delivery that
+      #   reaches it. Its bwrap runner also masks /run/agenix from the model's
+      #   commands. Not masked: dsh's in-process `read` tool and any same-uid
+      #   /proc/<pid>/environ read, the same exposure pi has today.
+      # dsh reuses this secret; NAS recipient changes are listed in REKEY.md.
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.qwencloud-token = {
           file = ../secrets/qwencloud-token.age;
           owner = "tom";
@@ -219,7 +217,7 @@ in
       # qwencloud-token above. pi resolves it per request through the `!cat`
       # apiKey on its built-in `openrouter` provider (home/pi.nix); it is never
       # exported as OPENROUTER_API_KEY.
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.openrouter-token = {
           file = ../secrets/openrouter-token.age;
           owner = "tom";
@@ -234,7 +232,7 @@ in
       # read-only /run symlink cannot be the live file. Seed once into ~/.codex
       # (Codex's default CODEX_HOME) only if absent; after that the live file is
       # Codex's, and a re-login means re-minting the ciphertext (secrets.nix).
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.codex-auth = {
           file = ../secrets/codex-auth.age;
           owner = "tom";
@@ -256,7 +254,7 @@ in
       # client-side by agent sessions on the strix for indexing/dedup
       # passes. Delivered to /run/agenix/immich-api-key; replaces the loose
       # ~/immichkey file so the credential survives reflash without re-minting.
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.immich-api-key = {
           file = ../secrets/immich-api-key.age;
           owner = "tom";
@@ -267,7 +265,7 @@ in
 
       # soundcloud-cookies: consumed by the music-consolidation drain's yt-dlp
       # invocations (systemd user units, strix-only).
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.soundcloud-cookies = {
           file = ../secrets/soundcloud-cookies.age;
           owner = "tom";
@@ -278,7 +276,7 @@ in
 
       # youtube-music-cookies: parked for the music-consolidation YT-Music-fallback
       # work (dotfiles secret only — no consumer wired up yet).
-      (lib.mkIf (config.networking.hostName == "strix") {
+      (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.youtube-music-cookies = {
           file = ../secrets/youtube-music-cookies.age;
           owner = "tom";
@@ -294,18 +292,9 @@ in
       # (#229) until it went wired-only on 2026-09-11 and left this list with
       # the client's admission, the rekey that also dropped it from the
       # ciphertext's recipients (secrets.nix).
-      (lib.mkIf
-        (
-          builtins.elem config.networking.hostName [
-            # The thin client (hosts/client/default.nix): its only LAN path.
-            "client"
-          ]
-          && builtins.pathExists ../secrets/wifi-lan.age
-        )
-        {
-          age.secrets.wifi-lan.file = ../secrets/wifi-lan.age;
-        }
-      )
+      (lib.mkIf (config.myFleet.has "seat" && builtins.pathExists ../secrets/wifi-lan.age) {
+        age.secrets.wifi-lan.file = ../secrets/wifi-lan.age;
+      })
     ]
   );
 }

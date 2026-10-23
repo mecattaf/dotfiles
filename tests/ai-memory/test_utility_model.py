@@ -21,10 +21,10 @@ UTILITY_OWNER = Path(
 )
 
 
-# The model id the Halogen server on the worker answers to (modules/halogen.nix
-# `services.halogen.modelId`); the wrapper rewrites the stable `utility` id to
-# it on the way out and back.
-CONCRETE_MODEL = "halogen-qwen3.8-flash-next"
+# The model id the local model server answers to (lib/local-model.nix, via
+# `services.utilityModel.modelId`); the wrapper rewrites the stable `utility`
+# id to it on the way out and back.
+CONCRETE_MODEL = "qwen3.8-flash-next"
 
 
 class QuietServer(ThreadingHTTPServer):
@@ -36,8 +36,8 @@ class QuietServer(ThreadingHTTPServer):
         pass
 
 
-class FakeHalogen:
-    """A loopback stand-in for the worker's Halogen server.
+class FakeLocalModel:
+    """A loopback stand-in for the strix's local model server.
 
     The wrapper owns no child process, so the fake upstream is started by the
     test rather than exec'd by the code under test.
@@ -146,14 +146,14 @@ def utility_request(model: str = "utility") -> dict[str, object]:
 
 class UtilityOwnerTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.upstream: FakeHalogen | None = None
+        self.upstream: FakeLocalModel | None = None
 
     def tearDown(self) -> None:
         if self.upstream is not None:
             self.upstream.close()
 
-    def start_upstream(self, **kwargs: object) -> FakeHalogen:
-        self.upstream = FakeHalogen(**kwargs)  # type: ignore[arg-type]
+    def start_upstream(self, **kwargs: object) -> FakeLocalModel:
+        self.upstream = FakeLocalModel(**kwargs)  # type: ignore[arg-type]
         return self.upstream
 
     def run_owner(
@@ -184,7 +184,7 @@ class UtilityOwnerTests(unittest.TestCase):
             check=False,
         )
 
-    def test_stable_id_is_rewritten_across_the_halogen_forward(self) -> None:
+    def test_stable_id_is_rewritten_across_the_local_forward(self) -> None:
         upstream = self.start_upstream()
         completed = self.run_owner(utility_request(), endpoint=upstream.endpoint)
         self.assertEqual(completed.returncode, 0, completed.stderr)
@@ -205,19 +205,32 @@ class UtilityOwnerTests(unittest.TestCase):
         )
 
     def test_the_think_flag_is_translated_into_enable_thinking(self) -> None:
-        # Consumers name the `think` flag. Halogen reasons by default and its
-        # budget covers the thinking, so the seam must translate the flag into
-        # the top-level `enable_thinking` the server honours, and must not
-        # leave the dead flag upstream.
+        # Consumers name the `think` flag. The local model reasons by default
+        # and its budget covers the thinking, so the seam must translate the
+        # flag into `chat_template_kwargs.enable_thinking`, the control the
+        # server honours (it ignores a top-level `enable_thinking`), and must
+        # not leave the dead flag upstream.
         upstream = self.start_upstream()
         request = utility_request()
         request["think"] = False
         completed = self.run_owner(request, endpoint=upstream.endpoint)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         forwarded = upstream.requests[0]
-        self.assertIs(forwarded["enable_thinking"], False)
-        self.assertNotIn("chat_template_kwargs", forwarded)
+        self.assertEqual(forwarded["chat_template_kwargs"], {"enable_thinking": False})
+        self.assertNotIn("enable_thinking", forwarded)
         self.assertNotIn("think", forwarded)
+
+    def test_the_think_flag_merges_into_existing_template_kwargs(self) -> None:
+        upstream = self.start_upstream()
+        request = utility_request()
+        request["think"] = False
+        request["chat_template_kwargs"] = {"preserve_thinking": False}
+        completed = self.run_owner(request, endpoint=upstream.endpoint)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(
+            upstream.requests[0]["chat_template_kwargs"],
+            {"preserve_thinking": False, "enable_thinking": False},
+        )
 
     def test_a_request_that_wants_reasoning_is_forwarded_untouched(self) -> None:
         upstream = self.start_upstream()
@@ -249,13 +262,13 @@ class UtilityOwnerTests(unittest.TestCase):
         self.assertIn('must use model "utility"', completed.stderr)
         self.assertEqual(upstream.requests, [])
 
-    def test_unreachable_halogen_fails_with_one_bounded_line(self) -> None:
+    def test_unreachable_server_fails_with_one_bounded_line(self) -> None:
         endpoint = closed_endpoint()
         completed = self.run_owner(utility_request(), endpoint=endpoint)
         self.assertNotEqual(completed.returncode, 0)
         # The one line names the upstream it could not reach, by name and by
         # address, so the reader knows which box to look at.
-        self.assertIn("halogen", completed.stderr.lower())
+        self.assertIn("local model server", completed.stderr.lower())
         self.assertIn(endpoint, completed.stderr)
         self.assertNotIn("Traceback", completed.stderr)
         self.assertEqual(len(completed.stderr.splitlines()), 1)
@@ -293,11 +306,12 @@ class UtilityOwnerTests(unittest.TestCase):
 class UtilityOwnerProvenanceTests(unittest.TestCase):
     def test_owner_records_where_the_seam_runs_and_why_it_is_in_tree(self) -> None:
         # Pin both halves of where this seam lives: the upstream it forwards
-        # to (the Halogen server on the worker) and the host the wrapper is
-        # installed on (the strix), and that the flake check imports it
-        # by path regardless of installation.
+        # to (the local model server, named in lib/local-model.nix) and the
+        # host the wrapper is installed on (the strix), and that the flake
+        # check imports it by path regardless of installation.
         source = UTILITY_OWNER.read_text(encoding="utf-8")
-        self.assertIn("halogen", source.lower())
+        self.assertIn("local model server", source)
+        self.assertIn("lib/local-model.nix", source)
         self.assertIn("strix", source)
         self.assertIn("flake check", source)
         self.assertIn("by path", source)

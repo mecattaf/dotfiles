@@ -9,7 +9,7 @@
  *   -> Runner (this module's `runnerFromBackend`: the admitted call handed to
  *     @substrate/runners RunnerBackend)
  *   -> harness on a runtime (runtimes.toml: claude pinned to claude-opus-5-5,
- *     pi on Halogen through ssh:worker, codex against a fake binary only)
+ *     pi on Gufo through ssh:worker, codex against a fake binary only)
  *   -> the outcome back into agent() -> the journal line.
  *
  * Every artefact of a run lives in one directory, so a killed run is resumed
@@ -86,7 +86,7 @@ export interface IntegratedOptions {
   /** The run directory; if its journal exists the run resumes from it. */
   readonly dir: string;
   readonly runtimes: RuntimesConfig;
-  /** The seat the capacity gate reads (cc, halogen, ...). Data. */
+  /** The seat the capacity gate reads (cc, gufo, ...). Data. */
   readonly seat: string;
   /** The model a call without one is admitted for (the harness pins the model it runs). */
   readonly defaultModel: string;

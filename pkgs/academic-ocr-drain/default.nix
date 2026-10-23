@@ -38,8 +38,8 @@ stdenvNoCC.mkDerivation {
 
     # env.sh is generated, not copied: every tool resolves its binaries
     # through these pins, so the whole ladder rebuilds against nixpkgs. The
-    # inference base URL is the fleet's one server, Halogen Flash on the
-    # worker, overridable at run time through ACADEMIC_OCR_INFERENCE_URL.
+    # inference base URL is the fleet's one server, the local model on the
+    # strix, overridable at run time through ACADEMIC_OCR_INFERENCE_URL.
     cat > $lib/env.sh <<EOF
     POPPLER=${poppler-utils}/bin
     MUPDF=${mupdf-headless}/bin
@@ -48,7 +48,7 @@ stdenvNoCC.mkDerivation {
     CORE=${coreutils}/bin
     GREP=${gnugrep}/bin/grep
     AWK=${gawk}/bin/gawk
-    INFERENCE_URL=\''${ACADEMIC_OCR_INFERENCE_URL:-http://strix:8731}
+    INFERENCE_URL=\''${ACADEMIC_OCR_INFERENCE_URL:-${(import ../../lib/local-model.nix).endpoint}}
     EOF
 
     for entry in academic-drain:drain.sh academic-drain-stop:drain-stop.sh academic-drain-backfill-tables:backfill-tables.sh; do

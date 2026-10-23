@@ -9,7 +9,7 @@ import { bodyOf, job, sleep, start, until, world } from "./review-r4-harness.ts"
 it("a grant whose lease expired while it waited at the gate is still created", async () => {
   const w = world({ leaseSeconds: 6, graceSeconds: 15 }) // at secondMs 20: lease 120 ms, grace 300 ms
   w.floor.enqueue(job("1"))
-  const gw = w.ax.gateways.get("halogen")!
+  const gw = w.ax.gateways.get("gufo")!
   let holdOnce = true
   let l: ReturnType<typeof start>
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -20,7 +20,7 @@ it("a grant whose lease expired while it waited at the gate is still created", a
       if (txt.includes("wf-test-1-a1")) {
         holdOnce = false
         // the Gateway is edited away while the reply is in flight; the next resync closes the gate (B10)
-        w.ax.gateways.delete("halogen")
+        w.ax.gateways.delete("gufo")
         await until("gateway-missing", () => l.has("gateway-missing"), 3000)
       }
     }
@@ -33,7 +33,7 @@ it("a grant whose lease expired while it waited at the gate is still created", a
   const J = w.floor.jobs.get("wf-test-1")!
   await until("floor requeued a1 after lease + grace", () => J.state === "queued" && J.attempt === 2, 3000)
   const floorStateAtReopen = { state: J.state, attempt: J.attempt, history: [...J.history] }
-  w.ax.gateways.set("halogen", gw) // the Gateway is back; the floor is still unreachable
+  w.ax.gateways.set("gufo", gw) // the Gateway is back; the floor is still unreachable
   await until("a1 created", () => (w.ax.updates.get("wf-test-1-a1") ?? 0) > 0, 3000).catch(() => {})
   const createdA1WhileExpired = (w.ax.updates.get("wf-test-1-a1") ?? 0) > 0
   await sleep(200)
@@ -60,7 +60,7 @@ it("a grant whose lease expired while it waited at the gate is still created", a
 it("R4-5b: a grant past its deadline is failed deadline-exceeded before any UpdateTask", async () => {
   const w = world({ graceSeconds: 400 })
   w.floor.enqueue(job("d", { "timeout-minutes": 1 })) // 60 s x 20 ms = 1.2 s deadline
-  const gw = w.ax.gateways.get("halogen")!
+  const gw = w.ax.gateways.get("gufo")!
   let hbDown = false
   let l: ReturnType<typeof start>
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -69,7 +69,7 @@ it("R4-5b: a grant past its deadline is failed deadline-exceeded before any Upda
     const res = await w.floor.fetch(input, init)
     if (!hbDown && b.includes('"Lease"') && (await res.clone().text()).includes("wf-test-d-a1")) {
       hbDown = true
-      w.ax.gateways.delete("halogen")
+      w.ax.gateways.delete("gufo")
       await until("gateway-missing", () => l.has("gateway-missing"), 3000)
     }
     return res
@@ -77,7 +77,7 @@ it("R4-5b: a grant past its deadline is failed deadline-exceeded before any Upda
   l = start(w, undefined, { maxInFlight: 1 }, fetch)
   await until("waiting", () => l.has("waiting-for-slot", "wf-test-d-a1") || l.has("lease-unconfirmed", "wf-test-d-a1"), 3000)
   await sleep(1400)
-  w.ax.gateways.set("halogen", gw)
+  w.ax.gateways.set("gufo", gw)
   await until("verdict", () => l.has("verdict", "wf-test-d-a1"), 3000)
   const v = l.logs.find((x) => x.ev === "verdict" && x.leaseId === "wf-test-d-a1")!
   await l.drain(); w.floor.close()

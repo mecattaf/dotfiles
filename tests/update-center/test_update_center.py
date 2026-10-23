@@ -103,7 +103,7 @@ class UpdateCenterTests(unittest.TestCase):
             "FIXTURE": self.tmp,
             "FAIL_BUILD": fail_build,
             "FAIL_PUSH": fail_push,
-            "UPDATE_CENTER_HOSTS": "strix worker client",
+            "UPDATE_CENTER_HOSTS": "strix-coordinator strix-worker client",
             "UPDATE_CENTER_STATE_DIR": self.state,
             "UPDATE_CENTER_SIGNING_KEY": self.key,
             "UPDATE_CENTER_STORE_DIR": self.store,
@@ -129,7 +129,7 @@ class UpdateCenterTests(unittest.TestCase):
     def test_all_hosts_publish_signed_manifests(self):
         r = self.run_center()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        for host in ("strix", "worker", "client"):
+        for host in ("strix-coordinator", "strix-worker", "client"):
             self.assertEqual(self.verify(host), 0)
             m = json.loads(self.manifest(host))
             self.assertEqual(m["schema"], 1)
@@ -142,27 +142,27 @@ class UpdateCenterTests(unittest.TestCase):
 
     def test_failed_build_keeps_previous_pointer(self):
         self.assertEqual(self.run_center().returncode, 0)
-        before = self.manifest("strix")
-        before_link = os.readlink(self.pointer("strix"))
-        worker_before = os.readlink(self.pointer("worker"))
+        before = self.manifest("strix-coordinator")
+        before_link = os.readlink(self.pointer("strix-coordinator"))
+        worker_before = os.readlink(self.pointer("strix-worker"))
         META2 = dict(META, lastModified=META["lastModified"] + 10)
         with open(os.path.join(self.tmp, "meta.json"), "w") as stream:
             json.dump(META2, stream)
         import time
         time.sleep(1.1)  # a distinct release stamp
-        r = self.run_center(fail_build="strix")
+        r = self.run_center(fail_build="strix-coordinator")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("build FAILED for strix", r.stderr)
-        self.assertEqual(self.manifest("strix"), before)
-        self.assertEqual(os.readlink(self.pointer("strix")), before_link)
-        self.assertNotEqual(os.readlink(self.pointer("worker")), worker_before)
-        self.assertEqual(json.loads(self.manifest("worker"))["last_modified"], META2["lastModified"])
-        self.assertEqual(self.verify("worker"), 0)
+        self.assertIn("build FAILED for strix-coordinator", r.stderr)
+        self.assertEqual(self.manifest("strix-coordinator"), before)
+        self.assertEqual(os.readlink(self.pointer("strix-coordinator")), before_link)
+        self.assertNotEqual(os.readlink(self.pointer("strix-worker")), worker_before)
+        self.assertEqual(json.loads(self.manifest("strix-worker"))["last_modified"], META2["lastModified"])
+        self.assertEqual(self.verify("strix-worker"), 0)
 
     def test_failed_push_publishes_nothing(self):
-        r = self.run_center(fail_push="worker")
+        r = self.run_center(fail_push="strix-worker")
         self.assertEqual(r.returncode, 1)
-        self.assertFalse(os.path.lexists(self.pointer("worker")))
+        self.assertFalse(os.path.lexists(self.pointer("strix-worker")))
         self.assertTrue(os.path.lexists(self.pointer("client")))
 
     def test_seed_preflight_names_gaps(self):
@@ -177,36 +177,36 @@ class UpdateCenterTests(unittest.TestCase):
         for _ in range(5):
             self.assertEqual(self.run_center().returncode, 0)
             time.sleep(1.1)
-        releases = [n for n in os.listdir(os.path.join(self.state, "public", "releases")) if n.startswith("worker-")]
+        releases = [n for n in os.listdir(os.path.join(self.state, "public", "releases")) if n.startswith("strix-worker-")]
         self.assertEqual(len(releases), 3)
-        self.assertEqual(self.verify("worker"), 0)
+        self.assertEqual(self.verify("strix-worker"), 0)
 
     def test_publish_only(self):
-        host_path = os.path.join(self.store, "w" * 32 + "-nixos-system-worker-26.11")
+        host_path = os.path.join(self.store, "w" * 32 + "-nixos-system-strix-worker-26.11")
         os.makedirs(host_path)
-        r = self.run_center("--publish-only", "worker", host_path, "github:mecattaf/dotfiles/abc123")
+        r = self.run_center("--publish-only", "strix-worker", host_path, "github:mecattaf/dotfiles/abc123")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(json.loads(self.manifest("worker"))["store_path"], host_path)
-        self.assertEqual(self.verify("worker"), 0)
+        self.assertEqual(json.loads(self.manifest("strix-worker"))["store_path"], host_path)
+        self.assertEqual(self.verify("strix-worker"), 0)
         self.assertNotIn("nix build", open(os.path.join(self.tmp, "calls.log")).read())
 
     def test_publish_only_refuses_wrong_or_missing_closure(self):
-        coord = os.path.join(self.store, "c" * 32 + "-nixos-system-strix-26.11")
+        coord = os.path.join(self.store, "c" * 32 + "-nixos-system-strix-coordinator-26.11")
         os.makedirs(coord)
-        r = self.run_center("--publish-only", "worker", coord, "github:mecattaf/dotfiles/abc123")
+        r = self.run_center("--publish-only", "strix-worker", coord, "github:mecattaf/dotfiles/abc123")
         self.assertEqual(r.returncode, 2)
-        missing = os.path.join(self.store, "w" * 32 + "-nixos-system-worker-26.11")
-        r = self.run_center("--publish-only", "worker", missing, "github:mecattaf/dotfiles/abc123")
+        missing = os.path.join(self.store, "w" * 32 + "-nixos-system-strix-worker-26.11")
+        r = self.run_center("--publish-only", "strix-worker", missing, "github:mecattaf/dotfiles/abc123")
         self.assertEqual(r.returncode, 2)
-        self.assertFalse(os.path.lexists(self.pointer("worker")))
+        self.assertFalse(os.path.lexists(self.pointer("strix-worker")))
 
     def test_publish_only_refuses_when_push_fails(self):
-        host_path = os.path.join(self.store, "w" * 32 + "-nixos-system-worker-26.11")
+        host_path = os.path.join(self.store, "w" * 32 + "-nixos-system-strix-worker-26.11")
         os.makedirs(host_path)
-        r = self.run_center("--publish-only", "worker", host_path, "github:mecattaf/dotfiles/abc123",
-                            fail_push="worker")
+        r = self.run_center("--publish-only", "strix-worker", host_path, "github:mecattaf/dotfiles/abc123",
+                            fail_push="strix-worker")
         self.assertEqual(r.returncode, 1)
-        self.assertFalse(os.path.lexists(self.pointer("worker")))
+        self.assertFalse(os.path.lexists(self.pointer("strix-worker")))
 
 
 if __name__ == "__main__":

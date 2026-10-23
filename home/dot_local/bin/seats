@@ -48,10 +48,11 @@ THE SEATS, and where each one's truth lives:
                 confirms the key still authenticates; the quota-spending probe
                 is opt-in (--probe-qwen) because asking costs the thing being
                 measured. Credits are counted from pi's live session logs
-                (~/.pi/agent/sessions) AND from the pi sessions the substrate
-                factory archives under ~/.local/state/substrate/transcripts;
-                a factory job's tokens appear when its job ends, because the
-                archive is written at job end.
+                (~/.pi/agent/sessions), from the pi sessions the substrate
+                factory archives under ~/.local/state/substrate/transcripts
+                (a factory job's tokens appear when its job ends, because the
+                archive is written at job end), and from dsh's plain-JSONL
+                sessions (~/.dsh/sessions), the same token plan.
 
   openrouter    OpenRouter, the paid key pi's `openrouter` provider uses (the
                 token lives at /run/agenix/openrouter-token and is read at call
@@ -68,8 +69,8 @@ THE SEATS, and where each one's truth lives:
                 GET /api/v1/key free_model_daily_requests {used, limit,
                 remaining}. A counter of requests that resets at 00:00 UTC.
 
-  gpu-strix    The fleet's one inference server, Halogen Flash on Strix
-                (http://strix:8731, GET /health). No window, no quota: the
+  gpu-strix    The fleet's one inference server, the local model on Strix
+                (http://strix-coordinator:8731, GET /health). No window, no quota: the
                 row says whether the server is up and which model id it
                 answers to.
 
@@ -136,10 +137,10 @@ OPENROUTER_KEY_FILE = os.environ.get("SEATS_OPENROUTER_KEY_FILE") or "/run/ageni
 # factory stops dispatching. Overridable without editing the program.
 OPENROUTER_CAP_USD = 12.0
 
-# The fleet's one inference server, Halogen Flash on Strix
-# (modules/halogen.nix). The base URL follows the *_INFERENCE_URL convention;
+# The fleet's one inference server, the local model on Strix
+# (lib/local-model.nix). The base URL follows the *_INFERENCE_URL convention;
 # the override is for a hand-run llama-server, not a second declared server.
-INFERENCE_URL = (os.environ.get("SEATS_INFERENCE_URL") or "http://strix:8731").rstrip("/")
+INFERENCE_URL = (os.environ.get("SEATS_INFERENCE_URL") or os.environ.get("LOCAL_MODEL_ENDPOINT", "")).rstrip("/")
 
 # ── the Qwen Cloud plan, and how a credit was priced ────────────────────────
 # Qwen Cloud meters in CREDITS and publishes no endpoint, so a percentage has
@@ -229,14 +230,18 @@ DEFAULT_SEATS = [
     {"id": "codex", "provider": "codex", "label": "Codex CLI",
      "config_dir": "~/.codex", "owner": "third-party", "spend_root": "~/.codex/sessions",
      "note": "RULINGS R-2026-09-06-02: this login is not Tom's — read by name, never spent."},
-    {"id": "pi-qwencloud", "provider": "qwen", "label": "Qwen Cloud (token-plan, via pi)",
+    # One seat, one credit pool: dsh (pkgs/dsh) spends the same token plan
+    # pi does, so its sessions join this seat rather than a new one. The id
+    # stays, because the meter rows and substrate join on it.
+    {"id": "pi-qwencloud", "provider": "qwen", "label": "Qwen Cloud (token-plan, via pi and dsh)",
      "owner": "tom",
-     "spend_root": ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts"]},
+     "spend_root": ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts",
+                    "~/.dsh/sessions"]},
     {"id": "openrouter", "provider": "openrouter", "label": "OpenRouter (paid key, soft cap)",
      "owner": "tom", "meter": "usd"},
     {"id": "openrouter-free", "provider": "openrouter", "label": "OpenRouter free model (daily requests)",
      "owner": "tom", "meter": "free-requests"},
-    {"id": "gpu-strix", "provider": "halogen", "label": "Local GPU (Strix, Halogen Flash)",
+    {"id": "gpu-strix", "provider": "gufo", "label": "Local GPU (Strix, local model)",
      "owner": "kernel", "endpoint": INFERENCE_URL},
 ]
 
@@ -1104,16 +1109,73 @@ def parse_quota_reset(text, observed):
 
 
 QWEN_EVENTS_CACHE = STATE / "qwen-events.json"
-QWEN_EVENTS_CACHE_VERSION = 2   # bump when the scan changes what it extracts
+QWEN_EVENTS_CACHE_VERSION = 4   # bump when the scan changes what it extracts
 QWEN_PROVIDER = "qwen-token-plan"
 
 
+def dsh_time(record):
+    """A dsh session record's own stamp (`time`, epoch milliseconds), or None."""
+    value = record.get("time")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return parse_ts(value / 1000)
+
+
+def dsh_fork_cut(record):
+    """True on the marker a forked dsh session writes after the events it copied.
+
+    dsh's fork (packages/core/session/src/fork.ts, buildForkSeed) copies the
+    parent's event prefix, `assistant/message` usage included, into the child
+    log and then writes {"type": "session/end-seed", "data": {"inherited":
+    true}}. Everything before that marker was billed in the parent's own file,
+    so a reader drops what it gathered from this file so far. Subagent child
+    logs carry no such marker and hold only their own calls.
+    """
+    if record.get("type") != "session/end-seed":
+        return False
+    data = record.get("data")
+    return isinstance(data, dict) and data.get("inherited") is True
+
+
+def dsh_qwen_usage(record):
+    """(epoch, input, output, cache) for one dsh token-plan reply, else None.
+
+    dsh (pkgs/dsh) writes plain JSONL sessions under ~/.dsh/sessions/<cwd>/
+    <session>/session.v4.jsonl, one `assistant/message` record per model call:
+      {"type": "assistant/message", "time": <epoch ms>,
+       "data": {"message": {"source": {"provider": ..., "model": ...}},
+                "usage": {"inputTokens", "outputTokens", "cacheReadTokens",
+                          "cacheWriteTokens"}}}
+    dsh's counts are disjoint, like pi's: inputTokens is UNCACHED input, so
+    billable stays input + output and cache reads stay free. Every model on the
+    route is priced at the one qwen3.8-max calibration (QWEN_PLAN), which
+    over-counts DeepSeek Flash: the error is on the safe side.
+    """
+    if record.get("type") != "assistant/message":
+        return None
+    data = record.get("data")
+    if not isinstance(data, dict):
+        return None
+    message = data.get("message")
+    source = message.get("source") if isinstance(message, dict) else None
+    if not isinstance(source, dict) or source.get("provider") != QWEN_PROVIDER:
+        return None
+    usage = data.get("usage")
+    stamp = dsh_time(record)
+    if stamp is None or not isinstance(usage, dict):
+        return None
+    return (stamp.timestamp(),
+            int(usage.get("inputTokens") or 0),
+            int(usage.get("outputTokens") or 0),
+            int(usage.get("cacheReadTokens") or 0) + int(usage.get("cacheWriteTokens") or 0))
+
+
 def qwen_events(roots):
-    """(events, resets) from pi's own session logs, under every root given.
+    """(events, resets) from pi's and dsh's own session logs, under every root.
 
     events  sorted [(epoch, input, output)] for messages billed to the token
             plan — and ONLY those. The same session store carries locally
-            served traffic (the Halogen server on Strix, a hand-run
+            served traffic (the Gufo server on Strix, a hand-run
             llama-server), which costs this subscription nothing; counting it
             would inflate the meter with locally-served tokens.
     resets  every reset stamp the provider has ever stated in a refusal here.
@@ -1146,19 +1208,29 @@ def qwen_events(roots):
                 with path.open(encoding="utf-8", errors="replace") as stream:
                     for line in stream:
                         refusal = "quota will reset at" in line
-                        if not refusal and QWEN_PROVIDER not in line:
+                        seed = "session/end-seed" in line
+                        if not refusal and not seed and QWEN_PROVIDER not in line:
                             continue
                         try:
                             record = json.loads(line)
                         except ValueError:
                             continue
+                        if seed and dsh_fork_cut(record):
+                            # A fork's copied prefix: billed in the parent.
+                            rows.clear()
+                            continue
                         if refusal:
                             # Anchored to the refusal's OWN timestamp: a reset
                             # stated as "08-14" by a message sent in August is
                             # August, not next August.
-                            when = parse_quota_reset(line, parse_ts(record.get("timestamp")))
+                            anchor = parse_ts(record.get("timestamp")) or dsh_time(record)
+                            when = parse_quota_reset(line, anchor)
                             if when:
                                 stamps.append(iso(when))
+                        reply = dsh_qwen_usage(record)
+                        if reply is not None:
+                            rows.append(list(reply[:3]))
+                            continue
                         message = record.get("message")
                         if not isinstance(message, dict) or message.get("provider") != QWEN_PROVIDER:
                             continue
@@ -1382,10 +1454,10 @@ def read_qwen(spec, opts):
     return classify(seat)
 
 
-# ── provider: halogen (the worker's inference server) ───────────────────────
+# ── provider: gufo ───────────────────────
 
-def _halogen_model_ids(payload):
-    """Model ids out of a /health or /v1/models answer, whatever shape it takes."""
+def _gufo_model_ids(payload):
+    """Model ids out of a /ready or /v1/models answer, whatever shape it takes."""
     if not isinstance(payload, dict):
         return []
     ids = []
@@ -1407,24 +1479,24 @@ def _halogen_model_ids(payload):
     return sorted(set(ids))
 
 
-def read_halogen(spec, opts):
+def read_gufo(spec, opts):
     """Up or not, and which model id answers. Two GETs, nothing spent.
 
-    /health is the liveness probe. The model id comes from that answer when it
+    /ready is the liveness probe. The model id comes from that answer when it
     carries one and from /v1/models otherwise; a server that is up but names
     no model is reported as up with the id unknown, never guessed.
     """
     seat = blank_seat(spec, "unknown", "UNKNOWN")
     endpoint = (spec.get("endpoint") or INFERENCE_URL).rstrip("/")
-    seat["source"] = {"kind": "halogen-health", "endpoint": endpoint + "/health"}
-    health, error = http_json(endpoint + "/health", timeout=3)
+    seat["source"] = {"kind": "gufo-ready", "endpoint": endpoint + "/ready"}
+    health, error = http_json(endpoint + "/ready", timeout=3)
     if health is None:
         seat["state"], seat["detail"] = "offline", error or "no answer"
         return seat
-    models = _halogen_model_ids(health)
+    models = _gufo_model_ids(health)
     if not models:
         listed, _ = http_json(endpoint + "/v1/models", timeout=3)
-        models = _halogen_model_ids(listed)
+        models = _gufo_model_ids(listed)
     seat["grade"] = "MEASURED"
     seat["running"] = models
     seat["state"] = "open"
@@ -1609,7 +1681,7 @@ def read_openrouter(spec, opts):
 
 
 READERS = {"claude": read_claude, "codex": read_codex,
-           "qwen": read_qwen, "halogen": read_halogen, "openrouter": read_openrouter,
+           "qwen": read_qwen, "gufo": read_gufo, "openrouter": read_openrouter,
            "none": read_none}
 
 
@@ -1710,20 +1782,31 @@ def _events_codex(path):
 
 
 def _events_pi(path):
-    """pi, token-plan traffic only.
+    """pi and dsh, token-plan traffic only.
 
-    The same session store carries locally served messages — the Halogen
+    The same session store carries locally served messages — the Gufo
     server on Strix, a hand-run llama-server. Those cost the subscription
     nothing, so counting them here would inflate a meter with local tokens.
+    A dsh session file is read by dsh_qwen_usage, under the same rule, and a
+    forked one only after its inherited prefix (dsh_fork_cut).
     """
     events = []
     with path.open(encoding="utf-8", errors="replace") as stream:
         for line in stream:
-            if '"usage"' not in line:
+            seed = "session/end-seed" in line
+            if not seed and '"usage"' not in line:
                 continue
             try:
                 record = json.loads(line)
             except ValueError:
+                continue
+            if seed and dsh_fork_cut(record):
+                # A fork's copied prefix: billed in the parent (dsh_fork_cut).
+                events.clear()
+                continue
+            reply = dsh_qwen_usage(record)
+            if reply is not None:
+                events.append(reply)
                 continue
             if record.get("type") != "message":
                 continue
@@ -2032,7 +2115,7 @@ def headroom(seat, discount_estimates=True):
 def recommend(seats):
     best = None
     for seat in seats:
-        if seat["provider"] in ("halogen", "none") or seat["owner"] != "tom":
+        if seat["provider"] in ("gufo", "none") or seat["owner"] != "tom":
             continue
         if seat["state"] not in ("open", "tight"):
             continue

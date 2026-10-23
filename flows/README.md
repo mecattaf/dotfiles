@@ -10,8 +10,8 @@ refuses (see below).
 
 Codex is the agentic harness for all implementation nodes (ruled 2026-07-25);
 Claude Code is not used as a flow node. Local quorum work goes through `local()`
-members that dial the worker's Halogen Flash server (`http://strix:8731`,
-model `halogen-qwen3.8-flash-next`; the one member is in `catalog.json`).
+members that dial the coordinator's local model server (`http://strix-coordinator:8731`,
+model `qwen3.8-flash-next`; the one member is in `catalog.json`).
 
 ## T0 — flow-era readiness record
 

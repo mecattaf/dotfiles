@@ -50,12 +50,13 @@
 # the 57G eMMC with weight FODs, and the whole weight plane lives outside nix
 # — hosts/nas/models.nix (library-fetch fills the Library) and
 # modules/local-models.nix (explicit local-models-borrow takes working copies;
-# the worker's halogen server reads its copy from /var/lib/local-models). The
+# the worker's gufo server reads its copy from /var/lib/local-models). The
 # closures built here are slim system closures and fit the eMMC comfortably.
 let
   cfg = config.myNas.updateCenter;
   hosts = [
-    "strix"
+    "strix-coordinator"
+    "strix-worker"
 
     # The thin client (2026-09-11). Built here so its rare manual pull is a
     # cache hit; never pushed to, never activated from here.
