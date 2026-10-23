@@ -187,14 +187,23 @@ in
         };
       })
 
-      # qwencloud-token: Qwen Token Plan API key, read client-side by pi through
-      # the `!cat` apiKey in ~/.pi/agent/models.json (home/pi.nix). Same shape as
+      # qwencloud-token: Qwen Token Plan API key. Two consumers, same shape as
       # huggingface-token — delivered read-only under /run and never copied into a
       # mutable dotfile, because nothing ever rewrites it (unlike the OAuth creds
-      # above, which refresh in place). Deliberately NOT exported as
-      # QWEN_TOKEN_PLAN_API_KEY in pi's environment: that would hand the key to
-      # every subprocess pi's bash tool spawns. models.json resolves it per
-      # request instead, so it never enters the agent's process environment.
+      # above, which refresh in place).
+      # - pi reads it client-side through the `!cat` apiKey in
+      #   ~/.pi/agent/models.json (home/pi.nix). Deliberately NOT exported as
+      #   QWEN_TOKEN_PLAN_API_KEY in pi's environment: pi's bash tool would hand
+      #   it to every subprocess. models.json resolves it per request instead.
+      # - dsh (pkgs/dsh, home/dsh.nix) DOES get it as QWEN_TOKEN_PLAN_API_KEY,
+      #   set by its wrapper at exec time for the dsh process only. dsh drops
+      #   every *KEY*/*TOKEN* name (and every DSH_* name) from the children it
+      #   spawns, which removes the reason above, and its headless profile has
+      #   no credential store, so the environment is the only delivery that
+      #   reaches it. Its bwrap runner also masks /run/agenix from the model's
+      #   commands. Not masked: dsh's in-process `read` tool and any same-uid
+      #   /proc/<pid>/environ read, the same exposure pi has today.
+      # dsh reuses this secret; NAS recipient changes are listed in REKEY.md.
       (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.qwencloud-token = {
           file = ../secrets/qwencloud-token.age;

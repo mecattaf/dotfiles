@@ -1,0 +1,539 @@
+dotfiles patch over wenhao4126/dsh-herdr v0.4.0 (3cbea69). Seven changes:
+1. remove _dsh_herdr_pane_send_text: raw bytes into any pane's PTY, ungated
+   (24 tools become 23);
+2. drop the `env` parameter of workspace_create, tab_create and pane_split
+   (`--env K=V` into an unsandboxed shell);
+3. drop native `args` from agent_start (approval-bypass flags after `--`);
+4. agent kinds claude and codex only (pi is gone; herdr 0.9.3 rejects wen
+   and ocr);
+5. pass the call's exec.signal to execFile, so a dsh interrupt kills herdr;
+6. hand the herdr child a stripped env, never dsh's own (the model key);
+7. run herdr as HERDR_BIN, which ./default.nix substitutes with the flake's
+   herdr store path, never a PATH lookup the model could plant a binary in;
+plus `herdrGuard` in `inject`, so the tools stay pending unless the
+dotfiles guard plugin (../herdr-guard) is mounted, and one `dsh-herdr
+ready: N tools` info line once they are registered. Tests follow each change.
+
+--- a/src/argv.ts
++++ b/src/argv.ts
+@@ -18,7 +18,6 @@ export function workspaceCreate(args: Args): string[] {
+     'workspace', 'create',
+     '--cwd', args.cwd,
+     ...(args.label ? ['--label', args.label] : []),
+-    ...(args.env ?? []).flatMap((env: string) => ['--env', env]),
+     '--no-focus',
+   ]
+ }
+@@ -37,7 +36,6 @@ export function tabCreate(args: Args): string[] {
+     '--workspace', args.workspace,
+     '--cwd', args.cwd,
+     ...(args.label ? ['--label', args.label] : []),
+-    ...(args.env ?? []).flatMap((env: string) => ['--env', env]),
+     '--no-focus',
+   ]
+ }
+@@ -64,7 +62,6 @@ export function paneSplit(args: Args): string[] {
+     '--direction', args.direction,
+     ...(args.ratio === undefined ? [] : ['--ratio', String(args.ratio)]),
+     ...(args.cwd ? ['--cwd', args.cwd] : []),
+-    ...(args.env ?? []).flatMap((env: string) => ['--env', env]),
+     '--no-focus',
+   ]
+ }
+@@ -84,10 +81,6 @@ export function paneWaitOutput(args: Args): string[] {
+   ]
+ }
+ 
+-export function paneSendText(args: Args): string[] {
+-  return ['pane', 'send-text', args.pane, args.text]
+-}
+-
+ export function paneLayout(args: Args): string[] {
+   return ['pane', 'layout', '--pane', args.pane]
+ }
+@@ -122,7 +115,6 @@ export function agentStart(args: Args): string[] {
+     '--kind', args.kind,
+     '--pane', args.pane,
+     ...(args.timeout ? ['--timeout', String(args.timeout)] : []),
+-    ...(args.args?.length ? ['--', ...args.args] : []),
+   ]
+ }
+ 
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -7,10 +7,12 @@ interface PluginContext {
+   tools: {
+     register(tool: ReturnType<typeof defineTool>): () => void
+   }
++  logger?: { info?(format: string, ...args: unknown[]): void }
+ }
+ 
+ export const name = '@dsh-external/dsh-herdr-toolkit'
+-export const inject = ['tools']
++// herdrGuard is the dotfiles guard plugin: without it these tools stay pending.
++export const inject = ['tools', 'herdrGuard']
+ 
+ const resultSchema = {
+   type: 'object' as const,
+@@ -30,7 +32,7 @@ function tool<S extends Record<string, any>>(
+   toolName: string,
+   description: string,
+   parameters: S,
+-  execute: (args: any) => Promise<HerdrResult>,
++  execute: (args: any, signal?: AbortSignal) => Promise<HerdrResult>,
+ ) {
+   return defineTool({
+     name: toolName,
+@@ -40,16 +42,20 @@ function tool<S extends Record<string, any>>(
+       schema: resultSchema,
+       render: (_args: any, value: HerdrResult) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+     },
+-    execute,
++    execute: (args: any, exec?: { signal?: AbortSignal }) => execute(args, exec?.signal),
+   })
+ }
+ 
++// Tools registered per context, for the ready line.
++const registered = new WeakMap<object, number>()
++
+ function register(
+   ctx: PluginContext,
+   label: string,
+   definition: ReturnType<typeof tool>,
+ ): void {
+   ctx.effect(() => ctx.tools.register(definition), `${name}: ${label}`)
++  registered.set(ctx, (registered.get(ctx) ?? 0) + 1)
+ }
+ 
+ const readSource = {
+@@ -58,11 +64,7 @@ const readSource = {
+   description: 'Herdr screen source.',
+ }
+ 
+-const agentKinds = [
+-  'pi', 'claude', 'codex', 'gemini', 'cursor', 'devin', 'agy', 'cline', 'omp',
+-  'mastracode', 'opencode', 'copilot', 'kimi', 'kiro', 'droid', 'amp', 'grok',
+-  'hermes', 'kilo', 'qodercli', 'maki', 'wen', 'ocr',
+-] as const
++const agentKinds = ['claude', 'codex'] as const
+ 
+ function firstLine(value: string | undefined): string | undefined {
+   if (!value) return undefined
+@@ -152,14 +154,14 @@ export function apply(
+     '_dsh_herdr_workspace_list',
+     'List Herdr workspaces and their current layout.',
+     {},
+-    () => run(argv.workspaceList()),
++    (_args, signal) => run(argv.workspaceList(), signal),
+   ))
+ 
+   register(ctx, 'workspace get', tool(
+     '_dsh_herdr_workspace_get',
+     'Get one explicitly selected Herdr workspace.',
+     { workspace: { type: 'string', required: true, description: 'Workspace ID, such as w1.' } },
+-    (args) => run(argv.workspaceGet(args)),
++    (args, signal) => run(argv.workspaceGet(args), signal),
+   ))
+ 
+   register(ctx, 'workspace create', tool(
+@@ -168,23 +170,22 @@ export function apply(
+     {
+       cwd: { type: 'string', required: true, description: 'Absolute working directory.' },
+       label: { type: 'string', description: 'Optional workspace label.' },
+-      env: { type: 'array', items: { type: 'string' }, description: 'Optional KEY=VALUE environment variables.' },
+     },
+-    (args) => run(argv.workspaceCreate(args)),
++    (args, signal) => run(argv.workspaceCreate(args), signal),
+   ))
+ 
+   register(ctx, 'tab list', tool(
+     '_dsh_herdr_tab_list',
+     'List Herdr tabs, optionally limited to a workspace.',
+     { workspace: { type: 'string', description: 'Workspace ID, such as w1.' } },
+-    (args) => run(argv.tabList(args)),
++    (args, signal) => run(argv.tabList(args), signal),
+   ))
+ 
+   register(ctx, 'tab get', tool(
+     '_dsh_herdr_tab_get',
+     'Get one explicitly selected Herdr tab.',
+     { tab: { type: 'string', required: true, description: 'Tab ID, such as w1:t1.' } },
+-    (args) => run(argv.tabGet(args)),
++    (args, signal) => run(argv.tabGet(args), signal),
+   ))
+ 
+   register(ctx, 'tab create', tool(
+@@ -194,23 +195,22 @@ export function apply(
+       workspace: { type: 'string', required: true, description: 'Destination workspace ID.' },
+       cwd: { type: 'string', required: true, description: 'Absolute working directory.' },
+       label: { type: 'string', description: 'Optional tab label.' },
+-      env: { type: 'array', items: { type: 'string' }, description: 'Optional KEY=VALUE environment variables.' },
+     },
+-    (args) => run(argv.tabCreate(args)),
++    (args, signal) => run(argv.tabCreate(args), signal),
+   ))
+ 
+   register(ctx, 'pane list', tool(
+     '_dsh_herdr_pane_list',
+     'List Herdr panes, optionally limited to a workspace.',
+     { workspace: { type: 'string', description: 'Workspace ID, such as w1.' } },
+-    (args) => run(argv.paneList(args)),
++    (args, signal) => run(argv.paneList(args), signal),
+   ))
+ 
+   register(ctx, 'pane get', tool(
+     '_dsh_herdr_pane_get',
+     'Get one explicitly selected Herdr pane.',
+     { pane: { type: 'string', required: true, description: 'Pane ID, such as w1:p1.' } },
+-    (args) => run(argv.paneGet(args)),
++    (args, signal) => run(argv.paneGet(args), signal),
+   ))
+ 
+   register(ctx, 'pane read', tool(
+@@ -221,7 +221,7 @@ export function apply(
+       source: readSource,
+       lines: { type: 'integer', description: 'Maximum number of lines.' },
+     },
+-    (args) => run(argv.paneRead(args)),
++    (args, signal) => run(argv.paneRead(args), signal),
+   ))
+ 
+   register(ctx, 'pane split', tool(
+@@ -232,9 +232,8 @@ export function apply(
+       direction: { type: 'string', required: true, enum: ['right', 'down'], description: 'Split direction.' },
+       ratio: { type: 'number', description: 'Optional split ratio accepted by Herdr.' },
+       cwd: { type: 'string', description: 'Optional absolute working directory for the new pane.' },
+-      env: { type: 'array', items: { type: 'string' }, description: 'Optional KEY=VALUE environment variables.' },
+     },
+-    (args) => run(argv.paneSplit(args)),
++    (args, signal) => run(argv.paneSplit(args), signal),
+   ))
+ 
+   register(ctx, 'pane run', tool(
+@@ -245,7 +244,7 @@ export function apply(
+       command: { type: 'string', required: true, description: 'Shell command text to execute in the pane.' },
+       preview: { type: 'boolean', description: 'Return a structured preview instead of executing.' },
+     },
+-    (args) => previewGate('herdr pane run', 'pane_run', { pane: args.pane, preview: args.preview }, () => run(argv.paneRun(args))),
++    (args, signal) => previewGate('herdr pane run', 'pane_run', { pane: args.pane, preview: args.preview }, () => run(argv.paneRun(args), signal)),
+   ))
+ 
+   register(ctx, 'pane wait output', tool(
+@@ -259,17 +258,7 @@ export function apply(
+       lines: { type: 'integer', description: 'Maximum screen lines to search.' },
+       timeout: { type: 'integer', description: 'Wait timeout in milliseconds.' },
+     },
+-    (args) => run(argv.paneWaitOutput(args)),
+-  ))
+-
+-  register(ctx, 'pane send text', tool(
+-    '_dsh_herdr_pane_send_text',
+-    'Send literal text to an explicitly selected Herdr pane.',
+-    {
+-      pane: { type: 'string', required: true, description: 'Pane ID.' },
+-      text: { type: 'string', required: true, description: 'Literal text to send.' },
+-    },
+-    (args) => run(argv.paneSendText(args)),
++    (args, signal) => run(argv.paneWaitOutput(args), signal),
+   ))
+ 
+   register(ctx, 'pane layout', tool(
+@@ -278,7 +267,7 @@ export function apply(
+     {
+       pane: { type: 'string', required: true, description: 'Pane ID, such as w1:p1.' },
+     },
+-    (args) => run(argv.paneLayout(args)),
++    (args, signal) => run(argv.paneLayout(args), signal),
+   ))
+ 
+   register(ctx, 'pane process info', tool(
+@@ -287,7 +276,7 @@ export function apply(
+     {
+       pane: { type: 'string', required: true, description: 'Pane ID, such as w1:p1.' },
+     },
+-    (args) => run(argv.paneProcessInfo(args)),
++    (args, signal) => run(argv.paneProcessInfo(args), signal),
+   ))
+ 
+   register(ctx, 'pane edges', tool(
+@@ -296,20 +285,20 @@ export function apply(
+     {
+       pane: { type: 'string', required: true, description: 'Pane ID, such as w1:p1.' },
+     },
+-    (args) => run(argv.paneEdges(args)),
++    (args, signal) => run(argv.paneEdges(args), signal),
+   ))
+ 
+   register(ctx, 'doctor', tool(
+     '_dsh_herdr_doctor',
+     'Run read-only Herdr environment diagnostics: version, status, sessions, workspaces, and agents.',
+     {},
+-    async () => {
++    async (_args, signal) => {
+       const [version, status, sessions, workspaces, agents] = await Promise.all([
+-        run(argv.doctorVersion()),
+-        run(argv.doctorStatus()),
+-        run(argv.doctorSessions()),
+-        run(argv.workspaceList()),
+-        run(argv.agentList()),
++        run(argv.doctorVersion(), signal),
++        run(argv.doctorStatus(), signal),
++        run(argv.doctorSessions(), signal),
++        run(argv.workspaceList(), signal),
++        run(argv.agentList(), signal),
+       ])
+       return {
+         ok: true,
+@@ -329,21 +318,21 @@ export function apply(
+     '_dsh_herdr_agent_list',
+     'List recognized agents running in Herdr panes.',
+     {},
+-    () => run(argv.agentList()),
++    (_args, signal) => run(argv.agentList(), signal),
+   ))
+ 
+   register(ctx, 'agent get', tool(
+     '_dsh_herdr_agent_get',
+     'Get one Herdr agent by unique name or pane ID.',
+     { agent: { type: 'string', required: true, description: 'Agent name or pane ID.' } },
+-    (args) => run(argv.agentGet(args)),
++    (args, signal) => run(argv.agentGet(args), signal),
+   ))
+ 
+   register(ctx, 'agent explain', tool(
+     '_dsh_herdr_agent_explain',
+     'Explain agent detection state for an explicitly selected Herdr agent.',
+     { agent: { type: 'string', required: true, description: 'Agent name or pane ID.' } },
+-    (args) => run(argv.agentExplain(args)),
++    (args, signal) => run(argv.agentExplain(args), signal),
+   ))
+   register(ctx, 'agent read', tool(
+     '_dsh_herdr_agent_read',
+@@ -352,7 +341,7 @@ export function apply(
+       agent: { type: 'string', required: true, description: 'Agent name or pane ID.' },
+       lines: { type: 'integer', description: 'Maximum number of lines.' },
+     },
+-    (args) => run(argv.agentRead(args)),
++    (args, signal) => run(argv.agentRead(args), signal),
+   ))
+ 
+   register(ctx, 'agent start', tool(
+@@ -363,10 +352,9 @@ export function apply(
+       kind: { type: 'string', required: true, enum: agentKinds, description: 'Supported Herdr agent kind.' },
+       pane: { type: 'string', required: true, description: 'Available shell pane ID.' },
+       timeout: { type: 'integer', description: 'Startup timeout in milliseconds.' },
+-      args: { type: 'array', items: { type: 'string' }, description: 'Optional native arguments passed after --.' },
+       preview: { type: 'boolean', description: 'Return a structured preview instead of executing.' },
+     },
+-    (args) => previewGate('herdr agent start', 'agent_start', { name: args.name, kind: args.kind, pane: args.pane, timeout: args.timeout, preview: args.preview }, () => run(argv.agentStart(args))),
++    (args, signal) => previewGate('herdr agent start', 'agent_start', { name: args.name, kind: args.kind, pane: args.pane, timeout: args.timeout, preview: args.preview }, () => run(argv.agentStart(args), signal)),
+   ))
+ 
+   register(ctx, 'agent wait', tool(
+@@ -381,7 +369,7 @@ export function apply(
+       },
+       timeout: { type: 'integer', description: 'Wait timeout in milliseconds.' },
+     },
+-    (args) => run(argv.agentWait(args)),
++    (args, signal) => run(argv.agentWait(args), signal),
+   ))
+ 
+   register(ctx, 'agent prompt', tool(
+@@ -393,6 +381,9 @@ export function apply(
+       timeout: { type: 'integer', description: 'Wait timeout in milliseconds.' },
+       preview: { type: 'boolean', description: 'Return a structured preview instead of executing.' },
+     },
+-    (args) => previewGate('herdr agent prompt', 'agent_prompt', { agent: args.agent, preview: args.preview }, () => run(argv.agentPrompt(args))),
++    (args, signal) => previewGate('herdr agent prompt', 'agent_prompt', { agent: args.agent, preview: args.preview }, () => run(argv.agentPrompt(args), signal)),
+   ))
++  // One stderr line in the herdr profile (through the stderr-log plugin), so a
++  // boot shows this plugin, and so the herdrGuard it injects, mounted.
++  ctx.logger?.info?.('dsh-herdr ready: %d tools', registered.get(ctx) ?? 0)
+ }
+\ No newline at end of file
+--- a/src/runtime.ts
++++ b/src/runtime.ts
+@@ -15,12 +15,26 @@ const execFileAsync = promisify(execFile)
+ 
+ const MAX_BUFFER = 4 * 1024 * 1024
+ 
++// The herdr binary, by absolute store path: the dotfiles build substitutes
++// @herdr@, so no PATH entry the model can write ever picks the program.
++export const HERDR_BIN = '@herdr@'
++
+ export type ExecFileRunner = (
+   file: string,
+   args: string[],
+-  options: { env: NodeJS.ProcessEnv; maxBuffer: number; timeout?: number },
++  options: { env: NodeJS.ProcessEnv; maxBuffer: number; timeout?: number; signal?: AbortSignal },
+ ) => Promise<{ stdout: string | Buffer; stderr: string | Buffer }>
+ 
++// The only names the herdr CLI needs. dsh's own environment carries the model
++// key, which the herdr child has no use for.
++const CHILD_ENV = ['PATH', 'HOME', 'XDG_CONFIG_HOME', 'HERDR_SOCKET_PATH', 'HERDR_SESSION', 'HERDR_ENV', 'HERDR_PANE_ID', 'LANG']
++
++export function childEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
++  const out: NodeJS.ProcessEnv = {}
++  for (const key of CHILD_ENV) if (env[key] !== undefined) out[key] = env[key]
++  return out
++}
++
+ export function parseJson(value: string): any | undefined {
+   if (!value) return undefined
+   try {
+@@ -56,14 +70,16 @@ export async function runHerdrWith(
+   args: string[],
+   runner: ExecFileRunner,
+   env: NodeJS.ProcessEnv = process.env,
++  signal?: AbortSignal,
+ ): Promise<HerdrResult> {
+   const command = commandLabel(args)
+   const timeout = readCliTimeoutMs(env)
+   try {
+-    const result = await runner('herdr', args, {
+-      env,
++    const result = await runner(HERDR_BIN, args, {
++      env: childEnv(env),
+       maxBuffer: MAX_BUFFER,
+       ...(timeout === undefined ? {} : { timeout }),
++      ...(signal === undefined ? {} : { signal }),
+     })
+     const stdout = String(result.stdout ?? '')
+     const stderr = String(result.stderr ?? '')
+@@ -98,6 +114,6 @@ export async function runHerdrWith(
+   }
+ }
+ 
+-export function runHerdr(args: string[]): Promise<HerdrResult> {
+-  return runHerdrWith(args, defaultRunner)
++export function runHerdr(args: string[], signal?: AbortSignal): Promise<HerdrResult> {
++  return runHerdrWith(args, defaultRunner, process.env, signal)
+ }
+\ No newline at end of file
+--- a/test/argv.test.mjs
++++ b/test/argv.test.mjs
+@@ -59,10 +59,10 @@ test('agent read always requests unwrapped output', () => {
+   assert.deepEqual(argv.agentRead({ agent: 'reviewer' }), ['agent', 'read', 'reviewer', '--source', 'recent-unwrapped'])
+ })
+ 
+-test('agent start passes native args only after --', () => {
++test('agent start never passes native args', () => {
+   assert.deepEqual(
+     argv.agentStart({ name: 'reviewer', kind: 'codex', pane: 'w1:p1', timeout: 30000, args: ['--model', 'x'] }),
+-    ['agent', 'start', 'reviewer', '--kind', 'codex', '--pane', 'w1:p1', '--timeout', '30000', '--', '--model', 'x'],
++    ['agent', 'start', 'reviewer', '--kind', 'codex', '--pane', 'w1:p1', '--timeout', '30000'],
+   )
+   assert.deepEqual(
+     argv.agentStart({ name: 'reviewer', kind: 'codex', pane: 'w1:p1' }),
+@@ -91,17 +91,18 @@ test('agent explain requests JSON output', () => {
+   assert.deepEqual(argv.agentExplain({ agent: 'reviewer' }), ['agent', 'explain', 'reviewer', '--json'])
+ })
+ 
+-test('creation/split env arrays map to repeated --env', () => {
++test('creation/split never pass --env', () => {
+   assert.deepEqual(
+     argv.workspaceCreate({ cwd: '/tmp/a', env: ['A=1', 'B=2'] }),
+-    ['workspace', 'create', '--cwd', '/tmp/a', '--env', 'A=1', '--env', 'B=2', '--no-focus'],
++    ['workspace', 'create', '--cwd', '/tmp/a', '--no-focus'],
+   )
+   assert.deepEqual(
+     argv.tabCreate({ workspace: 'w1', cwd: '/tmp/a', env: ['FOO=bar'] }),
+-    ['tab', 'create', '--workspace', 'w1', '--cwd', '/tmp/a', '--env', 'FOO=bar', '--no-focus'],
++    ['tab', 'create', '--workspace', 'w1', '--cwd', '/tmp/a', '--no-focus'],
+   )
+   assert.deepEqual(
+     argv.paneSplit({ pane: 'w1:p1', direction: 'right', env: ['A=1'] }),
+-    ['pane', 'split', 'w1:p1', '--direction', 'right', '--env', 'A=1', '--no-focus'],
++    ['pane', 'split', 'w1:p1', '--direction', 'right', '--no-focus'],
+   )
++  assert.equal(argv.paneSendText, undefined)
+ })
+--- a/test/registration.test.mjs
++++ b/test/registration.test.mjs
+@@ -23,12 +23,38 @@ function fakeContext() {
+   }
+ }
+ 
+-test('registering the plugin exposes 24 unique tools', () => {
++test('registering the plugin exposes 23 unique tools', () => {
+   const fake = fakeContext()
+   apply(fake.ctx)
+-  assert.equal(fake.tools.length, 24)
+-  assert.equal(new Set(fake.tools.map((tool) => tool.name)).size, 24)
++  assert.equal(fake.tools.length, 23)
++  assert.equal(new Set(fake.tools.map((tool) => tool.name)).size, 23)
+   assert.ok(fake.tools.every((tool) => typeof tool.execute === 'function'))
++  const names = fake.tools.map((tool) => tool.name)
++  assert.ok(!names.includes('_dsh_herdr_pane_send_text'))
++  const start = fake.tools.find((tool) => tool.name === '_dsh_herdr_agent_start')
++  // defineTool turns the parameter spec into a JSON Schema object.
++  assert.deepEqual([...start.parameters.properties.kind.enum], ['claude', 'codex'])
++  assert.equal(start.parameters.properties.args, undefined)
++  for (const name of ['_dsh_herdr_workspace_create', '_dsh_herdr_tab_create', '_dsh_herdr_pane_split']) {
++    assert.equal(fake.tools.find((tool) => tool.name === name).parameters.properties.env, undefined)
++  }
++})
++
++test('apply logs one ready line with the tool count', () => {
++  const fake = fakeContext()
++  const lines = []
++  fake.ctx.logger = { info: (...args) => lines.push(args) }
++  apply(fake.ctx)
++  assert.deepEqual(lines, [['dsh-herdr ready: %d tools', 23]])
++})
++
++test('execute hands the call signal to the herdr runner', async () => {
++  const fake = fakeContext()
++  const signals = []
++  apply(fake.ctx, { run: async (_args, signal) => { signals.push(signal); return { ok: true } } })
++  const signal = new AbortController().signal
++  await fake.tools.find((tool) => tool.name === '_dsh_herdr_pane_list').execute({}, { signal })
++  assert.deepEqual(signals, [signal])
+ })
+ 
+ test('registered tool execute routes through injected argv', async () => {
+--- a/test/runtime.test.mjs
++++ b/test/runtime.test.mjs
+@@ -1,6 +1,7 @@
+ import test from 'node:test'
+ import assert from 'node:assert/strict'
+-import { runHerdrWith, commandLabel, parseJson, readCliTimeoutMs } from '../lib/runtime.js'
++import { isAbsolute } from 'node:path'
++import { runHerdrWith, commandLabel, parseJson, readCliTimeoutMs, HERDR_BIN } from '../lib/runtime.js'
+ 
+ function successRunner(stdout, stderr = '') {
+   return async (_file, _args, _opts) => ({ stdout, stderr })
+@@ -95,4 +96,32 @@ test('env timeout is forwarded as a subprocess deadline', async () => {
+   assert.equal(result.ok, true)
+   assert.equal(captured.timeout, 30000)
+   assert.equal(captured.maxBuffer, 4 * 1024 * 1024)
++})
++
++test('the herdr child gets a stripped env and the call signal', async () => {
++  let captured
++  const runner = async (_file, _args, options) => {
++    captured = options
++    return { stdout: '{}', stderr: '' }
++  }
++  const signal = new AbortController().signal
++  const env = { PATH: '/bin', HOME: '/h', HERDR_ENV: '1', QWEN_TOKEN_PLAN_API_KEY: 'k', DSH_HERDR_CLI_TIMEOUT_MS: '600000' }
++  await runHerdrWith(['pane', 'list'], runner, env, signal)
++  assert.deepEqual(captured.env, { PATH: '/bin', HOME: '/h', HERDR_ENV: '1' })
++  assert.equal(captured.signal, signal)
++  assert.equal(captured.timeout, 600000)
++})
++
++
++test('the runner gets herdr by absolute path, never a PATH lookup', async () => {
++  let file
++  const runner = async (f) => {
++    file = f
++    return { stdout: '{}', stderr: '' }
++  }
++  const result = await runHerdrWith(['pane', 'list'], runner, { PATH: '/model/bin' })
++  assert.equal(file, HERDR_BIN)
++  assert.ok(isAbsolute(file), `herdr runs as ${file}`)
++  assert.match(file, /\/bin\/herdr$/)
++  assert.equal(result.command, 'herdr pane list')
+ })
+\ No newline at end of file
