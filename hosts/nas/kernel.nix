@@ -1,6 +1,6 @@
 { freshPkgs, ... }:
-# Keep the kernel series validated on this hardware during the network move.
-# Changing the appliance kernel is a separate compatibility and reboot decision.
+# Follow the fleet's current kernel series (Tom, 2026-10-23, #584).
+# The NAS keeps its stable userspace; kernel point releases come from freshPkgs.
 {
-  boot.kernelPackages = freshPkgs.linuxPackages_7_2;
+  boot.kernelPackages = freshPkgs.linuxPackages_7_3;
 }
