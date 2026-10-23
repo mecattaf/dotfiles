@@ -8,7 +8,7 @@
   imports = [
     ./agent-host.nix
     ./unstable-pkgs.nix
-    ./kernel.nix # retain the validated kernel series during the network move
+    ./kernel.nix # current fleet kernel, independent of stable userspace
     ./hardware.nix
     ./disko.nix
     ./tailscale.nix

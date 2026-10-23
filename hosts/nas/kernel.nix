@@ -1,6 +1,6 @@
 { freshPkgs, ... }:
-# Keep the kernel series validated on this hardware during the network move.
-# Changing the appliance kernel is a separate compatibility and reboot decision.
+# Tom, 2026-10-23: the NAS shares the current fleet kernel. Stable userspace
+# does not freeze the kernel; all four hosts follow nixpkgs-fresh 7.2.y.
 {
   boot.kernelPackages = freshPkgs.linuxPackages_7_2;
 }

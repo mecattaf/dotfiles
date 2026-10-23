@@ -26,13 +26,10 @@
     # rollingInputOverrides remains available to explicit fleet candidates.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
-    # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
-    # the NAS is a frozen self-sustaining appliance on standard stable nixpkgs,
-    # maintained manually every few years. It never rides the unstable
-    # kernel/Mesa churn the strix's pin exists to gate, and it accepts
-    # EOL-pin CVE exposure because it is reachable only from the strix
-    # over the private /30. Bump deliberately with
-    # `nix flake update nixpkgs-stable` on the same few-years cadence.
+    # Stable NAS userspace remains on its reviewed package set. Its kernel is
+    # the same current linuxPackages_7_2 from nixpkgs-fresh as the Strix hosts
+    # and client (Tom, 2026-10-23); there is no old-stable-kernel exception.
+    # Bump the NAS userspace separately with `nix flake update nixpkgs-stable`.
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     home-manager = {
@@ -2842,7 +2839,7 @@
 
         huggingface-cli-smoke =
           let
-            hf = pkgs.huggingface-cli;
+            hf = self.nixosConfigurations.nas.pkgs.huggingface-cli;
             expectedVersion = "1.16.0";
             smokeRevision = "0123456789abcdef0123456789abcdef01234567";
             mockHub = pkgs.writeText "huggingface-metadata-mock.py" ''
