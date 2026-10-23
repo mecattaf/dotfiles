@@ -20,7 +20,9 @@ What it pins:
     and an expired hold stops holding
   * Qwen credits sum dsh's live sessions AND the sessions the substrate
     factory archived, skipping the other harnesses' archives beside them,
-    and pi's old session shape is no longer billed anywhere
+    and pi's old session shape is never spend, only window history: it still
+    places the 7-day window pi's calls opened on the same key
+  * a spend cache written by an older extractor is discarded, not counted
   * spend counts from the seat's own weekly window start, not a rolling week,
     and excludes events before it
   * --check returns 0 headroom / 1 spent / 2 unmeasurable
@@ -171,7 +173,7 @@ class SeatsFixture:
 
     @staticmethod
     def pi_message(when, tin, tout, cache, provider):
-        """One record in pi's old session shape, which nothing bills now."""
+        """One record in pi's old session shape: window history, never spend."""
         return json.dumps({
             "type": "message", "timestamp": iso(when),
             "message": {"provider": provider, "model": "qwen3.8-max",
@@ -441,20 +443,62 @@ class SeatsTest(unittest.TestCase):
         qwen = next(s for s in mod.DEFAULT_SEATS if s["id"] == "pi-qwencloud")
         self.assertEqual(qwen["spend_root"],
                          ["~/.dsh/sessions", "~/.local/state/substrate/transcripts"])
+        self.assertEqual(qwen["window_history_root"], ["~/.pi/agent/sessions"])
 
-    def test_pi_sessions_are_no_longer_billed(self):
-        # pi left the fleet: neither its old live store nor a pi-shaped
-        # factory archive counts, so the seat reads dsh alone.
-        stale = (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 0,
-                 "qwen-token-plan")
+    def pi_store(self, *messages):
         store = self.box.home / ".pi/agent/sessions/-proj"
         store.mkdir(parents=True, exist_ok=True)
-        (store / "s.jsonl").write_text(self.box.pi_message(*stale) + "\n")
+        (store / "s.jsonl").write_text(
+            "\n".join(self.box.pi_message(*row) for row in messages) + "\n")
+        for stale in self.box.state.glob("qwen-events.json"):
+            stale.unlink()
+
+    def test_pi_sessions_are_never_spend(self):
+        # pi left the fleet: neither its old live store nor a pi-shaped
+        # factory archive is spend, so the spend row reads dsh alone. The
+        # same calls were made on this key inside the current window, so the
+        # window's credits still carry them.
+        stale = (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 0,
+                 "qwen-token-plan")
+        self.pi_store(stale)
         self.box.substrate_archive("pi-session", [stale], shape="pi")
         _, seats = self.box.report()
         qwen = seats["pi-qwencloud"]
-        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250)
+        self.assertEqual(qwen["spend"]["tokens_in"], 90_000)
         self.assertEqual(qwen["spend"]["sessions"], 1)
+        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 2 * 11_000)
+
+    def test_pi_history_still_places_the_window(self):
+        # The window opens on the first call after a reset, whichever harness
+        # made it. pi made this key's earlier calls; without its history the
+        # window would start at the first dsh call instead.
+        first = self.qwen_reset + timedelta(hours=6)
+        self.pi_store((first, 1_000, 1_000, 0, "qwen-token-plan"),
+                      (first, 999_999, 999_999, 0, "halogen"))
+        _, seats = self.box.report()
+        qwen = seats["pi-qwencloud"]
+        entry = qwen["windows"][0]
+        self.assertEqual(entry["window_start"], iso(first))
+        self.assertEqual(entry["resets_at"], iso(first + timedelta(days=7)))
+        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 2_000,
+                         "pi's local-route call never counts")
+        self.assertEqual(qwen["spend"]["tokens_in"], 90_000)
+
+    def test_a_spend_cache_from_an_older_extractor_is_discarded(self):
+        # The old extractor billed pi-shaped archives; its buckets for a file
+        # written once must not outlive the version that built them.
+        when = self.qwen_opened + timedelta(hours=2)
+        path = self.box.substrate_archive(
+            "pi-session", [(when, 10_000, 1_000, 0, "qwen-token-plan")], shape="pi")
+        stat = path.stat()
+        key = f"{path}|{int(stat.st_mtime)}|{stat.st_size}"
+        hour = when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H")
+        (self.box.state / "spend-cache.json").write_text(
+            json.dumps({key: {hour: [10_000, 1_000, 0]}}))
+        _, seats = self.box.report()
+        self.assertEqual(seats["pi-qwencloud"]["spend"]["tokens_in"], 90_000)
+        blob = json.loads((self.box.state / "spend-cache.json").read_text())
+        self.assertIn("v", blob, "the rewritten cache carries its version")
 
     def test_dsh_sessions_are_billed_to_the_same_seat(self):
         # T-31: dsh spends the same token plan through its qwen-token-plan

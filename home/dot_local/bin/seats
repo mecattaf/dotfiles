@@ -51,9 +51,13 @@ THE SEATS, and where each one's truth lives:
                 (~/.dsh/sessions) and from the sessions the substrate factory
                 archives under ~/.local/state/substrate/transcripts (a factory
                 job's tokens appear when its job ends, because the archive is
-                written at job end). pi's logs are no longer read: pi left
-                the fleet, and the id stays because the meter rows and
-                substrate join on it.
+                written at job end). pi left the fleet, and the id stays
+                because the meter rows and substrate join on it. pi's old
+                logs (~/.pi/agent/sessions, and pi-shaped factory archives)
+                are still read, as history for the window scan only: they
+                place the 7-day window pi's calls opened on this same key.
+                They are never spend, and no credit outside the current
+                window moves because of them.
 
   openrouter    OpenRouter, the paid key (no fleet harness routes to it since
                 pi was removed; the token lives at /run/agenix/openrouter-token and is read at call
@@ -233,9 +237,14 @@ DEFAULT_SEATS = [
      "note": "RULINGS R-2026-09-06-02: this login is not Tom's — read by name, never spent."},
     # One seat, one credit pool: dsh (pkgs/dsh) spends the token plan pi used
     # to. The id stays, because the meter rows and substrate join on it.
+    # window_history_root is read by the window scan alone (qwen_events), never
+    # by spend: pi made most of this key's past calls, and the window opens on
+    # the first call after a reset, so dropping pi's history would move the
+    # window by up to seven days until a 429 re-anchored it.
     {"id": "pi-qwencloud", "provider": "qwen", "label": "Qwen Cloud (token-plan, via dsh)",
      "owner": "tom",
-     "spend_root": ["~/.dsh/sessions", "~/.local/state/substrate/transcripts"]},
+     "spend_root": ["~/.dsh/sessions", "~/.local/state/substrate/transcripts"],
+     "window_history_root": ["~/.pi/agent/sessions"]},
     {"id": "openrouter", "provider": "openrouter", "label": "OpenRouter (paid key, soft cap)",
      "owner": "tom", "meter": "usd"},
     {"id": "openrouter-free", "provider": "openrouter", "label": "OpenRouter free model (daily requests)",
@@ -1108,7 +1117,7 @@ def parse_quota_reset(text, observed):
 
 
 QWEN_EVENTS_CACHE = STATE / "qwen-events.json"
-QWEN_EVENTS_CACHE_VERSION = 5   # bump when the scan changes what it extracts
+QWEN_EVENTS_CACHE_VERSION = 6   # bump when the scan changes what it extracts
 QWEN_PROVIDER = "qwen-token-plan"
 
 
@@ -1169,8 +1178,32 @@ def dsh_qwen_usage(record):
             int(usage.get("cacheReadTokens") or 0) + int(usage.get("cacheWriteTokens") or 0))
 
 
+def pi_qwen_usage(record):
+    """(epoch, input, output) for one reply in pi's old session shape, else None.
+
+    pi left the fleet; its logs are read as window HISTORY only (qwen_events),
+    never as spend. pi's counts were disjoint like dsh's: input is uncached.
+      {"type": "message", "timestamp": <iso>,
+       "message": {"provider": ..., "usage": {"input", "output", ...}}}
+    """
+    if record.get("type") != "message":
+        return None
+    message = record.get("message")
+    if not isinstance(message, dict) or message.get("provider") != QWEN_PROVIDER:
+        return None
+    usage = message.get("usage")
+    moment = parse_ts(record.get("timestamp"))
+    if moment is None or not isinstance(usage, dict):
+        return None
+    return (moment.timestamp(), int(usage.get("input") or 0), int(usage.get("output") or 0))
+
+
 def qwen_events(roots):
-    """(events, resets) from dsh's own session logs, under every root.
+    """(events, resets) from the token plan's session logs, under every root.
+
+    Two record shapes: dsh's (the live harness) and pi's old one. pi's is
+    read here only, so its calls still place the window they opened on this
+    key; spend (_events_dsh) reads dsh alone.
 
     events  sorted [(epoch, input, output)] for messages billed to the token
             plan — and ONLY those. The same session store will carry other
@@ -1225,7 +1258,7 @@ def qwen_events(roots):
                             when = parse_quota_reset(line, anchor)
                             if when:
                                 stamps.append(iso(when))
-                        reply = dsh_qwen_usage(record)
+                        reply = dsh_qwen_usage(record) or pi_qwen_usage(record)
                         if reply is not None:
                             rows.append(list(reply[:3]))
             except OSError:
@@ -1331,11 +1364,15 @@ def read_qwen(spec, opts):
         elif probe_note.startswith("open"):
             held_until = None
 
-    # 4. The window and the credits inside it, from dsh's own logs. Every
-    #    reset the provider has ever stated there is recovered, so the current
-    #    window's start is derivable without any endpoint at all.
+    # 4. The window and the credits inside it, from dsh's own logs plus pi's
+    #    old ones as history (window_history_root). Every reset the provider
+    #    has ever stated there is recovered, so the current window's start is
+    #    derivable without any endpoint at all.
     plan = load_qwen_plan()
-    events, resets = qwen_events(spend_roots(spec, default="~/.dsh/sessions"))
+    roots = spend_roots(spec, default="~/.dsh/sessions")
+    history = [root for root in spend_roots({"spend_root": spec.get("window_history_root")})
+               if root not in roots]
+    events, resets = qwen_events(roots + history)
     if held_until:
         resets.add(held_until)
     past = sorted(r for r in resets if r <= now())
@@ -1679,19 +1716,28 @@ READERS = {"claude": read_claude, "codex": read_codex,
 # Only when no such stamp exists does this fall back to a rolling seven days.
 
 SPEND_CACHE = STATE / "spend-cache.json"
+# Bump when an extractor changes what it returns, so buckets an old extractor
+# built for a file that never changes again (a factory archive is written once)
+# are dropped rather than counted forever. 2: pi's shape left _events_dsh.
+SPEND_CACHE_VERSION = 2
 
 
 def _load_spend_cache():
     try:
-        return json.loads(SPEND_CACHE.read_text(encoding="utf-8"))
+        blob = json.loads(SPEND_CACHE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+    if not isinstance(blob, dict) or blob.get("v") != SPEND_CACHE_VERSION:
+        return {}
+    files = blob.get("files")
+    return files if isinstance(files, dict) else {}
 
 
 def _save_spend_cache(cache):
     try:
         STATE.mkdir(parents=True, exist_ok=True)
-        SPEND_CACHE.write_text(json.dumps(cache), encoding="utf-8")
+        SPEND_CACHE.write_text(json.dumps({"v": SPEND_CACHE_VERSION, "files": cache}),
+                               encoding="utf-8")
     except OSError:
         pass
 
