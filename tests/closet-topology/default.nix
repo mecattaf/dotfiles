@@ -22,7 +22,11 @@ in
 assert builtins.attrNames self.nixosConfigurations == names;
 assert builtins.attrNames self.deploy.nodes == names;
 assert builtins.attrNames registry == names;
-assert s.networking.hostName == "strix";
+assert
+  s.myFleet.roles == [
+    "brain"
+    "compute"
+  ];
 assert s.networking.hosts."10.42.0.2" == alias;
 assert c.networking.hosts."10.42.0.2" == alias;
 assert builtins.all (name: builtins.elem name n.networking.hosts."10.42.0.2") alias;

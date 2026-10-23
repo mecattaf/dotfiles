@@ -2,12 +2,14 @@
 {
   options.myFleet = {
     roles = lib.mkOption {
-      type = lib.types.listOf (lib.types.enum [
-        "brain"
-        "compute"
-        "seat"
-        "router"
-      ]);
+      type = lib.types.listOf (
+        lib.types.enum [
+          "brain"
+          "compute"
+          "seat"
+          "router"
+        ]
+      );
       default = [ ];
       description = "Responsibilities assigned to this fleet host.";
     };

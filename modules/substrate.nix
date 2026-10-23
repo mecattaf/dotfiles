@@ -803,7 +803,7 @@ in
     };
   };
 
-  config = mkIf anyEnabled {
+  config = mkIf (anyEnabled && config.myFleet.has "brain") {
     assertions = [
       {
         assertion = lib.hasPrefix "https://" cfg.floorUrl;

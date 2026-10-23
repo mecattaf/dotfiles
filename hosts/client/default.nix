@@ -31,7 +31,7 @@
 #     gated), no Claude/Codex credential (secrets.nix: strixOnly, the
 #     jul12 "own session" ruling stands), no tally clocks, no voxtype, no
 #     transcript mirror, no paper timers. Every one of those
-#     is `hostName == "strix"`-gated in home/; the flake's home-profiles
+#     is brain-role-gated in home/; the flake's home-profiles
 #     check asserts their absence here.
 #   * not a runner of anything, with ONE exception — ./huion.nix pulls the
 #     Huion Note X10's pages over Bluetooth on connect and pushes them to

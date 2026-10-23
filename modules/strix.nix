@@ -31,7 +31,7 @@
       "qwen38-27b-gguf"
       "qwen38-27b-dflash2-gguf"
     ]
-    ++ lib.optionals (config.networking.hostName == "strix") [
+    ++ lib.optionals (config.myFleet.has "compute") [
       # The one diarization model (Tom, 2026-09-16), loaded by call-diarize.
       "vibevoice-asr-streaming-7b-bf16"
     ];
@@ -57,7 +57,7 @@
       # single prompt token, which the box has room for many times over.
       maxTokensDefault = 16384;
       healthKill = true;
-      kvPoolPositions = if config.networking.hostName == "strix" then 262144 else null;
+      kvPoolPositions = if config.myFleet.has "compute" then 262144 else null;
       # The alternate model: Qwen3.8-27B under halogen-server. Never resident
       # together with Flash — `halogen-switch qwen38-27b` stops the Flash unit
       # and starts this one; `halogen-switch flash` goes back.
@@ -94,7 +94,7 @@
         # prompt cache gets a fixed 8 GiB budget instead of auto-sizing from
         # MemAvailable at startup, which on a desktop would claim whatever the
         # TTS, ASR and browser happen not to be using at that moment.
-        environment = lib.optionalAttrs (config.networking.hostName == "strix") {
+        environment = lib.optionalAttrs (config.myFleet.has "compute") {
           HALOGEN_CACHE_MB = "8192";
         };
       };

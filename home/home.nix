@@ -89,7 +89,7 @@ let
       numpy
       ijson
     ]
-    ++ lib.optionals (hostName == "strix") [
+    ++ lib.optionals (osConfig.myFleet.has "brain") [
       # CLI-Anything's generated harnesses and validation workflow assume these
       # are importable from the ordinary `python3`, not only inside cli-hub.
       click
@@ -142,7 +142,7 @@ in
       '';
 
       "sway-local.conf".text =
-        lib.optionalString (hostName == "strix") ''
+        lib.optionalString (osConfig.myFleet.has "compute") ''
           output DP-4 scale 2 position 0 0
           output DP-1 scale 2 position 2560 0
         ''
@@ -297,7 +297,8 @@ in
     settings = {
       auto_sync = true;
       # port must match services.atuin.port in hosts/strix/services.nix.
-      sync_address = if hostName == "strix" then "http://localhost:27321" else "http://strix:27321";
+      sync_address =
+        if osConfig.myFleet.has "brain" then "http://localhost:27321" else "http://strix:27321";
     };
   };
 
@@ -326,13 +327,13 @@ in
       package = pkgs.mactahoe-icon-theme;
     };
     cursorTheme = {
-      name = if hostName == "strix" then "Bibata-Modern-Amber" else "Bibata-Modern-Classic";
+      name = if osConfig.myFleet.has "compute" then "Bibata-Modern-Amber" else "Bibata-Modern-Classic";
       package = pkgs.bibata-cursors;
     };
     # Photos gets a plain bookmark, not an XDG dir (see xdg.userDirs below):
     # XDG_PICTURES_DIR is where screenshot tools save, and /mnt/nas/photos is
     # Immich's library root — stray screenshots must not land inside it.
-    gtk3.bookmarks = lib.optionals (hostName == "strix") [
+    gtk3.bookmarks = lib.optionals (osConfig.myFleet.has "compute") [
       "file:///mnt/nas/photos Photos"
     ];
   };
@@ -360,7 +361,7 @@ in
   # they leave for the strix (bin/screenshot, bin/call-record).
   # ---------------------------------------------------------------------------
   xdg.userDirs = lib.mkMerge [
-    (lib.mkIf (hostName == "strix") {
+    (lib.mkIf (osConfig.myFleet.has "brain") {
       enable = true;
       createDirectories = false;
       music = "/mnt/nas/music";

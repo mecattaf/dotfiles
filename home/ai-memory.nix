@@ -10,7 +10,7 @@
 # the Claude/Codex seats are (the strix); on the thin client this activation
 # used to create ~/mecattaf/notes/journal on every switch, an empty
 # non-repository in a home Tom wants clean (2026-10-11), and register it with
-# qmd. Strix only, like the rest of the agent tier.
+# qmd. The brain role owns this agent state.
 let
   cfg = config.programs.ai-memory;
   qmd = pkgs.llm-agents.qmd;
@@ -24,7 +24,7 @@ in
     '';
   };
 
-  config = lib.mkIf (osConfig.networking.hostName == "strix") {
+  config = lib.mkIf (osConfig.myFleet.has "brain") {
     xdg.configFile."ai-memory/config.json".text = builtins.toJSON {
       schema = 1;
       journal_dir = cfg.journalDir;
