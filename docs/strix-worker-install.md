@@ -60,8 +60,9 @@ Prerequisites before executing the following stages:
    archive. Put **only its public half** in the registry, rebuild the final
    integration closure with that public key, and install the matching private
    half under the target's `/etc/ssh/`. Do not reuse the retired worker key or
-   copy the coordinator's identity. The worker remains outside every agenix
-   recipient tier; no rekey is needed for its fresh host key.
+   copy the coordinator's identity. The worker remains outside every operator-secret recipient tier. #610
+   separately requires its fresh host key for the TP2-only shared token;
+   create that ciphertext only after both compute public keys are recorded.
 5. Arrange enrollment using the NAS PR's shared `modules/fleet-transport.nix`
    procedure: interactive login to the official service, then disable device
    key expiry in the admin console for each of the four machines. Its

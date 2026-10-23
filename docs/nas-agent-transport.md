@@ -151,11 +151,10 @@ Use a remote absolute runtime-test path: a local shell would expand `~`
 before SSH. The helper requires an explicit existing remote cwd, quotes each
 argument, checks
 host identity and propagates SSH/command failures without local fallback. It
-does not synchronize a checkout or export NAS credentials. The checked #608
-compute profiles also use `rawDotfiles.inStore = false`, so both Strix hosts
-need `/home/tom/mecattaf/dotfiles` at the reviewed revision for their helpers
-and activation guard. Stage that source checkout without NAS auth directories;
-the client alone uses in-store raw dotfiles. Private inputs
+does not synchronize a checkout or export NAS credentials. The final #608 worker profile uses `rawDotfiles.inStore = true`, like the
+client, so its helpers do not depend on a checkout at first boot. Coordinator
+still needs `/home/tom/mecattaf/dotfiles` at the reviewed revision for its raw
+helpers and activation guard. Stage that checkout without NAS auth directories. Private inputs
 are fetched by the authenticated NAS agent and sent as source/closure data;
 do not copy its auth directories to compute. Raw dotfiles on NAS still require
 `/home/tom/mecattaf/dotfiles` at the combined reviewed revision.
@@ -192,17 +191,13 @@ propagation without starting SSH, Herdr or a user manager.
 The renamed compute tests on #607's parent are **role/name fixtures**; the
 check automatically uses real named compute configurations once #608 is merged. The
 integration worker must check the actual #608 configurations, remove its
-worker disable, build all final Linux 7.3 generations and preserve #606's
-real NAS home PARTUUID guard. A synthetic filesystem UUID proves only that
-an otherwise combined closure can build; never boot that fixture.
+worker disable, build all final Linux 7.3 generations and preserve #606's serial-bearing by-id home path and serial guard. The
+production NAS configuration needs no PARTUUID and no filesystem override.
 
-`tests/fleet-agent-transport/integration.nix` accepts the combined `flake` and
-an optional `kernelPackages` argument to inspect this additive transport
-change without editing another worker's checkout. Its default `facts` retain
-the real assertion failures. Explicit `diagnostic = true` emulates removing
-the worker disable and uses the invented NAS home PARTUUID; its `check` and
-`nasBuildFixture` qualify code/build compatibility only. They do not qualify
-the final SSD or supply a production-ready generation.
+`tests/fleet-agent-transport/integration.nix` inspects the combined production
+`flake` directly. It applies no kernel, module, filesystem or transport
+overrides. Its facts and check do not qualify the actual final SSD,
+enrollment or remote hardware.
 
 Before telling Tom to unplug, integration still needs the real SSD/partition
 mapping and staged final boot entries, NAS home/databases/raw checkout and

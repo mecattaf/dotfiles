@@ -10,7 +10,9 @@ let
   # Inspect the actual production profiles after the rename stack lands.
   compute = self.nixosConfigurations.strix-coordinator.config;
   nonBrainConfigs = map (name: self.nixosConfigurations.${name}.config) [
-    "strix-coordinator" "strix-worker" "client"
+    "strix-coordinator"
+    "strix-worker"
+    "client"
   ];
   dshPackages = home: builtins.filter (p: lib.getName p == "dsh") home.home.packages;
   # Assert the refusal with an explicitly unfilled fixture so this check
@@ -120,8 +122,7 @@ assert lib.hasInfix "10.42.0.16 tcp dport 22 accept" c.networking.firewall.extra
 assert c.services.atuin.enable;
 assert h.programs.atuin.package.version == c.services.atuin.package.version;
 assert
-  c.services.atuin.package.version
-  == self.nixosConfigurations.strix-coordinator.pkgs.atuin.version;
+  c.services.atuin.package.version == self.nixosConfigurations.strix-coordinator.pkgs.atuin.version;
 assert client.programs.atuin.settings.sync_address == "http://nas:27321";
 assert !(c.systemd.user.services ? substrate-puller);
 assert !(c.systemd.user.services ? substrate-pusher);
@@ -151,7 +152,9 @@ assert builtins.all (name: c.age.secrets ? ${name}) [
   "tom-password-hash"
   "codex-auth"
 ];
-assert builtins.all (name: name == "gufo-tp2-control-token") (builtins.attrNames compute.age.secrets);
+assert builtins.all (name: name == "gufo-tp2-control-token") (
+  builtins.attrNames compute.age.secrets
+);
 assert builtins.all (
   name: builtins.elem registry.nas.hostKey recipients."secrets/${name}.age".publicKeys
 ) toNas;
