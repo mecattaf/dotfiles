@@ -2069,9 +2069,8 @@
           assert client.networking.hosts."10.42.0.1" == [ "nas" ];
           assert client.networking.hosts."127.0.0.2" == [ "client" ];
           assert client.networking.hostName == "client";
-          # Thin client: no journal upload (hosts/nas/journal.nix admits the
-          # twins only), no tailnet join (daemon declared, no key, no
-          # autoconnect), no printing queue, agenix on.
+          # Thin client: no journal upload or printing queue, agenix on.
+          # Tailscale enrollment is interactive, without a delivered auth key.
           assert !client.services.journald.upload.enable;
           assert client.services.tailscale.enable;
           assert !(client.age.secrets ? tailscale-authkey);
@@ -2135,19 +2134,19 @@
           # carries exactly one and modules/common.nix carries none.
 
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
-          # ── the strix fallback (2026-10-08) ────────────────────────────────
-          # The strix keeps its already enrolled official Tailscale identity as
-          # an independent path in when the NAS is down (hosts/strix/tailscale.nix).
-          # Exact lists, not `elem`: the flag set is the fallback's whole
-          # configuration, and a silent addition to it (a route, an exit node,
-          # Tailscale SSH) is a change of posture.
+          # The compute nodes share the NAS PR's official Tailscale policy.
+          # They consume the NAS exit/subnet route, without advertising either.
+          # Keep the coordinator's enrolled identity; enrollment/expiry is an
+          # explicit operator step, not an agenix auth key.
           assert strix.services.tailscale.enable;
           assert
             strix.services.tailscale.extraUpFlags == [
               "--hostname=strix-coordinator"
-              "--accept-routes=false"
               "--accept-dns=false"
               "--ssh=false"
+              "--accept-routes=true"
+              "--exit-node=nas"
+              "--exit-node-allow-lan-access=true"
             ];
           assert strix.services.tailscale.extraSetFlags == strix.services.tailscale.extraUpFlags;
           # It reuses its persistent state: no enrollment key is deployed, so a

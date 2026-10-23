@@ -104,7 +104,7 @@ server, the local model on the strix (lib/local-model.nix), addressed as protoco
 `qwen3.8-flash-next` through its OpenAI-compatible
 `/v1/chat/completions` with `image_url` content parts, temperature zero and
 thinking off (`chat_template_kwargs.enable_thinking=false`).
-The base URL defaults to `http://strix:8731` and is overridable through
+The base URL defaults to `http://strix-coordinator:8731` and is overridable through
 `ACADEMIC_OCR_INFERENCE_URL`. The server's token budget would cover reasoning as
 well as the transcription, so the per-page cap is 16384 tokens.
 
