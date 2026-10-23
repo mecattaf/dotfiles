@@ -9,6 +9,8 @@ What it pins:
   * the numbers are the fixture's numbers (so a parser change is visible)
   * only the requested DATE is counted
   * an unparseable line does not lose the rest of the file
+  * a forked dsh session counts only its own calls, not the parent's copied
+    prefix ahead of its session/end-seed marker
   * a store that exists but has nothing for the date is MEASURED with zeros,
     not UNKNOWN — "the seat was idle" and "the seat is unreadable" are
     different facts
@@ -56,7 +58,7 @@ class NightlyRecordTest(unittest.TestCase):
     def test_every_lane_produces_exactly_one_row(self):
         result, rows = run(pathlib.Path(FIXTURES) / "home", self.out)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(sorted(rows), ["cc", "cc2", "cc3", "codex", "pi"])
+        self.assertEqual(sorted(rows), ["cc", "cc2", "cc3", "codex", "dsh"])
         for seat, row in rows.items():
             self.assertEqual(row["date"], DATE, seat)
             self.assertIn(row["grade"], ("MEASURED", "UNKNOWN"), seat)
@@ -83,13 +85,32 @@ class NightlyRecordTest(unittest.TestCase):
         self.assertEqual(codex["seconds"], 120)
         self.assertEqual(codex["grade"], "MEASURED")
 
-    def test_pi_lane_reads_its_own_usage_shape(self):
+    def test_dsh_lane_reads_its_own_usage_shape(self):
         _, rows = run(pathlib.Path(FIXTURES) / "home", self.out)
-        pi = rows["pi"]
-        self.assertEqual(pi["tokens_in"], 70)
-        self.assertEqual(pi["tokens_out"], 8)
-        self.assertEqual(pi["cache"], 5)
-        self.assertEqual(pi["grade"], "MEASURED")
+        dsh = rows["dsh"]
+        self.assertEqual(dsh["lane"], "dsh")
+        # session-0000: 70 + 30 in, 8 + 2 out, (3+2) + 0 cache, a 20-second
+        # span; its 2026-09-06 call and the trailing garbage line are skipped.
+        # session-fork: only the 11/1/4 call after the end-seed marker; the
+        # copied 500/50 call is the parent's.
+        self.assertEqual(dsh["tokens_in"], 111)
+        self.assertEqual(dsh["tokens_out"], 11)
+        self.assertEqual(dsh["cache"], 9)
+        self.assertEqual(dsh["seconds"], 20)
+        self.assertEqual(dsh["source_files"], 2)
+        self.assertEqual(dsh["grade"], "MEASURED")
+
+    def test_a_pi_store_is_no_longer_read(self):
+        home = pathlib.Path(self.tmp.name) / "pi-home"
+        store = home / ".pi/agent/sessions/slug"
+        store.mkdir(parents=True)
+        (store / "session.jsonl").write_text(json.dumps({
+            "type": "message", "timestamp": DATE + "T07:00:05.000Z",
+            "message": {"role": "assistant", "usage": {"input": 70, "output": 8}}}) + "\n")
+        result, rows = run(home, self.out)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("pi", rows)
+        self.assertEqual(rows["dsh"]["grade"], "UNKNOWN")
 
     def test_idle_seat_is_measured_zero_not_unknown(self):
         _, rows = run(pathlib.Path(FIXTURES) / "home", self.out)

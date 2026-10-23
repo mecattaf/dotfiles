@@ -44,7 +44,10 @@ CLAUDE_SEATS = [
     ("cc3", ".claude-3/projects"),
 ]
 CODEX_SEAT = ("codex", ".codex/sessions")
-PI_SEAT = ("pi", ".pi/agent/sessions")
+# dsh (pkgs/dsh) writes plain JSONL sessions (sessions.patch.yml) under
+# ~/.dsh/sessions/<cwd>/<session>/. One row for every route it runs; the
+# Qwen Cloud credit view of the same files is `seats` (pi-qwencloud).
+DSH_SEAT = ("dsh", ".dsh/sessions")
 
 
 def _iso_day(value):
@@ -182,39 +185,76 @@ def codex_lane(root, date, seat):
     return row
 
 
-def pi_lane(root, date, seat):
-    """pi (earendil-works/pi): message.usage on assistant message records."""
-    row = _blank(date, seat, "pi")
+def _dsh_day(record):
+    """(YYYY-MM-DD, epoch seconds) of a dsh record's `time` (epoch ms), or None."""
+    value = record.get("time")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    moment = value / 1000
+    try:
+        day = datetime.datetime.fromtimestamp(moment, datetime.timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
+    return day.date().isoformat(), moment
+
+
+def _dsh_fork_cut(record):
+    """True on the marker a forked dsh session writes after the events it copied.
+
+    A fork copies its parent's records, usage included, ahead of
+    {"type": "session/end-seed", "data": {"inherited": true}}. Those calls were
+    the parent's and are counted in the parent's file, so the fork's file
+    counts only what follows the marker. Same rule as seats' dsh_fork_cut.
+    """
+    if record.get("type") != "session/end-seed":
+        return False
+    data = record.get("data")
+    return isinstance(data, dict) and data.get("inherited") is True
+
+
+def dsh_lane(root, date, seat):
+    """dsh: data.usage on `assistant/message` records, one per model call.
+
+    inputTokens is uncached input; cache reads and writes are separate fields
+    and go to `cache`, like the other lanes.
+    """
+    row = _blank(date, seat, "dsh")
     if not root.is_dir():
         return row
     row["grade"] = "MEASURED"
     for path in sorted(root.rglob("*.jsonl")):
-        stamps = []
-        matched = False
         try:
             records = list(_jsonl(path))
         except OSError:
             continue
+        tin = tout = cache = 0
+        stamps = []
+        matched = False
         for record in records:
-            if record.get("type") != "message":
+            if _dsh_fork_cut(record):
+                tin = tout = cache = 0
+                stamps = []
+                matched = False
                 continue
-            if _iso_day(record.get("timestamp")) != date:
+            if record.get("type") != "assistant/message":
                 continue
-            message = record.get("message")
-            if not isinstance(message, dict):
+            day = _dsh_day(record)
+            if day is None or day[0] != date:
                 continue
-            usage = message.get("usage")
+            data = record.get("data")
+            usage = data.get("usage") if isinstance(data, dict) else None
             if not isinstance(usage, dict):
                 continue
             matched = True
-            row["tokens_in"] += int(usage.get("input") or 0)
-            row["tokens_out"] += int(usage.get("output") or 0)
-            row["cache"] += int(usage.get("cacheRead") or 0)
-            row["cache"] += int(usage.get("cacheWrite") or 0)
-            moment = _epoch(record.get("timestamp"))
-            if moment is not None:
-                stamps.append(moment)
+            tin += int(usage.get("inputTokens") or 0)
+            tout += int(usage.get("outputTokens") or 0)
+            cache += int(usage.get("cacheReadTokens") or 0)
+            cache += int(usage.get("cacheWriteTokens") or 0)
+            stamps.append(day[1])
         if matched:
+            row["tokens_in"] += tin
+            row["tokens_out"] += tout
+            row["cache"] += cache
             row["source_files"] += 1
             row["seconds"] += _span_seconds(stamps)
     return row
@@ -225,7 +265,7 @@ def collect(home, date):
     for seat, relative in CLAUDE_SEATS:
         rows.append(_safe(claude_lane, home / relative, date, seat, "claude"))
     rows.append(_safe(codex_lane, home / CODEX_SEAT[1], date, CODEX_SEAT[0], "codex"))
-    rows.append(_safe(pi_lane, home / PI_SEAT[1], date, PI_SEAT[0], "pi"))
+    rows.append(_safe(dsh_lane, home / DSH_SEAT[1], date, DSH_SEAT[0], "dsh"))
     return rows
 
 
