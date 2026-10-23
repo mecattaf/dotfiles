@@ -1,0 +1,368 @@
+{
+  "testedCommit": "9c98b60f6c81b4ed1489e03a180b160644cf636e",
+  "baseCommit": "7a794a5ea955f3c20dac70f5a8b0f6425f929427",
+  "branch": "integration/cutover-2026-10-23",
+  "prHeads": [
+    {
+      "number": 575,
+      "branch": "rules/ultracode-light-verify",
+      "sha": "f501e8564fad931ddbf70630ae61cada9d8fb2d4"
+    },
+    {
+      "number": 583,
+      "branch": "update/nixpkgs-fresh",
+      "sha": "72bec4547fc21aa1d44f048a55b84733a2b4550a"
+    },
+    {
+      "number": 605,
+      "branch": "gufo/retire-halogen-oct23",
+      "sha": "af8f48117002a178159f99258fe1f0accd273821"
+    },
+    {
+      "number": 604,
+      "branch": "fleet/roles",
+      "sha": "4b260c6961f3c6cf22c691a11cdf0b0ad1b6342e"
+    },
+    {
+      "number": 608,
+      "branch": "fleet/strix-coordinator-worker",
+      "sha": "ad94870c78ef61c508b81ffd5a6bd24e7fe26681"
+    },
+    {
+      "number": 607,
+      "branch": "nas/agent-host",
+      "sha": "3c608be3da542bac033643457304af51c8e6749b"
+    },
+    {
+      "number": 606,
+      "branch": "nas/home-disk",
+      "sha": "a8d5bdf4619f4f1f45c3344e7cbe250f16559884"
+    },
+    {
+      "number": 609,
+      "branch": "dsh/nas-placement",
+      "sha": "15e0c5509ced2c8c5999efd5ca91859bf353ea1a"
+    },
+    {
+      "number": 610,
+      "branch": "compute/donnerkeule-gufo-rdma",
+      "sha": "51a37cc0244e27a8c325a1e67636e9b1ddd728d7"
+    }
+  ],
+  "inputs": {
+    "nixpkgs": {
+      "lastModified": 1784796856,
+      "narHash": "sha256-wWFrV5/Qbm+lyt5x20E/bSbfJiGKMo4RCxZV8cl/WZI=",
+      "owner": "NixOS",
+      "repo": "nixpkgs",
+      "rev": "e2587caef70cea85dd97d7daab492899902dbf5d",
+      "type": "github"
+    },
+    "nixpkgs-fresh": {
+      "lastModified": 1792617723,
+      "narHash": "sha256-IyFA94SfEEqeru/RZyRRbmk8gtBejDTiojSReKzUOc8=",
+      "owner": "NixOS",
+      "repo": "nixpkgs",
+      "rev": "dce1caf58d1a943af38b376e824a0d036ec3eea7",
+      "type": "github"
+    },
+    "nixpkgs-stable": {
+      "lastModified": 1785491804,
+      "narHash": "sha256-p00vplVOyfKGlhju0+eGGPAxyYYKaY0lpyuoHLFIx2Y=",
+      "owner": "NixOS",
+      "repo": "nixpkgs",
+      "rev": "5b4f72e1705a63aace42900610c4db82cb4af0ec",
+      "type": "github"
+    },
+    "gufo": {
+      "lastModified": 1792582379,
+      "narHash": "sha256-yc6G5d/lgbJn3+9sU75jpmaOM7jiUVBrgYwaYJRNgGc=",
+      "owner": "gufo-org",
+      "repo": "gufo",
+      "rev": "0c03748a271eab895befc0d2343aa50ca4b6d836",
+      "type": "github"
+    },
+    "gufo-rdma": {
+      "lastModified": 1792687837,
+      "narHash": "sha256-JK7vPok3ALQrr6bdxPYBzvxpE8XyULmxZmWKwlAofrg=",
+      "owner": "neuhaus",
+      "repo": "gufo",
+      "rev": "39f437cc1316c2b24031fef983462feaac88b9d5",
+      "type": "github"
+    },
+    "donnerkeule": {
+      "lastModified": 1792771392,
+      "narHash": "sha256-QiTy09X4dkdvLzOStGP/Ob4W61ctYQBklCIAKEF/P/s=",
+      "owner": "mecattaf",
+      "repo": "donnerkeule",
+      "rev": "fb05a7d210179fa2daaefe3e7bf45bbb4a0b7ff3",
+      "type": "github"
+    }
+  },
+  "facts": {
+    "donnerkeule": {
+      "drv": "/nix/store/dx3j8dihiaibpsd59hxhvwp7am10078z-thunderbolt-ibverbs-0.4.0.drv",
+      "kernel": "7.2.12",
+      "revision": "fb05a7d210179fa2daaefe3e7bf45bbb4a0b7ff3"
+    },
+    "gufoRdma": {
+      "drv": "/nix/store/5g5paw2g2mx1nymggxb9dzhkds7j3al0-gufo-0-unstable-39f437c.drv",
+      "revision": "39f437cc1316c2b24031fef983462feaac88b9d5"
+    },
+    "hosts": {
+      "client": {
+        "kernel": "7.2.12",
+        "kernelDrv": "/nix/store/8zfh2xmv3yvsz655bp1jrq5laaqv0fk4-linux-7.2.12.drv",
+        "testFixture": false,
+        "toplevelDrv": "/nix/store/mjdspjwhzkha2ws2hl1hlp53ayvwv8jg-nixos-system-client-26.11.20260723.e2587ca.drv",
+        "output": "/nix/store/8467gjcrw1kk0rgaxklvazsv5w09c3q5-nixos-system-client-26.11.20260723.e2587ca"
+      },
+      "nas": {
+        "kernel": "7.2.12",
+        "kernelDrv": "/nix/store/8zfh2xmv3yvsz655bp1jrq5laaqv0fk4-linux-7.2.12.drv",
+        "testFixture": true,
+        "toplevelDrv": "/nix/store/rq2059g5iafadrjqwijk8c7ykz4pqdiq-nixos-system-nas-26.05.20260731.5b4f72e.drv",
+        "output": "/nix/store/kzskd0phs1w46axw8xvlc91hjrv2f0qc-nixos-system-nas-26.05.20260731.5b4f72e"
+      },
+      "strix-coordinator": {
+        "kernel": "7.2.12",
+        "kernelDrv": "/nix/store/8zfh2xmv3yvsz655bp1jrq5laaqv0fk4-linux-7.2.12.drv",
+        "testFixture": false,
+        "toplevelDrv": "/nix/store/fwasln6zd656mhj4g6c8b622v2b743w2-nixos-system-strix-coordinator-26.11.20260723.e2587ca.drv",
+        "output": "/nix/store/si31v4ld0d3jxmg1lhfw6kssmd8nxaak-nixos-system-strix-coordinator-26.11.20260723.e2587ca"
+      },
+      "strix-worker": {
+        "kernel": "7.2.12",
+        "kernelDrv": "/nix/store/8zfh2xmv3yvsz655bp1jrq5laaqv0fk4-linux-7.2.12.drv",
+        "testFixture": false,
+        "toplevelDrv": "/nix/store/6i53sag1r5fg2csggc8kwrqc1kyhag92-nixos-system-strix-worker-26.11.20260723.e2587ca.drv",
+        "output": "/nix/store/x5wd48ya9jmq2rlvdnlbb2vbp40kjrf4-nixos-system-strix-worker-26.11.20260723.e2587ca"
+      }
+    },
+    "testUuid": "11111111-2222-4333-8444-555555555555"
+  },
+  "builtOutputs": [
+    {
+      "drvPath": "/nix/store/5g5paw2g2mx1nymggxb9dzhkds7j3al0-gufo-0-unstable-39f437c.drv",
+      "outputs": {
+        "out": "/nix/store/jk55569c8pzc01machsh2y9772xf6w0c-gufo-0-unstable-39f437c"
+      }
+    },
+    {
+      "drvPath": "/nix/store/6i53sag1r5fg2csggc8kwrqc1kyhag92-nixos-system-strix-worker-26.11.20260723.e2587ca.drv",
+      "outputs": {
+        "out": "/nix/store/x5wd48ya9jmq2rlvdnlbb2vbp40kjrf4-nixos-system-strix-worker-26.11.20260723.e2587ca"
+      }
+    },
+    {
+      "drvPath": "/nix/store/dx3j8dihiaibpsd59hxhvwp7am10078z-thunderbolt-ibverbs-0.4.0.drv",
+      "outputs": {
+        "out": "/nix/store/viik42i4a2kafvc4wc8j9jaidg4clldx-thunderbolt-ibverbs-0.4.0"
+      }
+    },
+    {
+      "drvPath": "/nix/store/fwasln6zd656mhj4g6c8b622v2b743w2-nixos-system-strix-coordinator-26.11.20260723.e2587ca.drv",
+      "outputs": {
+        "out": "/nix/store/si31v4ld0d3jxmg1lhfw6kssmd8nxaak-nixos-system-strix-coordinator-26.11.20260723.e2587ca"
+      }
+    },
+    {
+      "drvPath": "/nix/store/ggsp2clp7r7ygis2wdi76398fqk0dnvq-rdma-core-usb4-63.0.drv",
+      "outputs": {
+        "man": "/nix/store/p53ljd8gvn8g4111q2m8xwx66y4qc8z5-rdma-core-usb4-63.0-man",
+        "out": "/nix/store/0hgks7rlzqpaf3d9j94rwrj1g7m64zfl-rdma-core-usb4-63.0"
+      }
+    },
+    {
+      "drvPath": "/nix/store/mjdspjwhzkha2ws2hl1hlp53ayvwv8jg-nixos-system-client-26.11.20260723.e2587ca.drv",
+      "outputs": {
+        "out": "/nix/store/8467gjcrw1kk0rgaxklvazsv5w09c3q5-nixos-system-client-26.11.20260723.e2587ca"
+      }
+    },
+    {
+      "drvPath": "/nix/store/rq2059g5iafadrjqwijk8c7ykz4pqdiq-nixos-system-nas-26.05.20260731.5b4f72e.drv",
+      "outputs": {
+        "out": "/nix/store/kzskd0phs1w46axw8xvlc91hjrv2f0qc-nixos-system-nas-26.05.20260731.5b4f72e"
+      }
+    }
+  ],
+  "builtChecks": [
+    {
+      "drvPath": "/nix/store/7x2736yyiyxrfdd0m1p4a7xxl256bvff-nas-agent-host.drv",
+      "outputs": {
+        "out": "/nix/store/c2742h9qvm0hq6dhjqzpcnhsvykhll7h-nas-agent-host"
+      }
+    },
+    {
+      "drvPath": "/nix/store/fw4kgibfwkmnynpdfccg0amy7ql65rjh-nas-home-disk.drv",
+      "outputs": {
+        "out": "/nix/store/m2kgaqamg74rsx4wxywvy1gyfh3zl056-nas-home-disk"
+      }
+    },
+    {
+      "drvPath": "/nix/store/15sv979d093va5d3ndz73vgrysjassqn-fleet-roles.drv",
+      "outputs": {
+        "out": "/nix/store/00wwrcfi635lify4j74ha5fpb8qlrhwc-fleet-roles"
+      }
+    },
+    {
+      "drvPath": "/nix/store/q861qjs3k09yvas9bkci39qlmvm8l68w-closet-topology.drv",
+      "outputs": {
+        "out": "/nix/store/a50gdz9zpdvdcmyyvx41yh21sc2zwx7g-closet-topology"
+      }
+    },
+    {
+      "drvPath": "/nix/store/1x0852160pjgv60vfivnh2r032j62acx-gufo-rdma-policy.drv",
+      "outputs": {
+        "out": "/nix/store/cva28ig4p2xfwfcv18wnh12hycbzsri1-gufo-rdma-policy"
+      }
+    },
+    {
+      "drvPath": "/nix/store/z7ry54s7q2cfvw5i04q9iwql923kkra9-substrate-modules.drv",
+      "outputs": {
+        "out": "/nix/store/qilwdjfa7dhnlns8had3iz6fj6a797fx-substrate-modules"
+      }
+    },
+    {
+      "drvPath": "/nix/store/3c5ajqkigg7yl8vkvf5348scy6rxw7dr-dsh-config.drv",
+      "outputs": {
+        "out": "/nix/store/6vk2ki6aypfp24x1drhafc489rmxps6b-dsh-config"
+      }
+    },
+    {
+      "drvPath": "/nix/store/p90fmpfrff2qqzs0i7s6sqyilap7r19g-dsh-plugins.drv",
+      "outputs": {
+        "out": "/nix/store/48j5vyrqz1ylsxp9wxvp316mcl22rsnk-dsh-plugins"
+      }
+    },
+    {
+      "drvPath": "/nix/store/bamdpf6psn0phmlnszcw3ypwqsxpym5c-gufo-unit-policy.drv",
+      "outputs": {
+        "out": "/nix/store/539bq69a4l05kxvkjc2j13i5llf1skdp-gufo-unit-policy"
+      }
+    },
+    {
+      "drvPath": "/nix/store/qla5c46mq8cy2xl151zv90x8r7qj93hd-utility-model.drv",
+      "outputs": {
+        "out": "/nix/store/k5m535ryka0ygibrg1izvf1gllyj8r5l-utility-model"
+      }
+    },
+    {
+      "drvPath": "/nix/store/rjw28ckq5hr4cy6zlih716wh09sql9mv-local-model-transactions.drv",
+      "outputs": {
+        "out": "/nix/store/nbmqnxrk3cr23pc1691jcd0ak2z6fvly-local-model-transactions"
+      }
+    },
+    {
+      "drvPath": "/nix/store/dddr18196b57qwk82bv4l45lvagq4g7l-huggingface-cli-smoke.drv",
+      "outputs": {
+        "out": "/nix/store/ssfjqrc4lxfl8vpicd4dljwds0a8s1kn-huggingface-cli-smoke"
+      }
+    },
+    {
+      "drvPath": "/nix/store/rmscnbqam5pqhrcj5x7lzp110cwragr0-seats.drv",
+      "outputs": {
+        "out": "/nix/store/h7ndgjasb26kfjav8947r907x6yhfj8b-seats"
+      }
+    },
+    {
+      "drvPath": "/nix/store/am5c675s558a8vkl5f80bnpfr0hxziqb-update-check.drv",
+      "outputs": {
+        "out": "/nix/store/6xilr4l8h9fcjxhccmqn33p8sj5jir9c-update-check"
+      }
+    }
+  ],
+  "receipts": [
+    {
+      "name": "verified-hosts",
+      "command": [
+        "nix",
+        "build",
+        "--json",
+        "--no-link",
+        "--keep-going",
+        "--max-jobs",
+        "1",
+        "--cores",
+        "4",
+        "--impure",
+        "--expr",
+        "let f = builtins.getFlake (toString ./.); p = import ./tests/cutover-integration { flake = f; }; in (builtins.attrValues p.hosts) ++ [ f.packages.x86_64-linux.thunderbolt-ibverbs f.packages.x86_64-linux.rdmaCoreUsb4 f.packages.x86_64-linux.gufo-rdma ]"
+      ],
+      "started": "2026-10-23T16:55:51.376477+00:00",
+      "finished": "2026-10-23T16:56:36.379611+00:00",
+      "exitCode": 0,
+      "abortedForDisk": false,
+      "minimumFreeBytes": 173862273024,
+      "gitHead": "9c98b60f6c81b4ed1489e03a180b160644cf636e"
+    },
+    {
+      "name": "verified-checks",
+      "command": [
+        "nix",
+        "build",
+        "--json",
+        "--no-link",
+        "--keep-going",
+        "--max-jobs",
+        "1",
+        "--cores",
+        "2",
+        ".#checks.x86_64-linux.nas-agent-host",
+        ".#checks.x86_64-linux.nas-home-disk",
+        ".#checks.x86_64-linux.fleet-roles",
+        ".#checks.x86_64-linux.closet-topology",
+        ".#checks.x86_64-linux.gufo-rdma",
+        ".#checks.x86_64-linux.substrate-modules",
+        ".#checks.x86_64-linux.dsh-config",
+        ".#checks.x86_64-linux.dsh-plugins",
+        ".#checks.x86_64-linux.gufo-unit-policy",
+        ".#checks.x86_64-linux.utility-model",
+        ".#checks.x86_64-linux.local-model-transactions",
+        ".#checks.x86_64-linux.huggingface-cli-smoke",
+        ".#checks.x86_64-linux.seats",
+        ".#checks.x86_64-linux.update-check"
+      ],
+      "started": "2026-10-23T16:55:51.376483+00:00",
+      "finished": "2026-10-23T16:56:31.381490+00:00",
+      "exitCode": 0,
+      "abortedForDisk": false,
+      "minimumFreeBytes": 173862776832,
+      "gitHead": "9c98b60f6c81b4ed1489e03a180b160644cf636e"
+    },
+    {
+      "name": "verified-flake-eval",
+      "command": [
+        "nix",
+        "flake",
+        "check",
+        "--no-build",
+        "--keep-going",
+        "--option",
+        "eval-cache",
+        "false"
+      ],
+      "started": "2026-10-23T16:55:51.376515+00:00",
+      "finished": "2026-10-23T16:56:46.379962+00:00",
+      "exitCode": 1,
+      "abortedForDisk": false,
+      "minimumFreeBytes": 173862273024,
+      "gitHead": "9c98b60f6c81b4ed1489e03a180b160644cf636e"
+    }
+  ],
+  "fullFlakeEvaluation": {
+    "exitCode": 1,
+    "checksEvaluatedSuccessfully": 49,
+    "expectedBlockedOutputs": [
+      "nixosConfigurations.nas",
+      "checks.x86_64-linux.deploy-schema",
+      "checks.x86_64-linux.deploy-activate"
+    ],
+    "reason": "Production NAS PARTUUID is deliberately unfilled."
+  },
+  "moduleVermagic": "7.2.12 SMP preempt mod_unload",
+  "minimumFreeGiB": 161.9,
+  "logsDirectory": "/home/tom/friday-oct23/dual-strix-migration/integration-proof",
+  "runtimeHardwareTested": false,
+  "activated": false
+}
