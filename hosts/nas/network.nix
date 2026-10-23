@@ -21,6 +21,8 @@
   # The NAS reaches Immich ML over the LAN; the twins use their own fleet links.
   networking.nftables.enable = true;
   networking.firewall.extraInputRules = ''
+    ip saddr 10.42.0.16 tcp dport 22 accept comment "Zenbook SSH"
+    ip saddr 10.42.0.16 tcp dport 27321 accept comment "Zenbook Atuin"
     ip saddr 10.42.0.2 tcp dport 22 accept comment "strix SSH"
   '';
 }

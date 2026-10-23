@@ -8,9 +8,9 @@
 #
 # Issue #356, 2026-09-13. Every host gets `fleet-status-collect` plus
 # /etc/fleet-status/profile.json, which says what that host is EXPECTED to
-# have. The profile is what separates `missing-by-design` from `unknown`: the
-# NAS has no user manager by design, while a twin whose user manager does not
-# answer is unknown. The strix also gets `fleet-status` and
+# have. The profile is what separates `missing-by-design` from `unknown`:
+# a brain with Home Manager expects a user manager, including the NAS.
+# Each brain also gets `fleet-status` and
 # /etc/fleet-status/hosts.json, and it fans the collector out as
 # `ssh root@<name>` over the mesh (modules/mesh.nix already authorizes tom's
 # key for root on every host). There is no daemon, no timer and no database.
@@ -57,7 +57,7 @@ let
   profile = {
     name = profileNames.${host} or "unprofiled";
     # The user manager is expected wherever Home Manager gives tom a session.
-    # The NAS is built with withHomeManager = false (flake.nix mkHost).
+    # The NAS uses its own release-26.05 Home Manager input.
     user_manager = config ? home-manager;
     inherit roles;
     gufo_port = config.services.gufo.port or 8731;

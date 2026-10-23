@@ -30,19 +30,9 @@ in
       # `/login` after a rebuild. Both Claude seats now log in by hand, once,
       # on the strix: cc into ~/.claude, cc2 into ~/.claude-work.)
 
-      # NOT ungated any more (2026-08-28). This block delivers ssh-user-key and
-      # atuin-key, whose ciphertexts are encrypted to the `delivered` tier — and
-      # `delivered` is DERIVED as "every host except the nas". The appliance flipped
-      # mySecrets.enable ON this day to receive huggingface-token, so an unguarded
-      # block here would declare two secrets it holds no key for and fail its
-      # activation. Verified before the change: the nas host key decrypts neither.
-      #
-      # THE INVARIANT, for whoever adds the next secret: the nas now runs agenix but
-      # is a recipient of exactly ONE ciphertext. Any block that is not host-gated
-      # must exclude it, or it breaks the appliance rather than the box you were
-      # thinking about. The optional personal-https module adds only its own
-      # NAS-scoped Cloudflare DNS token, not membership of this delivered tier.
-      (lib.mkIf (config.networking.hostName != "nas") {
+      # Only agent hosts and physical seats receive the shared SSH/history keys.
+      # Compute logins use mesh authorized public keys, never this private key.
+      (lib.mkIf (config.myFleet.has "brain" || config.myFleet.has "seat") {
         # (hermes-credentials — the Nous Research AI harness's OAuth state — was
         # delivered here until 2026-08-04. The harness is no longer in use fleet-wide,
         # so the secret, its ciphertext, and its recipient rule are all gone. Any
@@ -96,7 +86,7 @@ in
 
       })
 
-      # Operator CLI credentials — strix ONLY (the ciphertexts aren't decryptable
+      # Operator CLI credentials — brain only (the ciphertexts aren't decryptable
       # by other hosts, and declaring an undecryptable secret fails activation, so the
       # whole block must be host-gated). Same copy-don't-link pattern as the claude
       # cred: both CLIs rewrite their file on token refresh.
@@ -170,8 +160,7 @@ in
       # means the interactive `hf` wrapper works on either box unchanged.
       (lib.mkIf
         (
-          (config.myFleet.has "brain" || config.networking.hostName == "nas")
-          && builtins.pathExists hfTokenCiphertext
+          (config.myFleet.has "brain" || config.myFleet.has "router") && builtins.pathExists hfTokenCiphertext
         )
         {
           age.secrets.huggingface-token = {
@@ -294,18 +283,9 @@ in
       # (#229) until it went wired-only on 2026-09-11 and left this list with
       # the client's admission, the rekey that also dropped it from the
       # ciphertext's recipients (secrets.nix).
-      (lib.mkIf
-        (
-          builtins.elem config.networking.hostName [
-            # The thin client (hosts/client/default.nix): its only LAN path.
-            "client"
-          ]
-          && builtins.pathExists ../secrets/wifi-lan.age
-        )
-        {
-          age.secrets.wifi-lan.file = ../secrets/wifi-lan.age;
-        }
-      )
+      (lib.mkIf (config.myFleet.has "seat" && builtins.pathExists ../secrets/wifi-lan.age) {
+        age.secrets.wifi-lan.file = ../secrets/wifi-lan.age;
+      })
     ]
   );
 }
