@@ -2840,7 +2840,7 @@
         huggingface-cli-smoke =
           let
             hf = self.nixosConfigurations.nas.pkgs.huggingface-cli;
-            expectedVersion = "1.16.0";
+            expectedVersion = "1.10.2"; # NAS stable userspace; metadata contract below stays identical.
             smokeRevision = "0123456789abcdef0123456789abcdef01234567";
             mockHub = pkgs.writeText "huggingface-metadata-mock.py" ''
               import json
@@ -2910,8 +2910,7 @@
               server.handle_request()
               server.server_close()
             '';
-            brainPackages =
-              self.nixosConfigurations.nas.config.home-manager.users.tom.home.packages;
+            brainPackages = self.nixosConfigurations.nas.config.home-manager.users.tom.home.packages;
           in
           assert hf.version == expectedVersion;
           assert builtins.elem hf brainPackages;

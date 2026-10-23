@@ -81,7 +81,9 @@ assert
   ];
 assert c.users.users.tom.linger;
 assert c.zramSwap.memoryMax == 10 * 1024 * 1024 * 1024;
-assert c.boot.kernelPackages.kernel.version == self.nixosConfigurations.client.config.boot.kernelPackages.kernel.version;
+assert
+  c.boot.kernelPackages.kernel.version
+  == self.nixosConfigurations.client.config.boot.kernelPackages.kernel.version;
 assert h.home.enableNixpkgsReleaseCheck;
 assert h.home.version.release == "26.05";
 assert !h.rawDotfiles.inStore;
@@ -141,8 +143,7 @@ assert lib.hasInfix "10.42.0.16 tcp dport 22 accept" c.networking.firewall.extra
 assert c.services.atuin.enable;
 assert h.programs.atuin.package.version == c.services.atuin.package.version;
 assert
-  c.services.atuin.package.version
-  == self.nixosConfigurations.strix-coordinator.pkgs.atuin.version;
+  c.services.atuin.package.version == self.nixosConfigurations.strix-coordinator.pkgs.atuin.version;
 assert client.programs.atuin.settings.sync_address == "http://nas:27321";
 assert !(c.systemd.user.services ? substrate-puller);
 assert !(c.systemd.user.services ? substrate-pusher);
@@ -172,7 +173,9 @@ assert builtins.all (name: c.age.secrets ? ${name}) [
   "tom-password-hash"
   "codex-auth"
 ];
-assert builtins.all (name: name == "gufo-tp2-control-token") (builtins.attrNames compute.age.secrets);
+assert builtins.all (name: name == "gufo-tp2-control-token") (
+  builtins.attrNames compute.age.secrets
+);
 assert builtins.all (
   name: builtins.elem registry.nas.hostKey recipients."secrets/${name}.age".publicKeys
 ) toNas;
