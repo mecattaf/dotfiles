@@ -40,9 +40,6 @@ let
     "claude-agent-acp"
     "claude-code-router" # bin: `ccr` — routes Claude Code requests to other model backends/providers
     "qmd"
-    # NB: `pi` is intentionally absent — home/pi.nix ships a wrapped `pi` (real
-    # binary + declarative extension roster) as the sole `pi` on PATH. Keeping it
-    # here too would double-provide bin/pi and collide in the profile.
     "codex"
     "spec-kit" # bin: `specify` — GitHub Spec-Kit, spec-driven development bootstrapper
     "cc-switch-cli" # bin: `cc-switch` — switches Claude Code/Codex/Gemini CLI provider configs
@@ -108,7 +105,6 @@ in
     ./herdr.nix
     ./nvim.nix
     ./paper.nix
-    ./pi.nix
     ./raw-dotfiles-guard.nix
     ./ssh.nix
     ./theme.nix
@@ -251,12 +247,12 @@ in
       --home "$HOME" --template ${./dot_claude/settings.json}
   '';
 
-  # Same canonical skill tree, exposed to Codex, `pi` (earendil-works/pi) and
-  # dsh (home/dsh.nix) through the vendor-neutral, always-trusted Agent-Skills
-  # directory (~/.agents/skills). All read the same agentskills.io SKILL.md
-  # format (name/description frontmatter, symlinks followed), so ONE tree feeds
-  # every harness. pi and dsh select on `description` only (they ignore
-  # `when_to_use`), so keep triggers there.
+  # Same canonical skill tree, exposed to Codex and dsh (home/dsh.nix) through
+  # the vendor-neutral, always-trusted Agent-Skills directory (~/.agents/skills).
+  # Both read the same agentskills.io SKILL.md format (name/description
+  # frontmatter, symlinks followed), so ONE tree feeds every harness. dsh
+  # selects on `description` only (it ignores `when_to_use`), so keep triggers
+  # there.
   home.file.".agents/skills".source = link "dot_claude/skills";
 
   # No Chrome --app launcher entries on any host (Tom, 2026-10-12: "i do not
@@ -493,7 +489,7 @@ in
     kitty
 
     # agent / dev tooling. A curated slice of the llm-agents.nix catalog
-    # (claude-code, ccusage, ck, claude-agent-acp, qmd, pi, codex, spec-kit) lands via
+    # (claude-code, ccusage, ck, claude-agent-acp, qmd, codex, spec-kit) lands via
     # llmAgentsSelected — see the allowlist buildEnv in the `let` block above.
     # claude-code comes from there (newest, decoupled from nixpkgs); creds still
     # seed via modules/secrets.nix, and DISABLE_UPDATES=1 keeps the native
