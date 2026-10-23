@@ -62,11 +62,17 @@ Prerequisites before executing the following stages:
    half under the target's `/etc/ssh/`. Do not reuse the retired worker key or
    copy the coordinator's identity. The worker remains outside every agenix
    recipient tier; no rekey is needed for its fresh host key.
-5. Arrange enrollment using the NAS PR's shared registration procedure. Its
-   credentials/state stay outside Nix and Git. Do not copy the coordinator's
-   Tailscale state or silently reuse an old retired worker node. Device key
-   expiry must be disabled and verified on the Tailscale control plane; an
-   auth key's lifetime alone does not prove this.
+5. Arrange enrollment using the NAS PR's shared `modules/fleet-transport.nix`
+   procedure: interactive login to the official service, then disable device
+   key expiry in the admin console for each of the four machines. Its
+   credentials/state stay outside Nix and Git; `authKeyFile` stays null. Do not
+   copy the coordinator's Tailscale state or silently reuse an old retired
+   worker node. An auth key's lifetime alone does not prove device key expiry.
+   A fresh worker needs its one-time login after first boot; the offline
+   install does not enroll it. If tailnet access is required immediately on
+   that very first boot, the NAS procedure must additionally provide an
+   explicitly authorized pre-enrollment step. No temporary daemon was started
+   to produce a node identity in this task.
 
 After permission, the supervised preserving installation is:
 
@@ -154,9 +160,13 @@ verified backup; it is not needed for the preferred route.
   See `docs/usb4-pd-wedge-2026-08-21.md` for incident history, not current setup.
 - NAS is the agent/home host and sole Tailscale exit/subnet router. Both
   compute hosts join the official `tailscale.com` service as plain nodes,
-  using ordinary OpenSSH. Validate distinct node identities, reachability and
-  non-expiring device registration for all four machines through the NAS
-  procedure. Check these again after the power cycle.
+  using ordinary OpenSSH. They select the NAS exit node with LAN access
+  allowed and accept its subnet route; neither advertises routes. Retain the
+  coordinator's existing enrolled state. After worker login, run the shared
+  `fleet-transport-check` from each machine and retain admin-console evidence
+  of **Key expiry disabled** for all four. The read-only checker requires four
+  distinct online identities, correct tailnet, no reported key expiry and NAS
+  exit/subnet approval and selection. Check these again after the power cycle.
 - Verify Linux 7.3 and matching RDMA modules, SSH on `.2`/`.5`, NAS NFS,
   journal upload, fresh host-key trust and Tailscale on the worker. Borrow
   models explicitly from the NAS; declaration/build success does not install

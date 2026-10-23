@@ -21,7 +21,6 @@
     fsType = "nfs4";
     options = config.fileSystems."/mnt/library".options;
   };
-  services.tailscale.enable = lib.mkForce false;
   boot.blacklistedKernelModules = [ "mt7925e" ];
   networking.networkmanager.unmanaged = [ "interface-name:wlp192s0" ];
   networking.networkmanager.logLevel = "INFO";

@@ -42,7 +42,7 @@ assert builtins.elem "mt7925e" s.boot.blacklistedKernelModules;
 assert !s.myDisplay.enable && !s.services.greetd.enable;
 assert s.services.tailscale.enable;
 assert builtins.elem "--accept-dns=false" s.services.tailscale.extraSetFlags;
-assert builtins.elem "--accept-routes=false" s.services.tailscale.extraSetFlags;
+assert builtins.elem "--accept-routes=true" s.services.tailscale.extraSetFlags;
 assert builtins.elem "--ssh=false" s.services.tailscale.extraSetFlags;
 assert !s.hardware.bluetooth.enable;
 assert c.myTripwire.strix-reachability.enable;
@@ -93,7 +93,28 @@ assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.address1 == 
 assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.gateway == "10.42.0.3";
 assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.dns == "10.42.0.1";
 assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv6.method == "disabled";
-assert !w.services.tailscale.enable && w.services.tailscale.extraUpFlags == [ ];
+assert builtins.all
+  (
+    cfg:
+    cfg.myFleetTransport.enable
+    && cfg.services.tailscale.enable
+    && cfg.services.tailscale.useRoutingFeatures == "client"
+    && cfg.services.tailscale.authKeyFile == null
+    && cfg.services.tailscale.extraUpFlags == cfg.services.tailscale.extraSetFlags
+    && builtins.elem "--hostname=${cfg.networking.hostName}" cfg.services.tailscale.extraSetFlags
+    && builtins.elem "--exit-node=nas" cfg.services.tailscale.extraSetFlags
+    && builtins.elem "--exit-node-allow-lan-access=true" cfg.services.tailscale.extraSetFlags
+    && builtins.elem "--accept-routes=true" cfg.services.tailscale.extraSetFlags
+    && builtins.elem "--accept-dns=false" cfg.services.tailscale.extraSetFlags
+    && builtins.elem "--ssh=false" cfg.services.tailscale.extraSetFlags
+    && !builtins.any (
+      flag: lib.hasPrefix "--advertise-" flag || lib.hasPrefix "--login-server=" flag
+    ) cfg.services.tailscale.extraSetFlags
+  )
+  [
+    s
+    w
+  ];
 assert !w.services.k3s.enable && !w.mySecrets.enable && w.age.secrets == { };
 assert !w.myDisplay.enable && !w.services.greetd.enable;
 assert !(w.systemd.sockets ? immich-ml-access);

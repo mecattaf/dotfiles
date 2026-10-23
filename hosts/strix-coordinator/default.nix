@@ -9,7 +9,6 @@
     ./hardware.nix
     ./disko.nix
     ./uplink-nas.nix
-    ./tailscale.nix
 
     ./nas-client.nix # temporary media relays and historical /mnt/nas view
     ./services.nix
@@ -43,10 +42,9 @@
   # The 2026-08-02 atomic cutover (#131): media core and its PostgreSQL now
   # live on the NAS; the strix keeps only the tailnet identity, the
   # socket relays (2283/4533/32400), the on-demand ML backend, and the NFS
-  # client mount at the immutable /mnt/nas path. That "tailnet identity" became
-  # the fleet's LAST tailscale.com one on 2026-09-01 and is now load-bearing for
-  # a second reason — it is the emergency rail (./tailscale.nix), not merely
-  # what is left over after the media core moved.
+  # client mount at the immutable /mnt/nas path. Both compute hosts now use
+  # the NAS PR's shared official Tailscale policy, without advertising routes
+  # or exit-node service. The coordinator's enrolled node identity is retained.
   myCoordinatorMedia.enable = false;
   myNasClient.useRemoteStorage = true;
   myNasClient.relayMedia = true;

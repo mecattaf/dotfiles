@@ -11,6 +11,7 @@
     ./microvm-host.nix
     ./cli-anything.nix
     ./fleet-hosts.nix
+    ./fleet-transport.nix
     ./journal-upload.nix
     ./library-client.nix
     ./attic-cache-tripwire.nix
