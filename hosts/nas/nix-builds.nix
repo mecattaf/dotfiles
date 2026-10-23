@@ -1,5 +1,7 @@
 { ... }:
 # ─── Where nix builds, and what it does when the eMMC runs out ─────────────
+# 2026-10-23: agent-offload.nix sets zero local build jobs and sends builds
+# to the Strix pair. Retain these scratch/store safeguards for orchestration.
 #
 # THE THREE-DEVICE FACT this box kept getting wrong (corrected 2026-08-22):
 #

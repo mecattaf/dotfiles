@@ -35,6 +35,6 @@ let
     && lib.elem "vibevoice-asr-streaming-7b-bf16" cfg.services.local-models.artifacts;
 in
 assert lib.all clean computeHosts;
-assert configs.nas.config.myFleet.roles == [ "router" ];
+assert configs.nas.config.myFleet.roles == [ "router" "brain" ];
 assert configs.client.config.myFleet.roles == [ "seat" ];
 pkgs.runCommand "fleet-roles" { } ''touch "$out"''

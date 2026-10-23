@@ -69,7 +69,7 @@
 # The full rule is beside [session] in home/dot_config/herdr/config.toml.
 set -u
 
-target="${HERDR_PROJECTOR_TARGET:-strix}"
+target="${HERDR_PROJECTOR_TARGET:-nas}"
 herdr_bin="${HERDR_BIN:-herdr}"
 ssh_bin="${HERDR_PROJECTOR_SSH:-ssh}"
 unit="${HERDR_PROJECTOR_UNIT-herdr.service}"

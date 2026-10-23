@@ -53,7 +53,7 @@ assert n.services.tailscale.enable;
 assert builtins.elem "--advertise-routes=10.42.0.0/24" n.services.tailscale.extraSetFlags;
 assert builtins.elem "--state=/var/lib/tailscale-personal/tailscaled.state"
   n.services.tailscale.extraDaemonFlags;
-assert builtins.elem "--accept-routes" c.services.tailscale.extraSetFlags;
+assert builtins.elem "--accept-routes=true" c.services.tailscale.extraSetFlags;
 assert
   c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.routing-rule1
   == "priority 2500 to 10.42.0.0/24 table 254";

@@ -104,6 +104,6 @@ in
   # diarization runs by hand now (its Tally events drop has no drain), and the
   # monthly local-AI review is hand-run too.
   home.packages =
-    lib.optional (osConfig.myFleet.has "compute") pkgs.call-diarize
-    ++ lib.optional isBrain pkgs.local-ai-monthly;
+    lib.optionals isBrain [ pkgs.local-ai-monthly ]
+    ++ lib.optionals (osConfig.myFleet.has "compute") [ pkgs.call-diarize ];
 }

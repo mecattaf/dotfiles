@@ -10,6 +10,7 @@
   imports = [
     ./fleet-hosts.nix
     ./fleet-role.nix
+    ./fleet-transport.nix
     ./browser-trust.nix
     ./headless.nix # opt-in appliance profile without home-manager or desktop
     ./display.nix # myDisplay.enable — does a human sit at this box (default true); .session picks the compositor
@@ -305,10 +306,9 @@
     enable = true;
     startWhenNeeded = true;
   };
-  # The shared official Tailscale policy is modules/fleet-transport.nix.
-  # Compute imports it through strix-compute; the NAS agent-host PR adopts it
-  # for NAS/client too. Enrollment is interactive, with device expiry disabled
-  # in the control plane. There is no delivered fleet auth key.
+  # Tom, 2026-10-23: all four named fleet hosts use official tailscale.com.
+  # fleet-transport.nix owns NAS exit/subnet routing and client selection.
+  # Ordinary OpenSSH is retained; no fleet-wide Tailscale SSH or VNC door.
   services.resolved.enable = true;
   networking.firewall.enable = true;
 

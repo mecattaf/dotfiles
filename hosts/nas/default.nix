@@ -6,6 +6,7 @@
 }:
 {
   imports = [
+    ./agent-host.nix
     ./unstable-pkgs.nix
     ./kernel.nix # retain the validated kernel series during the network move
     ./hardware.nix
@@ -47,25 +48,14 @@
   ];
 
   networking.hostName = "nas";
-  myFleet.roles = [ "router" ];
+  myFleet.roles = [
+    "router"
+    "brain"
+  ];
   myHeadless.enable = true;
 
-  # agenix ON since 2026-08-28 — and the doctrine still holds, because the
-  # doctrine was never "no agenix here", it was "no STANDING decryption
-  # authority over ciphertext this box never reads" (the aug04 ruling that
-  # pulled the appliance out of the whole common tier). That text names its own
-  # exception: flip this on and "add its key back [to secrets.nix] for the
-  # specific secrets it consumes, not wholesale."
-  #
-  # Consumed: huggingface-token, and nothing else. The nas is a recipient of
-  # exactly one ciphertext (secrets.nix `nasOnly`) and can decrypt no other —
-  # not tom's password hash, not the fleet SSH key, not atuin's. Those blocks
-  # are explicitly gated away from this host; see the invariant note in
-  # modules/secrets.nix before adding the next secret.
-  #
-  # Why it was needed: ./models.nix's library-fetch downloads catalog weights
-  # from Hugging Face anonymously, so gated repos 401 the nightly.
-  # (The attic RS256 secret remains a runbook-placed file, see ./attic.nix.)
+  # Central credentials move here with the brain role. Ciphertexts must be
+  # rekeyed by Tom before deployment; see REKEY.md. No compute host receives them.
   mySecrets.enable = true;
 
   # ── THE TAILNET, AND WHOSE CONTROL PLANE IT IS ─────────────────────────

@@ -38,6 +38,18 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Stable Home Manager is isolated to the NAS's nixos-26.05 base.
+    home-manager-nas = {
+      url = "github:nix-community/home-manager/release-26.05";
+      inputs.nixpkgs.follows = "nixpkgs-stable";
+    };
+
+    # The installed Projects CLI becomes a declared brain-role GC root (#552).
+    project-cli = {
+      url = "git+https://github.com/agency-agency/backlog?rev=05e5f351ef5fdd1fc12fd5b805ee47e2e2be486a";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # Per-device hardware quirks. No nixpkgs.follows — it's just module files.
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
 
@@ -352,12 +364,12 @@
       # — but the flake itself no longer projects a package set from it, because
       # the 2026-08-21 "weights leave nix" ruling means there isn't one.
 
-      # Single host-wiring point. Interactive machines add Home Manager; the NAS
-      # deliberately stops at NixOS so no user compositor or WayVNC unit exists.
+      # Single host-wiring point; roles keep desktop modules off headless hosts.
       mkHost =
         {
           hostModule,
           withHomeManager ? true,
+          hostHomeManager ? home-manager,
           # The nixpkgs universe this host's system closure evaluates from.
           # Interactive hosts ride the main unstable pin; the NAS passes
           # inputs.nixpkgs-stable (see that input's comment).
@@ -384,7 +396,7 @@
             inputs.disko.nixosModules.default
           ]
           ++ nixpkgs.lib.optionals withHomeManager [
-            home-manager.nixosModules.home-manager
+            hostHomeManager.nixosModules.home-manager
             {
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
@@ -449,7 +461,8 @@
         strix-worker = mkHost { hostModule = ./hosts/strix-worker; };
         nas = mkHost {
           hostModule = ./hosts/nas;
-          withHomeManager = false;
+          withHomeManager = true;
+          hostHomeManager = inputs.home-manager-nas;
           hostNixpkgs = inputs.nixpkgs-stable;
         };
         # The ASUS Zenbook Duo, Tom's thin client since 2026-09-11 (its second
@@ -585,6 +598,14 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        fleet-agent-transport = import ./tests/fleet-agent-transport {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+        nas-agent-host = import ./tests/nas-agent-host {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
         fleet-roles = import ./tests/fleet-roles {
           inherit pkgs self;
           inherit (nixpkgs) lib;
@@ -862,7 +883,7 @@
           assert !(nas.systemd.user.services ? wayvnc);
           assert !(nas.systemd.services ? wayvnc);
           assert nas.hardware.graphics.enable;
-          assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
+          assert builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options;
           # Post-cutover topology (live since 2026-08-02, #131): the verified
           # data disk and the media stack run on the NAS; the strix only
           # relays. The pre-cutover extendModules simulation this check used
@@ -1346,7 +1367,7 @@
             clientHome.xdg.configFile."sway-local.conf".text;
           assert !(nixpkgs.lib.hasInfix "$mod+Return " clientHome.xdg.configFile."sway-local.conf".text);
           assert !(nixpkgs.lib.hasInfix "$mod+Shift+n " clientHome.xdg.configFile."sway-local.conf".text);
-          assert !(nixpkgs.lib.hasInfix "bindsym" strixHome.xdg.configFile."sway-local.conf".text);
+          assert !(strixHome.xdg.configFile ? "sway-local.conf");
 
           assert
             !builtins.elem 5900 (
@@ -1732,8 +1753,8 @@
             ];
 
           assert (profile "nas").name == "appliance";
-          assert !(profile "nas").user_manager;
-          assert (profile "nas").roles == [ ];
+          assert (profile "nas").user_manager;
+          assert (profile "nas").roles == [ "attention" ];
           assert (profile "client").name == "thin-client";
           assert (profile "client").user_manager;
 
@@ -2160,14 +2181,17 @@
           assert nas.services.avahi.enable;
           assert nas.services.avahi.allowInterfaces == [ "enp1s0" ];
           assert
-            nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [
+            (nixpkgs.lib.sort builtins.lessThan nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts)
+            == [
               22
               53
+              443
               2283
               4533
+              27321
               32400
             ];
-          assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
+          assert builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options;
           assert nas.myNas.storage.enable;
           assert nas.myNas.media.enable;
           assert nas.services.immich.enable;
