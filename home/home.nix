@@ -223,6 +223,7 @@ in
   # PUBLIC repo tree). Without this, a fresh box has zero skills/settings.
   home.file.".claude/skills".source = link "dot_claude/skills";
   home.file.".claude/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
+  home.file.".claude/rules/ultracode-workflows.md".source = link "agent-workflow-rules.md";
   home.file.".codex/AGENTS.md".source = link "agent-runtime-rules.md";
 
   # NO hook is delivered here any more. The SessionEnd harvest hook (MEM-2,
@@ -241,6 +242,7 @@ in
   # ~/.claude-work. Same skills + settings, separate .credentials.json/.claude.json.
   home.file.".claude-work/skills".source = link "dot_claude/skills";
   home.file.".claude-work/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
+  home.file.".claude-work/rules/ultracode-workflows.md".source = link "agent-workflow-rules.md";
 
   # Claude owns mutable preferences. One direct symlink hop reaches writable
   # shared state, never the Nix store or Git checkout. Activation seeds only
