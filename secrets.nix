@@ -31,8 +31,14 @@ let
   brainOnly = nonEmpty [ registry.nas.hostKey ];
   clientOnly = nonEmpty [ registry.client.hostKey ];
   nasOnly = nonEmpty [ registry.nas.hostKey ];
+  computeTp2 = nonEmpty [
+    registry.strix-coordinator.hostKey
+    registry.strix-worker.hostKey
+  ];
 in
 {
+  # Machine-to-machine Gufo control only; never grants operator authority.
+  "secrets/gufo-tp2-control-token.age".publicKeys = editors ++ computeTp2;
   # Shared login/history credentials: NAS brain and Zenbook seat. Neither
   # compute host receives them; mesh authorized public keys admit SSH logins.
   "secrets/ssh-user-key.age".publicKeys = editors ++ delivered;

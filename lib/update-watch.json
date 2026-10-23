@@ -5,7 +5,7 @@
       "name": "llm-agents",
       "follow": "branch",
       "hosts": [
-        "strix",
+        "strix-coordinator",
         "client"
       ],
       "build": [
@@ -13,16 +13,16 @@
         ".#checks.x86_64-linux.dsh-plugins"
       ],
       "versions": {
-        "claude-code": "nixosConfigurations.strix.pkgs.llm-agents.claude-code.version",
-        "codex": "nixosConfigurations.strix.pkgs.llm-agents.codex.version",
-        "pi": "nixosConfigurations.strix.pkgs.llm-agents.pi.version",
-        "claude-agent-acp": "nixosConfigurations.strix.pkgs.llm-agents.claude-agent-acp.version",
-        "claude-code-router": "nixosConfigurations.strix.pkgs.llm-agents.claude-code-router.version",
-        "ccusage": "nixosConfigurations.strix.pkgs.llm-agents.ccusage.version",
-        "qmd": "nixosConfigurations.strix.pkgs.llm-agents.qmd.version",
-        "spec-kit": "nixosConfigurations.strix.pkgs.llm-agents.spec-kit.version",
-        "cc-switch-cli": "nixosConfigurations.strix.pkgs.llm-agents.cc-switch-cli.version",
-        "ck": "nixosConfigurations.strix.pkgs.llm-agents.ck.version",
+        "claude-code": "nixosConfigurations.nas.pkgs.llm-agents.claude-code.version",
+        "codex": "nixosConfigurations.nas.pkgs.llm-agents.codex.version",
+        "pi": "nixosConfigurations.nas.pkgs.llm-agents.pi.version",
+        "claude-agent-acp": "nixosConfigurations.nas.pkgs.llm-agents.claude-agent-acp.version",
+        "claude-code-router": "nixosConfigurations.nas.pkgs.llm-agents.claude-code-router.version",
+        "ccusage": "nixosConfigurations.nas.pkgs.llm-agents.ccusage.version",
+        "qmd": "nixosConfigurations.nas.pkgs.llm-agents.qmd.version",
+        "spec-kit": "nixosConfigurations.nas.pkgs.llm-agents.spec-kit.version",
+        "cc-switch-cli": "nixosConfigurations.nas.pkgs.llm-agents.cc-switch-cli.version",
+        "ck": "nixosConfigurations.nas.pkgs.llm-agents.ck.version",
         "dsh": "nixosConfigurations.nas.pkgs.llm-agents.dsh.version"
       },
       "notes": {
@@ -49,7 +49,7 @@
       "name": "herdr",
       "follow": "release",
       "hosts": [
-        "strix"
+        "strix-coordinator"
       ],
       "versions": {
         "herdr": "inputs.herdr.packages.x86_64-linux.herdr.version"
@@ -63,24 +63,36 @@
       "switch": "The herdr server keeps X-SwitchMethod=keep-old, so a switch never kills a live PTY. The new server runs only after a deliberate `systemctl --user restart herdr`, and existing clients need a new projector launch."
     },
     {
-      "name": "gufo",
-      "follow": "release",
+      "name": "gufo-rdma",
+      "follow": "branch",
       "hosts": [
-        "strix"
+        "strix-coordinator",
+        "strix-worker"
       ],
       "build": [
-        ".#packages.x86_64-linux.gufo"
+        ".#packages.x86_64-linux.gufo-rdma"
       ],
       "versions": {
-        "gufo": "packages.x86_64-linux.gufo.version"
+        "gufo-rdma": "packages.x86_64-linux.gufo-rdma.version"
       },
-      "notes": {
-        "gufo": {
-          "repo": "gufo-org/gufo",
-          "tagPrefix": "v"
-        }
+      "switch": "Tracks neuhaus/gufo branch rdma. Only the on-demand gufo-tp2.service uses this build; no boot target. The upstream gufo input and single-box :8731 unit stay pinned until hardware qualification. Starting TP2 conflicts with the single-box text/image units. Model revisions remain a separate Library declaration."
+    },
+    {
+      "name": "donnerkeule",
+      "follow": "branch",
+      "hosts": [
+        "strix-coordinator",
+        "strix-worker"
+      ],
+      "build": [
+        ".#packages.x86_64-linux.rdmaCoreUsb4",
+        ".#packages.x86_64-linux.thunderbolt-ibverbs"
+      ],
+      "versions": {
+        "donnerkeule source": "inputs.donnerkeule.rev",
+        "rdma-core-usb4": "packages.x86_64-linux.rdmaCoreUsb4.version"
       },
-      "switch": "Restarts gufo-llm.service once Gufo is enabled on the strix (a short gap on strix:8731 while the model reloads). Before the cutover nothing runs it. Gufo pins its model collection in its docs: a bump can move the revisions lib/gufo-models.json records."
+      "switch": "Tracks mecattaf/donnerkeule codex/framework-fleet-kernels. Updates the module and matching usb4_rdma provider on both compute hosts. Stage/reboot both onto the same kernel and rerun the attended rail/throughput qualification before TP2 use. Never reload or reboot from the update routine."
     },
     {
       "name": "vicinae",
@@ -103,19 +115,21 @@
       "name": "nixpkgs-fresh",
       "follow": "branch",
       "hosts": [
-        "strix",
+        "strix-coordinator",
+        "strix-worker",
         "client",
         "nas"
       ],
       "versions": {
         "google-chrome": "nixosConfigurations.client.pkgs.google-chrome.version",
-        "uv": "nixosConfigurations.strix.pkgs.uv.version",
-        "linux (strix)": "nixosConfigurations.strix.config.boot.kernelPackages.kernel.version",
+        "uv": "nixosConfigurations.strix-coordinator.pkgs.uv.version",
+        "linux (strix)": "nixosConfigurations.strix-coordinator.config.boot.kernelPackages.kernel.version",
         "linux (nas)": "nixosConfigurations.nas.config.boot.kernelPackages.kernel.version",
         "linux (client)": "nixosConfigurations.client.config.boot.kernelPackages.kernel.version",
-        "fish": "nixosConfigurations.strix.pkgs.fish.version",
+        "fish": "nixosConfigurations.strix-coordinator.pkgs.fish.version",
         "kitty": "nixosConfigurations.client.pkgs.kitty.version",
-        "wrangler": "nixosConfigurations.strix.pkgs.wrangler.version"
+        "wrangler": "nixosConfigurations.strix-coordinator.pkgs.wrangler.version",
+        "linux (worker)": "nixosConfigurations.strix-worker.config.boot.kernelPackages.kernel.version"
       },
       "notes": {
         "fish": {
@@ -140,7 +154,7 @@
       "source": "kernel.org",
       "seriesOnly": true,
       "versions": {
-        "linux (strix)": "nixosConfigurations.strix.config.boot.kernelPackages.kernel.version",
+        "linux (strix)": "nixosConfigurations.strix-coordinator.config.boot.kernelPackages.kernel.version",
         "linux (client)": "nixosConfigurations.client.config.boot.kernelPackages.kernel.version",
         "linux (nas)": "nixosConfigurations.nas.config.boot.kernelPackages.kernel.version"
       },
