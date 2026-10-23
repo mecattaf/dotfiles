@@ -162,11 +162,11 @@ def focus_view(view_id, expected=None):
 
 def remote_snapshot():
     # Read-only on either route. Explicit local client attachment never SSHs
-    # back into the strix or enters auto-discovery/server startup.
-    if os.environ.get('HERDR_SWAY_LOCAL', '1' if socket.gethostname() == 'strix' else '0') == '1':
+    # back into the NAS or enters auto-discovery/server startup.
+    if os.environ.get('HERDR_SWAY_LOCAL', '1' if socket.gethostname() == 'nas' else '0') == '1':
         out = run(['herdr', 'api', 'snapshot'], timeout=6).stdout
     else:
-        target = os.environ.get('HERDR_PROJECTOR_TARGET', 'strix')
+        target = os.environ.get('HERDR_PROJECTOR_TARGET', 'nas')
         if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.@:-]*', target):
             raise BridgeError('Invalid HERDR_PROJECTOR_TARGET.')
         out = run(['ssh', '-n', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3',

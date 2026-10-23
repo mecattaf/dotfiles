@@ -19,16 +19,15 @@
 # the boot menu as the rollback.
 #
 # WHAT IT IS, in one line: a thin client. It shows Tom Sway, kitty, Chrome and
-# the dock's peripherals, and everything that thinks runs on the strix
-# (herdr server, the Claude/Codex/pi seats, tally, the artifact and microVM
-# planes) or the worker (Halogen). Mod+Return on this box is a herdr window
-# INTO the strix (~/.local/bin/herdr-projector, `herdr --remote
-# strix`, driven by herdr-chord from sway/binds.conf, #385); `desk` is the fish
+# the dock's peripherals. Herdr and the Claude/Codex/dsh sessions run on NAS;
+# builds and model inference run on the Strix compute pair. Mod+Return is a
+# herdr window INTO NAS (~/.local/bin/herdr-projector, `herdr --remote
+# nas`, driven by herdr-chord from sway/binds.conf, #385); `desk` is the fish
 # spelling of the same thing.
 #
 # WHAT IT IS NOT:
-#   * not an agent host — no herdr server (home/herdr.nix is strix-
-#     gated), no Claude/Codex credential (secrets.nix: strixOnly, the
+#   * not an agent host — no herdr server (home/herdr.nix is brain-
+#     gated), no Claude/Codex credential (secrets.nix: brainOnly, the
 #     jul12 "own session" ruling stands), no tally clocks, no voxtype, no
 #     transcript mirror, no paper timers. Every one of those
 #     is brain-role-gated in home/; the flake's home-profiles
@@ -49,11 +48,9 @@
 #     imported; the two LAN names it dials are pinned below instead, and the
 #     stock 127.0.0.2 self-mapping stays because nothing here binds by
 #     hostname.
-#   * not a roaming node yet — tailscaled is declared (so the daemon exists
-#     and a later `tailscale up --login-server=…` against the NAS headscale
-#     re-uses the state on disk) but there is no auth key, no autoconnect
-#     unit and no `up` in any activation. On the LAN there is nothing but
-#     the LAN. See the tailscale block below.
+#   * official tailscale.com membership: NAS exit node and subnet router,
+#     with direct LAN access retained. Enrollment and non-expiring node keys
+#     use the admin-console procedure in docs/nas-agent-transport.md.
 #   * not a builder: updates are evaluated and built on the strix and pushed
 #     (Tom, 2026-10-11: "can't that be done on the strix side of things?
 #     since it's a much more powerful device"). From the strix:
@@ -178,9 +175,7 @@
 
   # Ordinary Tailscale for roaming access through the NAS subnet router.
   # Enrollment is interactive; no auth key is embedded or re-applied at boot.
-  services.tailscale.enable = true;
-  services.tailscale.extraUpFlags = [ "--accept-routes" ];
-  services.tailscale.extraSetFlags = [ "--accept-routes" ];
+  # modules/fleet-transport.nix owns the shared preferences.
 
   # ── failure surfacing: tom is uid 1001 here ────────────────────────────────
   # modules/failure-surfacing.nix watches the user manager of uid 1000 by

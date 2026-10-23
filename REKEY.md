@@ -4,10 +4,12 @@ Part of #600 and the fleet cutover umbrella #597. This branch changes public
 recipient lists only. No ciphertext was printed, decrypted or re-encrypted.
 
 Merge together with the strix-coordinator/strix-worker PR; never deploy strix
-from a main that has this PR but not that one. The coordinator keeps its
-current brain generation for its first unplug/boot, through the worker and NAS
-unplugs. Its compute-only generation waits for the NAS-home handover and a
-later plain reboot. This document authorizes no deployment or reboot.
+from a main that has this PR but not that one. Tom's latest ruling is one
+simultaneous fleet power-off: all three NixOS machines return in their final
+roles after the SSD/cable move. Stage and qualify NAS home, credentials,
+transport and the combined generations before that power-off; there is no
+intermediate coordinator brain boot. See `docs/nas-agent-transport.md` for
+transport and offload gates. This document authorizes no deployment or reboot.
 
 The admin recovery recipient stays on every secret. All 18 files below lose
 strix's host recipient. The first three gain NAS and retain client; the next

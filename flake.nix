@@ -593,6 +593,10 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        fleet-agent-transport = import ./tests/fleet-agent-transport {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
         nas-agent-host = import ./tests/nas-agent-host {
           inherit pkgs self;
           inherit (nixpkgs) lib;

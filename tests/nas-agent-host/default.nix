@@ -57,7 +57,9 @@ assert
   ];
 assert c.users.users.tom.linger;
 assert c.zramSwap.memoryMax == 10 * 1024 * 1024 * 1024;
-assert c.boot.kernelPackages.kernel.version == "7.2.10";
+assert
+  c.boot.kernelPackages.kernel.version
+  == self.nixosConfigurations.strix.config.boot.kernelPackages.kernel.version;
 assert h.home.enableNixpkgsReleaseCheck;
 assert h.home.version.release == "26.05";
 assert !h.rawDotfiles.inStore;

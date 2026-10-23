@@ -1,6 +1,7 @@
 { lib, unstablePkgs, ... }:
 {
   imports = [
+    ../../modules/agent-offload.nix
     ../../modules/herdr-web-ui.nix
     ../../modules/atuin.nix
   ];
