@@ -18,6 +18,10 @@ flash, service activation, reboot or shutdown was performed by this change.
    entire old coordinator home and occupied secondary 1 TB. Preserve service
    databases, credentials, Git refs/worktrees and old identities for rollback.
    `nas-home-migrate` is a curated migration helper, **not** this full backup.
+   The retired five-tree `lacie-mirror` plug trigger is disabled by default
+   (`myNas.legacyLacieMirror.enable = false`): it would recreate the previous
+   partial/history layout beside the new estate copy. Keep its runtime hold
+   on the old NAS generation until LaCie is cleanly unmounted and unplugged.
 2. Prove native NAS-local harness/Herdr residence from Zenbook using the
    existing NAS home/256 GB fast tier. Capture final source deltas and native
    histories consistently before retiring old Strix operator sessions.
