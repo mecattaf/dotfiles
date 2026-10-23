@@ -126,6 +126,27 @@ recorded worker closure, its `etc/hostname` is `strix-worker`, the ESP contains
 Check authorized SSH access and account state without printing credentials;
 `--no-root-passwd` does not create a usable login. Follow the shared registration
 procedure below before unmounting if immediate tailnet membership is required.
+For model services to be ready on first boot, also stage the **final integration
+closure's** wanted artifacts from the NAS Library while this root is mounted.
+The existing borrow tool supports an alternate target without activation:
+
+```sh
+# Future approved disk writes; /mnt/library/weights must be the NAS Library.
+sudo env LOCAL_MODELS_MANIFEST="$worker_system/etc/local-models/wanted.json" \
+  LOCAL_MODELS_LIBRARY=/mnt/library/weights \
+  LOCAL_MODELS_ROOT="$worker_root/var/lib/local-models" \
+  LOCAL_MODELS_BORROW_LOCK=/var/tmp/strix-worker-models-borrow.lock \
+  "$worker_system/sw/bin/local-models-borrow" --dry-run
+# Review the complete plan and target free-space reserve, then repeat --yes.
+```
+
+Borrowing verifies newly copied files but skips existing files of the expected
+size. Verify pre-existing artifacts against every SHA-256 `oid` in that wanted
+manifest too. Missing Library objects, insufficient target space or unavailable
+NAS storage block this stage; do not download weights directly on compute or
+delete old contents to make space without Tom's decision. Without verified
+weights, bootable NixOS is not evidence of a ready model service.
+
 Then `sync`, unmount the ESP and root, and leave the disk unmounted until the
 coordinated shutdown. Record the install result and public host-key fingerprint.
 A successful build alone is not this proof.
