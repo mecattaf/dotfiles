@@ -329,12 +329,18 @@ in
         sessions = 1;
         context = 102400;
         extraArgs = [
-          "--think" "off"
-          "--cache-ram-bytes" "1073741824"
-          "--max-tokens" "16384"
-          "--max-pending" "8"
-          "--request-timeout-ms" "1200000"
-          "--stall-timeout-ms" "180000"
+          "--think"
+          "off"
+          "--cache-ram-bytes"
+          "1073741824"
+          "--max-tokens"
+          "16384"
+          "--max-pending"
+          "8"
+          "--request-timeout-ms"
+          "1200000"
+          "--stall-timeout-ms"
+          "180000"
         ];
       };
       description = "The resident text model (gufo-llm.service).";

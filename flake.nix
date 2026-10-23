@@ -783,7 +783,13 @@
           let
             strix = self.nixosConfigurations.strix.config;
           in
-          assert !(strix.systemd.services ? podman-halogen);
+          assert builtins.all (name: !(nixpkgs.lib.hasPrefix "podman-halogen" name)) (
+            builtins.attrNames strix.systemd.services
+          );
+          assert !(strix.services ? halogen);
+          assert builtins.all (name: !(nixpkgs.lib.hasPrefix "halogen-" name)) (
+            builtins.attrNames (import ./lib/local-models.nix { lib = nixpkgs.lib; }).artifacts
+          );
           assert strix.services.gufo.enable;
           assert strix.services.gufo.llm.sessions == 1;
           assert strix.services.gufo.llm.context == 102400;
@@ -1397,6 +1403,15 @@
               python -m unittest discover -v -s tests/update-center
               touch "$out"
             '';
+
+        # Exercise the request-scoped utility seam without qmd or live models.
+        utility-model = pkgs.runCommand "utility-model" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          set -euo pipefail
+          export PYTHONDONTWRITEBYTECODE=1
+          export AI_MEMORY_UTILITY_OWNER=${./pkgs/utility-model/utility_model.py}
+          python3 -m unittest discover -s ${./tests/ai-memory} -p 'test_utility_model.py' -v
+          touch "$out"
+        '';
 
         ai-memory =
           let
@@ -2183,7 +2198,7 @@
                 package: nixpkgs.lib.getName package == "local-models-borrow"
               ) strix.environment.systemPackages
             ) == 1;
-          # The Halogen unit orders after nothing model-shaped either: its
+          # The Gufo unit orders after nothing model-shaped either: its
           # pre-start CHECKS the bundle and refuses; it never fetches.
 
           # NAS downloads remain a separate timer/operator action, never an
@@ -2201,18 +2216,9 @@
           assert !(self.nixosConfigurations.strix.options ? myCluster);
 
           # ── mono-model: the wanted sets, exact ─────────────────────────────
-          # Exact lists, not membership tests, so a new hundred-gigabyte row
-          # has to be argued for here in writing before it can cost a twin its
-          # disk. Both twins want the two Halogen bundles they serve (Tom,
-          # 2026-09-16); the strix adds the streaming ASR and its speech
-          # (TTS) rows; the wake and Parakeet rows left on 2026-09-30. There is
-          # no `allow` any more: nothing is a deployment, nothing is served by a
-          # roster.
-
-          # Gufo (#525, Tom 2026-10-13: "use that as the full collection of
-          # modles that we use"): Flash-Next and the 27B with its draft join
-          # the strix's set before the cutover; Halogen's two rows leave it
-          # once Gufo serves.
+          # Exact lists keep additional model loans explicit. Gufo's text
+          # bundles join the production diarization, TTS and voice artifacts;
+          # retired engine formats are absent from both wanted set and catalog.
           assert
             strix.services.local-models.artifacts == [
               "qwen38-flash-next-gguf"
@@ -2235,8 +2241,6 @@
             builtins.attrNames localModelCatalog.artifacts == [
               "deepseek-v4-flash-dspark-gguf"
               "deepseek-v4-flash-gguf"
-              "halogen-qwen38-27b"
-              "halogen-qwen38-flash-next"
               "minimax-h3-fl2va"
               "qwen-image-2.1"
               "qwen-k2so-midway-b"
@@ -2267,8 +2271,6 @@
           assert strix.services.utilityModel.endpoint == (import ./lib/local-model.nix).endpoint;
           assert
             (import ./lib/local-model.nix).endpoint == "http://strix:${toString strix.services.gufo.port}";
-          assert localModelCatalog.artifacts.halogen-qwen38-flash-next.source.layout == "snapshot";
-          assert builtins.length localModelCatalog.artifacts.halogen-qwen38-flash-next.source.files == 9;
 
           assert strix.services.utilityModel.enable;
           assert strix.services.utilityModel.modelId == "qwen3.8-flash-next";

@@ -39,7 +39,7 @@
           "Pi harness",
           "VibeVoice-ASR-Streaming-7B diarization",
           "Qwen TTS",
-          "resident Halogen Flash / on-demand Qwen3.8-27B (halogen-switch)",
+          "resident Gufo Flash-Next / operator-switched Qwen3.8-27B and DeepSeek V4 Flash (gufo-switch)",
           "Git and PR mechanics"
         ]
       }
@@ -367,40 +367,6 @@
         "Dockerfile",
         "**/*.py",
         "**/*.sh"
-      ]
-    },
-    {
-      "slug": "peonist-ai/halogen-flash-server",
-      "url": "https://github.com/peonist-ai/halogen-flash-server.git",
-      "category": "canonical-monthly",
-      "cadence": "monthly",
-      "enabled": true,
-      "baseline": "67da233276f437b1a69ac38a2b0d8ab3d47ec7ed",
-      "baseline_authority": "2026-09 halogen adoption",
-      "processor": "generic",
-      "partition": "top-level",
-      "watched_paths": [
-        "README.md",
-        "CHANGELOG.md",
-        "docs/**",
-        "deploy/entrypoint.sh",
-        "docker-compose.yml"
-      ]
-    },
-    {
-      "slug": "kyuz0/ai-toolbox-cockpit",
-      "url": "https://github.com/kyuz0/ai-toolbox-cockpit.git",
-      "category": "canonical-monthly",
-      "cadence": "monthly",
-      "enabled": true,
-      "baseline": "e18fd177b036bc52f1a03e52c0fde85c827452fe",
-      "baseline_authority": "2026-09 halogen adoption",
-      "processor": "generic",
-      "partition": "top-level",
-      "watched_paths": [
-        "README.md",
-        "ai_toolbox_cockpit/assets/*.json",
-        "ai_toolbox_cockpit/backends/halogen/**"
       ]
     },
     {
