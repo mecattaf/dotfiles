@@ -62,6 +62,10 @@
   ];
 
   networking.hostName = "strix";
+  myFleet.roles = [
+    "brain"
+    "compute"
+  ];
   hardware.bluetooth.enable = lib.mkForce false;
 
   # ── Substrate on this box: declared ON (2026-09-24) ────────────────────

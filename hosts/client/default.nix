@@ -91,6 +91,7 @@
   ];
 
   networking.hostName = "client";
+  myFleet.roles = [ "seat" ];
 
   # No dotfiles checkout on the thin client (Tom, 2026-10-11, about ~/dotfiles
   # and ~/mecattaf here: "i dnt need here"). Every raw dotfile (sway, kitty,
