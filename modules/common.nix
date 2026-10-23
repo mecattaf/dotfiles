@@ -8,6 +8,7 @@
 # anything a host or nixos-hardware module may override.
 {
   imports = [
+    ./fleet-hosts.nix
     ./fleet-role.nix
     ./browser-trust.nix
     ./headless.nix # opt-in appliance profile without home-manager or desktop
@@ -49,6 +50,11 @@
       "^/home/tom/\\.cache/tally-wf/[^ /]+/(debug|release)/deps/tally-[0-9a-f]+ --exact cli::campaign::tests::release_execute_crash_child --nocapture --test-threads=1$"
     ];
   };
+
+  # Raw helpers, system/user services and SSH login shells share one endpoint.
+  environment.variables.LOCAL_MODEL_ENDPOINT = (import ../lib/local-model.nix).endpoint;
+  environment.etc."local-model.json".text = builtins.toJSON (import ../lib/local-model.nix);
+  systemd.globalEnvironment.LOCAL_MODEL_ENDPOINT = (import ../lib/local-model.nix).endpoint;
 
   # --- identity / base ---
   networking.networkmanager.enable = true;
@@ -141,26 +147,6 @@
       "fleet:igImm/3XfdWs2g7L0j94HKcCh9ndv1WtJ5fVK6Svwz4="
     ];
   };
-
-  # The NAS by name, fleet-wide: the substituter URL above and every service
-  # that dials `nas` must resolve it identically on all hosts — the LAN
-  # resolver doesn't serve bare hostnames and mDNS isn't universal, so a
-  # static pin is the boring, correct answer (moved here from
-  # hosts/strix/uplink-nas.nix at the 2026-08-21 attic move).
-  networking.hosts."10.42.0.1" = [ "nas" ];
-
-  # The `worker` -> 10.42.0.5 pin that lived here from 2026-08-21 (#229) MOVED
-  # to hosts/nas/network.nix on 2026-08-31 (#277), and the twins answer the
-  # same name from modules/fleet-hosts.nix (#273). Every host agrees on
-  # 10.42.0.5, but the pin stays host-scoped on purpose: with nsswitch running
-  # `resolve` ahead of `files`,
-  # two /etc/hosts entries for one name are ordered by systemd-resolved, not by
-  # the file, and a fleet-wide copy here would double the twins' entry and the
-  # NAS's. One answer per name per host, host-scoped.
-  # Do not move it back: nothing on the twins dials the worker by name over the
-  # LAN (the deploy node, home/ssh.nix and the journal ACL all name addresses),
-  # and the flake's fleet-connectivity check asserts BOTH halves — presence on
-  # the NAS and absence on each twin.
 
   # #106 proposed also setting `nix.registry.nixpkgs.flake` and `nix.nixPath`
   # here. Deliberately NOT done: nixpkgs' own misc/nixpkgs-flake.nix already
@@ -319,36 +305,10 @@
     enable = true;
     startWhenNeeded = true;
   };
-  # NO TAILSCALE TIER HERE — Tom's ruling 2026-09-01. This file used to carry
-  # `services.tailscale.enable = true` plus a fleet-wide `--ssh` on both
-  # extraUpFlags and extraSetFlags, from the era when "every fleet box is a
-  # tailscale.com node" was simply true. Two moves emptied that premise from
-  # both ends: the worker came off the tailnet with #229, and the NAS became a
-  # client of its OWN headscale on 2026-09-01 (hosts/nas/headscale.nix). What
-  # was left was a default that exactly ONE host wanted and two hosts had to
-  # fight — the worker with three mkForce lines, the NAS with two.
-  #
-  # So the tailnet is now declared per host, where the host's reason for having
-  # one lives:
-  #   strix  official tailscale.com, always connected but idle — the
-  #                emergency rail when the NAS is down (hosts/strix/tailscale.nix)
-  #   nas          its own headscale control plane, and its own client of it
-  #                (hosts/nas/headscale.nix)
-  #   worker       no tailnet at all, by ruling (hosts/worker/default.nix)
-  #
-  # Do NOT restore a default here for a fourth host: a daemon that exists at
-  # this module's pleasure goes dark the moment this module changes its mind,
-  # which is the whole reason the NAS took ownership of its own enable. The
-  # `--ssh` narrative (both flag paths, and the tag:mesh ACL rule it needs)
-  # moved to hosts/strix/tailscale.nix with the flags themselves.
-  #
-  # The tailscale0 wayvnc door moved with it. It lived here as
-  # `mkIf (!myHeadless.enable) [ 5900 ]`, which read as a fleet posture but
-  # resolved to two hosts: the strix, which wanted it, and the worker,
-  # which has no tailscale0 for it to land on — and no compositor at all
-  # (hosts/worker/default.nix forced the greetd session below off), so
-  # the strix is the only host this session block actually lights. The
-  # NAS's own :5900 was never this line's.
+  # The shared official Tailscale policy is modules/fleet-transport.nix.
+  # Compute imports it through strix-compute; the NAS agent-host PR adopts it
+  # for NAS/client too. Enrollment is interactive, with device expiry disabled
+  # in the control plane. There is no delivered fleet auth key.
   services.resolved.enable = true;
   networking.firewall.enable = true;
 

@@ -66,7 +66,7 @@ SYSFS_FIELDS = {
 }
 
 # Gufo's resident and alternate text units share the fleet endpoint.
-INFERENCE_URL = (os.environ.get("UTIL_SAMPLER_INFERENCE_URL") or "http://strix:8731").rstrip("/")
+INFERENCE_URL = (os.environ.get("UTIL_SAMPLER_INFERENCE_URL") or os.environ.get("LOCAL_MODEL_ENDPOINT", "")).rstrip("/")
 NO_METRICS = "Gufo token telemetry is not calibrated; token counts are unknown"
 # Strix owns the resident Gufo probe; the client has no model server.
 SERVE_PROBES = {

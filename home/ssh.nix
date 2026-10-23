@@ -2,8 +2,9 @@
 let
   registry = import ../modules/mesh-registry.nix;
   targets = {
-    coordinator = "strix";
-    strix = "strix";
+    strix-coordinator = "strix-coordinator";
+    strix-worker = "strix-worker";
+    strix = "strix-coordinator"; # temporary compatibility alias
     nas = "nas";
     client = "client";
   };

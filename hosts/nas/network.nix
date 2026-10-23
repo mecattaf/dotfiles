@@ -18,10 +18,6 @@
     ipv6.method = "disabled";
   };
 
-  networking.hosts."10.42.0.2" = [
-    "strix"
-    "coordinator"
-  ];
   # The NAS reaches Immich ML over the LAN; the twins use their own fleet links.
   networking.nftables.enable = true;
   networking.firewall.extraInputRules = ''

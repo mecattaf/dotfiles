@@ -22,7 +22,47 @@
 # the store copy only when absent, the seed parses as TOML with one default per harness (per provider for pi) and no
 # openrouter-free entry (the lane is parked), and the puller PATH carries nodejs 24 and pnpm 11.17.0 for the gates.
 let
-  coord = self.nixosConfigurations.strix;
+  # Evaluation-only agent fixture; production compute imports no Substrate.
+  coord = self.nixosConfigurations.strix-coordinator.extendModules {
+    modules = [
+      ../../modules/substrate.nix
+      ../../modules/academic-drain.nix
+      {
+        myFleet.roles = lib.mkForce [
+          "brain"
+          "compute"
+        ];
+        mySecrets.enable = lib.mkForce true;
+        services.substrate = {
+          floorUrl = "https://substrate.mecattaf.dev";
+          pusher = {
+            enable = true;
+            owners.codex = "tom";
+          };
+          puller = {
+            enable = true;
+            maxRuns = 2;
+            cap = 12;
+            callTimeoutMs = {
+              opus = 3600000;
+              halogen = 1800000;
+              codex = 3600000;
+              codex-rw = 7200000;
+              qwen = 3600000;
+              openrouter = 3600000;
+              openrouter-free = 3600000;
+              "ssh:strix" = 1800000;
+            };
+            sshRuntimes."ssh:strix" = {
+              host = "strix-coordinator";
+              harness = "pi";
+              seat = "halogen";
+            };
+          };
+        };
+      }
+    ];
+  };
   declared = coord.config;
   armed =
     (coord.extendModules {
@@ -163,7 +203,7 @@ pkgs.runCommand "substrate-modules"
     assert strip(rt["runtime"]["codex"]) == {"type": "host", "harness": "codex", "seat": "codex", "codexSandbox": "read-only"}
     assert strip(rt["runtime"]["codex-rw"]) == {"type": "host", "harness": "codex", "seat": "codex", "codexSandbox": "workspace-write"}
     # SshRuntime (packages/runners/src/config.ts:116-121): type, host, and the common harness, seat, timeoutMs.
-    assert rt["runtime"]["ssh:strix"] == {"type": "ssh", "host": "strix", "harness": "pi", "seat": "gufo", "timeoutMs": 1800000}, rt["runtime"]["ssh:strix"]
+    assert rt["runtime"]["ssh:strix"] == {"type": "ssh", "host": "strix-coordinator", "harness": "pi", "seat": "gufo", "timeoutMs": 1800000}, rt["runtime"]["ssh:strix"]
     # The loader's guardrail (packages/runners/src/config.ts): codexSandbox only on the codex harness.
     for name, table in rt["runtime"].items():
         assert "codexSandbox" not in table or table.get("harness") == "codex", name

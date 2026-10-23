@@ -9,9 +9,9 @@ The model has no grammar enforcement, so the JSON is validated here with
 one corrective retry and a deterministic fallback.
 
 The seam behind that wrapper is the fleet's one inference server: the
-local model server on the strix (http://strix:8731), which answers the
+local model server on the strix (http://strix-coordinator:8731), which answers the
 stable id `utility` through the wrapper. The wrapper exists on the
-strix only. The server stays resident, but a request that lands while
+fleet hosts through Nix. The server stays resident, but a request that lands while
 its unit is still starting waits on that start, so the
 classification call is given a generous timeout.
 
@@ -124,7 +124,7 @@ def ask_utility(user_content: str) -> str:
         raise ClassifierUnavailable(
             "utility-model is not installed here; the utility-model wrapper "
             "(which forwards to the local model server) is "
-            "installed on the strix only") from exc
+            "provided by the fleet profile") from exc
     except OSError as exc:
         raise ClassifierUnavailable(f"could not run utility-model: {exc}") from exc
     except subprocess.TimeoutExpired as exc:

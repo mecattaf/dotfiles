@@ -217,7 +217,7 @@ in
     # for the academic-drain corpus, so this line is fsid=6 for both clients
     # and the worker mounts `nas:/models` (hosts/worker/default.nix).
     services.nfs.server.exports = ''
-      ${modelsRoot} 10.42.0.2(rw,sync,fsid=6,no_subtree_check,no_root_squash)
+      ${modelsRoot} 10.42.0.2(rw,sync,fsid=6,no_subtree_check,no_root_squash) 10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)
     '';
     networking.firewall.extraInputRules = "";
 

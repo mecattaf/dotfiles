@@ -138,6 +138,7 @@ stdenvNoCC.mkDerivation {
   doCheck = true;
 
   checkPhase = ''
+    export LOCAL_MODEL_ENDPOINT=${(import ../../lib/local-model.nix).endpoint}
     runHook preCheck
     ${bash}/bin/bash -n \
       ${callRecord} \
@@ -180,6 +181,7 @@ stdenvNoCC.mkDerivation {
           uv
         ]
       } \
+      --set-default LOCAL_MODEL_ENDPOINT ${(import ../../lib/local-model.nix).endpoint} \
       --set CALL_DIARIZE_ENVIRONMENT_ID ${lib.escapeShellArg environmentId} \
       --set CALL_DIARIZE_PROJECT "$out/libexec/call-diarize" \
       --set CALL_DIARIZE_PYTHON ${lib.escapeShellArg "${python}/bin/python3"} \

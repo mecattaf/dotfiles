@@ -1,4 +1,9 @@
-{ pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 # Fleet journald substrate, sender side (issue #135, workstream 1). Star
 # topology; senders are the STRIX HALO BOXES ONLY (Tom's ruling 2026-08-21:
 # strix + worker live in the same room as the NAS. The rule was written
@@ -81,7 +86,7 @@ in
   # replicable by any caller: `sudo systemctl start journal-archive` by hand,
   # or a factory (substrate) schedule running that same command over ssh. Its
   # exit code carries the liveness verdict described above.
-  systemd.services.journal-archive = {
+  systemd.services.journal-archive = lib.mkIf (config.myFleet.has "brain") {
     description = "Move rotated remote journal files from NAS NVMe to HDD";
     serviceConfig = {
       Type = "oneshot";

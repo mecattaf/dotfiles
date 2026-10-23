@@ -199,7 +199,8 @@ fi
 
 nix eval --json --no-write-lock-file "path:$dotfiles#lib.localModelCatalog" \
   > "$capture/catalog.json"
-endpoint="$(jq -r '.inference.url' "$registry")"
+endpoint="$(jq -r '.inference.url // empty' "$registry")"
+endpoint="${endpoint:-${LOCAL_MODEL_ENDPOINT:?LOCAL_MODEL_ENDPOINT is required}}"
 tally_pool="$(jq -er '.inference.tally_pool | select(type == "string" and length > 0)' "$registry")"
 models_url="${endpoint%/}"
 if [[ "$models_url" != */v1 ]]; then

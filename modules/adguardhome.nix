@@ -105,7 +105,8 @@ in
         ]
         ++ lib.optionals isLanResolver [
           "10.42.0.1"
-          "10.42.0.2" # strix
+          "10.42.0.2" # strix-coordinator
+          "10.42.0.5" # strix-worker
         ];
       };
 

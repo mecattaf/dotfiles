@@ -15,15 +15,25 @@
 # 2026-07-29 after the previous key was exposed on a returned device. It is an SSH
 # login key only, never an agenix editor recipient; see ../secrets.nix.
 {
-  strix = {
+  strix-coordinator = {
     aliases = [
-      "strix"
-      "coordinator"
-      # The static LAN address (hosts/strix/uplink-nas.nix).
+      "strix-coordinator"
+      "strix" # temporary compatibility alias
+      # The static LAN address (hosts/strix-coordinator/uplink-nas.nix).
       "10.42.0.2"
     ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFPCZFlnHQSNH3D0R1/qs9A/W498f8xTNUNBtLWZgU2A root@strix";
     userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";
+  };
+
+  strix-worker = {
+    aliases = [
+      "strix-worker"
+      "10.42.0.5"
+    ];
+    # TODO(Tom): fresh key generated at install
+    hostKey = "";
+    userKey = ""; # compute receives no operator private key
   };
 
   client = {

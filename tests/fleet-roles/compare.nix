@@ -9,35 +9,32 @@ let
   candidateFlake = builtins.getFlake candidate;
   pinned =
     flake: host:
-    (flake.nixosConfigurations.${host}.extendModules {
-      specialArgs.inputs = flake.inputs // {
-        self = flake // {
-          rev = "fleet-roles-comparison";
-          lastModified = 0;
+    if !(builtins.hasAttr host flake.nixosConfigurations) then
+      null
+    else
+      (flake.nixosConfigurations.${host}.extendModules {
+        specialArgs.inputs = flake.inputs // {
+          self = flake // {
+            rev = "fleet-roles-comparison";
+            lastModified = 0;
+          };
         };
-      };
-    }).config.system.build.toplevel.drvPath;
+      }).config.system.build.toplevel.drvPath;
 in
 builtins.listToAttrs (
-  map
-    (
-      host:
-      let
-        a = pinned baseFlake host;
-        b = pinned candidateFlake host;
-      in
-      {
-        name = host;
-        value = {
-          base = a;
-          candidate = b;
-          equal = a == b;
-        };
-      }
-    )
-    [
-      "strix"
-      "nas"
-      "client"
-    ]
+  map (
+    host:
+    let
+      a = pinned baseFlake host;
+      b = pinned candidateFlake host;
+    in
+    {
+      name = host;
+      value = {
+        base = a;
+        candidate = b;
+        equal = a == b;
+      };
+    }
+  ) (builtins.attrNames candidateFlake.nixosConfigurations)
 )

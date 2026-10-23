@@ -25,7 +25,8 @@
       ];
       dhcp-authoritative = true;
       dhcp-host = [
-        "9c:bf:0d:00:f6:73,strix,10.42.0.2,infinite"
+        "9c:bf:0d:00:f6:73,strix-coordinator,10.42.0.2,infinite"
+        "9c:bf:0d:01:cc:65,strix-worker,10.42.0.5,infinite" # TODO(Tom): verify MAC on arrival
         "98:03:8e:6b:61:e2,be550,10.42.0.3,infinite"
         "08:f9:7e:55:f3:96,printer,10.42.0.4,infinite"
         # The thin client (2026-09-11): the lease it already held on return

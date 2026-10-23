@@ -82,7 +82,7 @@ in
       # on the first request and retiring after 15 idle minutes. It admits only
       # its LAN interface and has no tailnet door, so the reachable path is this
       # segment — the same trust boundary the old private link gave it.
-      environment.IMMICH_MACHINE_LEARNING_URL = lib.mkForce "http://strix:3003";
+      environment.IMMICH_MACHINE_LEARNING_URL = lib.mkForce "http://strix-coordinator:3003";
       accelerationDevices = [ "/dev/dri/renderD128" ];
     };
 

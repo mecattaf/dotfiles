@@ -108,18 +108,7 @@
   # 2026-08-21 return.
   mySecrets.enable = true;
 
-  # ── names ──────────────────────────────────────────────────────────────────
-  # `nas` is fleet-wide (modules/common.nix). The two twins are pinned here
-  # by hand because modules/fleet-hosts.nix is twins-only and also deletes
-  # the 127.0.0.2 self-mapping, which this box has no reason to lose. The
-  # NAS resolver does not serve DHCP client names (checked 2026-09-11:
-  # `resolvectl query zenbook-duo` → not found while the box held a lease),
-  # so a laptop that dials `strix` needs its own answer. One answer per
-  # name per host, registry aliases both, so ssh stays TOFU-free.
-  networking.hosts."10.42.0.2" = [
-    "strix"
-    "coordinator"
-  ];
+  # Fleet names come from modules/fleet-hosts.nix, including the LAN peers.
 
   # ── the LAN identity: thomas-6ghz, DHCP ────────────────────────────────────
   # Same profile the box already associates with (the fleet delivered one by
