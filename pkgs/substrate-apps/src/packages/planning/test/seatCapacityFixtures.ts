@@ -85,11 +85,11 @@ export const cc3Seat = (): SeatCapacity =>
     ]
   });
 
-/** A Halogen slot row. */
-export const halogenSeat = (holders: number, capacity = 1): SeatCapacity =>
+/** A Gufo slot row. */
+export const gufoSeat = (holders: number, capacity = 1): SeatCapacity =>
   decodeSeat({
     seat: "gpu-worker",
-    provider: "halogen",
+    provider: "gufo",
     owner: "tom",
     dispatchable: true,
     dispatchable_reason: null,

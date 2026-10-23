@@ -183,7 +183,7 @@
     # nix-strix-halo — the broad gfx1151 package plane for the Framework Desktop:
     # llama.cpp ROCm/Vulkan, amdtop, MES firmware, and a buildable live ISO
     # (its ds4/vLLM/MLX outputs exist upstream but nothing here consumes them:
-    # the fleet is mono-model on Halogen). Consume its package
+    # the resident model is served by Gufo). Consume its package
     # outputs directly rather than applying its global overlay: that preserves its
     # own TheRock/Python provider graph and avoids replacing the already-live
     # nix-amd-ai XRT/FastFlowLM pair. The two flakes currently pin identical XRT +
@@ -193,10 +193,9 @@
     # own nixpkgs and provider pins (cache configured in common.nix).
     nix-strix-halo.url = "github:hellas-ai/nix-strix-halo";
 
-    # gufo — the fleet's local inference engine for Strix Halo (gfx1151), replacing
-    # Halogen (dotfiles #525). Tom, 2026-10-13: "i said let  move to gufo!! not
-    # halogen!!!!" and "use that as the full collection of modles that we use":
-    # its model set is the catalog in lib/local-models.nix. One native binary,
+    # gufo — the fleet's native inference engine for Strix Halo (gfx1151).
+    # Its model collection is declared in lib/local-models.nix (#525).
+    # One native binary,
     # no container (modules/gufo.nix). Pinned to the release the catalog matches
     # (v0.20.0). No nixpkgs.follows: upstream qualifies its build against its own
     # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
@@ -755,14 +754,8 @@
         # strix, where util-row is SKIP and must never be FAIL. The count
         # is asserted too: the issue says the probe gains EXACTLY these two
         # rows. Hermetic: no systemd, no tally, no network.
-        # UTIL-01's two behaviours added 2026-09-13, each asserted on fixtures
-        # (#329, #312). util-row-closed-day: a re-run of a written night that
-        # reproduces exits 0 and rewrites nothing; a differing slice or row
-        # exits 2 and writes nothing. util-01-halogen-tokens: the sampler reads
-        # every Halogen request-line shape and never turns a failed journal read
-        # into zero; util-row sums the windows (tokens_in = prompt - cached,
-        # prefill rate per halogen-flash-server#48). Hermetic: scratch meters, a
-        # fake journalctl, python3 and coreutils.
+        # Offline replay must preserve partial/missing token windows and closed
+        # days. Gufo's uncalibrated live counts remain UNKNOWN, never zero.
         util-row-closed-day =
           pkgs.runCommand "util-row-closed-day" { nativeBuildInputs = [ pkgs.python3 ]; }
             ''
@@ -770,13 +763,13 @@
               UTIL_ROW=${./home/dot_local/bin/util-row} \
                 bash ${./tests/util-row/test-closed-day-idempotent.sh} | tee $out
             '';
-        util-01-halogen-tokens =
-          pkgs.runCommand "util-01-halogen-tokens" { nativeBuildInputs = [ pkgs.python3 ]; }
+        util-01-token-windows =
+          pkgs.runCommand "util-01-token-windows" { nativeBuildInputs = [ pkgs.python3 ]; }
             ''
               set -euo pipefail
               UTIL_SAMPLER=${./home/dot_local/bin/util-sampler} \
               UTIL_ROW=${./home/dot_local/bin/util-row} \
-                bash ${./tests/util-01/test-halogen-token-window.sh} | tee $out
+                bash ${./tests/util-01/test-token-windows.sh} | tee $out
             '';
 
         gufo-unit-policy =
@@ -790,6 +783,9 @@
           assert builtins.all (name: !(nixpkgs.lib.hasPrefix "halogen-" name)) (
             builtins.attrNames (import ./lib/local-models.nix { lib = nixpkgs.lib; }).artifacts
           );
+          assert builtins.all (
+            artifact: builtins.all (file: !(nixpkgs.lib.hasSuffix ".hgn" file.path)) artifact.source.files
+          ) (builtins.attrValues (import ./lib/local-models.nix { lib = nixpkgs.lib; }).artifacts);
           assert strix.services.gufo.enable;
           assert strix.services.gufo.llm.sessions == 1;
           assert strix.services.gufo.llm.context == 102400;
@@ -924,7 +920,7 @@
           assert !(builtins.elem 8731 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
           assert !(builtins.elem 3003 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
           # Worker LAN doors: Immich ML (dialled by nas.services.immich above),
-          # the Halogen API (modules/halogen.nix) and the academic drain that
+          # the Gufo API (modules/gufo.nix) and the academic drain that
           # the strix's Caddy fronts as drain.internal
           # (hosts/worker/default.nix). Nothing else — and no
           # tailnet to hide behind, which is exactly why these stay
@@ -1985,7 +1981,7 @@
             #   this branch wants either back.
             #
             #   retiredFlowHostPattern — the bare host name, banned from the
-            #   CODE under flows/ except in two spellings: the Halogen endpoint
+            #   CODE under flows/ except in two spellings: the local inference endpoint
             #   `http://<host>:8731` and the `<host>-gpu` pool. A flow is a
             #   script that ENQUEUES work; a flow naming the other box as a
             #   place to run is the executor half that stayed retired (Q2: one
@@ -2305,7 +2301,7 @@
           assert strix.systemd.timers ? tripwire-coredump;
           assert strix.systemd.timers ? tripwire-user-unit-failure;
           assert strix.systemd.timers ? failure-marker-reconcile;
-          assert monthlySources.inference.provider == "halogen";
+          assert monthlySources.inference.provider == "gufo";
           assert monthlySources.inference.url == "http://strix:8731";
           assert monthlySources.inference.compute_host == "strix";
           assert monthlySources.inference.tally_pool == "strix-gpu";

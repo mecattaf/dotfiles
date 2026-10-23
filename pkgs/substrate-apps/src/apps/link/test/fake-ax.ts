@@ -3,7 +3,7 @@
 // FIELD-MAP D3: a save re-runs the reconcile and resumes the actor). `p1` switches on the carried patch P1:
 // a terminal phase is written by the controller and GetTaskResult exists. ListTasks pages like ax's Redis store
 // (ZRevRange: newest first, limit 0 means 50; MEASURED upstream server.go:91-104, store.go:209-212). GetGateway
-// answers from `gateways`; the default `halogen` Gateway allows one host, as ax-fleet's does.
+// answers from `gateways`; the default `gufo` Gateway allows one host, as ax-fleet's does.
 import { createHash } from "node:crypto"
 import { Effect } from "effect"
 import { AxError } from "../src/ax.ts"
@@ -25,7 +25,7 @@ export class FakeAx implements AxApi {
   blockCreate = false // createTask never returns (a crash window before the Task exists)
   hangAfterCreate = false // createTask writes the Task, then never returns (a crash window after it exists)
   holdPending = new Set<string>() // names the controller never starts
-  gateways = new Map<string, AxGateway>([["halogen", { hasAllowlist: true, hosts: [{ host: "worker", port: 8731 }] }]])
+  gateways = new Map<string, AxGateway>([["gufo", { hasAllowlist: true, hosts: [{ host: "worker", port: 8731 }] }]])
   listCalls = 0
 
   private guard = (): Effect.Effect<void, AxError> => this.up ? Effect.void : Effect.fail(new AxError(UNAVAILABLE, "connection refused"))

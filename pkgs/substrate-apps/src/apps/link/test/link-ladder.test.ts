@@ -128,19 +128,19 @@ describe("critique D.2: the remaining wiring", () => {
     const w = world(); const l = start(w)
     await until("gateway-ok", () => l.has("gateway-ok"))
     const ok = l.logs.find((x) => x.ev === "gateway-ok")!
-    expect(ok).toMatchObject({ gateway: "halogen", hosts: 1 })
+    expect(ok).toMatchObject({ gateway: "gufo", hosts: 1 })
     expect("allowsAll" in ok).toBe(false)
-    w.ax.gateways.set("halogen", { hasAllowlist: true, hosts: [{ host: "*", port: 443 }] })
+    w.ax.gateways.set("gufo", { hasAllowlist: true, hosts: [{ host: "*", port: 443 }] })
     await until("gateway-open", () => l.has("gateway-open"))
-    expect(l.logs.find((x) => x.ev === "gateway-open")).toMatchObject({ gateway: "halogen", allowsAll: true })
+    expect(l.logs.find((x) => x.ev === "gateway-open")).toMatchObject({ gateway: "gufo", allowsAll: true })
     expect(l.logs.filter((x) => x.ev === "gateway-missing").length).toBe(0)
-    w.ax.gateways.delete("halogen")
+    w.ax.gateways.delete("gufo")
     await until("gateway-missing", () => l.has("gateway-missing"))
     expect(l.logs.find((x) => x.ev === "gateway-missing")).toMatchObject({ found: false })
     await l.drain()
   })
 
-  const RELAY = { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"], completeUrl: "http://relay.internal:8787/complete" }
+  const RELAY = { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"], completeUrl: "http://relay.internal:8787/complete" }
   it("L6 (P4 inverted) auto with a fleet-internal Complete URL on stock ax creates in guest mode with a per-lease token", async () => {
     const w = world({ tokens: { "tok-nas": { holder: "nas-link-1", guest: true } } }); w.ax.p1 = false; w.floor.enqueue(job("1"))
     const l = start(w, undefined, { completion: "auto", shape: RELAY })

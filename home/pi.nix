@@ -189,9 +189,8 @@ let
       # The fleet's one local model on the strix, by hostname over the house
       # LAN (lib/local-model.nix). Vision-capable; the resident service uses
       # thinking off and a bounded 100K context. The
-      # provider key stays `halogen` because substrate's runtimes and models
-      # catalogue name it (a missing provider means halogen there).
-      halogen = {
+      # provider, runtime and seat use the same Gufo key as Substrate.
+      gufo = {
         api = "openai-completions";
         apiKey = "local-no-auth";
         authHeader = true;

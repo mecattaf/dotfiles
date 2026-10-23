@@ -556,7 +556,7 @@ export const admitSeat = (
   const measuredUntil = parse(seat.observed_at) + MEASURED_MAX_AGE_S * SECOND_MS;
   const planUntil = seat.plan === null ? Number.POSITIVE_INFINITY : parse(seat.plan.expires_at);
 
-  if (seat.provider === "halogen") {
+  if (seat.provider === "gufo") {
     if (seat.slots === null) return refuse("slots-unknown", "a slot row published no slots");
     if (seat.slots.holders >= seat.slots.capacity) {
       return refuse("slots-full", `${seat.slots.holders} of ${seat.slots.capacity} slots held`, {

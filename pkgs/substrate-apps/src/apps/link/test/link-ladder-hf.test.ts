@@ -80,7 +80,7 @@ describe("HF link-ladder: the sub-claims VERIFY found untested", () => {
     w.ax.getTaskResult = (name: string) => probeDown && name === "conwip-link-capability-probe"
       ? Effect.fail(new AxError(14, "probe timed out")) : real(name)
     w.floor.enqueue(job("1"))
-    const RELAY = { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"], completeUrl: "http://relay.internal:8787/complete" }
+    const RELAY = { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"], completeUrl: "http://relay.internal:8787/complete" }
     const l = start(w, undefined, { completion: "auto", shape: RELAY })
     await until("ax-up", () => l.has("ax-up"))
     await until("gateway-ok", () => l.has("gateway-ok"))

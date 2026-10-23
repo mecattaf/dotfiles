@@ -132,7 +132,7 @@ export interface MeterBounds {
    *  - `codex` uses `utilization_pct`, because its weekly figure is not a
    *    number in the file. The two are never compared and never added: they
    *    are two organizations on two clocks.
-   *  - `halogen` uses `none`.
+   *  - `gufo` uses `none`.
    */
   readonly utilizationField: UtilizationField;
   /** The cap, or null for a seat with no budget row. Data. */
@@ -224,7 +224,7 @@ export function evaluateMeter(
   }
 
   // 5. The cap. Skipped only for a seat whose bounds declare no budget figure.
-  //    `halogen` is exactly that seat: it declares a slot row of capacity one
+  //    `gufo` is exactly that seat: it declares a slot row of capacity one
   //    and NO budget row. It is not metered for spend, so a missing budget
   //    figure is not a refusal for it. Every other seat with `utilizationField`
   //    set must produce a number here or it is refused as at cap, because an

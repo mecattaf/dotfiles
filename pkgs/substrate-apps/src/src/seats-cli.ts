@@ -12,7 +12,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { runSeatDryRun, type SeatDeclaration } from "./dispatch.ts";
 import { deriveFromFile } from "./record.ts";
-import { METERS_DIR, ccAdapter, codexAdapter, halogenAdapter } from "./seats.ts";
+import { METERS_DIR, ccAdapter, codexAdapter, gufoAdapter } from "./seats.ts";
 import type { WorkItem } from "./schema.ts";
 
 function arg(name: string, fallback: string): string {
@@ -44,14 +44,14 @@ const dispatchable = items.filter((i) => i.promptResolved && i.sourceStatus !== 
  *
  * Every bound is data. Staleness 300s; cap 95 for cc on its weekly figure, 90
  * for codex on utilization_pct because its weekly field is not a number, and
- * none for halogen, which declares a slot row of capacity one and no budget row.
+ * none for gufo, which declares a slot row of capacity one and no budget row.
  */
 const declarations: SeatDeclaration[] = [
   { adapter: ccAdapter(join(metersDir, "cc.json")), slots: 1,
     bounds: { stalenessBoundSeconds: 300, utilizationField: "weekly_utilization_pct", capPct: 95 } },
   { adapter: codexAdapter(deployConfig().codexWorkdir, join(metersDir, "codex.json")), slots: 1,
     bounds: { stalenessBoundSeconds: 300, utilizationField: "utilization_pct", capPct: 90 } },
-  { adapter: halogenAdapter(join(metersDir, "gpu-worker.json")), slots: 1,
+  { adapter: gufoAdapter(join(metersDir, "gpu-worker.json")), slots: 1,
     bounds: { stalenessBoundSeconds: 300, utilizationField: "none", capPct: null } },
   { adapter: { ...ccAdapter(`${METERS_DIR}/cc9.json`), seatId: "cc9" }, slots: 1,
     bounds: { stalenessBoundSeconds: 300, utilizationField: "weekly_utilization_pct", capPct: 95 } },

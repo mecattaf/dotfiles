@@ -131,7 +131,7 @@ export function codexAdapter(dir: string, meterPath: string = `${METERS_DIR}/cod
 }
 
 /**
- * Seat `halogen`, through the utility-model wrapper.
+ * Seat `gufo`, through the utility-model wrapper.
  *
  * The wrapper takes only -h and --timeout TIMEOUT. It supplies the endpoint,
  * the concrete model and the context size itself, so this factory passes none
@@ -147,7 +147,7 @@ export function codexAdapter(dir: string, meterPath: string = `${METERS_DIR}/cod
  * budget figure is not a refusal for this seat, and that is a property of the
  * declaration, not an exception inside the rule.
  */
-export function halogenAdapter(
+export function gufoAdapter(
   meterPath: string = `${METERS_DIR}/gpu-worker.json`,
   timeoutSeconds?: number,
 ): SeatAdapter {
@@ -156,7 +156,7 @@ export function halogenAdapter(
       ? ["/run/current-system/sw/bin/utility-model"]
       : ["/run/current-system/sw/bin/utility-model", "--timeout", String(timeoutSeconds)];
   return {
-    seatId: "halogen",
+    seatId: "gufo",
     meterPath,
     render: (item: WorkItem): SeatDispatch => ({
       argv,
@@ -170,12 +170,8 @@ export function halogenAdapter(
         // DESIGN section 12 stands unchanged.
         model: UTILITY_MODEL_ID,
         messages: [{ role: "user", content: item.prompt }],
-        // Also MEASURED from the wrapper: it translates a top-level `think:
-        // false` into Halogen's `enable_thinking: false`. Halogen reasons by
-        // default and its token budget covers the reasoning, so without this the
-        // budget is spent on reasoning_content and the answer comes back empty.
-        // An empty reply is indistinguishable from a failed dispatch, and this
-        // seat exists to produce a checkable one.
+        // The utility wrapper translates this into
+        // chat_template_kwargs.enable_thinking=false for Gufo.
         think: false,
       }),
     }),
@@ -188,7 +184,7 @@ export function halogenAdapter(
       const content = (parsed as { choices?: { message?: { content?: unknown } }[] })
         ?.choices?.[0]?.message?.content;
       if (typeof content !== "string") {
-        throw new Error("halogen stdout carries no choices[0].message.content string");
+        throw new Error("gufo stdout carries no choices[0].message.content string");
       }
       return content;
     },
@@ -235,14 +231,14 @@ export type SeatMode = "dry-run" | "spawn";
 /**
  * The live-spawn allow list, and the whole safety boundary of item 26.
  *
- * `halogen` and nothing else. This is a default in code rather than a
+ * `gufo` and nothing else. This is a default in code rather than a
  * convention in a brief, so that a caller who passes `mode: "spawn"` and
  * `allowSpawn: true` still cannot spend a seat by forgetting a rule.
  *
- * Why halogen and only halogen:
+ * Why gufo and only gufo:
  *
- *  - `halogen` runs through /run/current-system/sw/bin/utility-model, which
- *    forwards one request to the Halogen server on the worker. It is local
+ *  - `gufo` runs through /run/current-system/sw/bin/utility-model, which
+ *    forwards one request to the Gufo server on the worker. It is local
  *    compute on Tom's own hardware, it spends no metered allocation, and its
  *    meter row (gpu-worker.json) is a slot row of capacity one carrying no cap.
  *    One short prompt through it costs nothing anybody has to decide about.
@@ -261,9 +257,9 @@ export type SeatMode = "dry-run" | "spawn";
  * typed `readonly` is a compile-time promise and nothing more: one
  * `(DEFAULT_LIVE_SPAWN_SEATS as string[]).push("cc")` anywhere in the process
  * widened the gate for every caller, without passing `allowSpawnSeats` and
- * without editing this file. The contents are unchanged: halogen, and nothing else.
+ * without editing this file. The contents are unchanged: gufo, and nothing else.
  */
-export const DEFAULT_LIVE_SPAWN_SEATS: readonly string[] = Object.freeze(["halogen"]);
+export const DEFAULT_LIVE_SPAWN_SEATS: readonly string[] = Object.freeze(["gufo"]);
 
 /**
  * Prose for a refusal, per seat. The GATE is the allow list above and nothing
@@ -322,7 +318,7 @@ export type SpawnFn = (
  * The ledger is NOT a secret store. This function copies a child's stdout and
  * stderr into a ledger line, so anything a seat's command prints lands there.
  * No adapter in this repository passes a credential on its argv or its stdin:
- * `cc` passes an env unset, `codex` a working directory, `halogen` a stable
+ * `cc` passes an env unset, `codex` a working directory, `gufo` a stable
  * model id, and all three carry the prompt on stdin. A seat that ever needed a
  * credential would have to take it from the environment, and its ledger lines
  * would have to be reviewed before they were persisted anywhere shared.
@@ -370,13 +366,13 @@ export interface ExecuteOptions {
   /**
    * Gate two. Spawning is refused unless this is explicitly true. Dry run is
    * the default everywhere. It is set in exactly two places: the one live test,
-   * and `makeHalogenOutcomeOf` in `src/live.ts`, which is the live end-to-end
-   * path and is itself gated on AX_CONWIP_LIVE_HALOGEN=1.
+   * and `makeGufoOutcomeOf` in `src/live.ts`, which is the live end-to-end
+   * path and is itself gated on AX_CONWIP_LIVE_GUFO=1.
    */
   readonly allowSpawn?: boolean;
   /**
    * Gate three. The seats a live spawn may touch. Defaults to
-   * DEFAULT_LIVE_SPAWN_SEATS, which is ["halogen"].
+   * DEFAULT_LIVE_SPAWN_SEATS, which is ["gufo"].
    */
   readonly allowSpawnSeats?: readonly string[];
   /** Mandatory in effect: unset means DEFAULT_SPAWN_TIMEOUT_MS, never unbounded. */
@@ -406,7 +402,7 @@ export interface ExecuteResult {
  *
  *   1. `mode: "spawn"`.
  *   2. `allowSpawn: true`.
- *   3. the seat is on `allowSpawnSeats`, which defaults to ["halogen"].
+ *   3. the seat is on `allowSpawnSeats`, which defaults to ["gufo"].
  *
  * The spawner does not originate a command line. It executes the argv the
  * adapter rendered, unchanged and element for element, exactly as `renderArgv`
@@ -431,11 +427,11 @@ export function executeDispatch(
     );
   }
 
-  // Gate three: the seat rule. Live dispatch is permitted on halogen only.
+  // Gate three: the seat rule. Live dispatch is permitted on gufo only.
   const allowed = opts.allowSpawnSeats ?? DEFAULT_LIVE_SPAWN_SEATS;
   // A-01/A-02 of the 2026-09-23 review. `Array.isArray` is the gate, not a type
-  // annotation: a caller who passed the STRING "halogen,cc" turned the
-  // membership test into `"halogen,cc".includes("cc")`, which is a substring
+  // annotation: a caller who passed the STRING "gufo,cc" turned the
+  // membership test into `"gufo,cc".includes("cc")`, which is a substring
   // match and was true. A list of seats is a list, and anything else is refused.
   if (!Array.isArray(allowed)) {
     throw new Error(

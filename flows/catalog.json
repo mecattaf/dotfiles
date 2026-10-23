@@ -2,7 +2,7 @@
   "version": 1,
   "members": [
     {
-      "id": "halogen-general",
+      "id": "gufo-general",
       "family": "qwen",
       "maker": "alibaba",
       "classes": ["errata-review"],

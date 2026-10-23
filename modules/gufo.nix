@@ -5,9 +5,8 @@
   pkgs,
   ...
 }:
-# Gufo: the fleet's local inference engine on the strix, replacing Halogen
-# (dotfiles #525). Tom, 2026-10-13: "i said let  move to gufo!! not
-# halogen!!!!" and "use that as the full collection of modles that we use".
+# Gufo: the fleet's native inference engine on Strix (dotfiles #525).
+# The fleet uses its model collection (lib/gufo-models.json).
 #
 # Upstream is github:gufo-org/gufo (flake input `gufo`, pinned in flake.nix):
 # one native `gufo` binary for gfx1151 with the model graphs, tokenizers and
@@ -28,7 +27,7 @@
 # unit checks its files before starting.
 #
 # Text model units conflict with one another and the image unit, so only
-# one large model owns the GPU. Halogen is no longer declared.
+# one large model owns the GPU.
 let
   cfg = config.services.gufo;
   catalog = import ../lib/local-models.nix { inherit lib; };
@@ -38,7 +37,7 @@ let
   primaryOf = id: modelStore.materialized.${id}.primary;
 
   # Every file of the named artifacts present at its catalog size, or a clear
-  # refusal naming the borrow command. Same contract as Halogen's bundleCheck.
+  # refusal naming the explicit borrow command.
   bundleCheckFor =
     ids:
     pkgs.writeShellScript "gufo-bundle-check" ''
@@ -303,7 +302,7 @@ in
     port = lib.mkOption {
       type = lib.types.port;
       default = 8731;
-      description = "The text server's port: Halogen's, so callers keep their URL across the cutover.";
+      description = "The fleet text server port, shared by the resident model and its alternates.";
     };
 
     lanInterface = lib.mkOption {

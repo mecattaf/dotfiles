@@ -251,7 +251,7 @@ class RenderAndFolds(unittest.TestCase):
             "policy": "rolling",
             "candidate": {"store_path": "/nix/store/abcd1234-nixos-system-worker", "revision": "1dc4860e0000", "reboot_required": True},
             "last_known_good": "/nix/store/ffff0000-nixos-system-worker",
-            "last_refusal": {"reason": "busy", "detail": "halogen in_flight=1", "at": "t"},
+            "last_refusal": {"reason": "busy", "detail": "gufo in_flight=1", "at": "t"},
             "last_attempt": "2026-09-13T03:00:00+00:00",
         }
         rep["sections"]["updates"]["status"] = fs.fact(status, "update-adopt status --json")

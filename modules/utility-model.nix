@@ -8,7 +8,7 @@
 # model id `utility`. It forwards one chat-completions request to the fleet's
 # local model server and names the concrete served model upstream
 # (pkgs/utility-model/utility_model.py). It lives apart from the server module
-# so the engine behind the endpoint can change (Halogen to Gufo, #525) without
+# so the engine behind the endpoint can change (#525) without
 # the wrapper going with it.
 let
   cfg = config.services.utilityModel;

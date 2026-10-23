@@ -55,7 +55,7 @@ export interface FloorConfig {
   sendWithdrewGen?: boolean // round 3: Complete names the generation withdrawn (default true)
   pinSeconds?: number // rule 7b: a grace release keeps n+1 for n's holder this long, or until it heartbeats (default graceSeconds)
 }
-const DEFAULT_LABELS = ["seat:halogen", "runtime:gvisor"]
+const DEFAULT_LABELS = ["seat:gufo", "runtime:gvisor"]
 const INFRA = new Set(["omitted", "grace", "infra/task-lost", "pre-start/pending-timeout", "pre-start/ax-unavailable", "pre-start/resource-exhausted", "pre-start/superseded-verdict-pending", "infra/link-defect"])
 const AGENT = new Set(["infra/actor-crashed", "infra/result-unreadable"])
 

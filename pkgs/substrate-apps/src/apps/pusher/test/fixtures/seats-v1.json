@@ -251,8 +251,8 @@
   },
   {
    "id": "gpu-worker",
-   "provider": "halogen",
-   "label": "Halogen",
+   "provider": "gufo",
+   "label": "Gufo",
    "owner": "kernel",
    "state": "open",
    "usable": true,
@@ -260,7 +260,7 @@
    "detail": "up",
    "note": "",
    "source": {
-    "kind": "halogen-health",
+    "kind": "gufo-health",
     "endpoint": "http://worker.example:8731/health"
    },
    "windows": []

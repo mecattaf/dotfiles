@@ -68,7 +68,7 @@
   # modules/substrate.nix. Two user units on tom's manager, replacing the
   # hand-started nohup processes of
   # ~/today/wednesday-prep-2026-09-23/substrate (RUN.md) with the same
-  # configuration (runtimes opus/halogen/codex/codex-rw, pusher peerCacheDir
+  # configuration (runtimes opus/gufo/codex/codex-rw, pusher peerCacheDir
   # "inherit"). Tokens: secrets/substrate-floor-token.age (FLOOR_TOKEN) and
   # secrets/substrate-link-token-strix.age (this holder's LINK_TOKENS
   # entry), delivered to tom 0400. No runtime-test wrapper: the puller runs
@@ -90,26 +90,26 @@
       # (codex-rw implementers plus opus verifiers). The proof ran at 1/2.
       maxRuns = 2;
       # 2026-09-30 (Tom's budget rulings: Qwen plan full utilization, OpenRouter paid and free, cc2 to the max): the
-      # per-seat slots bound each provider (qwen 4, openrouter 4, openrouter-free 8, halogen 1); this is the total.
+      # per-seat slots bound each provider (qwen 4, openrouter 4, openrouter-free 8, gufo 1); this is the total.
       cap = 12;
       # 2026-09-24 19:55: a codex-rw implement part of the crm build ran 45 min at full activity (82 tool calls) and was
       # cut; the parts are sized for Claude. Two hours for codex-rw, one for the opus gates and fixes.
       callTimeoutMs = {
         opus = 3600000;
-        halogen = 1800000;
+        gufo = 1800000;
         codex = 3600000;
         codex-rw = 7200000;
         # 2026-09-30: pi on the cloud providers (substrate D-S14). An hour each, like opus.
         qwen = 3600000;
         openrouter = 3600000;
         openrouter-free = 3600000;
-        # The halogen ceiling: ocr.substrate.workflow.js sizes a lane B node (DEADLINE_S 1620 plus the relay) to it.
+        # The gufo ceiling: ocr.substrate.workflow.js sizes a lane B node (DEADLINE_S 1620 plus the relay) to it.
         "ssh:strix" = 1800000;
       };
       sshRuntimes."ssh:strix" = {
         host = "strix";
         harness = "pi";
-        seat = "halogen";
+        seat = "gufo";
       };
     };
   };

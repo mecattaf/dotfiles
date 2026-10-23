@@ -19,7 +19,7 @@ The rules that make the output honest rather than pretty:
   exits 255 is `unreachable`; one that answers garbage is `error`. All three
   carry no facts, and the renderer prints them LOUDLY.
 * The planes stay separate. Tally and Herdr contribute IDs, states and counts,
-  never copies of their lakes or transcripts; Halogen contributes its own
+  never copies of their lakes or transcripts; Gufo contributes its own
   /health; journald and /var/lib/failure-markers stay the source of failures.
 * The Herdr server's RSS is reported apart from herdr.service's cgroup, because
   the cgroup is dominated by pane descendants (the 2026-09-08 incident, #357):

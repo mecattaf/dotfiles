@@ -11,7 +11,7 @@
  * - A snapshot whose `published_at` is dated beyond the skew tolerance is
  *   refused whole.
  * - The mutants that survived the round 2 mutation pass (plan expiry at the
- *   instant, the latest reset as retry, the Halogen plan cap, the ESTIMATED
+ *   instant, the latest reset as retry, the Gufo plan cap, the ESTIMATED
  *   refusal, the non-binding window).
  */
 import { Option, Schema } from "effect";
@@ -31,7 +31,7 @@ import {
   CC_OBSERVED,
   CC_WEEKLY_RESET,
   claudeSeat,
-  halogenSeat,
+  gufoSeat,
   plus,
   snapshot,
   window
@@ -54,8 +54,8 @@ describe("review round 2: the staleness edges are where the answer changes", () 
     expect(classifyStaleness(CC_OBSERVED, UNKNOWN_EDGE).grade).toBe("UNKNOWN");
   });
 
-  it("a Halogen seat: each advertised transition is a change, and nothing is skipped", () => {
-    const seat = halogenSeat(0);
+  it("a Gufo seat: each advertised transition is a change, and nothing is skipped", () => {
+    const seat = gufoSeat(0);
     const first = Option.getOrThrow(nextTransitionAt([seat], T0));
     expect(first).toBe(MEASURED_EDGE);
     expect(projectSeat(seat, T0).reading.grade).toBe("MEASURED");
@@ -86,7 +86,7 @@ describe("review round 2: the staleness edges are where the answer changes", () 
       admit: false,
       reason: "stale"
     });
-    expect(admitSeat("gpu-worker", halogenSeat(0), job(null), MEASURED_EDGE)).toMatchObject({
+    expect(admitSeat("gpu-worker", gufoSeat(0), job(null), MEASURED_EDGE)).toMatchObject({
       admit: false,
       reason: "stale"
     });
@@ -128,7 +128,7 @@ const windowArb = fc
 const seatArb = (sharp: boolean) =>
   fc
     .record({
-      halogen: fc.boolean(),
+      gufo: fc.boolean(),
       holders: fc.integer({ min: 0, max: 2 }),
       windows: fc.array(windowArb, { maxLength: 4 }),
       observed_at: instantArb,
@@ -138,9 +138,9 @@ const seatArb = (sharp: boolean) =>
       dispatchable: sharp ? fc.constant(true) : fc.boolean(),
       plan: sharp ? fc.constant(null) : fc.option(instantArb.map((expires_at) => ({ expires_at })), { nil: null })
     })
-    .map(({ halogen, holders, ...raw }): SeatCapacity =>
-      halogen
-        ? claudeSeat({ ...raw, provider: "halogen", windows: [], slots: { capacity: 1, holders } })
+    .map(({ gufo, holders, ...raw }): SeatCapacity =>
+      gufo
+        ? claudeSeat({ ...raw, provider: "gufo", windows: [], slots: { capacity: 1, holders } })
         : claudeSeat(raw)
     );
 
@@ -310,13 +310,13 @@ describe("review round 2: a publisher's PROJECTED grade is never a measurement",
     expect(projectSeatReading(claudeSeat({ grade: "PROJECTED" }), plus(CC_OBSERVED, 1500)).grade).toBe("STALE");
   });
 
-  it("refuses a Claude seat and a Halogen slot row stated PROJECTED, and raises demand", () => {
+  it("refuses a Claude seat and a Gufo slot row stated PROJECTED, and raises demand", () => {
     expect(admitSeat("cc", claudeSeat({ grade: "PROJECTED" }), job("Opus"), T0)).toMatchObject({
       admit: false,
       reason: "projected",
       raise_demand: true
     });
-    expect(admitSeat("gpu-worker", { ...halogenSeat(0), grade: "PROJECTED" }, job(null), T0)).toMatchObject({
+    expect(admitSeat("gpu-worker", { ...gufoSeat(0), grade: "PROJECTED" }, job(null), T0)).toMatchObject({
       admit: false,
       reason: "projected",
       raise_demand: true
@@ -330,7 +330,7 @@ describe("review round 2: a published_at dated in the future is refused", () => 
   it("refuses the whole snapshot, every seat `future`, and changes nothing", () => {
     const skewed = ingestSnapshot(
       empty,
-      snapshot([claudeSeat(), halogenSeat(0)], "2099-01-01T00:00:00Z"),
+      snapshot([claudeSeat(), gufoSeat(0)], "2099-01-01T00:00:00Z"),
       T0
     );
     expect(skewed.report).toEqual({
@@ -417,9 +417,9 @@ describe("review round 2: pinned against the surviving mutants", () => {
     });
   });
 
-  it("M16: a Halogen admission holds no later than the plan's end", () => {
+  it("M16: a Gufo admission holds no later than the plan's end", () => {
     const expires = plus(CC_OBSERVED, 600);
-    const seat = { ...halogenSeat(0), plan: { expires_at: expires } };
+    const seat = { ...gufoSeat(0), plan: { expires_at: expires } };
     expect(admitSeat("gpu-worker", seat, job(null), T0)).toMatchObject({ admit: true, until: iso(ms(expires)) });
   });
 

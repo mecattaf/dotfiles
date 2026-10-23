@@ -140,3 +140,29 @@ remains `coordinator` until the remote token binding is migrated separately.
 - Host-side pi jobs run `--session-dir <shadow>/pi-agent/sessions`; the session is archived under
   `~/.local/state/substrate/transcripts/<run>/<job>/pi-*.jsonl` (what `seats` reads for the Qwen seat).
 - `HALOGEN_BASE_URL` is `http://strix:8731/v1` upstream (was the local patch).
+
+## Local Gufo contract patch (2026-10-23)
+
+The source SHA above is the upstream **base**, not a claim that `src/` is an
+unchanged archive after this patch. Dotfiles PR #605 carries a local patch
+through the vendored runners, link, puller, pusher, shared capacity projection,
+examples and tests: provider/runtime/seat/gateway `gufo`, label `seat:gufo`,
+and wire model `qwen3.8-flash-next`. The generated sandbox catalog matches
+Gufo's 102400 context, 16384 output limit, vision support and thinking-off
+resident default. The pnpm lock and dependency hash are unchanged.
+
+Carry this delta into agency-agency/substrate before the next `sync.sh` run.
+Its Cloudflare floor is not vendored here: its use of the shared capacity
+projector and its configured job labels must move together with the host-side
+programs. See [the cutover contract](../../docs/gufo-cutover.md) for mutable
+catalogs, queued work, old caches and the retired link's external gateway.
+The earlier clean-archive statements above describe the historical base.
+
+For local validation of the puller tests, the intentionally excluded
+`apps/floor/{package.json,src}` and `programs/turn.workflow.js` were temporarily
+read from that exact upstream base into untracked files and removed afterward.
+They are test fixtures only, not part of the vendored or installed package.
+The planner's unrelated `test-policy/` suite depends on excluded root `tools/`;
+its shipped `test/` and `test-selector/` suites are run directly instead.
+The runners' fence scanner now classifies paths relative to its package, so a
+parent directory named `src` does not misclassify test fixtures as production.

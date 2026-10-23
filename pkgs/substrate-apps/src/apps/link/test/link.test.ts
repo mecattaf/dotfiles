@@ -27,8 +27,8 @@ const job = (n: string, spec: Partial<AgentJob["spec"]> = {}, ann: Record<string
     annotations: { [A + "run-id-raw"]: "wf_test", [A + "label"]: `probe:${n}`, [A + "item-key"]: `wf_test#${n}`, [A + "journal-key"]: JK, [A + "phase-title"]: "Probe", ...ann }
   },
   spec: {
-    "runs-on": ["seat:halogen", "runtime:gvisor"],
-    with: { prompt: `say ${n}`, prompt_ref: { sha256: "ab".repeat(32), bytes: 5, uri: `journal://wf_test/${n}/prompt.md` }, model: "halogen-qwen3.8-flash-next", ...w },
+    "runs-on": ["seat:gufo", "runtime:gvisor"],
+    with: { prompt: `say ${n}`, prompt_ref: { sha256: "ab".repeat(32), bytes: 5, uri: `journal://wf_test/${n}/prompt.md` }, model: "qwen3.8-flash-next", ...w },
     ...spec
   }
 })
@@ -38,15 +38,15 @@ const world = (o: Partial<FloorConfig> = {}) => ({
 })
 type World = ReturnType<typeof world>
 
-const GUEST = { completion: "guest" as const, shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"], completeUrl: "http://link.fleet.internal/guest" } }
+const GUEST = { completion: "guest" as const, shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"], completeUrl: "http://link.fleet.internal/guest" } }
 const guestWorld = () => { const w = world({ tokens: { "tok-nas": { holder: "nas-link-1", guest: true } } }); w.ax.p1 = false; return w }
 
 function start(w: World, dir: string, over: Partial<LinkConfig> = {}, session = `s:${dir}`) {
   const logs: Array<Record<string, unknown>> = []
   const stop = Effect.runSync(Deferred.make<void>())
   const cfg: LinkConfig = {
-    holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:halogen", "runtime:gvisor"],
-    shape: { atespace: "fleet", image: "ax-agent", gateway: "halogen", command: () => ["ax-agent", "pi"] },
+    holder: "nas-link-1", maxInFlight: 2, servedLabels: ["seat:gufo", "runtime:gvisor"],
+    shape: { atespace: "fleet", image: "ax-agent", gateway: "gufo", command: () => ["ax-agent", "pi"] },
     completion: "auto", secondMs: SEC, resyncMs: 30, pendingTimeoutMs: 1500, deleteAfterMs: 0, deadlineBackstopMs: 300,
     createAttempts: 3, outboxBackoffMs: [20, 100], initialPollSeconds: 1, initialHeartbeatSeconds: 2, ...over
   }

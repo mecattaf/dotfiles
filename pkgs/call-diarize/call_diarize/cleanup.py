@@ -15,7 +15,7 @@ from .pipeline import lexical_duplicate_target, load_json, write_json_exclusive
 
 # Label -> served model id. The label names the evidence directory below
 # asr-raw/cleanup/; the id is the one the local server answers to
-# (lib/local-model.nix). Calls cleaned before 2026-10-13 keep cleanup/halogen/.
+# (lib/local-model.nix). Existing completed cleanups retain their evidence paths.
 MODELS = {
     "local": "qwen3.8-flash-next",
 }

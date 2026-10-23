@@ -52,7 +52,7 @@ type = "microvm"              # builds a microvm.nix declaredRunner; boots only 
 [runtime."ssh:worker"]
 type = "ssh"
 host = "worker"
-harness = "pi"                # pi against Halogen, which runs on the worker
+harness = "pi"                # pi against Gufo, which runs on the worker
 
 [runtime.edge]
 type = "workerd"              # Worker-shaped jobs only; agent() calls are refused
@@ -65,7 +65,7 @@ type = "ax"                   # spec only: writes the Task an ax dispatch would 
 # [[models]] tables and the runners re-read it on every call (an edit is live at once, no
 # restart, no rebuild). It must exist at load. It outranks the inline [[models]] below; absent
 # both, the built-in list applies: claude-opus-5-5 (default, alias "opus"), claude-fable-5-1
-# (alias "fable", model-scoped ceiling 90), the Halogen model for pi, qwen3.8-max for
+# (alias "fable", model-scoped ceiling 90), the Gufo model for pi, qwen3.8-max for
 # qwen-token-plan, deepseek/deepseek-v4-pro (default) and three more for openrouter, and NO
 # entry for openrouter-free (parked, see below).
 # models_file = "~/.config/substrate/models.toml"
@@ -101,9 +101,9 @@ type = "ax"                   # spec only: writes the Task an ax dispatch would 
 # codexSandbox = "workspace-write"   # default "read-only"
 
 # pi against another provider of ~/.pi/agent/models.json (2026-09-30). `provider` is pi-only:
-# halogen (default), qwen-token-plan, openrouter, openrouter-free. Without `seat`, each spends its
+# gufo (default), qwen-token-plan, openrouter, openrouter-free. Without `seat`, each spends its
 # provider's own seat (pi-qwencloud, openrouter, openrouter-free), never [seats].pi. Host-side
-# runtimes only (host, runtime-test, herdr, ssh): a sandbox gets a Halogen-only models.json.
+# runtimes only (host, runtime-test, herdr, ssh): a sandbox gets a Gufo-only models.json.
 # The model is agent({model}) resolved against that provider's allowlist (models.ts).
 # [runtime.qwen]
 # type = "host"

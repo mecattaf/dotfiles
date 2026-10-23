@@ -2,7 +2,7 @@
  * The live end-to-end entry point: the whole CONWIP loop, once, with the
  * outcome coming from a real dispatch instead of from a run record's history.
  *
- *   AX_CONWIP_LIVE_HALOGEN=1 tsx src/e2e-live.ts \
+ *   AX_CONWIP_LIVE_GUFO=1 tsx src/e2e-live.ts \
  *     --records <dir> --only <file> [--addr host:port] [--cap N] \
  *     [--wrapper-timeout-seconds S] [--child-timeout-ms MS] \
  *     [--staleness-bound-seconds S]
@@ -11,9 +11,9 @@
  * `src/cli.ts` remains unable to dispatch anything: it does not import
  * `src/live.ts`, passes no `outcomeOf`, and so a typo on the ordinary command
  * line cannot become a live dispatch. There is one way in and it is this file,
- * and this file refuses to run unless AX_CONWIP_LIVE_HALOGEN=1.
+ * and this file refuses to run unless AX_CONWIP_LIVE_GUFO=1.
  *
- * Live dispatch is permitted on the `halogen` seat only. See DESIGN.md.
+ * Live dispatch is permitted on the `gufo` seat only. See DESIGN.md.
  */
 import { readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -28,11 +28,11 @@ import {
   SUGGESTED_STALENESS_BOUND_SECONDS,
   SUGGESTED_WRAPPER_TIMEOUT_SECONDS,
   assertLiveEnabled,
-  makeHalogenOutcomeOf,
+  makeGufoOutcomeOf,
 } from "./live.ts";
 import { runLoop } from "./loop.ts";
 import { deriveFromFile } from "./record.ts";
-import { halogenAdapter, renderArgv } from "./seats.ts";
+import { gufoAdapter, renderArgv } from "./seats.ts";
 import type { WorkItem } from "./schema.ts";
 
 // Gate first, before argv is even read. Nothing below runs without it.
@@ -96,7 +96,7 @@ for (const i of selected) {
   );
 }
 
-const adapter = halogenAdapter(undefined, wrapperTimeoutSeconds);
+const adapter = gufoAdapter(undefined, wrapperTimeoutSeconds);
 console.log(`BOUND wrapperTimeoutSeconds=${wrapperTimeoutSeconds}`);
 console.log(`BOUND childTimeoutMs=${childTimeoutMs}`);
 console.log(`BOUND stalenessBoundSeconds=${stalenessBoundSeconds}`);
@@ -116,7 +116,7 @@ console.log(`LEDGER loop:  ${loopPath}`);
 console.log(`LEDGER seat:  ${seatPath}`);
 console.log(`LEDGER spawn: ${spawnPath}`);
 
-const outcomeOf = makeHalogenOutcomeOf({
+const outcomeOf = makeGufoOutcomeOf({
   adapter,
   stalenessBoundSeconds,
   spawnTimeoutMs: childTimeoutMs,

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "accepted_through": "2026-07-21",
   "inference": {
-    "provider": "halogen",
+    "provider": "gufo",
     "url": "http://strix:8731",
     "model": "qwen3.8-flash-next",
     "execution_host": "strix",

@@ -32,7 +32,7 @@ export const AgentJob = Schema.Struct({
   kind: Schema.Literal("AgentJob"),
   metadata: Schema.Struct({ name: Schema.String, labels: Schema.optionalKey(Labels), annotations: Schema.optionalKey(Labels) }),
   spec: Schema.Struct({
-    // CONWIP admission key, e.g. ["seat:halogen","runtime:gvisor"]. B7 asked for Schema.NonEmptyArray here; it stays
+    // CONWIP admission key, e.g. ["seat:gufo","runtime:gvisor"]. B7 asked for Schema.NonEmptyArray here; it stays
     // Array on the wire because one malformed job would then fail the decode of a whole Lease reply and strand every
     // grant in it (INFERRED). The link refuses it per job instead (`validRunsOn`, jobs.ts), and the floor at enqueue.
     "runs-on": Schema.Array(Schema.String),

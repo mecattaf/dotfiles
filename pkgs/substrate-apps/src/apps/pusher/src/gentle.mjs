@@ -9,7 +9,7 @@
 //   older than 300 s. "Active" means a demand marker younger than 300 s, or the
 //   last two readings differed in any utilization (someone is spending).
 // WHEN THE FLOOR IS TOLD (seatCapacity.mjs decidePush): after a read, when a
-//   seat's reading changed, or as a heartbeat (1800 s; 600 s while a Halogen
+//   seat's reading changed, or as a heartbeat (1800 s; 600 s while a Gufo
 //   slot row is published); never twice within 60 s. A failed post is retried
 //   on the next tick after 60 s with the same snapshot, without a new read.
 // A failed oracle run (non-zero exit, timeout, not seat-capacity/1) counts as
