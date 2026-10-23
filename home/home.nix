@@ -381,7 +381,6 @@ in
       uv
     ]
     ++ lib.optionals isBrain [
-      llmAgentsSelected
       gitAiTools
       huggingface-cli
       gh
