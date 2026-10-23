@@ -2176,7 +2176,7 @@
               ("rpm-o" + "stree")
               ("d" + "nf")
               ("c" + "opr")
-              ("boot" + "c")
+              ("(^|[^[:alnum:]_])boot" + "c([^[:alnum:]_]|$)")
               ("yum.repos." + "d")
               ("harness" + "RPM")
               ("chez" + "moi")
