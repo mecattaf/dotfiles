@@ -203,7 +203,7 @@ let
   textUnits = map unitOf ([ "flash" ] ++ alternateNames) ++ lib.optional tp.enable "gufo-tp2.service";
 
   tp2Args =
-    llmArgs (cfg.llm // { servedModelName = tp.modelName; })
+    llmArgs (tp.model // { servedModelName = tp.modelName; })
     ++ [
       "--tp-world-size"
       "2"
@@ -461,11 +461,17 @@ in
             default = 100;
             description = "Positive PM QoS budget held on both hosts only while TP2 runs; null disables the hold. Zero (POLL-only on the old twins) is forbidden. Requalify latency/power on 7.3.";
           };
+          model = lib.mkOption {
+            type = llmType;
+            default = cfg.llm;
+            defaultText = lib.literalExpression "config.services.gufo.llm";
+            description = "TP2 bundle, independent of the single-host resident Q4. Use the Q8 artifact on both ranks only after explicit borrowing and hardware qualification.";
+          };
           modelName = lib.mkOption {
             type = lib.types.str;
-            default = cfg.llm.servedModelName;
-            defaultText = lib.literalExpression "config.services.gufo.llm.servedModelName";
-            description = "Exact served id; TP2 shares services.gufo.llm's Flash-Next bundle and loading arguments on both ranks.";
+            default = tp.model.servedModelName;
+            defaultText = lib.literalExpression "config.services.gufo.tp2.model.servedModelName";
+            description = "Exact served id; TP2 model and loading arguments must match on both ranks.";
           };
           tokenFile = lib.mkOption {
             type = lib.types.str;
@@ -538,7 +544,14 @@ in
       }
       {
         assertion =
-          !tp.enable || (tp.bootstrapPort != tp.controlPort && cfg.llm.artifact == "qwen38-flash-next-gguf");
+          !tp.enable
+          || (
+            tp.bootstrapPort != tp.controlPort
+            && builtins.elem tp.model.artifact [
+              "qwen38-flash-next-gguf"
+              "qwen38-flash-next-q8-gguf"
+            ]
+          );
         message = "Gufo TP2 requires distinct bootstrap/control ports and the Flash-Next bundle (the fork only supports qwen4exp TP2).";
       }
     ];
@@ -586,7 +599,7 @@ in
             MemorySwapMax = 0;
             LoadCredential = [ "control-token:${tp.tokenFile}" ];
             ExecStartPre = [
-              "${bundleCheckFor (artifactsOf cfg.llm)}"
+              "${bundleCheckFor (artifactsOf tp.model)}"
               "${tp2WaitActive}"
             ];
             ExecStart = "${tp2Start}";
@@ -631,6 +644,20 @@ in
       };
     }
     // lib.mapAttrs' (name: m: lib.nameValuePair "gufo-llm-${name}" (mkLlmUnit name m)) cfg.alternates;
+
+    # Scoped manifests allow an explicit model loan without expanding boot's
+    # small wanted set. Q8 Flash-Next is TP2-only, never a single-host alternate.
+    environment.etc."gufo/tp2-q8-wanted.json".source =
+      (pkgs.formats.json { }).generate "gufo-tp2-q8-wanted.json"
+        (modelStore.manifestFor [ "qwen38-flash-next-q8-gguf" ]);
+    environment.etc."gufo/27b-q8-wanted.json".source =
+      (pkgs.formats.json { }).generate "gufo-27b-q8-wanted.json"
+        (
+          modelStore.manifestFor [
+            "qwen38-27b-q8-gguf"
+            "qwen38-27b-dflash2-gguf"
+          ]
+        );
 
     environment.systemPackages = [
       cfg.package

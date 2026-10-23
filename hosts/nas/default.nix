@@ -26,6 +26,7 @@
     ./journal.nix
     ./storage.nix
     ./home-disk.nix # #599, bench-prepared home; stage before the fleet power-off
+    ./memory-disk.nix # 256GB recording/memory reservation, gated until fast-tier move
     ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)
     ./media.nix
     # ./phone-ingest.nix DELETED 2026-08-21 (Tom: "DEAD and no longer needed

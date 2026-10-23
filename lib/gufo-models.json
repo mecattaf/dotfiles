@@ -974,5 +974,101 @@
         }
       ]
     }
+  },
+  "qwen38-flash-next-q8-gguf": {
+    "kind": "model",
+    "maker": "unsloth",
+    "baseCheckpoint": {
+      "url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next",
+      "revision": "main"
+    },
+    "quantization": "Q8_0",
+    "notes": "Flash-Next Q8 for the qualified neuhaus Gufo TP2 fork only: six shards plus shared Q8 MTP and BF16 projector. Does not fit one 128 GB Strix. Canonical NAS acquisition is separate from explicit per-host borrowing.",
+    "source": {
+      "hfUrl": "https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF",
+      "revision": "38bb39ee97821de2c9009abb7e93950eec396e66",
+      "layout": "snapshot",
+      "primary": "Q8_0/Qwen3.8-Flash-Next-Q8_0-00001-of-00006.gguf",
+      "files": [
+        {
+          "path": "MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf",
+          "bytes": 2786568256,
+          "oid": "5ff54097406a905cf3a724c709124ceb0e3e10235ee862298969e91c96fa96e6",
+          "hash": "sha256-X/VAl0BqkFzzpyTHCRJM6w4+ECNe6GIpiWnpHJb6luY="
+        },
+        {
+          "path": "Q8_0/Qwen3.8-Flash-Next-Q8_0-00001-of-00006.gguf",
+          "bytes": 10946624,
+          "oid": "2dabcbb53ca537a7947bc7d20414fd464eeaf4d66d43021b5b2556cc87544ad2",
+          "hash": "sha256-LavLtTylN6eUe8fSBBT9Rk7q9NZtQwIbWyVWzIdUStI="
+        },
+        {
+          "path": "Q8_0/Qwen3.8-Flash-Next-Q8_0-00002-of-00006.gguf",
+          "bytes": 682434912,
+          "oid": "494ca4ed3dbf97bc28da88af3890b8877b9032f909812d00c0526a9ca5e91d2e",
+          "hash": "sha256-SUyk7T2/l7wo2oivOJC4h3uQMvkJgS0AwFJqnKXpHS4="
+        },
+        {
+          "path": "Q8_0/Qwen3.8-Flash-Next-Q8_0-00003-of-00006.gguf",
+          "bytes": 54400261312,
+          "oid": "34efd79a80a1ce540a517a5d56171924b66ce1c38b04c904f17ad6d8ef17cf20",
+          "hash": "sha256-NO/XmoChzlQKUXpdVhcZJLZs4cOLBMkE8XrW2O8XzyA="
+        },
+        {
+          "path": "Q8_0/Qwen3.8-Flash-Next-Q8_0-00004-of-00006.gguf",
+          "bytes": 49446841216,
+          "oid": "bfa634025fabbd2658bf7694bc80b90e571699c768723f844c934c7ef06c691a",
+          "hash": "sha256-v6Y0Al+rvSZYv3aUvIC5DlcWmcdocj+ETJNMfvBsaRo="
+        },
+        {
+          "path": "Q8_0/Qwen3.8-Flash-Next-Q8_0-00005-of-00006.gguf",
+          "bytes": 49668930400,
+          "oid": "232a8f14cc0fa4262e7efe8593774b136fe40909e39c7a020342ddaa27259a97",
+          "hash": "sha256-IyqPFMwPpCYufv6Fk3dLE2/kCQnjnHoCA0Ldqiclmpc="
+        },
+        {
+          "path": "Q8_0/Qwen3.8-Flash-Next-Q8_0-00006-of-00006.gguf",
+          "bytes": 34015618784,
+          "oid": "538a93bca918064983409a41187ad4c68640f9aced6f29564da8f551bf86d7a5",
+          "hash": "sha256-U4qTvKkYBkmDQJpBGHrUxoZA+aztbylWTaj1Ub+G16U="
+        },
+        {
+          "path": "mmproj-BF16.gguf",
+          "bytes": 907542944,
+          "oid": "2e788f8c511d8093c7b43cb87b2fd7e14228340318057f8fb20c86df2efe2355",
+          "hash": "sha256-LniPjFEdgJPHtDy4ey/X4UIoNAMYBX+PsgyG3y7+I1U="
+        }
+      ]
+    }
+  },
+  "qwen38-27b-q8-gguf": {
+    "kind": "model",
+    "maker": "unsloth",
+    "baseCheckpoint": {
+      "url": "https://huggingface.co/Qwen/Qwen3.8-27B",
+      "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+    },
+    "quantization": "UD-Q8_K_XL",
+    "notes": "The heavier Q8 option linked from Gufo 0.22 README; single-host alternate, never started or borrowed automatically.",
+    "source": {
+      "hfUrl": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF",
+      "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+      "layout": "flat",
+      "primary": "Qwen3.8-27B-UD-Q8_K_XL.gguf",
+      "files": [
+        {
+          "path": "Qwen3.8-27B-UD-Q8_K_XL.gguf",
+          "bytes": 31457991680,
+          "oid": "af36ecb6b5db1407953345b746c14ac93f0657dda413910b4348683a2d990377",
+          "hash": "sha256-rzbstrXbFAeVM0W3RsFKyT8GV92kE5ELQ0hoOi2ZA3c="
+        },
+        {
+          "path": "mmproj-BF16.gguf",
+          "bytes": 931146432,
+          "oid": "83ee4f4f205fa514161778c41df1ea14144faa0f713510893b63c2395f5c2d53",
+          "hash": "sha256-g+5PTyBfpRQWF3jEHfHqFBRPqg9xNRCJO2PCOV9cLVM="
+        }
+      ]
+    }
   }
 }

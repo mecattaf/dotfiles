@@ -36,7 +36,10 @@ assert builtins.all (
 assert (rdma "strix-coordinator").drvPath == (rdma "strix-worker").drvPath;
 assert (rdma "strix-coordinator").kernelVersion == selected.version;
 assert !(configs.nas.options.myNas.homeDisk ? partUuid);
-assert nas.fileSystems."/home".device == "${nas.myNas.homeDisk.device}-part2";
+assert nas.myNas.homeDisk.layout == "shared-btrfs";
+assert nas.fileSystems."/home".device == "${nas.myNas.homeDisk.device}-part1";
+assert nas.fileSystems."/mnt/fast".device == nas.fileSystems."/home".device;
+assert builtins.elem "subvol=@fast" nas.fileSystems."/mnt/fast".options;
 {
   hosts = builtins.mapAttrs (_: host: host.config.system.build.toplevel) configs;
   facts = {

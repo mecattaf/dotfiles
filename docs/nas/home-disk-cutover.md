@@ -1,169 +1,126 @@
-# NAS home: prepare on the worker bench, then move once
+# NAS primary pool and dedicated 256 GB memory disk
 
-This is the storage part of #597 / #599. Tom's latest order is a simultaneous
-fleet power-off, SSD transfer and recabling, followed by boot into the new
-roles. Prepare and fill the 500 GB disk while it is still inside strix-worker,
-booted from an installer USB with Ethernet to the BE550. The NAS and current
-strix remain available as sources until that final power-off.
+The final target is one 500 GB btrfs pool with `@home`, `@fast` and
+`@snapshots`. These subvolumes share capacity instead of trapping spare space
+in the earlier 176 GiB fast / 289 GiB home split. Measured whole home around
+264 GiB plus current fast state around 90 GiB fits the approximately 466 GiB
+raw pool with about 112 GiB before filesystem overhead and growth. Confirm
+actual sizes and reserve before writing; the full independent backup remains
+on LaCie, not in this pool.
 
-The NAS mounts the known serial-bearing by-id p2 path:
+The NAS's eMMC root and boot partition stay unchanged. `/mnt/fast/nix` remains
+the source of the `/nix` bind mount; the entire previous `/mnt/fast` tree moves
+to new `@fast`, preserving its paths and service data. The 256 GB SSD remains
+intact and available for rollback until the new primary has booted and passed
+acceptance. It then becomes the dedicated Screenpipe/CUA recording, memory
+and log disk, **not** a backup or snapshot target. No recording application is
+implemented or activated by this change.
 
-```text
-/dev/disk/by-id/nvme-WD_BLACK_SN7100_500GB_260538801482-part2
-```
+## Physical checkpoint and initial NAS return
 
-There is no PARTUUID option or placeholder to fill after partitioning. This
-path works on both the bench and the NAS, regardless of controller enumeration.
-The helper also checks the hardware serial, partition label, filesystem label,
-and the actual mounted device and subvolume. Verify the expected by-id and
-serial on the bench before staging; correct the Nix device and serial together
-if the physical identity differs from the survey.
+NAS-local Herdr/harness residence can first be proved on the current home
+with its existing 256 GB fast tier. The worker is powered off and its Windows
+contents are explicitly disposable. Thus the one physical SSD move need not
+wait for a Windows network connection or pre-partitioning on the worker.
 
-| Disk | Tonight's role |
-| --- | --- |
-| WD 500 GB, serial `260538801482` (verify on bench) | p1: `disk-primary-fast`, 176G ext4, filesystem label `nasfast`, reserved and unmounted. p2: `disk-primary-home`, remaining space, btrfs label `nashome`, `@home` and `@snapshots`. |
-| Fanxiang 256 GB, serial `26040259615000015` | Stays in the NAS with `/mnt/fast`, `/nix` and current service state. |
-| NAS HDD and eMMC | Stay in the NAS. Preserve escrow, sealed source archive and old eMMC home. |
+Before the physical checkpoint, independently back up and verify all retained
+source data, stage recovery media and exact closures, preserve identities and
+write the handoff. After the move, boot the NAS's **previous working
+generation first**, with its current 256 GB `/mnt/fast` and eMMC home intact.
+Verify its independent native agent access before preparing the new 500 GB.
+The bare presence of a blank 500 GB SSD does not authorize a final generation
+that expects its new pool to exist.
 
-## Before partitioning, with Windows still available
+## Identity-bound manual preparation
 
-Follow DECISIONS.md 5: Tom saves anything wanted from Windows to the NAS HDD
-before the 500 GB is erased. Complete the separate BIOS preparation while
-Windows is available. Boot the installer USB without opening the worker or
-moving its SSD. Confirm the disk's model, capacity, serial and by-id link.
+Only incoming whole disk
+`/dev/disk/by-id/nvme-WD_BLACK_SN7100_500GB_260538801482` is formatted here.
+Verify its physical serial, model and capacity after insertion. If it differs,
+change `myNas.homeDisk.device` and `.serial` together before building/staging.
+Never run NAS disko: it also describes eMMC and the old fast SSD.
 
-Complete NAS escrow while the NAS is up; the helper's `escrow` command remains
-NAS-only, dry-run by default, and uses the HDD. Preserve the full strix-home
-archive at `/mnt/nas/backups/strix-home-2026-10-23` and the NAS eMMC home. This
-curated SSD copy does not replace either archive.
-
-Build the helper from the reviewed integration checkout and copy its closure
-to the installer before the network goes away. Check `df -h /` before building
-and stop if less than 25 GB is free. For example, after setting `bench_address`
-to the installer's Ethernet address:
-
-```sh
-helper_path=$(nix build --no-link --print-out-paths .#nas-home-migrate)
-nix copy --to "ssh-ng://root@$bench_address" "$helper_path"
-```
-
-Record that store path for the installer shell as `helper_path`. Arrange SSH
-read access from the installer to the selected source; the archive has no NFS
-export. The helper and source access must be ready before the simultaneous
-power-off. These are attended cutover steps, not actions run by this PR.
-
-## Hand-prepare the disk on the installer
-
-The following destructive recipe is for the attended bench step **after Tom's
-Windows preservation is complete and the serial is checked**. Never run NAS
-disko on this disk or on the live NAS. The migration helper never partitions,
-formats, mounts or controls services.
-
-As root in the installer, first inspect the only intended disk:
+The following writes were not executed by this change. They are the attended
+recipe after the independent-backup and target-identity gates:
 
 ```sh
 disk=/dev/disk/by-id/nvme-WD_BLACK_SN7100_500GB_260538801482
-lsblk --nodeps --output SIZE,MODEL,SERIAL "$disk"
-```
-
-After confirming that identity and the saved Windows data, the hand recipe is:
-
-```sh
+lsblk -o NAME,SIZE,MODEL,SERIAL,FSTYPE,MOUNTPOINTS "$disk"
+findmnt / /nix /mnt/fast
+# Confirm this disk is neither mounted nor the current root/fast device.
 sgdisk --zap-all "$disk"
-sgdisk -n1:0:+176G -t1:8300 -c1:disk-primary-fast \
-       -n2:0:0 -t2:8300 -c2:disk-primary-home "$disk"
+sgdisk -n1:0:0 -t1:8300 -c1:disk-primary "$disk"
 udevadm settle
-mkfs.ext4 -m 1 -L nasfast "$disk-part1"
-mkfs.btrfs -L nashome "$disk-part2"
-install -d -m 0700 /mnt/nas-home-bench /mnt/newhome
-mount -t btrfs -o subvolid=5,compress=zstd:1,noatime "$disk-part2" /mnt/nas-home-bench
-btrfs subvolume create /mnt/nas-home-bench/@home
-btrfs subvolume create /mnt/nas-home-bench/@snapshots
-chmod 0755 /mnt/nas-home-bench/@home
-chmod 0700 /mnt/nas-home-bench/@snapshots
-umount /mnt/nas-home-bench
-mount -t btrfs -o subvol=@home,compress=zstd:1,noatime "$disk-part2" /mnt/newhome
+mkfs.btrfs -L nasprimary "$disk-part1"
+install -d -m 0700 /mnt/nas-primary-prep /mnt/newhome /mnt/newfast
+mount -t btrfs -o subvolid=5,compress=zstd:1,noatime "$disk-part1" /mnt/nas-primary-prep
+btrfs subvolume create /mnt/nas-primary-prep/@home
+btrfs subvolume create /mnt/nas-primary-prep/@fast
+btrfs subvolume create /mnt/nas-primary-prep/@snapshots
+chmod 0755 /mnt/nas-primary-prep/@home /mnt/nas-primary-prep/@fast
+chmod 0700 /mnt/nas-primary-prep/@snapshots
+umount /mnt/nas-primary-prep
+mount -t btrfs -o subvol=@home,compress=zstd:1,noatime "$disk-part1" /mnt/newhome
+mount -t btrfs -o subvol=@fast,compress=zstd:1,noatime "$disk-part1" /mnt/newfast
 install -d -m 0700 -o 1000 -g 100 /mnt/newhome/tom
 ```
 
-Mount `@home` itself at the helper target, not the top-level btrfs tree. Leave
-p1 unmounted. No generated UUID needs to be copied back into Nix.
+## Copies are separate from the full backup
 
-## Pre-fill and verify before the shared power-off
-
-Run the copied helper on the installer. These commands are dry-runs:
+Build/copy the reviewed `nas-home-migrate` helper. It never partitions,
+formats, mounts, deletes files or controls services; its default is dry-run.
+The new shared-pool helper verifies serial, p1 label `disk-primary`, filesystem
+label `nasprimary`, actual mounted device and exact `@home` or `@fast`.
+`legacy-split` remains an explicit compatibility option, not the final target.
 
 ```sh
-"$helper_path/bin/nas-home-migrate" home --bench \
-  --source root@nas:/mnt/nas/backups/strix-home-2026-10-23/ --target /mnt/newhome
-
-"$helper_path/bin/nas-home-migrate" home --bench \
-  --source root@strix:/home/tom/ --target /mnt/newhome
+# Dry-run against the assembled, reviewed NAS home source:
+nas-home-migrate home --source /home/tom/ --target /mnt/newhome --final
+# Dry-run against all current NAS fast state:
+nas-home-migrate fast --source /mnt/fast/ --target /mnt/newfast --final
 ```
 
-Choose the archive or the still-live strix as the pre-fill source. Both source
-paths contain Tom's home contents at their root; the helper places them inside
-the mounted `@home/tom/`. After inspecting a dry-run, the attended operator
-adds `--apply` to that same invocation to copy. `--bench` permits this home
-operation on the installer; it does not skip any serial or mount check and
-cannot be used for escrow. Keep credentials and history private on the bench.
+`home` copies into `@home/tom/` with the documented home curation exclusions.
+`fast` copies into `@fast/` with **no home exclusions**: Nix store/database,
+Attic state/signing material, PostgreSQL, Immich generated files, Navidrome,
+remote journals and every other fast-tier file remain included. Parent-side
+reviewed native history/DB exports and assembled credential state must remain
+intact; do not overwrite those with a later raw coordinator corpus copy.
+The curated helper is never a substitute for the full LaCie backup.
 
-Preserve the NAS's old `/home/tom/` in a separate
-`/mnt/newhome/tom/nas-home-legacy-2026-10-23/` directory on this SSD, using
-`rsync -aHAXS --numeric-ids` from `root@nas:/home/tom/`, before the NAS is
-powered off. Do not merge the two homes. The helper never uses `--delete`, so
-this legacy directory remains through subsequent curated copies.
+After reviewing each plan, add `--apply` for its initial copy. Before the final
+fast delta, identify/quiesce **every writer to `/mnt/fast`**, including Nix
+builds/daemon/socket, Attic, PostgreSQL, Navidrome, Immich services and remote
+journal writing as applicable. A dump or a live rsync alone is not a
+consistent filesystem database transfer. Keep the NAS router, SSH and native
+agent connection available; do not restart Herdr or the user manager.
 
-The handover coordinator must arrange a consistent final source capture and
-end the old harness sessions at the agreed handover point before their final
-delta. Copy the final delta with `--final --apply`, then rerun `--final`
-without `--apply` and require no itemized changes. Use the still-live strix
-source for that final pass, or an explicitly refreshed, consistent sealed
-archive. The initial archive recipe used `-aHS`; a final pass from the original
-with `-aHAXS` also preserves ACLs and xattrs omitted by that earlier recipe.
-If the host rename has already been activated, use its verified reachable
-hostname in `--source`; `strix` here denotes the pre-cutover source.
+Stage the new NAS boot closure **before** the last quiescent fast copy, so
+that the exact new `/nix/store` closure and Nix profiles/database are present
+on the destination. Perform final `--final --apply` copies with writers
+quiescent, then repeat both `--final` dry-runs and require no itemized changes.
+Reconcile the NAS's active home/session state consistently at its agreed
+handover point. Flush/unmount both destinations and deliberately reboot the
+NAS into the reviewed final generation.
 
-Herdr's live store stays excluded. The sealed archive retains that history;
-the NAS starts its own server store. Codex DB/WAL sets and Claude state need
-the consistent final capture above. Reusing a stale archive after further
-source activity does not complete the handover.
+The final shared-pool generation needs the 500 GB to boot: `/mnt/fast` and
+`/nix` are boot-critical. The old generation plus untouched 256 GB is the
+rollback, so preserve both until acceptance. Do not describe the new
+missing-primary case as a degraded but bootable router.
 
-## Storage gate for the one shared power-off
+## Acceptance before releasing the old 256 GB
 
-All of these facts must be recorded before the fleet is powered off:
+- `/home` is incoming p1 with `subvol=@home`; UID 1000 home/session access works.
+- `/mnt/fast` is the **same** incoming p1 with `subvol=@fast`; `/nix` binds its
+  `nix/` directory. All required system closures/profiles and store DB exist.
+- NAS router/DHCP/DNS/tailnet/SSH work, and PostgreSQL, Attic cache/signing,
+  Navidrome, Immich state and remote journal routes pass real service checks.
+- Zenbook→NAS Herdr and native harness continuity are proved locally on NAS.
+- Backup/restore receipts and the old boot generation remain available.
 
-- Windows preservation and NAS escrow are complete; the sealed full-home
-  archive is retained.
-- The bench helper verified serial `260538801482`, p2 `disk-primary-home`,
-  filesystem label `nashome`, the mounted `@home`, and a checksum final pass
-  with no itemized differences. The legacy NAS home is preserved separately.
-- `@home/tom` has UID 1000 ownership and suitable home permissions;
-  `@snapshots` exists; p1 stays unmounted. Flush and unmount the bench home
-  after the final copy, before the shared power-off.
-- The integrated NAS generation is built and staged as its next boot, with
-  the existing good generation retained as fallback. Its fstab names the
-  by-id p2 above and the user manager requires `/home`. Stage this boot
-  generation through the authorized cutover coordinator without activating
-  a home remount while the disk is still on the bench.
-
-The integration worker combines Linux 7.3, the NAS agent role and the other
-fleet changes; this storage branch does not select the fleet kernel or stage
-the standalone storage-only host. Its old `partUuid` test overrides should be
-removed when this revision is integrated, including
-`tests/cutover-integration/default.nix`.
-
-Only after the overall cutover coordinator has verified the other fleet
-gates does Tom power the fleet off together, move this prepared 500 GB SSD
-from strix-worker to the NAS, move the spare 1 TB to strix-worker, and cable
-the compute pair. The NAS's 256 GB Fanxiang stays put. Its first new-role boot
-mounts the already-filled p2 without discovering or editing a UUID. A missing
-home disk leaves the router bootable and the user manager stopped via
-`RequiresMountsFor=/home`.
-
-After that boot, verify the real `/home` source/subvolume, UID 1000's home,
-the independent Herdr store and harness continuity as part of the fleet
-acceptance. Fleet Tailscale enrollment is with the official tailscale.com
-tailnet and non-expiring machine keys; compute links, offload and enrollment
-belong to the integration gates. Passing this storage check alone is not the
-instruction to power off the fleet.
+Only then release `myNas.memoryDisk.enable`, after attending to the old
+Fanxiang whole-disk serial `26040259615000015`, retaining its independent
+backup and formatting its sole partition as ext4 with label `agent-memory`.
+No command here formats that old disk. The gated mount at `/mnt/agent-memory`
+checks both serial and label before mounting. A default final configuration
+keeps that gate off and declares only its purpose/reservation; it does not
+mount old fast secrets as memory data, or start Screenpipe/CUA.

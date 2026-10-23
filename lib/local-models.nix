@@ -194,11 +194,12 @@ let
           # existing here.
           # gufo-models.json: Gufo's collection, the fleet's full set of
           # models (Tom, 2026-10-13: "use that as the full collection of
-          # modles that we use"), as gufo-org/gufo v0.15.0 pins it. Bytes
+          # modles that we use"), as gufo-org/gufo v0.22.0 pins it, plus its Q8 options. Bytes
           # and sha256 come from the Hugging Face API at the pinned revisions.
           artifacts =
             (builtins.fromJSON (builtins.readFile ./speech-intake-models.json))
             // (builtins.fromJSON (builtins.readFile ./gufo-models.json))
+            // (builtins.fromJSON (builtins.readFile ./ds4-models.json))
             // {
               "qwen3-tts-1.7b-base-q8-0" = mkSingleFileArtifact {
                 maker = "Qwen";

@@ -14,6 +14,7 @@ in
   imports = [
     inputs.donnerkeule.nixosModules.default
     ./strix.nix
+    ./ds4.nix
     ./gvisor.nix
     ./microvm-host.nix
     ./cli-anything.nix
@@ -88,6 +89,12 @@ in
       never-default = true;
     };
     ipv6.method = "disabled";
+  };
+
+  services.ds4 = {
+    enable = true;
+    role = if coordinator then "coordinator" else "worker";
+    peerAddress = if coordinator then "10.42.0.5" else "10.42.0.2";
   };
 
   services.gufo.tp2 = {

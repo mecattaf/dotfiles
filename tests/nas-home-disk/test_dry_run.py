@@ -25,8 +25,8 @@ set -eu
 case "$*" in
   *'--inverse '*) printf '%s\\n' "${TEST_ANCESTRY_SERIAL:-260538801482}" ;;
   *'--output SERIAL '*) printf '%s\\n' "${TEST_SERIAL:-260538801482}" ;;
-  *'--output PARTLABEL '*) printf '%s\\n' "${TEST_LABEL:-disk-primary-home}" ;;
-  *'--output LABEL '*) printf '%s\\n' "${TEST_FS_LABEL:-nashome}" ;;
+  *'--output PARTLABEL '*) printf '%s\\n' "${TEST_LABEL:-disk-primary}" ;;
+  *'--output LABEL '*) printf '%s\\n' "${TEST_FS_LABEL:-nasprimary}" ;;
   *'--output MAJ:MIN '*) printf '259:42\\n' ;;
   *) echo 'unexpected lsblk query' >&2; exit 99 ;;
 esac
@@ -58,7 +58,7 @@ class DryRun(unittest.TestCase):
         text = (SOURCE / "migrate.sh").read_text()
         for token, value in {
             "expectedDisk": DISK, "expectedSerial": SERIAL,
-            "expectedLabel": "nashome",
+            "expectedLabel": "nasprimary", "expectedPartition": "1", "expectedPartLabel": "disk-primary",
             "hddUuid": HDD_UUID, "excludes": str(SOURCE / "home-excludes"),
         }.items():
             text = text.replace(f"@{token}@", shlex.quote(value))
@@ -161,7 +161,7 @@ class DryRun(unittest.TestCase):
         result = self.run_home("--bench", "--final")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Bench mode", result.stdout)
-        self.assertIn("filesystem nashome", result.stdout)
+        self.assertIn("filesystem nasprimary", result.stdout)
         self.assertIn("--checksum", result.stdout)
         self.assertIn("--dry-run", result.stdout)
         self.assertIn("archives/KEEP-JSONL.jsonl", result.stdout)
@@ -175,6 +175,28 @@ class DryRun(unittest.TestCase):
                                 env=self.env, text=True, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("--bench is only for home", result.stderr)
+
+    def test_fast_copy_keeps_all_state_and_checks_its_subvolume(self):
+        self.file("nix/var/nix/db/KEEP-STORE-DB")
+        self.file("atticd/KEEP-SIGNING-STATE")
+        self.file(".cache/KEEP-FAST-DATA")
+        self.file("target/KEEP-FAST-DATA")
+        result = subprocess.run(
+            ["bash", str(self.script), "fast", "--source", f"{self.home}/",
+             "--target", str(self.target), "--final", "--bench"],
+            env=dict(self.env, TEST_FSROOT="/@fast"), text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("KEEP-STORE-DB", result.stdout)
+        self.assertIn("KEEP-SIGNING-STATE", result.stdout)
+        self.assertIn(".cache/KEEP-FAST-DATA", result.stdout)
+        self.assertIn("target/KEEP-FAST-DATA", result.stdout)
+        self.assertNotIn("--exclude-from", (self.root / "rsync-args").read_text())
+        self.assertEqual(list((self.target / "tom").iterdir()), [])
+        # A home subvolume must never receive the complete fast-tier tree.
+        result = subprocess.run(
+            ["bash", str(self.script), "fast", "--source", f"{self.home}/",
+             "--target", str(self.target)], env=self.env, text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
 
     def test_destination_symlink_refused(self):
         (self.target / "tom").rmdir()

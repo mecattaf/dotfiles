@@ -6,10 +6,16 @@
 }:
 let
   cfg = config.myNas.homeDisk;
+  shared = cfg.layout == "shared-btrfs";
+  partition = if shared then "1" else "2";
+  partLabel = if shared then "disk-primary" else "disk-primary-home";
+  fsLabel = if shared then "nasprimary" else "nashome";
   migrate = pkgs.callPackage ../../pkgs/nas-home-migrate {
     expectedDisk = cfg.device;
     expectedSerial = cfg.serial;
-    expectedLabel = "nashome";
+    expectedLabel = fsLabel;
+    expectedPartition = partition;
+    expectedPartLabel = partLabel;
     hddUuid = config.myNas.storage.filesystemUuid;
     postgresql = config.services.postgresql.package;
   };
@@ -17,11 +23,19 @@ in
 {
   options.myNas.homeDisk = {
     enable = lib.mkEnableOption "the manually prepared NAS home SSD (#599)";
+    layout = lib.mkOption {
+      type = lib.types.enum [
+        "shared-btrfs"
+        "legacy-split"
+      ];
+      default = "shared-btrfs";
+      description = "Shared 500GB primary pool (@home/@fast/@snapshots), or the earlier split home-only layout. Never formats or migrates data.";
+    };
     device = lib.mkOption {
       type = lib.types.str;
       # VERIFY on the installer bench before the simultaneous fleet power-off.
       default = "/dev/disk/by-id/nvme-WD_BLACK_SN7100_500GB_260538801482";
-      description = "Whole-disk by-id path; p2 backs home, and the whole disk is used for SMART and migration identity checks";
+      description = "Whole-disk by-id identity; shared pool uses p1, legacy home-only layout uses p2";
     };
     serial = lib.mkOption {
       type = lib.types.str;
@@ -42,15 +56,12 @@ in
       }
     ];
 
-    # Prepared BY HAND on the worker's installer bench BEFORE the whole-fleet
-    # power-off; see docs/nas/home-disk-cutover.md. Never added to disko:
-    # p1 disk-primary-fast, 176G ext4, RESERVED AND UNMOUNTED.
-    # p2 disk-primary-home, remaining space, btrfs label nashome, @home + @snapshots.
-    # Serial-bearing by-id p2 is known before partitioning creates any UUID.
-    # Both mounts are ready to build/stage before the unplug and SSD transfer.
-    # /mnt/fast, /nix, service state and the kernel remain on their current path.
+    # Prepared manually only after the incoming serial is verified. A single
+    # primary btrfs partition shares capacity between home and old fast state;
+    # eMMC root/boot stays unchanged. Keep the 256GB intact until new @fast
+    # has booted and passed acceptance, then release its memory-only gate.
     fileSystems."/home" = {
-      device = "${cfg.device}-part2";
+      device = "${cfg.device}-part${partition}";
       fsType = "btrfs";
       options = [
         "subvol=@home"
@@ -61,7 +72,7 @@ in
       ];
     };
     fileSystems."/mnt/home-snapshots" = {
-      device = "${cfg.device}-part2";
+      device = "${cfg.device}-part${partition}";
       fsType = "btrfs";
       options = [
         "subvol=@snapshots"
@@ -71,8 +82,20 @@ in
       ];
     };
 
-    # nofail keeps the router bootable, but a missing SSD must keep the user
-    # manager down instead of creating a second agent home on the eMMC.
+    fileSystems."/mnt/fast" = lib.mkIf shared {
+      device = lib.mkForce "${cfg.device}-part1";
+      fsType = lib.mkForce "btrfs";
+      options = lib.mkForce [
+        "subvol=@fast"
+        "compress=zstd:1"
+        "noatime"
+      ];
+      neededForBoot = true;
+    };
+
+    # Refuse a second agent home on eMMC. In shared mode the same SSD is
+    # additionally boot-critical through @fast/nix; retain the old generation
+    # and untouched 256GB fast tier until that first shared-pool boot passes.
     systemd.services."user@1000".unitConfig.RequiresMountsFor = [ "/home" ];
 
     # Export the SAME helper that is installed, including the server-matched

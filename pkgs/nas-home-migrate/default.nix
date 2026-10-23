@@ -11,6 +11,8 @@
   expectedDisk,
   expectedSerial,
   expectedLabel,
+  expectedPartition ? "2",
+  expectedPartLabel ? "disk-primary-home",
   hddUuid,
 }:
 writeShellApplication {
@@ -26,11 +28,21 @@ writeShellApplication {
   ];
   text =
     builtins.replaceStrings
-      [ "@expectedDisk@" "@expectedSerial@" "@expectedLabel@" "@hddUuid@" "@excludes@" ]
+      [
+        "@expectedDisk@"
+        "@expectedSerial@"
+        "@expectedLabel@"
+        "@expectedPartition@"
+        "@expectedPartLabel@"
+        "@hddUuid@"
+        "@excludes@"
+      ]
       (map lib.escapeShellArg [
         expectedDisk
         expectedSerial
         expectedLabel
+        expectedPartition
+        expectedPartLabel
         hddUuid
         "${./home-excludes}"
       ])

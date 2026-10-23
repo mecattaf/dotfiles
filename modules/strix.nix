@@ -33,13 +33,21 @@
       "vibevoice-asr-streaming-7b-bf16"
     ];
 
-    # Gufo owns the local fleet endpoint; Gufo is retired.
+    # Gufo owns the local fleet endpoint; Halogen is retired.
     services.gufo = {
       enable = true;
       lanInterface = "enp191s0";
       alternates = {
         qwen38-27b = {
           artifact = "qwen38-27b-gguf";
+          servedModelName = "qwen3.8-27b";
+          mmproj = "mmproj-BF16.gguf";
+          dflashArtifact = "qwen38-27b-dflash2-gguf";
+          sessions = 4;
+          context = 131072;
+        };
+        qwen38-27b-q8 = {
+          artifact = "qwen38-27b-q8-gguf";
           servedModelName = "qwen3.8-27b";
           mmproj = "mmproj-BF16.gguf";
           dflashArtifact = "qwen38-27b-dflash2-gguf";

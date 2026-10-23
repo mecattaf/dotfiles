@@ -584,6 +584,12 @@
             self.nixosConfigurations.strix-worker.config.hardware.thunderbolt-ibverbs.resolvedPackage;
           live-iso = strixAi.live-iso;
           nas-installer-iso = nasInstaller.config.system.build.isoImage;
+          # Fresh worker install while its SSD is the coordinator's inactive
+          # secondary. The generated script never mounts over the live /mnt.
+          strix-worker-disko-offline =
+            (self.nixosConfigurations.strix-worker.extendModules {
+              modules = [ { disko.rootMountPoint = "/mnt/strix-worker-install"; } ];
+            }).config.system.build.diskoScript;
           nas-home-migrate = self.nixosConfigurations.nas.config.system.build.nas-home-migrate;
           # `nix build .#substrate-pusher`, `.#substrate-puller`: the strix's
           # gentle capacity pusher and its interpreter-host puller from the
@@ -635,6 +641,10 @@
         closet-topology = import ./tests/closet-topology {
           inherit pkgs self;
           inherit (nixpkgs) lib;
+        };
+        ds4-fleet = import ./tests/ds4 {
+          inherit pkgs self inputs;
+          lib = pkgs.lib;
         };
         gufo-rdma = import ./tests/gufo-rdma {
           inherit pkgs self inputs;
@@ -2526,12 +2536,15 @@
           # no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           # Plus Gufo's collection (lib/gufo-models.json), as gufo-org/gufo
-          # v0.15.0 pins it; MiniMax H3 is gated until Tom accepts
+          # v0.22.0 plus Q8 and the separately pinned ds4 V4.1 model. MiniMax H3 is gated until Tom accepts
           # its licence, so library-fetch skips it and no host may want it.
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "deepseek-v4-flash-dspark-gguf"
               "deepseek-v4-flash-gguf"
+              "deepseek-v41-flash-1017-q2-gguf"
+              "deepseek-v41-flash-dspark-gguf"
+              "deepseek-v41-flash-vision-gguf"
               "minimax-h3-fl2va"
               "qwen-image-2.1"
               "qwen-k2so-midway-b"
@@ -2541,7 +2554,9 @@
               "qwen3-tts-tokenizer-f32"
               "qwen38-27b-dflash2-gguf"
               "qwen38-27b-gguf"
+              "qwen38-27b-q8-gguf"
               "qwen38-flash-next-gguf"
+              "qwen38-flash-next-q8-gguf"
               "vibevoice-asr-streaming-7b-bf16"
             ];
           assert localModelCatalog.artifacts.minimax-h3-fl2va.source.gate != null;
@@ -2555,8 +2570,10 @@
           assert strix.services.gufo.llm.servedModelName == (import ./lib/local-model.nix).modelId;
           assert
             builtins.sort builtins.lessThan (
-              map (n: strix.services.gufo.alternates.${n}.servedModelName) (
-                builtins.attrNames strix.services.gufo.alternates
+              pkgs.lib.unique (
+                map (n: strix.services.gufo.alternates.${n}.servedModelName) (
+                  builtins.attrNames strix.services.gufo.alternates
+                )
               )
             ) == builtins.sort builtins.lessThan (import ./lib/local-model.nix).alternates;
           assert strix.services.utilityModel.endpoint == (import ./lib/local-model.nix).endpoint;

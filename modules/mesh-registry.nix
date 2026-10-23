@@ -31,8 +31,8 @@
       "strix-worker"
       "10.42.0.5"
     ];
-    # TODO(Tom): fresh key generated at install
-    hostKey = "";
+    # Fresh install identity generated privately for the attended 2026-10-23 cutover.
+    hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIJBGzAq5wvS0olgNKONXK22r/+c+xo2xanMXZVIxqXH strix-worker-cutover-20261023";
     userKey = ""; # compute receives no operator private key
   };
 

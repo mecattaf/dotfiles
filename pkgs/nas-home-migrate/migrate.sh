@@ -6,6 +6,8 @@ set -euo pipefail
 expected_disk=@expectedDisk@
 expected_serial=@expectedSerial@
 expected_label=@expectedLabel@
+expected_partition=@expectedPartition@
+expected_part_label=@expectedPartLabel@
 hdd_uuid=@hddUuid@
 excludes=@excludes@
 
@@ -13,15 +15,14 @@ die() { printf 'nas-home-migrate: %s\n' "$*" >&2; exit 1; }
 usage() {
     cat <<'USAGE'
 nas-home-migrate escrow [--dry-run | --apply]
-nas-home-migrate home [--dry-run | --apply] [--final] [--bench]
+nas-home-migrate home|fast [--dry-run | --apply] [--final] [--bench]
     [--source root@strix:/home/tom/] [--target /mnt/newhome]
 
 Default: dry-run. Escrow runs on the NAS and verifies its mounted HDD before
-root-only backups. Home verifies the SSD serial, both p2 labels and the exact
-writable btrfs @home mount before rsync. --bench allows home copying as root
-on the worker's installer before the SSD moves to the NAS; identity checks
-are unchanged. Escrow cannot use --bench.
---target names the @home MOUNTPOINT; its tom/ directory must already exist.
+root-only backups. Home/fast verify SSD serial, partition labels and the exact
+writable @home/@fast mount before rsync. --bench allows copying on an installer;
+identity checks are unchanged. Escrow cannot use --bench. Fast copies ALL current fast state, with no home exclusions; quiesce its writers for the final delta.
+--target names the selected @home/@fast MOUNTPOINT; home needs its tom/ directory.
 --final adds --checksum to the itemized rsync (still dry-run without --apply).
 No --delete, partitioning, formatting, mounting or service control is performed.
 Before a final copy, arrange consistent source databases and session handover
@@ -34,7 +35,7 @@ mount_field() { findmnt --noheadings --raw --mountpoint "$1" --output "$2"; }
 action=${1:---help}
 case "$action" in
     -h|--help) usage; exit 0 ;;
-    escrow|home) shift ;;
+    escrow|home|fast) shift ;;
     *) usage >&2; exit 2 ;;
 esac
 apply=false
@@ -42,6 +43,7 @@ final=false
 bench=false
 mode_seen=false
 source='root@strix:/home/tom/'
+[[ $action != fast ]] || source='root@nas:/mnt/fast/'
 target='/mnt/newhome'
 while (($#)); do
     case "$1" in
@@ -50,10 +52,10 @@ while (($#)); do
             mode_seen=true
             [[ $1 != --apply ]] || apply=true
             shift ;;
-        --final) [[ $action == home ]] || die '--final is only for home'; final=true; shift ;;
-        --bench) [[ $action == home ]] || die '--bench is only for home'; bench=true; shift ;;
+        --final) [[ $action != escrow ]] || die '--final is only for home/fast'; final=true; shift ;;
+        --bench) [[ $action != escrow ]] || die '--bench is only for home/fast'; bench=true; shift ;;
         --source|--target)
-            [[ $action == home && $# -ge 2 && -n $2 ]] || die "invalid $1"
+            [[ $action != escrow && $# -ge 2 && -n $2 ]] || die "invalid $1"
             if [[ $1 == --source ]]; then source=$2; else target=$2; fi
             shift 2 ;;
         -h|--help) usage; exit 0 ;;
@@ -70,42 +72,49 @@ else
     printf 'DRY RUN: no backups or home files will be written.\n'
 fi
 
-if [[ $action == home ]]; then
+if [[ $action != escrow ]]; then
     # Verify both the whole disk and the mounted partition's ancestry. Never
     # trust enumeration order, a directory named /mnt/newhome, or a label alone.
     [[ $expected_disk == /dev/disk/by-id/nvme-* && $expected_disk == *_"$expected_serial" ]] \
         || die 'invalid configured disk identity'
     serial=$(lsblk --nodeps --noheadings --raw --output SERIAL "$expected_disk")
     [[ ${serial//[[:space:]]/} == "$expected_serial" ]] || die 'target SSD serial does not match'
-    partition="$expected_disk-part2"
+    partition="$expected_disk-part$expected_partition"
     ancestry_serial=$(lsblk --inverse --noheadings --raw --output SERIAL "$partition")
-    [[ ${ancestry_serial//[[:space:]]/} == "$expected_serial" ]] || die 'p2 is not on the expected SSD'
+    [[ ${ancestry_serial//[[:space:]]/} == "$expected_serial" ]] || die 'partition is not on the expected SSD'
     label=$(lsblk --nodeps --noheadings --raw --output PARTLABEL "$partition")
-    [[ $label == disk-primary-home ]] || die 'p2 must be labelled disk-primary-home'
+    [[ $label == "$expected_part_label" ]] || die "partition must be labelled $expected_part_label"
     filesystem_label=$(lsblk --nodeps --noheadings --raw --output LABEL "$partition")
-    [[ $filesystem_label == "$expected_label" ]] || die "p2 filesystem must be labelled $expected_label"
+    [[ $filesystem_label == "$expected_label" ]] || die "filesystem must be labelled $expected_label"
     [[ $target == /* && -d $target && ! -L $target ]] || die 'target must be an existing absolute mountpoint'
     target=$(realpath -e -- "$target")
     [[ $(mount_field "$target" FSTYPE) == btrfs ]] || die 'target must be an exact btrfs mountpoint'
-    [[ $(mount_field "$target" FSROOT) == /@home ]] || die 'target must mount subvolume @home itself'
+    [[ $(mount_field "$target" FSROOT) == /@$action ]] || die "target must mount subvolume @$action itself"
     device_number=$(lsblk --nodeps --noheadings --raw --output MAJ:MIN "$partition")
-    [[ $(mount_field "$target" MAJ:MIN) == "$device_number" ]] || die 'target mount is not the expected SSD p2'
+    [[ $(mount_field "$target" MAJ:MIN) == "$device_number" ]] || die 'target mount is not the expected SSD partition'
     case ",$(mount_field "$target" OPTIONS)," in
         *,rw,*) ;;
         *) die 'target mount is not writable' ;;
     esac
-    [[ -d $target/tom && ! -L $target/tom ]] || die 'prepare the tom/ directory inside @home first'
+    if [[ $action == home ]]; then
+      [[ -d $target/tom && ! -L $target/tom ]] || die 'prepare the tom/ directory inside @home first'
+    fi
     [[ $source != -* && $source == */ ]] || die 'source must end in / and cannot be an option'
     [[ -f $excludes ]] || die 'packaged exclusion list is missing'
-    printf 'Verified SSD serial %s, disk-primary-home p2, filesystem %s, mounted @home at %s\n' "$expected_serial" "$expected_label" "$target"
+    printf 'Verified SSD serial %s, partition %s, filesystem %s, mounted @%s at %s\n' "$expected_serial" "$expected_partition" "$expected_label" "$action" "$target"
     if "$bench"; then
         printf 'Bench mode: home copy on the installer; all disk identity checks remain enabled.\n'
     fi
-    args=(-aHAXS --numeric-ids --protect-args --itemize-changes --stats --exclude-from="$excludes")
+    args=(-aHAXS --numeric-ids --protect-args --itemize-changes --stats)
+    destination="$target/"
+    if [[ $action == home ]]; then
+      args+=(--exclude-from="$excludes")
+      destination="$target/tom/"
+    fi
     "$apply" || args+=(--dry-run)
     "$final" && args+=(--checksum)
-    print_command rsync "${args[@]}" -- "$source" "$target/tom/"
-    exec rsync "${args[@]}" -- "$source" "$target/tom/"
+    print_command rsync "${args[@]}" -- "$source" "$destination"
+    exec rsync "${args[@]}" -- "$source" "$destination"
 fi
 
 # Escrow is intentionally independent of the incoming SSD: stage 0 precedes
