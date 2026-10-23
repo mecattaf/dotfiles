@@ -64,6 +64,16 @@ in
           device = cfg.smartDevice;
           options = "-a -n standby,q -W 4,45,50";
         }
+        {
+          device = "/dev/disk/by-id/nvme-Fanxiang_S500Pro_256GB_26040259615000015";
+          options = "-a";
+        }
+      ]
+      ++ lib.optionals config.myNas.homeDisk.enable [
+        {
+          device = config.myNas.homeDisk.device;
+          options = "-a";
+        }
       ];
     };
 

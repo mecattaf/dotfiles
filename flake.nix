@@ -549,6 +549,7 @@
           gufo = inputs.gufo.packages.${system}.default;
           live-iso = strixAi.live-iso;
           nas-installer-iso = nasInstaller.config.system.build.isoImage;
+          nas-home-migrate = self.nixosConfigurations.nas.config.system.build.nas-home-migrate;
           # `nix build .#substrate-pusher`, `.#substrate-puller`: the strix's
           # gentle capacity pusher and its interpreter-host puller from the
           # pinned substrate sha (pkgs/substrate-apps), installed by
@@ -580,6 +581,10 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        nas-home-disk = import ./tests/nas-home-disk {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
         closet-topology = import ./tests/closet-topology {
           inherit pkgs self;
           inherit (nixpkgs) lib;

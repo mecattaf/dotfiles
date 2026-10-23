@@ -24,6 +24,7 @@
     ./nix-on-nvme.nix # 2026-08-22: /nix onto the M.2 — GATE OFF, reboot-only (#232)
     ./journal.nix
     ./storage.nix
+    ./home-disk.nix # #599, manual preparation; placeholder blocks deployment
     ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)
     ./media.nix
     # ./phone-ingest.nix DELETED 2026-08-21 (Tom: "DEAD and no longer needed
@@ -127,6 +128,7 @@
   # remotely — /nix is a neededForBoot mount and a mistake does not degrade,
   # it means the house router does not come up.
   myNas.nixOnNvme.enable = true;
+  myNas.homeDisk.enable = true;
 
   # amdtop — the same telemetry TUI the strix runs (modules/strix-ai.nix).
   # This box is AMD on both halves: common-cpu-amd/kvm-amd, plus the radeonsi
