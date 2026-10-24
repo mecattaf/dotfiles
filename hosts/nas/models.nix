@@ -203,8 +203,8 @@ in
     # fsid=6, continuing storage.nix's explicit-per-subvolume export list. A
     # subvolume with no entry is invisible to NFSv4 clients (that is how
     # .snapshots and backups stay contained); this one is exported ON PURPOSE:
-    # rw for the strix (archive/restore procedures over its /mnt/nas
-    # mount), and READ-ONLY + root-squashed for the worker — its
+    # read-only and root-squashed for both compute hosts. Archive/restore
+    # procedures now run on the NAS; compute's
     # explicit local-models-borrow transactions read weights from here (mounted
     # at /mnt/library, hosts/worker/default.nix). The ACL still names hosts, per
     # the storage.nix doctrine; the nftables admission below is its twin.
@@ -217,7 +217,7 @@ in
     # for the academic-drain corpus, so this line is fsid=6 for both clients
     # and the worker mounts `nas:/models` (hosts/worker/default.nix).
     services.nfs.server.exports = ''
-      ${modelsRoot} 10.42.0.2(rw,sync,fsid=6,no_subtree_check,no_root_squash) 10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)
+      ${modelsRoot} 10.42.0.2(ro,sync,fsid=6,no_subtree_check,root_squash) 10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)
     '';
     networking.firewall.extraInputRules = "";
 

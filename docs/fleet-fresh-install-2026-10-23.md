@@ -12,6 +12,15 @@ Neither NAS eMMC nor its 256 GB is an install target in this procedure.
 The authorization does not make preparation evidence: no disk write, BIOS
 flash, service activation, reboot or shutdown was performed by this change.
 
+The final NAS NFS configuration keeps its services, backups and historical
+snapshot subvolumes unexported. Compute receives read-only, root-squashed
+model/media views; the coordinator's existing document export keeps Tom's
+writes for manual handwriting backups, with root squashed. Apply this final
+NAS configuration after the accepted cold backup, before accepting fresh
+compute access. Do not re-export or remount the running migration to stage it.
+Verify the loaded exports and denied services/backups access at that point;
+evaluated configuration alone does not prove the live NFS boundary.
+
 ## Order that actually works
 
 1. Independently back up and verify all retained data on LaCie, including the
