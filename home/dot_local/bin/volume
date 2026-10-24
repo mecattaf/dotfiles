@@ -21,8 +21,23 @@ report_sink() {
     fi
 }
 
+raise_sink() {
+    local sink
+    local -a limit=()
+    sink=$(wpctl inspect @DEFAULT_AUDIO_SINK@ 2>/dev/null) || return 1
+    case "$sink" in
+        *'node.name = "alsa_output.usb-Sony_INZONE_Buds-00.'*)
+            # The buds have their own 0-30 hardware volume. Software boost
+            # above unity clips PCM; use the native control for more level.
+            limit=(--limit 1.0)
+            ;;
+    esac
+    wpctl set-volume "${limit[@]}" @DEFAULT_AUDIO_SINK@ 3%+
+    report_sink
+}
+
 case "$1" in
-    up)    wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%+; report_sink ;;
+    up)    raise_sink ;;
     down)  wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%-; report_sink ;;
     mute)  wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle; report_sink ;;
     # The Duo's own XF86AudioMicMute key (sway-local.conf binds it on the

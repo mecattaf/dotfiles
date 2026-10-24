@@ -2149,6 +2149,21 @@
               touch "$out"
             '';
 
+        # Native controls are exercised with fake CLI/desktop commands only.
+        inzone-audio = pkgs.runCommand "inzone-audio" {
+          nativeBuildInputs = [
+            pkgs.python3 pkgs.bash pkgs.coreutils pkgs.util-linux pkgs.gawk
+          ];
+        } ''
+          export HOME="$TMPDIR/home"
+          export PYTHONDONTWRITEBYTECODE=1
+          export INZONE_MENU_SCRIPT=${./home/dot_local/bin/inzone-menu}
+          export INZONE_VOLUME_SCRIPT=${./home/dot_local/bin/volume}
+          mkdir -p "$HOME"
+          python3 -m unittest discover -s ${./tests/inzone-audio} -p 'test_*.py' -v
+          touch "$out"
+        '';
+
         # Model bytes are explicit transactions, never activation work. Drive
         # the evaluated worker borrow binary against tiny fixtures, then keep
         # the guarded prune contract from dotfiles#296. Hermetic: no network,
