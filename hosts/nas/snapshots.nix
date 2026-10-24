@@ -15,9 +15,9 @@
 # "cheap now, expensive later" decision #130 flagged. Nothing to migrate.
 #
 # ── Why .snapshots is safe from the NFS client, verified against storage.nix ──
-# services.nfs.server.exports lists SIX entries: the /mnt/nas root (fsid=0) and
+# storage.nix lists five exports: the /mnt/nas root (fsid=0) and
 # one explicit fsid per exported subvolume (photos 1, music 2, documents 3,
-# services 4, videos 5). `.snapshots` has NO entry and never gets one. Under
+# videos 5). Services, backups and `.snapshots` have NO entries. Under
 # NFSv4 each Btrfs subvolume is its own st_dev, and nfsd will not cross into a
 # subvolume that lacks its own export entry — a client that walks into
 # /mnt/nas/.snapshots sees an empty directory. That is the whole containment
