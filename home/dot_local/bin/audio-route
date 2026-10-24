@@ -13,7 +13,11 @@ set -euo pipefail
 
 readonly SPEAKER_SINK='alsa_output.usb-Creative_Technology_Ltd_Sound_Blaster_GS3_1120050704030604-01.analog-stereo'
 readonly WEBCAM_SOURCE='alsa_input.usb-DCX-241206-FAY_iContact_Camera_Pro_01.00.00-02.analog-stereo'
-readonly INZONE_SINK='alsa_output.usb-Sony_INZONE_Buds-00.analog-stereo'
+# The PC-mode receiver's generic names hide two USB playback endpoints:
+# analog-stereo is Chat (PCM 0); iec958-stereo is Game/music (PCM 1).
+# Game takes ordinary stereo PCM, not an encoded S/PDIF stream.
+# hosts/client/audio.nix selects Game + the existing mono microphone.
+readonly INZONE_SINK='alsa_output.usb-Sony_INZONE_Buds-00.iec958-stereo'
 readonly INZONE_SOURCE='alsa_input.usb-Sony_INZONE_Buds-00.mono-fallback'
 
 # The laptop's OWN card — the route that needs no dock at all: undock, or take
@@ -126,7 +130,7 @@ if [[ -n "$speaker_sink_id" && -n "$webcam_source_id" ]]; then
     menu+=("speaker"$'\t'"  $(marker "$speaker_sink_id" "$webcam_source_id")  Sound Blaster GS3  ·  webcam mic")
 fi
 if [[ -n "$inzone_sink_id" && -n "$inzone_source_id" ]]; then
-    menu+=("inzone"$'\t'"  $(marker "$inzone_sink_id" "$inzone_source_id")  Sony INZONE  ·  INZONE mic")
+    menu+=("inzone"$'\t'"  $(marker "$inzone_sink_id" "$inzone_source_id")  Sony INZONE stereo  ·  INZONE mic")
 fi
 if [[ -n "$internal_sink_id" && -n "$internal_source_id" ]]; then
     menu+=("internal"$'\t'"  $(marker "$internal_sink_id" "$internal_source_id")  Laptop speakers  ·  laptop mic")
@@ -172,7 +176,7 @@ speaker)
 inzone)
     sink_id=$inzone_sink_id
     source_id=$inzone_source_id
-    label='Sony INZONE + INZONE mic'
+    label='Sony INZONE stereo + INZONE mic'
     ;;
 internal)
     sink_id=$internal_sink_id

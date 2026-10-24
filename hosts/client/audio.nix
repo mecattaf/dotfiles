@@ -65,12 +65,37 @@
 #     rc, is the check (bin/volume's level() still trusts the rc and parses $2
 #     blind; it has not been touched here).
 #
+#  4. (2026-10-24, muffled above 100%, quiet below it.) F9 selected the
+#     analog-stereo sink: the receiver's USB descriptor names it Chat (PCM 0).
+#     iec958-stereo is actually Game/music (PCM 1), with ordinary stereo PCM.
+#     Both advertise S16_LE, 2ch, 48 kHz. Moved music to Game, retaining the
+#     mono mic. The independent hardware volume, read through the receiver's
+#     HID status using ZoneOut's verified Buds layout, was only 4/30; balance
+#     was centered at 50 and sidetone 0. Set hardware volume to 20/30 with
+#     desktop gain at 35%, then verified the hardware read-back. Software
+#     boost had been compensating for that hardware attenuation and clipping.
+#     F9 now chooses Game; F8 caps only INZONE software gain at unity.
+#     WirePlumber saved output:iec958-stereo+input:mono-fallback; the device
+#     rule also picks that profile when there is no saved state.
+#
 # The rule below fixes (2) properly: giving the webcam node a session priority
 # well above every other capture device makes it win the election outright, so
 # a stale or cleared default-nodes state can no longer move the intake.
 {
   services.pipewire.wireplumber.extraConfig."51-client-default-source" = {
     "monitor.alsa.rules" = [
+      {
+        # PC-mode INZONE receiver: Game playback plus the existing mic.
+        matches = [
+          {
+            "device.name" = "alsa_card.usb-Sony_INZONE_Buds-00";
+            "device.product.id" = "0x0ec2";
+          }
+        ];
+        actions.update-props = {
+          "device.profile" = "output:iec958-stereo+input:mono-fallback";
+        };
+      }
       {
         # Matched on node.name, which carries the USB serial — precise for this
         # unit. Replacing the webcam means updating this string; the symptom
@@ -103,9 +128,21 @@
     ];
   };
 
+  # The access tag must precede 73-seat-late.rules, which applies the ACL.
+  # NixOS extraRules is 99-local.rules, so use an explicitly ordered file.
+  services.udev.packages = [
+    (pkgs.writeTextDir "lib/udev/rules.d/70-inzone-buds.rules" ''
+      SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="054c", ATTR{idProduct}=="0ec2", TAG+="uaccess"
+      KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="0ec2", TAG+="uaccess"
+    '')
+  ];
+
   # Absent until now, which is why the zeroed hardware mixer above took a
   # `nix shell nixpkgs#alsa-utils` to even see. The PipeWire-level tools
   # (wpctl/pw-record) cannot read or write raw ALSA mixer elements, so keep
   # amixer/alsamixer/arecord on the box for the next time capture looks dead.
-  environment.systemPackages = [ pkgs.alsa-utils ];
+  environment.systemPackages = [
+    pkgs.alsa-utils
+    (pkgs.callPackage ../../pkgs/zoneout.nix { })
+  ];
 }
