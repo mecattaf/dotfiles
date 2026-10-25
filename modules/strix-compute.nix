@@ -62,6 +62,17 @@ in
       profile = "linux_perf";
       tbnet = "prefer_rdma";
       lanes = "2";
+      # The five path options default off in the driver (kernel/main.c): no
+      # service binding, rings or native negotiation means zero rails even with
+      # a live peer. Both hosts must load the same build with these set.
+      # native_domain_mask 3 = both USB4 controllers (domain0, domain1), two
+      # payload rails each: four rails. Phase A only; no dmabuf/host-credit keys.
+      bind_services = true;
+      allocate_rings = true;
+      start_rings = true;
+      negotiate_native = true;
+      enable_tunnels = true;
+      native_domain_mask = 3;
       register_verbs = true;
       roce_netdev = "tbv0";
       native_write_striping = true;

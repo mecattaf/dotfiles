@@ -1,59 +1,63 @@
 {
   "deepseek-v41-flash-1017-q2-gguf": {
     "kind": "model",
-    "maker": "antirez",
+    "maker": "kyuz0",
+    "baseCheckpoint": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017",
+      "revision": "1bae0e1088993b9b82de08f59de5be5a34e42170"
+    },
     "quantization": "IQ2_XXS-Q2_K-imatrix",
-    "notes": "Latest ds4 default 1017 checkpoint, not the older Gufo V4 Flash 0731. Full 340.60 GiB file must be local on BOTH TP ranks; Engram stays disk-backed. Kyuz0 ROCm V4.1 TP supports TCP/RoCE; USB4 verbs remains a hardware qualification gate.",
+    "notes": "Tom 2026-10-25: the fleet's DeepSeek is kyuz0/deepseek-v4.1-flash-gguf, replacing Gufo's V4 Flash 0731. DwarfStar (ds4) format, general.architecture deepseek41, source revision 1bae0e10 (1017); Gufo cannot load it. 340.60 GiB file: ~151.76 GiB resident tensor spans + 188.83 GiB disk-backed Engram. TP2 keeps the full file local on BOTH ranks (~80.6 GiB resident each); a single 128 GB host needs --ssd-streaming, which excludes DSpark.",
     "source": {
-      "hfUrl": "https://huggingface.co/antirez/deepseek-v4.1-flash-gguf",
-      "revision": "9dcee51692e6540f697141fc98b097e3c96492a3",
+      "hfUrl": "https://huggingface.co/kyuz0/deepseek-v4.1-flash-gguf",
+      "revision": "20408f699619df7071aa7cda6034e9cef5bf804b",
       "layout": "flat",
-      "primary": "DeepSeek-V4.1-Flash-1017-IQ2_XXS-Q2_K-imatrix.gguf",
+      "primary": "DeepSeek-V4.1-Flash-1017-Q2.gguf",
       "files": [
         {
-          "path": "DeepSeek-V4.1-Flash-1017-IQ2_XXS-Q2_K-imatrix.gguf",
+          "path": "DeepSeek-V4.1-Flash-1017-Q2.gguf",
           "bytes": 365713686528,
-          "oid": "5296e85ff64b42ecb62c8d0c0c54e1caa07e3df8e93112f2365ebbaed62ce93a",
-          "hash": "sha256-UpboX/ZLQuy2LI0MDFThyqB+PfjpMRLyNl67rtYs6To="
+          "oid": "5365629079214ff28becbbab7c0900ef9865b79c0f0c64d951924bb362ae5b67",
+          "hash": "sha256-U2VikHkhT/KL7LurfAkA75hlt5wPDGTZUZJLs2KuW2c="
         }
       ]
     }
   },
   "deepseek-v41-flash-vision-gguf": {
     "kind": "mmproj",
-    "maker": "antirez",
-    "notes": "Matching ds4 V4.1 vision sidecar, optional per workload.",
+    "maker": "kyuz0",
+    "notes": "Matching 1017 BF16 vision encoder (source revision 1bae0e10, 266 tensors). ds4 rejects the original df42c109 encoder with a 1017 language model. Optional per workload; load on both TP ranks.",
     "source": {
-      "hfUrl": "https://huggingface.co/antirez/deepseek-v4.1-flash-gguf",
-      "revision": "9dcee51692e6540f697141fc98b097e3c96492a3",
+      "hfUrl": "https://huggingface.co/kyuz0/deepseek-v4.1-flash-gguf",
+      "revision": "20408f699619df7071aa7cda6034e9cef5bf804b",
       "layout": "flat",
-      "primary": "DeepSeek-V4.1-Flash-Vision.gguf",
+      "primary": "DeepSeek-V4.1-Flash-1017-vision-BF16.gguf",
       "files": [
         {
-          "path": "DeepSeek-V4.1-Flash-Vision.gguf",
+          "path": "DeepSeek-V4.1-Flash-1017-vision-BF16.gguf",
           "bytes": 970555552,
-          "oid": "cc283f032b3e8b8d78aeb5fccaa14e97b859b0c53aae3cd6bffa690ddf0e9e15",
-          "hash": "sha256-zCg/Ays+i414rrX8yqFOl7hZsMU6rjzWv/ppDd8OnhU="
+          "oid": "861f1097e8686111fa23dc4a6bf139fd0c4cc114db2f1b4090a267f7683c0dbf",
+          "hash": "sha256-hh8Ql+hoYRH6I9xKa/E5/QxMwRTbLxtAkKJn92g8Db8="
         }
       ]
     }
   },
   "deepseek-v41-flash-dspark-gguf": {
     "kind": "draft",
-    "maker": "kernelpool",
+    "maker": "kyuz0",
     "quantization": "MXFP4",
-    "notes": "Kyuz0 pinned native-MXFP4 DSpark support. Requires resident target experts, no SSD-streaming mode.",
+    "notes": "Matching 1017 DSpark draft (source revision 1bae0e10, 81 tensors, native MXFP4 experts). Resident target only: no SSD streaming, no --batched-session. Load on both TP ranks.",
     "source": {
-      "hfUrl": "https://huggingface.co/kernelpool/DeepSeek-V4.1-Flash-MXFP4-GGUF",
-      "revision": "22a073e51781f43e6814885bb4b3cbe540f175ef",
+      "hfUrl": "https://huggingface.co/kyuz0/deepseek-v4.1-flash-gguf",
+      "revision": "20408f699619df7071aa7cda6034e9cef5bf804b",
       "layout": "flat",
-      "primary": "DeepSeek-V4.1-Flash-DSpark-MXFP4.gguf",
+      "primary": "DeepSeek-V4.1-Flash-1017-DSpark-MXFP4.gguf",
       "files": [
         {
-          "path": "DeepSeek-V4.1-Flash-DSpark-MXFP4.gguf",
+          "path": "DeepSeek-V4.1-Flash-1017-DSpark-MXFP4.gguf",
           "bytes": 7966294016,
-          "oid": "7a2217ca6ef27cbce4ac934d8b6f59f2f6158ec288527bbe72b86dcbed95d4b5",
-          "hash": "sha256-eiIXym7yfLzkrJNNi29Z8vYVjsKIUnu+crhty+2V1LU="
+          "oid": "d3efe0b1f6b6fea54f1c58c5cbeb3fded5967b15b64476aed00c95806ad3e3e9",
+          "hash": "sha256-0+/gsfa2/qVPHFjFy+s/3tWWexW2RHau0AyVgGrT4+k="
         }
       ]
     }

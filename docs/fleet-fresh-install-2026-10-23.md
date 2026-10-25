@@ -182,6 +182,12 @@ Use scoped manifests to borrow only selected models from NAS:
 - Flash-Next Q8 TP2: `/etc/gufo/tp2-q8-wanted.json`, roughly 179 GiB per host.
 - 27B Q8: `/etc/gufo/27b-q8-wanted.json`, roughly 31 GiB per host.
 - DS4.1 1017 Q2+vision+DSpark: `/etc/ds4/wanted.json`, roughly 349 GiB per host.
+  All three files are kyuz0's matched 1017 set
+  (`kyuz0/deepseek-v4.1-flash-gguf` @20408f69, Tom 2026-10-25); ds4 refuses
+  an original-release vision encoder beside a 1017 language model.
+- Gufo ASR, TTS Base and Qwen-Image (`qwen3-asr-1.7b`,
+  `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`): in the boot wanted set,
+  roughly 42 GB per host.
 
 Set `LOCAL_MODELS_MANIFEST` to the desired scoped manifest and run
 `local-models-borrow --dry-run`, review reserve and full target identity, then
