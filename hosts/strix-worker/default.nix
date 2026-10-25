@@ -39,6 +39,10 @@
       dns = "10.42.0.1";
       ignore-auto-dns = true;
       route-metric = 100;
+      # Keep 10.42.0.0/24 on the main table ahead of Tailscale's table 52
+      # (--accept-routes=true); same rule and reason as the coordinator's
+      # LAN profile (hosts/strix-coordinator/uplink-nas.nix).
+      routing-rule1 = "priority 2500 to 10.42.0.0/24 table 254";
     };
     ipv6.method = "disabled";
   };

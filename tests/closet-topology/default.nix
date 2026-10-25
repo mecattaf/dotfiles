@@ -61,6 +61,19 @@ assert builtins.elem "--accept-routes=true" c.services.tailscale.extraSetFlags;
 assert
   c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.routing-rule1
   == "priority 2500 to 10.42.0.0/24 table 254";
+# Both strix accept the NAS's subnet route too, so their LAN profiles carry the
+# client's rule: without it 10.42.0.0/24 resolves through tailscale0 (table 52)
+# and the coordinator lost the LAN on 2026-10-25.
+assert builtins.all
+  (
+    cfg:
+    cfg.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.routing-rule1
+    == c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.routing-rule1
+  )
+  [
+    s
+    w
+  ];
 # The client's home Wi-Fi ladder (hosts/client/wifi-ladder.nix, Tom 2026-10-25):
 # rung 1 gives up fast, rung 2 bypasses the NAS through the BE550 and keeps the
 # LAN direct, and nothing in it is a clock.
