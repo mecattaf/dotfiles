@@ -17,28 +17,37 @@ SOURCE = Path(os.environ.get("MIGRATE_SOURCE", Path(__file__).resolve().parents[
 SERIAL = "260538801482"
 DISK = f"/dev/disk/by-id/nvme-WD_BLACK_SN7100_500GB_{SERIAL}"
 HDD_UUID = "2345893a-8769-492c-90cb-23b79984a559"
+POOL_UUID = "e15ec2c3-9613-42ea-a1ed-5abeca1194bb"
 
 # Fakes answer only these read-only queries. The actual rsync runs locally;
 # any secret reader, remote connection or mutator is a test failure.
-LSBLK = """#!/usr/bin/env bash
+# They model a real btrfs subvolume mount, as measured on the NAS: the
+# partition is 259:3, mountinfo reports the btrfs anonymous device 0:79 for
+# the mount, and SOURCE is /dev/nvme0n1p1[/@home] unless --nofsroot is given.
+LSBLK = f"""#!/usr/bin/env bash
 set -eu
 case "$*" in
-  *'--inverse '*) printf '%s\\n' "${TEST_ANCESTRY_SERIAL:-260538801482}" ;;
-  *'--output SERIAL '*) printf '%s\\n' "${TEST_SERIAL:-260538801482}" ;;
-  *'--output PARTLABEL '*) printf '%s\\n' "${TEST_LABEL:-disk-primary}" ;;
-  *'--output LABEL '*) printf '%s\\n' "${TEST_FS_LABEL:-nasprimary}" ;;
-  *'--output MAJ:MIN '*) printf '259:42\\n' ;;
+  *'--inverse '*) printf '%s\\n' "${{TEST_ANCESTRY_SERIAL:-{SERIAL}}}" ;;
+  *'--output SERIAL '*) printf '%s\\n' "${{TEST_SERIAL:-{SERIAL}}}" ;;
+  *'--output PARTLABEL '*) printf '%s\\n' "${{TEST_LABEL:-disk-primary}}" ;;
+  *'--output LABEL '*) printf '%s\\n' "${{TEST_FS_LABEL:-nasprimary}}" ;;
+  *'--output UUID {DISK}-part1') printf '%s\\n' "${{TEST_PART_UUID-{POOL_UUID}}}" ;;
+  *'--output MAJ:MIN {DISK}-part1'|*'--output MAJ:MIN /dev/nvme0n1p1') printf '259:3\\n' ;;
+  *'--output MAJ:MIN /dev/'*) printf '8:17\\n' ;;
   *) echo 'unexpected lsblk query' >&2; exit 99 ;;
 esac
 """
-FINDMNT = """#!/usr/bin/env bash
+FINDMNT = f"""#!/usr/bin/env bash
 set -eu
 case "$*" in
-  *'--output FSTYPE') printf '%s\\n' "${TEST_FSTYPE:-btrfs}" ;;
-  *'--output FSROOT') printf '%s\\n' "${TEST_FSROOT:-/@home}" ;;
-  *'--output MAJ:MIN') printf '%s\\n' "${TEST_DEVICE:-259:42}" ;;
-  *'--output OPTIONS') printf '%s\\n' "${TEST_OPTIONS:-rw,noatime}" ;;
-  *'--output UUID') printf '%s\\n' "${TEST_HDD_UUID:-2345893a-8769-492c-90cb-23b79984a559}" ;;
+  *'--output FSTYPE') printf '%s\\n' "${{TEST_FSTYPE:-btrfs}}" ;;
+  *'--output FSROOT') printf '%s\\n' "${{TEST_FSROOT:-/@home}}" ;;
+  *'--output MAJ:MIN') printf '%s\\n' "${{TEST_DEVICE:-0:79}}" ;;
+  *'--nofsroot '*'--output SOURCE') printf '%s\\n' "${{TEST_SOURCE:-/dev/nvme0n1p1}}" ;;
+  *'--output SOURCE') printf '%s[%s]\\n' "${{TEST_SOURCE:-/dev/nvme0n1p1}}" "${{TEST_FSROOT:-/@home}}" ;;
+  *'--output OPTIONS') printf '%s\\n' "${{TEST_OPTIONS:-rw,noatime}}" ;;
+  *' /mnt/nas --output UUID'|*' /mnt/nas/services --output UUID') printf '%s\\n' "${{TEST_HDD_UUID:-{HDD_UUID}}}" ;;
+  *'--output UUID') printf '%s\\n' "${{TEST_FS_UUID:-{POOL_UUID}}}" ;;
   *) echo 'unexpected findmnt query' >&2; exit 99 ;;
 esac
 """
@@ -142,10 +151,29 @@ class DryRun(unittest.TestCase):
         self.assertIn("CHANGED", result.stdout)
         self.assertEqual(target.read_text(), "old text\n")
 
+    def test_btrfs_subvolume_mount_accepted(self):
+        # mountinfo's 0:79 never equals the partition's 259:3 on btrfs; the
+        # backing device and filesystem UUID identify the mount instead. The
+        # kernel may name the device either way, depending on how it was scanned.
+        for env in ({}, {"TEST_SOURCE": f"{DISK}-part1"}):
+            with self.subTest(env=env):
+                (self.root / "rsync-args").unlink(missing_ok=True)
+                result = self.run_home(**env)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"Verified SSD serial {SERIAL}, partition 1, filesystem nasprimary", result.stdout)
+                self.assertTrue((self.root / "rsync-args").exists())
+        result = subprocess.run(
+            ["bash", str(self.script), "fast", "--source", f"{self.home}/", "--target", str(self.target)],
+            env=dict(self.env, TEST_FSROOT="/@fast"), text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("mounted @fast", result.stdout)
+
     def test_wrong_targets_refused_before_rsync(self):
         for env in ({"TEST_SERIAL": "WRONG"}, {"TEST_ANCESTRY_SERIAL": "WRONG"}, {"TEST_LABEL": "wrong"},
                     {"TEST_FS_LABEL": "wrong"}, {"TEST_FSTYPE": "ext4"}, {"TEST_FSROOT": "/"},
-                    {"TEST_DEVICE": "259:99"}, {"TEST_OPTIONS": "ro,noatime"}):
+                    {"TEST_SOURCE": "/dev/sdb1"}, {"TEST_SOURCE": "/dev/sdb1", "TEST_DEVICE": "259:3"},
+                    {"TEST_SOURCE": "tmpfs"}, {"TEST_FS_UUID": "00000000-0000-0000-0000-000000000000"},
+                    {"TEST_PART_UUID": ""}, {"TEST_OPTIONS": "ro,noatime"}):
             with self.subTest(env=env):
                 result = self.run_home(**env)
                 self.assertNotEqual(result.returncode, 0)

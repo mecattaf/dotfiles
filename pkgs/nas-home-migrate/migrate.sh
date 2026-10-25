@@ -19,8 +19,9 @@ nas-home-migrate home|fast [--dry-run | --apply] [--final] [--bench]
     [--source root@strix:/home/tom/] [--target /mnt/newhome]
 
 Default: dry-run. Escrow runs on the NAS and verifies its mounted HDD before
-root-only backups. Home/fast verify SSD serial, partition labels and the exact
-writable @home/@fast mount before rsync. --bench allows copying on an installer;
+root-only backups. Home/fast verify SSD serial, partition labels, the mount's
+backing partition and filesystem UUID, and the exact writable @home/@fast mount
+before rsync. --bench allows copying on an installer;
 identity checks are unchanged. Escrow cannot use --bench. Fast copies ALL current fast state, with no home exclusions; quiesce its writers for the final delta.
 --target names the selected @home/@fast MOUNTPOINT; home needs its tom/ directory.
 --final adds --checksum to the itemized rsync (still dry-run without --apply).
@@ -90,8 +91,17 @@ if [[ $action != escrow ]]; then
     target=$(realpath -e -- "$target")
     [[ $(mount_field "$target" FSTYPE) == btrfs ]] || die 'target must be an exact btrfs mountpoint'
     [[ $(mount_field "$target" FSROOT) == /@$action ]] || die "target must mount subvolume @$action itself"
+    # A btrfs mount reports an anonymous device number (0:NN) in mountinfo, never
+    # the partition's own MAJ:MIN, so identify the mount by its backing block
+    # device and its filesystem UUID instead.
     device_number=$(lsblk --nodeps --noheadings --raw --output MAJ:MIN "$partition")
-    [[ $(mount_field "$target" MAJ:MIN) == "$device_number" ]] || die 'target mount is not the expected SSD partition'
+    partition_uuid=$(lsblk --nodeps --noheadings --raw --output UUID "$partition")
+    [[ -n $device_number && -n $partition_uuid ]] || die 'expected SSD partition has no device number or filesystem UUID'
+    backing_device=$(findmnt --noheadings --raw --nofsroot --mountpoint "$target" --output SOURCE)
+    [[ $backing_device == /dev/* ]] || die 'target mount has no backing block device'
+    [[ $(lsblk --nodeps --noheadings --raw --output MAJ:MIN "$backing_device") == "$device_number" ]] \
+        || die 'target mount is not backed by the expected SSD partition'
+    [[ $(mount_field "$target" UUID) == "$partition_uuid" ]] || die 'target filesystem UUID does not match the expected SSD partition'
     case ",$(mount_field "$target" OPTIONS)," in
         *,rw,*) ;;
         *) die 'target mount is not writable' ;;
