@@ -10,8 +10,8 @@ file that decides it.
 | ds4 ([`../../modules/ds4.nix`](../../modules/ds4.nix)) | `ds4.service` on strix-worker, one host with SSD expert streaming | 8732 | `deepseek-v4.1-flash` (DeepSeek V4.1 Flash 1017) | an operator, by hand |
 
 The agent harness that uses them is dsh on the NAS (see [dsh](#dsh-on-the-nas)).
-Halogen, the earlier engine, was retired on 2026-10-23 and pi is being removed;
-both appear below only as history.
+Halogen, the earlier engine, was retired on 2026-10-23 and pi, the earlier
+harness, on 2026-10-25; both appear below only as history.
 
 ## The resident server: Gufo Flash-Next on strix-coordinator
 

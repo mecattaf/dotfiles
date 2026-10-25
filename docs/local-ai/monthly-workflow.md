@@ -86,12 +86,19 @@ builder contacts the network.
 
 ## The one Pi operation
 
-Pi is retained as the standard local-agent harness, but this workflow adds no
-task-specific Pi extension, loads no extension at all, and exposes no tools.
-The provider is the plain `gufo` entry in Pi's declared `models.json`
-(`home/pi.nix`): Gufo Flash-Next at `http://strix-coordinator:8731/v1`,
-OpenAI-compatible, no authentication. Pi is being removed in favour of dsh
-(#596); this stage moves with it. The judge checks that `models.json`
+**Status (2026-10-25): cannot run.** Pi was retired from the fleet and
+`home/pi.nix`, which generated the `models.json` below, is gone, so the judge
+stops at its declaration check. The stage was already unreachable: the
+supervisor needs a parent Tally job, and Tally was retired on 2026-09-30.
+Porting the judge to dsh is a follow-up; until then the package still pulls
+`llm-agents.pi` into the NAS closure (not onto PATH). The rest of this section
+describes the code as it stands.
+
+This workflow adds no task-specific Pi extension, loads no extension at all,
+and exposes no tools. The provider is the plain `gufo` entry in Pi's declared
+`models.json` (formerly `home/pi.nix`): Gufo Flash-Next at
+`http://strix-coordinator:8731/v1`, OpenAI-compatible, no authentication.
+The judge checks that `models.json`
 declares that provider with the registry's model id before Pi starts, and
 copies the declaration into the run's private agent directory so the fresh
 `PI_CODING_AGENT_DIR` can resolve it.

@@ -47,16 +47,18 @@ THE SEATS, and where each one's truth lives:
                 429 this box received, never a made-up TTL. A free GET /models
                 confirms the key still authenticates; the quota-spending probe
                 is opt-in (--probe-qwen) because asking costs the thing being
-                measured. Credits are counted from pi's live session logs
-                (~/.pi/agent/sessions), from the pi sessions the substrate
-                factory archives under ~/.local/state/substrate/transcripts
-                (a factory job's tokens appear when its job ends, because the
-                archive is written at job end), and from dsh's plain-JSONL
-                sessions (~/.dsh/sessions), the same token plan.
+                measured. Credits are counted from dsh's plain-JSONL sessions
+                (~/.dsh/sessions), and still from pi's session logs
+                (~/.pi/agent/sessions) and the pi sessions the substrate
+                factory archived under ~/.local/state/substrate/transcripts:
+                pi was retired on 2026-10-25, but calls it made inside the
+                current 7-day window still count, and its logs hold the
+                window-calibration history.
 
-  openrouter    OpenRouter, the paid key pi's `openrouter` provider uses (the
-                token lives at /run/agenix/openrouter-token and is read at call
-                time, sent as a bearer, never printed, cached or logged).
+  openrouter    OpenRouter, the paid key no harness routes to since pi was
+                retired (the token lives at /run/agenix/openrouter-token and is
+                read at call time, sent as a bearer, never printed, cached or
+                logged).
                 Truth: GET /api/v1/credits (total_credits, total_usage) and
                 GET /api/v1/key (usage, limit, limit_remaining). The row is a
                 CREDIT COUNTER, not a window: dollars used against a SOFT CAP
@@ -128,8 +130,8 @@ QWEN_HOLD_FILES = [Path(p) for p in
 # its own disk. Nothing degrades to a guess — the rows say CACHED or UNKNOWN.
 OFFLINE = os.environ.get("SEATS_NO_NETWORK") == "1"
 
-# OpenRouter: the key pi's `openrouter` provider reads (home-manager models.json
-# `!cat /run/agenix/openrouter-token`). Read at call time, sent, never kept.
+# OpenRouter: the paid key at /run/agenix/openrouter-token. Read at call time,
+# sent, never kept.
 OPENROUTER_BASE = (os.environ.get("SEATS_OPENROUTER_BASE") or "https://openrouter.ai/api/v1").rstrip("/")
 OPENROUTER_KEY_FILE = os.environ.get("SEATS_OPENROUTER_KEY_FILE") or "/run/agenix/openrouter-token"
 # Tom's ruling, 2026-09-30: "OpenRouter — at most $12 of the $40 paid credits".
@@ -231,9 +233,10 @@ DEFAULT_SEATS = [
      "config_dir": "~/.codex", "owner": "third-party", "spend_root": "~/.codex/sessions",
      "note": "RULINGS R-2026-09-06-02: this login is not Tom's — read by name, never spent."},
     # One seat, one credit pool: dsh (pkgs/dsh) spends the same token plan
-    # pi does, so its sessions join this seat rather than a new one. The id
-    # stays, because the meter rows and substrate join on it.
-    {"id": "pi-qwencloud", "provider": "qwen", "label": "Qwen Cloud (token-plan, via pi and dsh)",
+    # pi did, so its sessions join this seat rather than a new one. The id
+    # stays, because the meter rows and substrate join on it, and so do pi's
+    # spend roots: its calls in the current window still count.
+    {"id": "pi-qwencloud", "provider": "qwen", "label": "Qwen Cloud (token-plan, via dsh)",
      "owner": "tom",
      "spend_root": ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts",
                     "~/.dsh/sessions"]},

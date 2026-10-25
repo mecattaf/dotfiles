@@ -27,9 +27,6 @@ let
     "claude-agent-acp"
     "claude-code-router" # bin: `ccr` — routes Claude Code requests to other model backends/providers
     "qmd"
-    # NB: `pi` is intentionally absent — home/pi.nix ships a wrapped `pi` (real
-    # binary + declarative extension roster) as the sole `pi` on PATH. Keeping it
-    # here too would double-provide bin/pi and collide in the profile.
     "codex"
     "spec-kit" # bin: `specify` — GitHub Spec-Kit, spec-driven development bootstrapper
     "cc-switch-cli" # bin: `cc-switch` — switches Claude Code/Codex/Gemini CLI provider configs
@@ -87,12 +84,10 @@ lib.mkIf (osConfig.myFleet.has "brain" || osConfig.myFleet.has "seat") {
       --home "$HOME" --template ${./dot_claude/settings.json}
   '';
 
-  # Same canonical skill tree, exposed to Codex and `pi` (earendil-works/pi)
-  # through the vendor-neutral, always-trusted Agent-Skills directory
-  # (~/.agents/skills). Both read the same agentskills.io SKILL.md format
-  # (name/description frontmatter, symlinks followed), so ONE tree feeds every
-  # harness. pi selects on `description` only (ignores `when_to_use`), so keep
-  # triggers there.
+  # Same canonical skill tree, exposed to Codex and dsh (home/dsh.nix) through
+  # the vendor-neutral, always-trusted Agent-Skills directory (~/.agents/skills).
+  # Both read the same agentskills.io SKILL.md format (name/description
+  # frontmatter, symlinks followed), so ONE tree feeds every harness.
   home.file.".agents/skills".source = link "dot_claude/skills";
 
 }

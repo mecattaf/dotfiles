@@ -28,7 +28,6 @@ let
     && !(home.home.activation ? aiMemoryJournal)
     && !(home.home.activation ? claudeSettings)
     && !(home.home.file ? ".claude/skills")
-    && !(home.home.file ? ".pi/agent/models.json")
     && !(cfg.systemd.user.services ? substrate-puller)
     && !(cfg.systemd.user.services ? substrate-pusher)
     && !(cfg.systemd.services ? journal-archive)
@@ -40,6 +39,16 @@ let
     && lib.elem "vibevoice-asr-streaming-7b-bf16" cfg.services.local-models.artifacts;
 in
 assert lib.all clean computeHosts;
+# pi was retired (2026-10-25); dsh replaces it. No host installs a `pi` or
+# renders anything under ~/.pi.
+assert lib.all (
+  name:
+  let
+    home = configs.${name}.config.home-manager.users.tom;
+  in
+  !(lib.any (file: lib.hasPrefix ".pi/" file.target) (builtins.attrValues home.home.file))
+  && !(lib.any (p: lib.getName p == "pi") home.home.packages)
+) (builtins.attrNames configs);
 assert
   configs.nas.config.myFleet.roles == [
     "router"
