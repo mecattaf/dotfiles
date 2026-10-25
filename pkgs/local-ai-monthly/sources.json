@@ -38,7 +38,7 @@
           "compute",
           "VibeVoice-ASR-Streaming-7B diarization",
           "Qwen TTS",
-          "resident Gufo Flash-Next / operator-switched alternates",
+          "resident Gufo Flash-Next / operator-switched alternate",
           "temporary browser and media relay services"
         ]
       },
@@ -71,7 +71,7 @@
         ]
       }
     ],
-    "runtime_policy": "Every automated local LLM call goes through the local model server on Strix (the endpoint in lib/local-model.nix), serving qwen3.8-flash-next; the alternates (qwen3.8-27b, deepseek-v4-flash) are operator-switched only.",
+    "runtime_policy": "Every automated local LLM call goes through the local model server on Strix (the endpoint in lib/local-model.nix), serving qwen3.8-flash-next; the alternate (qwen3.8-27b) is operator-switched only. DeepSeek V4.1 Flash runs on ds4 (modules/ds4.nix, strix-worker :8732), hand-started and never called by automation.",
     "change_policy": "The monthly workflow proposes catalog and source-pin changes only. It never downloads, installs, removes, or activates models."
   },
   "model_selection_policy": {

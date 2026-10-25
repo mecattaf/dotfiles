@@ -101,8 +101,11 @@ model collection is catalogued in
 - Qwen3.8 Flash-Next (UD-Q4_K_XL GGUF with the MTP predictor and the vision
   projector): the resident text model, served as `qwen3.8-flash-next` on
   `http://strix-coordinator:8731` (`gufo-llm.service`, target endpoint);
-- Qwen3.8-27B (UD-Q4_K_XL with the DFlash2 draft) and DeepSeek V4 Flash (with
-  DSpark): alternates on the same port, started only by `gufo-switch <name>`;
+- Qwen3.8-27B (UD-Q4_K_XL with the DFlash2 draft): the alternate on the same
+  port, started only by `gufo-switch <name>`. Gufo's DeepSeek V4 Flash 0731
+  alternate was removed on 2026-10-25: DeepSeek is now kyuz0's V4.1 Flash
+  1017 on ds4 (`modules/ds4.nix`), single host on strix-worker at
+  `http://10.42.0.5:8732`, started by hand and reached through dsh;
 - Qwen3-TTS 12Hz 1.7B Base, Qwen3-ASR 1.7B and Qwen-Image-2.1: on-demand
   loopback units with no boot target (ASR runs per job, never resident);
 - MiniMax H3 FL2VA: held by `source.gate` until Tom accepts its licence himself.

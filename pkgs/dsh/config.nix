@@ -72,7 +72,7 @@ let
 
   # Gufo's keyless LAN route. The wrapper supplies a public dummy bearer:
   # pi-ai still requires a nonempty credential for a custom provider.
-  # Alternates share the endpoint and must be selected with gufo-switch first.
+  # The alternate shares the endpoint and must be selected with gufo-switch first.
   gufoModels = {
     ${localModel.modelId} = {
       name = "Qwen3.8 Flash-Next (Gufo)";
@@ -96,19 +96,6 @@ let
         max = "max";
       };
     };
-    deepseek-v4-flash = {
-      name = "DeepSeek V4 Flash (Gufo alternate)";
-      contextWindow = 32768;
-      input = [ "text" ];
-      reasoningEfforts = {
-        high = "high";
-        max = "max";
-      };
-      compat = {
-        thinkingFormat = "deepseek";
-        requiresReasoningContentOnAssistantMessages = true;
-      };
-    };
   };
   gufo = {
     displayName = "Gufo (local)";
@@ -129,12 +116,42 @@ let
       }
     ) ([ localModel.modelId ] ++ localModel.alternates);
   };
+  # ds4's keyless LAN route: DeepSeek V4.1 Flash 1017 on strix-worker
+  # (modules/ds4.nix, single host with SSD expert streaming), at the contract
+  # in lib/local-model.nix. Same public dummy bearer as Gufo. It answers only
+  # while an operator has started `ds4.service` there, which stops the
+  # worker's Gufo units; the fleet endpoint on strix-coordinator is untouched.
+  # ds4-server takes `thinking` and `reasoning_effort` and returns
+  # `reasoning_content`; Think Max needs --ctx >= 393216, so at this context
+  # only high is offered.
+  ds4 = {
+    displayName = "ds4 DeepSeek V4.1 (local)";
+    api = "openai-completions";
+    baseURL = "${localModel.ds4.endpoint}/v1";
+    apiKeyEnv = "DS4_API_KEY";
+    compat = {
+      supportsDeveloperRole = false;
+      supportsReasoningEffort = true;
+      supportsStore = false;
+    };
+    models = [
+      {
+        id = localModel.ds4.modelId;
+        name = "DeepSeek V4.1 Flash 1017 (ds4, strix-worker)";
+        inherit (localModel.ds4) contextWindow;
+        maxTokens = 16384;
+        input = [ "text" ];
+        reasoningEfforts.high = "high";
+        compat = {
+          thinkingFormat = "deepseek";
+          requiresReasoningContentOnAssistantMessages = true;
+        };
+      }
+    ];
+  };
   providers = retryPolicy: {
     qwen-token-plan = qwenTokenPlan retryPolicy;
-    inherit gufo;
-    # Disabled placeholder: ds4 has no fleet server declaration yet. Add its
-    # endpoint/model contract before enabling another llm-pi-ai provider here.
-    # ds4 = { api = "openai-completions"; ... };
+    inherit gufo ds4;
   };
 
   defaultRoute = {
@@ -161,7 +178,7 @@ let
     # 3. No runtime plugin installs; plugins come from Nix only.
     (off "plugin-manager")
     (off "tool-plugin-manager")
-    # 4. Inference: Qwen Cloud stays the default; Gufo is an explicit pick.
+    # 4. Inference: Qwen Cloud stays the default; Gufo and ds4 are explicit picks.
     (set "llm-pi-ai" {
       providers = providers {
         mode = "normal";
@@ -250,7 +267,7 @@ in
   herdr = yaml.generate "dsh-herdr.patch.yml" herdr;
   smoke = yaml.generate "dsh-smoke.patch.yml" smoke;
   # Local provider data for offline config checks.
-  localProviders = { inherit gufo; };
+  localProviders = { inherit gufo ds4; };
   # The herdr profile's rows as data, for checks.dsh-plugins.
   herdrRows = builtins.listToAttrs (map (row: lib.nameValuePair row.id row.config) herdr);
   # Row ids the policy touches, for checks.dsh-config.

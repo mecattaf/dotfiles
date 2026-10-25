@@ -15,8 +15,8 @@
 #
 #   gufo-llm.service          the resident text model (Flash-Next), at boot
 #                             when autoStart, on the fleet address and port
-#   gufo-llm-<name>.service   an alternate text model (the 27B, DeepSeek V4
-#                             Flash), started only by `gufo-switch <name>`
+#   gufo-llm-<name>.service   an alternate text model (the 27B), started
+#                             only by `gufo-switch <name>`
 #   gufo-tts / gufo-asr / gufo-image.service
 #                             on demand only, loopback, no boot target
 #
@@ -533,8 +533,8 @@ in
     assertions = [
       {
         # The resident model only. An alternate whose artifacts this host does
-        # not want yet (DeepSeek V4 Flash until explicitly borrowed) is
-        # refused at start by its bundle check, which names the borrow command.
+        # not want yet (the 27B Q8 until explicitly borrowed) is refused at
+        # start by its bundle check, which names the borrow command.
         assertion = lib.all (a: lib.elem a config.services.local-models.artifacts) (artifactsOf cfg.llm);
         message = "The resident Gufo model's artifacts (services.gufo.llm) must be in this host's services.local-models.artifacts.";
       }
@@ -631,8 +631,8 @@ in
         inherit (cfg.asr) artifact port;
       };
 
-      # 31 GiB of BF16 weights do not fit beside Flash-Next or DeepSeek V4
-      # Flash, so it takes the GPU from every text unit while it runs.
+      # 31 GiB of BF16 weights do not fit beside Flash-Next, so it takes the
+      # GPU from every text unit while it runs.
       gufo-image = mkAuxUnit {
         modality = "image";
         inherit (cfg.image) artifact port;

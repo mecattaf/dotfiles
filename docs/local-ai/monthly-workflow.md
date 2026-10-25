@@ -20,12 +20,12 @@ Tally calendar: local-ai-review mutex
   -> prove old pin is an ancestor of the exact observed head
   -> capture watched paths, commits, diffs, pickaxe history, and package sets
   -> rescan bounded current-head candidate inventories, prioritizing Q8 paths
-  -> GET /v1/models from the Halogen server; it must advertise the served model
+  -> GET /v1/models from the Gufo server; it must advertise the served model
   -> Nix build: prepare immutable evidence + exact HF request set
   -> fetch those HF metadata API responses (blobs=true metadata, never blobs)
   -> Nix build: validate and fold metadata into the evidence bundle
-  -> Tally child waits for the registry's tally_pool (coordinator-gpu)
-       -> invoke Pi once against the halogen provider, without tools
+  -> Tally child waits for the registry's tally_pool (strix-gpu)
+       -> invoke Pi once against the gufo provider, without tools
        -> write advisory PR commentary
   -> release that pool
   -> Nix build: validate commentary and render the complete PR body
@@ -38,9 +38,9 @@ Tally calendar: local-ai-review mutex
 The calendar parent holds only the `local-ai-review` mutex. Deterministic Git,
 Nix, HTTP, and publication work therefore does not reserve VRAM. The parent is
 allowed one child enqueue; that low-priority child alone holds the pool named
-by `inference.tally_pool` in `sources.json` (`coordinator-gpu`) for the Pi
-process and releases it immediately afterward. The Pi process runs on the
-coordinator; the model it talks to is the Halogen Flash server on the worker.
+by `inference.tally_pool` in `sources.json` (`strix-gpu`) for the Pi
+process and releases it immediately afterward. The Pi process runs on the NAS;
+the model it talks to is the Gufo Flash-Next server on strix-coordinator.
 This uses the same Tally calendar-to-opaque-argv shape as the nightly fleet
 updates, with a nested lease because only one stage consumes the scarce
 resource.
@@ -49,9 +49,10 @@ resource.
 
 `sources.json` is the reviewed data plane: exact accepted pins, categories,
 watched, ignored, and inventory path globs, evidence bounds, HF bounds, fleet
-hardware, the `inference` block (provider `halogen`, URL `http://worker:8731`,
-model `halogen-qwen3.8-flash-next`, execution host `coordinator`, compute host
-`worker`, Tally pool), and the mono-model selection policy with its list of
+hardware, the `inference` block (provider `gufo`, URL `null`, which falls back
+to `LOCAL_MODEL_ENDPOINT` = `http://strix-coordinator:8731`, model
+`qwen3.8-flash-next`, execution host `nas`, compute host `strix-coordinator`,
+Tally pool), and the mono-model selection policy with its list of
 kept small Library artifacts. JSON remains the boundary because Git, `jq`,
 the Nix builders, and the receipt all consume it directly.
 
@@ -87,9 +88,10 @@ builder contacts the network.
 
 Pi is retained as the standard local-agent harness, but this workflow adds no
 task-specific Pi extension, loads no extension at all, and exposes no tools.
-The provider is the plain `halogen` entry in Pi's declared `models.json`
-(`home/pi.nix`): the worker's Halogen Flash server at `http://worker:8731/v1`,
-OpenAI-compatible, no authentication. The judge checks that `models.json`
+The provider is the plain `gufo` entry in Pi's declared `models.json`
+(`home/pi.nix`): Gufo Flash-Next at `http://strix-coordinator:8731/v1`,
+OpenAI-compatible, no authentication. Pi is being removed in favour of dsh
+(#596); this stage moves with it. The judge checks that `models.json`
 declares that provider with the registry's model id before Pi starts, and
 copies the declaration into the run's private agent directory so the fresh
 `PI_CODING_AGENT_DIR` can resolve it.
@@ -110,19 +112,19 @@ unverified recommendation, never an instruction or state transition.
 
 The accepted context (`context.md`) is rendered mechanically from
 `sources.json`: the mono-model policy summary, the served-model line
-(`halogen-qwen3.8-flash-next` through provider `halogen` at
-`http://worker:8731` on `worker`), the kept small Library artifacts
+(`qwen3.8-flash-next` through provider `gufo` at
+`http://strix-coordinator:8731` on `strix-coordinator`), the kept small Library artifacts
 (none since Tom's 2026-09-16 ruling, rendered as `none`), the runtime and change policies, and the fleet
 hardware table with each host's policy string (the coordinator's reads `NPU
 decommissioned 2026-08-29; IOMMU off (amd_iommu=off)`). Preparation refuses
 if a kept artifact is missing from the typed catalogue. The prompt tells Pi to
-respect that policy: a Halogen Flash server release or a change to its
-runtime profile is the finding that matters most, other served-model
+respect that policy: a Gufo release or a change to its runtime profile is
+the finding that matters most, other served-model
 candidates are at most watch items, and any relevant model finding must
 include an exact candidate/quant table.
 
 The concrete model is named by the registry, not by the prompt or the code:
-`inference.model` is `halogen-qwen3.8-flash-next`. Before any Tally slot is
+`inference.model` is `qwen3.8-flash-next`. Before any Tally slot is
 spent, the supervisor fetches `/v1/models` from `inference.url` and the
 preparation derivation refuses unless that id is advertised. The provider,
 endpoint, compute host, and model id are written to `model.json` before

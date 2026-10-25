@@ -102,10 +102,20 @@ in
     ipv6.method = "disabled";
   };
 
+  # The coordinator keeps the TP2 rank shape for when both disks hold the
+  # 340.6 GiB Q2; until then DeepSeek V4.1 runs on the worker alone,
+  # streaming experts from its SSD, with no DSpark (Tom, 2026-10-25: the
+  # DeepSeek harness replaces the Halogen runtime). dsh on the NAS reaches it
+  # at lib/local-model.nix's ds4 endpoint.
   services.ds4 = {
     enable = true;
     role = if coordinator then "coordinator" else "worker";
     peerAddress = if coordinator then "10.42.0.5" else "10.42.0.2";
+  }
+  // lib.optionalAttrs (!coordinator) {
+    mode = "single-ssd";
+    dspark = false;
+    apiAddress = "10.42.0.5";
   };
 
   services.gufo.tp2 = {

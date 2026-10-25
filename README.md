@@ -9,23 +9,24 @@ The flake exports these NixOS host configurations:
 
 | Host | Hardware | Role |
 |---|---|---|
-| `strix` | Framework Desktop, AMD Strix Halo | Headless compute and Herdr, wired 10.42.0.2; Halogen and on-demand Immich ML |
+| `strix-coordinator` | Framework Desktop, AMD Strix Halo | Headless compute, wired 10.42.0.2; Gufo, the fleet's local model endpoint on :8731, and on-demand Immich ML |
+| `strix-worker` | Framework Desktop, AMD Strix Halo | Headless compute, wired 10.42.0.5; Gufo's second TP2 rank, and DeepSeek V4.1 on ds4 (:8732, started by hand) |
 | `nas` | UGREEN NASync DXP2800 GT, AMD R2514 | Wired 10.42.0.1: storage, DNS, media, and the closet's Tailscale subnet router |
 | `client` | ASUS Zenbook Duo | Physical Sway desktop; Huion, Magic Trackpad and remote Herdr projector |
 
 Strix and NAS plug into the BE550, with Freebox upstream. Strix's public
 Internet route goes directly through BE550; private service DNS uses NAS.
 `coordinator` remains an SSH/LAN compatibility alias for `strix` during migration.
-Worker and Otto are retired. See `docs/closet-cutover.md` for the staged rollout.
+strix-worker returned on 2026-10-23 (Tom). See `docs/closet-cutover.md` for the staged rollout.
 
 ```
-flake.nix        three NixOS hosts wired through one mkHost
+flake.nix        four NixOS hosts wired through one mkHost
 modules/         common.nix (every host) + strix.nix (AMD Strix Halo compute host)
 hosts/           one module per machine
 home/            home-manager: typed nix (home.nix, nvim.nix) + RAW out-of-store
                  configs (sway, kitty, fish, nvim lua) linked via mkOutOfStoreSymlink
 overlays/ pkgs/  custom packages (mactahoe themes, …)
-docs/local-ai/  the halogen server, the model catalogue and per-host wanted sets
+docs/local-ai/  Gufo (:8731) and ds4 (:8732), the model catalogue and per-host wanted sets
 docs/old/       archival stub indexing retired docs in Git history
 ```
 
@@ -61,11 +62,13 @@ Wiring: key at `secrets/qwencloud-token.age` (NAS brain tier; rekey in `REKEY.md
   does not carry it (`pkgs/dsh-plugins`).
 
 Dsh follows the fleet's brain role to the NAS with its Nix-pinned plugins.
-Qwen Cloud remains the default. The explicit `gufo` provider uses
-`lib/local-model.nix` for the endpoint and exact served model IDs; its
-alternates require an operator `gufo-switch` first. The current base still
-calls the compute host `strix`; the host cutover must update that shared
-endpoint to `strix-coordinator`. The future ds4 route stays disabled.
+Qwen Cloud remains the default. Two explicit local routes read
+`lib/local-model.nix` for the endpoint and exact served model IDs: `gufo`
+(`http://strix-coordinator:8731`, `qwen3.8-flash-next`; the `qwen3.8-27b`
+alternate needs an operator `gufo-switch` first) and `ds4`
+(`http://10.42.0.5:8732`, `deepseek-v4.1-flash`, answering only while an
+operator runs `ds4.service` on strix-worker). The DeepSeek harness replaces
+the retired Halogen runtime (Tom, 2026-10-25).
 
 ## ⚠️ OpenRouter — spend the $40, and use the free stealth model
 

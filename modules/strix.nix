@@ -60,14 +60,10 @@
           sessions = 4;
           context = 131072;
         };
-        # Text only, 80.76 GiB: one session, as Gufo's docs run it.
-        deepseek-v4-flash = {
-          artifact = "deepseek-v4-flash-gguf";
-          servedModelName = "deepseek-v4-flash";
-          dsparkArtifact = "deepseek-v4-flash-dspark-gguf";
-          sessions = 1;
-          context = 32768;
-        };
+        # No DeepSeek alternate: Tom (2026-10-25) replaced Gufo's DeepSeek V4
+        # Flash 0731 with kyuz0's V4.1 Flash 1017, which only ds4 loads
+        # (modules/ds4.nix, :8732). The 0731 catalog rows and Library bytes
+        # stay until an explicit Library retirement.
       };
       # The one voice (Tom, 2026-09-14): the K-2SO midway-B matched prefix and
       # its transcript. qwentts.cpp stays the live voice until Tom has listened

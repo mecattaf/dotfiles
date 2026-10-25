@@ -170,7 +170,7 @@ writeShellApplication {
       ;
   };
   meta = {
-    description = "DeepSeek Harness behind the fleet policy (Qwen Cloud and Gufo routes, hardened sandbox)";
+    description = "DeepSeek Harness behind the fleet policy (Qwen Cloud, Gufo and ds4 routes, hardened sandbox)";
     mainProgram = "dsh";
     inherit (unwrapped.meta) license platforms;
   };
@@ -179,8 +179,10 @@ writeShellApplication {
     # never be traced.
     { set +o xtrace; } 2>/dev/null
     unset DEEPSEEK_API_KEY DEEPSEEK_BASE_URL DEEPSEEK_SEARCH_BASE_URL
-    # Public dummy bearer for the keyless Gufo server, never an agenix secret.
+    # Public dummy bearers for the keyless Gufo and ds4 servers, never agenix
+    # secrets.
     export GUFO_API_KEY=local-no-auth
+    export DS4_API_KEY=local-no-auth
     export DSH_TELEMETRY_DISABLED=1
 
     refuse() {

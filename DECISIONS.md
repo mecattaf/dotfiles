@@ -1,5 +1,27 @@
 # DECISIONS
 
+2026-10-25 The DeepSeek harness replaces the Halogen runtime. In this repo
+that means: dsh on the NAS is the local agent harness, with Qwen Cloud as its
+default route and two explicit local routes read from `lib/local-model.nix`,
+Gufo on `http://strix-coordinator:8731` (`qwen3.8-flash-next`, with the
+`qwen3.8-27b` alternate) and ds4 on `http://10.42.0.5:8732`
+(`deepseek-v4.1-flash`). ds4 gains a `single-ssd` mode (`modules/ds4.nix`):
+strix-worker serves DeepSeek V4.1 Flash 1017 Q2 alone, streaming experts from
+its SSD through a 76 GB cache, with no DSpark (it needs resident experts) and
+vision off until the 1017 encoder is proven in the pinned image. It is started
+by hand, admits only the NAS, and stops the worker's Gufo text units while it
+runs; the coordinator keeps the TP2 rank shape for when both disks hold the
+340.6 GiB file. Gufo's DeepSeek V4 Flash 0731 alternate leaves the Strix
+config, `lib/local-model.nix`, dsh and pi; its catalogue rows and Library
+bytes stay until Tom approves the retire runbook. The live docs (README,
+`docs/local-ai/`) describe Gufo, ds4 and dsh, and name Halogen only as
+history. Halogen itself left the code with #605 on 2026-10-23. dsh's
+session-log upload to DeepSeek was already a disabled policy row
+(`session-log-deepseek`, `pkgs/dsh/config.nix`).
+
+Tom, 2026-10-25: "deepseek harness completely remplaces the halogen runtime
+(if that wasn't done already)".
+
 2026-10-25 The fleet's DeepSeek is kyuz0/deepseek-v4.1-flash-gguf, the matched
 1017 set at revision 20408f69: `DeepSeek-V4.1-Flash-1017-Q2.gguf`, its
 `-1017-vision-BF16` encoder and its `-1017-DSpark-MXFP4` draft (374.65 GB). It
