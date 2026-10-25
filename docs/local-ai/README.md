@@ -194,8 +194,10 @@ all.
   the one TTS model (`modules/qwen-tts.nix`). VibeVoice-ASR-Streaming-7B is the
   one diarization model; `call-diarize` loads it from
   `/var/lib/local-models/vibevoice-asr-streaming-7b-bf16`.
-- **MiniMax H3 FL2VA** is held by `source.gate` until Tom accepts its licence;
-  `library-fetch` skips it and no host may want it.
+- **MiniMax H3 FL2VA**: Tom accepted its licence on 2026-10-25 and the NAS
+  Library holds it. No strix wants it yet: it is 144 GB against 100 GB free on
+  strix-coordinator and 61 GB on strix-worker, and Gufo's video support is
+  upstream work in progress. `source.gate` has no users now.
 - **Mage** rows were retired on 2026-09-30 (sweep F1); [`mage.md`](mage.md)
   keeps the selection record.
 

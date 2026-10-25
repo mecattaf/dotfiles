@@ -53,7 +53,7 @@ host keeps.
 | `qwen3-asr-1.7b` | model | — | `Qwen/Qwen3-ASR-1.7B@7278e1e` | 4.70 GB | Gufo `gufo-asr`, per job |
 | `qwen3-tts-12hz-1.7b-base` | model | BF16 | `Qwen/Qwen3-TTS-12Hz-1.7B-Base@fd4b254` | 4.54 GB | Gufo `gufo-tts`, on demand |
 | `qwen-image-2.1` | model (25-file snapshot) | — | `Qwen/Qwen-Image-2.1@b3179ad` | 33.13 GB | Gufo `gufo-image`, on demand |
-| `minimax-h3-fl2va` | model (84 files) | BF16 | `MiniMaxAI/MiniMax-H3@42ed227` | 144.05 GB | gated until Tom accepts its licence; never fetched or wanted |
+| `minimax-h3-fl2va` | model (84 files) | BF16 | `MiniMaxAI/MiniMax-H3@42ed227` | 144.05 GB | licence accepted by Tom 2026-10-25; in the NAS Library; no strix wants it yet (100 GB free on strix-coordinator, 61 GB on strix-worker; Gufo video is upstream work in progress) |
 | `qwen3-tts-1.7b-base-q8-0` | model | Q8_0 | `Serveurperso/Qwen3-TTS-GGUF@b7ee2e8` | 2.08 GB | `modules/qwen-tts.nix`, the one TTS model |
 | `qwen3-tts-tokenizer-f32` | tokenizer | F32 | `Serveurperso/Qwen3-TTS-GGUF@b7ee2e8` | 0.65 GB | its codec |
 | `qwen-k2so-midway-b` | template (voice) | — | local `speech/k2so-midway-b` | 0.003 GB | the one TTS voice |

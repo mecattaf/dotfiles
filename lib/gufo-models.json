@@ -466,7 +466,6 @@
       "revision": "42ed227ee7df40d41602854ae760620d6eb651fe",
       "layout": "snapshot",
       "primary": "FL2VA/model_index.json",
-      "gate": "Tom accepts the MiniMax H3 Community License Agreement (2026-08-02) himself; until this field is removed, library-fetch skips the row and no host may want it.",
       "files": [
         {
           "path": "FL2VA/audio_vae/config.json",

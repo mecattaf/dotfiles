@@ -108,7 +108,9 @@ model collection is catalogued in
   `http://10.42.0.5:8732`, started by hand and reached through dsh;
 - Qwen3-TTS 12Hz 1.7B Base, Qwen3-ASR 1.7B and Qwen-Image-2.1: on-demand
   loopback units with no boot target (ASR runs per job, never resident);
-- MiniMax H3 FL2VA: held by `source.gate` until Tom accepts its licence himself.
+- MiniMax H3 FL2VA: licence accepted by Tom 2026-10-25, in the NAS Library. No
+  strix wants it yet: it is 144 GB against 100 GB free on strix-coordinator and
+  61 GB on strix-worker, and Gufo's video support is upstream work in progress.
 Gufo answers 404 to a request naming any other model id, so callers send the
 exact served id. It has no `/v1/embeddings` (501), no reranking and no
 diarization.

@@ -194,8 +194,10 @@ Set `LOCAL_MODELS_MANIFEST` to the desired scoped manifest and run
 `--yes`. Use the target closure's tools/manifests and alternate
 `LOCAL_MODELS_ROOT` when staging an offline fresh root. Recheck pre-existing
 files' SHA-256 too; the current borrow tool only size-skips existing files.
-Do not promise every variant resident at once. MiniMax remains gated on Tom's
-personal license acceptance; it is not silently fetched or enabled.
+Do not promise every variant resident at once. Tom accepted the MiniMax H3
+license on 2026-10-25 and the NAS Library holds it, but no strix wants it yet:
+it is 144 GB against 100 GB free on strix-coordinator and 61 GB on
+strix-worker, and Gufo's video support is upstream work in progress.
 
 DS4 uses the official kyuz0 ROCm 10 container by immutable digest. Explicitly
 pull the pinned image on each compute host during preparation, after capacity
