@@ -23,6 +23,8 @@ assert str(runtime) == '/run/user/' + str(os.getuid())
 assert runtime.stat().st_mode & 0o777 == 0o700
 assert 'NOTIFY_SOCKET' not in os.environ
 assert 'DBUS_SESSION_BUS_ADDRESS' not in os.environ
+assert 'HYPRLAND_INSTANCE_SIGNATURE' not in os.environ
+assert 'HYPRLAND_CMD' not in os.environ
 # A private /dev supplies usable standard devices after user namespace setup.
 with open('/dev/null', 'wb') as null:
     null.write(b'probe')
@@ -35,7 +37,8 @@ assert not pathlib.Path('/proc/' + sys.argv[2]).exists(), 'host PID is visible'
 sys.exit(23)
 '''
             p = subprocess.run([str(RUNNER), '--', os.sys.executable, '-c', probe, str(sentinel), str(os.getpid())],
-                               env=dict(os.environ, XDG_RUNTIME_DIR=str(runtime), NOTIFY_SOCKET='live-notify', DBUS_SESSION_BUS_ADDRESS='live-bus'),
+                               env=dict(os.environ, XDG_RUNTIME_DIR=str(runtime), NOTIFY_SOCKET='live-notify', DBUS_SESSION_BUS_ADDRESS='live-bus',
+                                        HYPRLAND_INSTANCE_SIGNATURE='live-compositor', HYPRLAND_CMD='live-command'),
                                capture_output=True, text=True, timeout=15)
             self.assertEqual(p.returncode, 23, p.stderr)
             self.assertEqual(sentinel.read_text(), 'host survives')

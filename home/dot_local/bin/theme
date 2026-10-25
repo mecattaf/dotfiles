@@ -80,6 +80,18 @@ reload_sway() {
     fi
 }
 
+reload_hyprland() {
+    if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+        hyprctl reload >/dev/null || echo '  hyprland: reload failed' >&2
+    fi
+    # The shell observes theme pointer changes itself. This also covers an
+    # explicit `theme apply` after editing a palette, without replacing it.
+    if systemctl --user -q is-active desktop-shell.service; then
+        systemctl --user kill --kill-whom=main --signal=SIGUSR1 desktop-shell.service \
+            || echo '  desktop-shell: theme reload failed' >&2
+    fi
+}
+
 reload_desktop_tools() {
     # Do not D-Bus-activate tools belonging to another desktop or launch a server.
     if systemctl --user -q is-active mako.service; then
@@ -168,6 +180,7 @@ apply() {
     echo "theme: $name"
     reload_kitty
     reload_sway
+    reload_hyprland
     reload_desktop_tools
     reload_nvim
     apply_gtk

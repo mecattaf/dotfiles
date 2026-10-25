@@ -512,6 +512,7 @@
             call-diarize
             browser-desktop
             chrome-stream
+            desktop-shell
             fleet-status
             # `nix run .#fontbuilder -- <capture-dir> <out-dir>` — the press for
             # the Anthropic suite. Exported because that IS the invocation. The

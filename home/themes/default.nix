@@ -122,6 +122,18 @@ let
     output * bg #000000 solid_color
   '';
 
+  hyprland = t: ''
+    ${header t "#"}
+    general {
+      col.active_border = rgb(${bare t.border.active})
+      col.inactive_border = rgb(${bare t.border.inactive})
+    }
+    group {
+      col.border_active = rgb(${bare t.border.active})
+      col.border_inactive = rgb(${bare t.border.inactive})
+    }
+  '';
+
   # mako's progress bar takes Vicinae's selection blue (Tom, 2026-10-12: "the
   # blue color is not the same as the vicinae launcher. i prefer the latter's").
   mako = t: ''
@@ -282,6 +294,7 @@ rec {
     "kitty.conf" = kitty t;
     "ghostty" = ghostty t;
     "sway.conf" = sway t;
+    "hyprland.conf" = hyprland t;
     "mako.conf" = mako t;
     "vicinae.toml" = vicinae t;
     "colors.fish" = fish t;
