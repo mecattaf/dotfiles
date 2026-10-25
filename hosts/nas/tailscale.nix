@@ -5,7 +5,13 @@
   # Keep /var/lib/tailscale and /var/lib/headscale intact for rollback.
   services.tailscale = {
     enable = true;
-    extraDaemonFlags = [ "--state=/var/lib/tailscale-personal/tailscaled.state" ];
+    # tailscaled derives its state directory from --state only when the parent
+    # is named "tailscale"; without --statedir it has nowhere for Serve's TLS
+    # certificates ("no TailscaleVarRoot") and herdr-web-ui's HTTPS fails.
+    extraDaemonFlags = [
+      "--state=/var/lib/tailscale-personal/tailscaled.state"
+      "--statedir=/var/lib/tailscale-personal"
+    ];
     # Flags and routing features come from modules/fleet-transport.nix.
   };
   systemd.services.tailscaled = {
