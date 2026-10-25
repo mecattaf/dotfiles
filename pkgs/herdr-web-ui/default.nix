@@ -75,6 +75,10 @@ stdenv.mkDerivation {
     runHook preInstall
     mkdir -p "$out/lib/herdr-web-ui" "$out/bin"
     cp -R server shared src dist node_modules package.json "$out/lib/herdr-web-ui/"
+    # server/desk/{utilities,workers}.ts import their fallback data from
+    # site/demo/fixtures at runtime; without it the server exits at start.
+    mkdir -p "$out/lib/herdr-web-ui/site/demo"
+    cp -R site/demo/fixtures "$out/lib/herdr-web-ui/site/demo/"
     cp ${./entrypoint.ts} "$out/lib/herdr-web-ui/server/nix.ts"
     makeWrapper ${lib.getExe bun} "$out/bin/herdr-web-ui" \
       --add-flags "$out/lib/herdr-web-ui/server/nix.ts" \
