@@ -61,6 +61,23 @@ assert builtins.elem "--accept-routes=true" c.services.tailscale.extraSetFlags;
 assert
   c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.routing-rule1
   == "priority 2500 to 10.42.0.0/24 table 254";
+# The client's home Wi-Fi ladder (hosts/client/wifi-ladder.nix, Tom 2026-10-25):
+# rung 1 gives up fast, rung 2 bypasses the NAS through the BE550 and keeps the
+# LAN direct, and nothing in it is a clock.
+assert c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.connection.autoconnect-retries == 2;
+assert c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.dhcp-timeout == 20;
+assert c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz-direct.ipv4.gateway == "10.42.0.3";
+assert
+  c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz-direct.ipv4.routing-rule1
+  == c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.routing-rule1;
+assert
+  c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz-direct.connection.autoconnect-priority
+  < c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.connection.autoconnect-priority;
+assert c.networking.networkmanager.settings.connectivity.interval == 60;
+assert
+  c.systemd.services.wifi-ladder-return.wantedBy == [ ]
+  && c.systemd.services.wifi-ladder-guard.wantedBy == [ ];
+assert !(c.systemd.timers ? wifi-ladder-return) && !(c.systemd.timers ? wifi-ladder-guard);
 assert s.services.gufo.autoStart;
 assert s.services.utilityModel.endpoint == "http://strix-coordinator:8731";
 assert n.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://strix-coordinator:3003";
@@ -175,4 +192,11 @@ assert builtins.all
       builtins.removeAttrs (import ../../secrets.nix) [ "secrets/gufo-tp2-control-token.age" ]
     )
   );
-pkgs.runCommand "closet-topology" { } ''touch "$out"''
+assert builtins.any (p: (p.name or "") == "wifi-ladder") c.environment.systemPackages;
+pkgs.runCommand "closet-topology"
+  {
+    # Building this check builds the ladder script, and writeShellApplication
+    # runs shellcheck on it.
+    wifiLadder = builtins.filter (p: (p.name or "") == "wifi-ladder") c.environment.systemPackages;
+  }
+  ''touch "$out"''

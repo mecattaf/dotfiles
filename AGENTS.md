@@ -38,6 +38,12 @@ Besides these, the silent-hours releases are `paper-daemon-flush.timer` and the
 06:05 entry of `speech-queue.timer` on the strix. Adding any other timer or
 `OnCalendar` to this repository needs Tom.
 
+One reactive loop is not a clock: `wifi-ladder-return` on the client
+(`hosts/client/wifi-ladder.nix`, Tom 2026-10-25) is started by the
+NetworkManager dispatcher only when a fallback Wi-Fi rung comes up, and it exits
+as soon as thomas-6ghz is back. Nothing starts it at boot or on a schedule; it
+has no timer and no `OnCalendar` (tests/closet-topology asserts both).
+
 **Nightly update check (#550, Tom 2026-10-14).** Tom: "nightly, i want to be
 chekcing codex and cc and other programs for their latest version and
 ingesting it, potentially also with the new features that they entail". The
