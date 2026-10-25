@@ -15,6 +15,8 @@
 
   # Preserve both Atuin database schemas across the home/server migration.
   # Stable is 18.15.2; the existing strix server and client are 18.17.0.
+  # The home package pin stays for the version-match test; the NAS home itself
+  # leaves programs.atuin disabled (home/home.nix, T-55).
   services.atuin.package = unstablePkgs.atuin;
   home-manager.users.tom.programs.atuin.package = unstablePkgs.atuin;
 

@@ -124,6 +124,15 @@ assert h.programs.atuin.package.version == c.services.atuin.package.version;
 assert
   c.services.atuin.package.version == self.nixosConfigurations.strix-coordinator.pkgs.atuin.version;
 assert client.programs.atuin.settings.sync_address == "http://nas:27321";
+# T-55: the NAS serves the seats' Atuin sync, but its own home has no Atuin
+# client, no fish integration and no key seed (Atuin is on its way out).
+assert client.programs.atuin.enable;
+assert !h.programs.atuin.enable;
+assert !(builtins.any (p: lib.getName p == "atuin") h.home.packages);
+# userActivationScripts applies to one combined `script`, so match its text.
+assert !(lib.hasInfix "/.local/share/atuin/key" c.system.userActivationScripts.script);
+assert lib.hasInfix "/.local/share/atuin/key"
+  self.nixosConfigurations.client.config.system.userActivationScripts.script;
 assert !(c.systemd.user.services ? substrate-puller);
 assert !(c.systemd.user.services ? substrate-pusher);
 assert !(c.age.secrets ? substrate-floor-token);
