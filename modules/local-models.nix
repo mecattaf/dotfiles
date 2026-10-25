@@ -58,6 +58,11 @@ let
       default_library=${lib.escapeShellArg cfg.libraryPath}
       default_root=${lib.escapeShellArg modelStore.runtimeRoot}
       manifest="''${LOCAL_MODELS_MANIFEST:-/etc/local-models/wanted.json}"
+      # The closing audit compares against the host's wanted set (prune's keep
+      # set), not the manifest being borrowed: a scoped borrow
+      # (/etc/ds4/wanted.json, /etc/gufo/*-wanted.json) must not report the
+      # rest of the host's loans as would-prune.
+      keep="''${LOCAL_MODELS_KEEP_MANIFEST:-/etc/local-models/wanted.json}"
       library="''${LOCAL_MODELS_LIBRARY:-$default_library}"
       root="''${LOCAL_MODELS_ROOT:-$default_root}"
       lock="''${LOCAL_MODELS_BORROW_LOCK:-/run/lock/local-models-borrow.lock}"
@@ -191,7 +196,7 @@ let
       # Still gated on a fully clean pass: a set computed from a failed borrow
       # would name files that are merely MISSING, not retired.
       if [ "$fail" = 0 ]; then
-        local-models-prune-audit
+        LOCAL_MODELS_MANIFEST="$keep" local-models-prune-audit
       fi
       exit "$fail"
     '';

@@ -533,8 +533,8 @@ in
     assertions = [
       {
         # The resident model only. An alternate whose artifacts this host does
-        # not want yet (the 27B Q8 until explicitly borrowed) is refused at
-        # start by its bundle check, which names the borrow command.
+        # not want or has not borrowed yet is refused at start by its bundle
+        # check, which names the borrow command.
         assertion = lib.all (a: lib.elem a config.services.local-models.artifacts) (artifactsOf cfg.llm);
         message = "The resident Gufo model's artifacts (services.gufo.llm) must be in this host's services.local-models.artifacts.";
       }
@@ -645,8 +645,10 @@ in
     }
     // lib.mapAttrs' (name: m: lib.nameValuePair "gufo-llm-${name}" (mkLlmUnit name m)) cfg.alternates;
 
-    # Scoped manifests allow an explicit model loan without expanding boot's
-    # small wanted set. Q8 Flash-Next is TP2-only, never a single-host alternate.
+    # Scoped manifests borrow one bundle alone. Whether a host keeps it is its
+    # services.local-models.artifacts (prune's keep set): both Strix want the
+    # 27B Q8, only the worker Flash-Next Q8. Q8 Flash-Next is TP2-only, never
+    # a single-host alternate.
     environment.etc."gufo/tp2-q8-wanted.json".source =
       (pkgs.formats.json { }).generate "gufo-tp2-q8-wanted.json"
         (modelStore.manifestFor [ "qwen38-flash-next-q8-gguf" ]);

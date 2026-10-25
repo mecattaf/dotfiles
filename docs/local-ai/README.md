@@ -137,10 +137,11 @@ identity and a pinned provenance record; it does not move a byte.
    (exported to the Strix pair at `/mnt/library/weights`) and never deletes.
 2. **Wanted set.** Each Strix declares `services.local-models.artifacts`
    ([`../../modules/local-models.nix`](../../modules/local-models.nix)), which
-   renders to `/etc/local-models/wanted.json`. Large optional loans have
-   scoped manifests instead: `/etc/ds4/wanted.json`,
-   `/etc/gufo/tp2-q8-wanted.json` and `/etc/gufo/27b-q8-wanted.json`. A switch
-   describes a set; it transfers nothing.
+   renders to `/etc/local-models/wanted.json`: everything the host holds,
+   and the set prune keeps. The scoped manifests `/etc/ds4/wanted.json`,
+   `/etc/gufo/tp2-q8-wanted.json` and `/etc/gufo/27b-q8-wanted.json` borrow
+   one bundle alone (`sudo env LOCAL_MODELS_MANIFEST=… local-models-borrow`).
+   A switch describes a set; it transfers nothing.
 3. **Borrow.** An operator copies wanted artifacts from the Library into
    `/var/lib/local-models/<id>/`, verified by size and SHA-256, with a
    free-space gate:
@@ -167,8 +168,8 @@ runbook for the Library itself.
 
 | Host | Wanted artifacts | Served by |
 |---|---|---|
-| `strix-coordinator`, `strix-worker` | `qwen38-flash-next-gguf`, `qwen38-27b-gguf`, `qwen38-27b-dflash2-gguf`, `qwen3-asr-1.7b`, `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` (exact list asserted in `flake.nix`) | Gufo Flash-Next resident at boot, the 27B after `gufo-switch`, Gufo ASR, TTS and image on demand; streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`) |
-| `strix-worker`, scoped | `/etc/ds4/wanted.json`: `deepseek-v41-flash-1017-q2-gguf` | ds4, by hand |
+| `strix-coordinator`, `strix-worker` | `qwen38-flash-next-gguf`, `qwen38-27b-gguf`, `qwen38-27b-q8-gguf`, `qwen38-27b-dflash2-gguf`, `qwen3-asr-1.7b`, `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` (exact lists asserted in `flake.nix`) | Gufo Flash-Next resident at boot, the 27B or 27B Q8 after `gufo-switch`, Gufo ASR, TTS and image on demand; streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`) |
+| `strix-worker` only | `deepseek-v41-flash-1017-q2-gguf` (via `services.ds4.wanted`), `qwen38-flash-next-q8-gguf` | ds4, by hand; `gufo-tp2` with Q8. The coordinator's disk cannot hold either (D-A) |
 | `client` | none | — |
 | `nas` | none (it holds the Library) | — |
 

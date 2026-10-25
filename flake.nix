@@ -2266,6 +2266,7 @@
         fleet-connectivity =
           let
             strix = self.nixosConfigurations.strix-coordinator.config;
+            strixWorker = self.nixosConfigurations.strix-worker.config;
             nas = self.nixosConfigurations.nas.config;
 
             client = self.nixosConfigurations.client.config;
@@ -2544,10 +2545,14 @@
           # gufo-rdma documented model on both Strix) join the production
           # diarization, TTS and voice artifacts;
           # retired engine formats are absent from both wanted set and catalog.
+          # Each list is everything that host holds since the 2026-10-25
+          # loans, so a default borrow restores it and prune keeps it. The
+          # coordinator's disk cannot hold Flash-Next Q8 or the ds4 Q2 (D-A).
           assert
             strix.services.local-models.artifacts == [
               "qwen38-flash-next-gguf"
               "qwen38-27b-gguf"
+              "qwen38-27b-q8-gguf"
               "qwen38-27b-dflash2-gguf"
               "qwen3-asr-1.7b"
               "qwen3-tts-12hz-1.7b-base"
@@ -2556,6 +2561,13 @@
               "qwen3-tts-1.7b-base-q8-0"
               "qwen-k2so-midway-b"
               "qwen3-tts-tokenizer-f32"
+            ];
+          assert
+            strixWorker.services.local-models.artifacts
+            == strix.services.local-models.artifacts
+            ++ [
+              "deepseek-v41-flash-1017-q2-gguf"
+              "qwen38-flash-next-q8-gguf"
             ];
           # The catalogue is the kept estate after Tom's 2026-09-16 ruling,
           # narrowed on 2026-09-30 (sweep F1: the three Mage rows and the text

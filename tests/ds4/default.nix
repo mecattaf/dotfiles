@@ -31,10 +31,21 @@ let
     # TCP is the only TP transport the pinned image has (no usb4_rdma provider).
     && (host.services.ds4.mode != "tp2" || lib.hasInfix "--transport tcp" unit.serviceConfig.ExecStart)
     && !(lib.hasInfix "/dev/infiniband" unit.serviceConfig.ExecStart)
-    && !(builtins.elem "deepseek-v41-flash-1017-q2-gguf" host.services.local-models.artifacts)
     && builtins.elem "gufo-tp2.service" unit.conflicts;
+  ds4Ids = [
+    "deepseek-v41-flash-1017-q2-gguf"
+    "deepseek-v41-flash-vision-gguf"
+    "deepseek-v41-flash-dspark-gguf"
+  ];
+  wantedDs4 =
+    host: builtins.filter (id: builtins.elem id ds4Ids) host.services.local-models.artifacts;
 in
 assert check c && check w;
+# The host that runs ds4 wants exactly the files it loads (the Q2; vision and
+# DSpark are off), so prune keeps them and a default borrow restores them. The
+# coordinator's TP2 rank cannot hold the 340.6 GiB Q2 (D-A) and wants none.
+assert w.services.ds4.wanted && wantedDs4 w == [ "deepseek-v41-flash-1017-q2-gguf" ];
+assert !c.services.ds4.wanted && wantedDs4 c == [ ];
 assert c.services.ds4.role == "coordinator" && w.services.ds4.role == "worker";
 assert c.services.ds4.image == w.services.ds4.image;
 # Tom 2026-10-25: DeepSeek V4.1 serves from the worker alone (SSD expert

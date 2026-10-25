@@ -1,5 +1,18 @@
 # DECISIONS
 
+2026-10-25 A Strix's wanted set (`services.local-models.artifacts`, rendered
+to `/etc/local-models/wanted.json`) is everything that host holds, so a default
+`local-models-borrow` restores it and `local-models-prune` keeps it. The
+2026-10-25 loans had gone in through scoped manifests, which left the worker's
+27B Q8, Flash-Next Q8 and DeepSeek V4.1 Q2 and the coordinator's 27B Q8 on
+prune's delete list. Both Strix now want the 27B Q8; the worker also wants
+Flash-Next Q8, and ds4's files join the wanted set of the host that runs it
+(`services.ds4.wanted`, default on). The coordinator turns that off and does
+not want Flash-Next Q8: its disk has 108 GB free (D-A). The scoped manifests
+stay for borrowing one bundle alone, and the borrow's closing audit now reads
+the host wanted set instead of the scoped manifest it borrowed. Tom,
+2026-10-25: "default vanilla, make it work."
+
 2026-10-25 The DeepSeek harness replaces the Halogen runtime. In this repo
 that means: dsh on the NAS is the local agent harness, with Qwen Cloud as its
 default route and two explicit local routes read from `lib/local-model.nix`,
