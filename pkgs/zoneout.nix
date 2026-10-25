@@ -15,8 +15,11 @@ python3Packages.buildPythonApplication {
   build-system = [ python3Packages.setuptools ];
   dependencies = [ python3Packages.hidapi ];
   pythonImportsCheck = [ "zoneout.device" "zoneout.cli" ];
-  # The upstream checkout has no automated test suite. No GUI is installed.
+  # The upstream checkout has no automated test suite.
   doCheck = false;
+  # Upstream also declares a zoneout-gui entry point, which needs PyQt6. It is
+  # not packaged here, so that binary would only crash: drop it.
+  postInstall = "rm $out/bin/zoneout-gui";
 
   meta = {
     description = "Native Sony INZONE hardware volume, balance and noise controls";
