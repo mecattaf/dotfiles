@@ -14,6 +14,7 @@ in
   imports = [
     inputs.donnerkeule.nixosModules.default
     ./strix.nix
+    ./rdma-profile.nix
     ./ds4.nix
     ./gvisor.nix
     ./microvm-host.nix
@@ -44,6 +45,11 @@ in
   # both on each cable: the old tbnet + tbstream consumers cannot share that
   # budget (#272/#276; 77778237). Ethernet carries management/bootstrap.
   boot.blacklistedKernelModules = [ "thunderbolt_stream" ];
+
+  # The lfthht README driver profile (DMA-BUF fast path plus host credits) on
+  # both ranks, selected once so the two hosts cannot diverge. Draft until a
+  # two-box qualification on 7.3; "phase-a" restores the base options.
+  myCompute.rdmaProfile = "framework-host-credits";
 
   hardware.thunderbolt-ibverbs = {
     enable = true;

@@ -209,16 +209,16 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1792775567,
-        "narHash": "sha256-5m0GjYvNwYWvC1plfmN16qtkO7P/onzhaKkFGX9bd5A=",
+        "lastModified": 1792897191,
+        "narHash": "sha256-o7bR0g02d4gD/HxZ4cKFfZMyDpP0tXk5ujv3XkxO6/c=",
         "owner": "mecattaf",
         "repo": "donnerkeule",
-        "rev": "a36a6cc2b8a36e59e0ada17578b52d57849bdf07",
+        "rev": "31ff86e5478eb3707ea8186891fd4d18b073054b",
         "type": "github"
       },
       "original": {
         "owner": "mecattaf",
-        "ref": "codex/framework-7-3",
+        "ref": "codex/framework-7-3-host-credits",
         "repo": "donnerkeule",
         "type": "github"
       }
