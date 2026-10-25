@@ -1,0 +1,11 @@
+#!/bin/sh
+# Latest upstream dev build (2026-10-20), with NixOS runtime libraries.
+set -eu
+libs=/home/tom/.local/share/terminal-browser/runtime-libs/lib
+export NIX_LD_LIBRARY_PATH="$libs${NIX_LD_LIBRARY_PATH:+:$NIX_LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export DO_NOT_TRACK=1
+# Standalone Kitty/SSH: do not invoke the live Herdr adapter.
+unset HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID TMUX TMUX_PANE
+unset DISPLAY WAYLAND_DISPLAY
+exec /home/tom/.local/share/terminal-browser/releases/main-660ec51/terminal-browser/bin/terminal-browser "$@"

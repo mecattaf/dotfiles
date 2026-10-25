@@ -1,0 +1,15 @@
+#!/bin/sh
+# Pixel 0.2.9 with NixOS runtime libraries; UI processes run on Strix.
+set -eu
+base=/home/tom/.local/share/pixel/demo-0.2.9
+node=/home/tom/.local/share/terminal-browser/node-runtime/bin/node
+libs=/home/tom/.local/share/terminal-browser/runtime-libs/lib
+export NIX_LD_LIBRARY_PATH="$libs${NIX_LD_LIBRARY_PATH:+:$NIX_LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# This standalone launcher must not change the live Herdr configuration.
+unset HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID TMUX TMUX_PANE
+unset DISPLAY WAYLAND_DISPLAY ELECTRON_RUN_AS_NODE
+if [ "${1:-}" = --version ]; then
+  exec "$node" -p "'pixel ' + require('$base/node_modules/@zenbu-labs/pixel/package.json').version"
+fi
+exec "$node" "$base/node_modules/@zenbu-labs/pixel/dist/bin.js" "$@"

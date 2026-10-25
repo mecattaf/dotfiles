@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /home/tom/.local/bin/pixel /home/tom/.local/share/pixel/demo-0.2.9 "$@"
