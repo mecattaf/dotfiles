@@ -2576,8 +2576,7 @@
           # no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           # Plus Gufo's collection (lib/gufo-models.json), as gufo-org/gufo
-          # v0.22.0 plus Q8 and the separately pinned ds4 V4.1 model. MiniMax H3 is gated until Tom accepts
-          # its licence, so library-fetch skips it and no host may want it.
+          # v0.22.0 plus Q8 and the separately pinned ds4 V4.1 model.
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "deepseek-v4-flash-dspark-gguf"
@@ -2599,9 +2598,11 @@
               "qwen38-flash-next-q8-gguf"
               "vibevoice-asr-streaming-7b-bf16"
             ];
-          assert localModelCatalog.artifacts.minimax-h3-fl2va.source.gate != null;
+          # No row is gated: Tom accepted the MiniMax H3 licence on 2026-10-25,
+          # so library-fetch archives every row. source.gate stays supported
+          # for the next step only Tom can take.
           assert builtins.all (id: localModelCatalog.artifacts.${id}.source.gate == null) (
-            builtins.filter (id: id != "minimax-h3-fl2va") (builtins.attrNames localModelCatalog.artifacts)
+            builtins.attrNames localModelCatalog.artifacts
           );
           # The proven Gufo endpoint is the only resident text engine.
           assert strix.services.gufo.enable;
