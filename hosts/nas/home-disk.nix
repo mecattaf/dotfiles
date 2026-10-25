@@ -100,7 +100,13 @@ in
     # Refuse a second agent home on eMMC. In shared mode the same SSD is
     # additionally boot-critical through @fast/nix; retain the old generation
     # and untouched 256GB fast tier until that first shared-pool boot passes.
-    systemd.services."user@1000".unitConfig.RequiresMountsFor = [ "/home" ];
+    # user@1000 is an instance of systemd's user@.service: asDropinIfExists only
+    # matches exact upstream names, so it wrote a full user@1000.service with no
+    # ExecStart and the user manager never started (2026-10-25 gen 87 boot).
+    systemd.services."user@1000" = {
+      overrideStrategy = "asDropin";
+      unitConfig.RequiresMountsFor = [ "/home" ];
+    };
 
     # Export the SAME helper that is installed, including the server-matched
     # pg_dumpall. Copy its closure to the installer for bench preparation.

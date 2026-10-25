@@ -40,7 +40,7 @@ assert lib.all (option: lib.elem option snapshots.options) [
 ];
 assert lib.elem "/home" nas.systemd.services."user@1000".unitConfig.RequiresMountsFor;
 assert lib.hasInfix "RequiresMountsFor=/home" nas.systemd.units."user@1000.service".text;
-assert nas.systemd.units."user@1000.service".overrideStrategy == "asDropinIfExists";
+assert nas.systemd.units."user@1000.service".overrideStrategy == "asDropin";
 assert nas.disko.devices.disk.journal.device == fanxiang;
 assert nas.disko.devices.disk.journal.content.partitions.journal.content.mountpoint == "/mnt/fast";
 assert
@@ -48,6 +48,8 @@ assert
   && fast.fsType == "btrfs"
   && builtins.elem "subvol=@fast" fast.options
   && fast.neededForBoot;
+# The systemd initrd mounts only x-initrd.mount entries; /nix binds from @fast.
+assert lib.elem "x-initrd.mount" fast.options;
 assert nas.fileSystems."/nix".device == "/mnt/fast/nix";
 assert nas.fileSystems."/nix".neededForBoot;
 assert nas.fileSystems."/nix".depends == [ "/mnt/fast" ];
