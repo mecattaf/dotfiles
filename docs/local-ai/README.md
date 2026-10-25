@@ -1,87 +1,129 @@
 # Local AI
 
-The fleet runs one resident inference server and a Library of loanable model
-artifacts. Every claim on this page names the Nix file that decides it.
+The fleet runs two inference engines on the Strix pair and a Library of
+loanable model artifacts on the NAS. Every claim on this page names the Nix
+file that decides it.
 
-## The resident server: Halogen Flash on the worker
+| Engine | Where | Port | Serves | Started by |
+|---|---|---|---|---|
+| Gufo ([`../../modules/gufo.nix`](../../modules/gufo.nix)) | `gufo-llm.service` on both Strix; the fleet endpoint is strix-coordinator's | 8731 | `qwen3.8-flash-next` (resident), `qwen3.8-27b` (alternate) | boot; `gufo-switch` for the alternate |
+| ds4 ([`../../modules/ds4.nix`](../../modules/ds4.nix)) | `ds4.service` on strix-worker, one host with SSD expert streaming | 8732 | `deepseek-v4.1-flash` (DeepSeek V4.1 Flash 1017) | an operator, by hand |
 
-[`../../modules/halogen.nix`](../../modules/halogen.nix) runs
-`ghcr.io/peonist-ai/halogen-flash-server` (a pinned OCI image, under podman).
-Both Strix Halo twins declare it, with the Qwen3.8-27B alternate, from one
-block in [`../../modules/strix.nix`](../../modules/strix.nix) (Tom,
-2026-09-16: both models on both devices). On the worker Flash is resident from
-boot and is the fleet endpoint below; on the coordinator nothing starts at boot
-(see [Halogen on the coordinator](#halogen-on-the-coordinator)). It loads Qwen3.8-Flash-Next in
-Peonist's proprietary `.hgn` format from
-`/var/lib/local-models/halogen-qwen38-flash-next` — the catalogue row
-`halogen-qwen38-flash-next`, loaned there from the NAS Library. Nothing else
-loads those bytes: not llama.cpp, not vLLM, not transformers.
+The agent harness that uses them is dsh on the NAS (see [dsh](#dsh-on-the-nas)).
+Halogen, the earlier engine, was retired on 2026-10-23 and pi is being removed;
+both appear below only as history.
+
+## The resident server: Gufo Flash-Next on strix-coordinator
+
+[`../../modules/gufo.nix`](../../modules/gufo.nix) runs the native `gufo`
+binary for gfx1151 (flake input `gufo`, no container), one systemd unit per
+model. Both Strix declare it from one block in
+[`../../modules/strix.nix`](../../modules/strix.nix). `gufo-llm.service` loads
+Qwen3.8 Flash-Next UD-Q4_K_XL (catalogue row `qwen38-flash-next-gguf`) with
+its MTP predictor and BF16 vision projector from
+`/var/lib/local-models/qwen38-flash-next-gguf`, loaned there from the NAS
+Library. Its pre-start check refuses to start, and names the borrow command,
+if any file is missing or the wrong size.
 
 | | |
 |---|---|
-| Base URL | `http://worker:8731` (`worker` resolves to `10.42.0.5` from every host; wired LAN only) |
-| Model id | `halogen-qwen3.8-flash-next` — a label; a request naming another id is not rejected |
-| Endpoints | `POST /v1/chat/completions` (streaming and non-streaming, tool calls, `image_url` content parts), `POST /v1/responses`, `POST /v1/completions`, `GET /v1/models`, `GET /health` (JSON; the liveness and discovery probe) |
+| Base URL | `http://strix-coordinator:8731` ([`../../lib/local-model.nix`](../../lib/local-model.nix); wired LAN `10.42.0.2`) |
+| Model id | `qwen3.8-flash-next`: Gufo answers 404 to any other id and 400 to none |
+| Shape | one session, 102400 tokens of context, thinking off, a 1 GiB prefix cache, `max_tokens` capped at 16384 |
+| Endpoints | OpenAI-compatible `POST /v1/chat/completions` and `GET /v1/models` |
 | Auth | none |
-| Reasoning budget | the token budget covers thinking; default `max_tokens` 8192, cap 65536; three budget spellings are accepted, but two spellings with different values is a 400 |
-| Not available | `/v1/embeddings`, reranking, audio, image generation, hot reload, a second resident model |
-
-The vision tower is part of the bundle, so OCR and image reading are requests
-to this same server with `image_url` content parts.
+| Not available | `/v1/embeddings` (501), reranking, diarization |
 
 ```console
-curl -s http://worker:8731/health
-curl -s http://worker:8731/v1/chat/completions -H 'content-type: application/json' \
-  -d '{"model":"halogen-qwen3.8-flash-next","messages":[{"role":"user","content":"ping"}]}'
+curl -s http://strix-coordinator:8731/v1/models
+curl -s http://strix-coordinator:8731/v1/chat/completions -H 'content-type: application/json' \
+  -d '{"model":"qwen3.8-flash-next","messages":[{"role":"user","content":"ping"}],"max_tokens":16}'
 ```
 
-Anything that takes an inference base URL reads it from a `*_INFERENCE_URL`
-variable defaulting to `http://worker:8731`; the override is there for a
-hand-run server (below) or the coordinator's operator-started Halogen, not for
-a second resident server.
+strix-worker carries the same unit. It is not the fleet endpoint: it is the
+second rank for `gufo-tp2.service` (the neuhaus RDMA fork, Flash-Next Q4 or
+Q8) and the failover copy.
 
 ## The alternate and the switch
 
-`halogen-qwen38-27b` is served by `ghcr.io/peonist-ai/halogen` (halogen-server
-0.1.4, pinned by digest in `modules/strix.nix`) as `podman-halogen-qwen38-27b`,
-on the same port and launch shape, text only. Unlike Flash it has no
-healthcheck binary and no server-side default-budget knob: its default
-`max_tokens` is 8192 and thinking counts against it, so an agentic client must
-send `max_tokens` itself or risk an empty reply with `finish_reason: "length"`.
-The units carry mutual `Conflicts=`, so one engine is resident at a time on a
-host:
+The alternate is Qwen3.8-27B (`qwen38-27b-gguf` with the DFlash2 draft, four
+sessions, 131072 tokens; or `qwen38-27b-q8-gguf` from the scoped
+`/etc/gufo/27b-q8-wanted.json`), served as `qwen3.8-27b` on the same port.
+Text units carry mutual `Conflicts=`, so one model owns the GPU at a time:
 
 ```console
-sudo halogen-switch qwen38-27b   # stop Flash, cold-load the 27B
-sudo halogen-switch flash        # and back
-sudo halogen-switch off          # stop every Halogen unit, releasing the GPU
+sudo gufo-switch qwen38-27b   # stop Flash-Next, cold-load the 27B
+sudo gufo-switch flash        # and back
+sudo gufo-switch off          # stop every Gufo text unit, releasing the GPU
 ```
 
-## Halogen on the coordinator
+Gufo's DeepSeek V4 Flash 0731 alternate was removed on 2026-10-25: Tom chose
+kyuz0's DeepSeek V4.1 Flash 1017, which Gufo cannot load (it accepts only the
+`deepseek4` architecture). Its catalogue rows and Library bytes stay until an
+explicit Library retirement.
 
-The coordinator carries the same two containers, the same bundles in its wanted
-set and `amdgpu.gttsize=126976`, but `services.halogen.autoStart = false`: it
-is Tom's desktop and also runs Qwen TTS, Parakeet, the ~17.6 GB streaming ASR
-and live agent sessions, and upstream sizes Flash as leaving roughly 12 GB free
-on a 128 GB box. Before starting either engine there, check that nothing else
-holds the GPU (`amdtop`, `mem_info_gtt_used`, running `call-diarize` or TTS),
-then `sudo halogen-switch flash|qwen38-27b`, and `sudo halogen-switch off`
-when done. Two memory bounds apply there only: Flash's KV pool is 262144
-positions (~28 GB, its floor) and the 27B's prompt cache is a fixed 8 GiB
-(`HALOGEN_CACHE_MB=8192`) instead of auto-sizing from free memory. It answers on `http://coordinator:8731` (admitted on `wlp192s0`).
-A coordinator switch defers while a Halogen unit is active (update-adopt gate
-`halogen-units`). The `utility` slot does not move: it stays on the worker.
+`gufo-tts` (:8735), `gufo-asr` (:8736) and `gufo-image` (:8737) are on-demand
+loopback units with no boot target; `gufo-image` takes the GPU from every text
+unit while it runs.
+
+## DeepSeek V4.1 on ds4 (strix-worker)
+
+[`../../modules/ds4.nix`](../../modules/ds4.nix) runs kyuz0's
+`strix-halo-ds4-toolbox` image, pinned by digest, under podman with
+`--pull=never`. On strix-worker it is in `single-ssd` mode: the 340.6 GiB Q2
+cannot be resident on one 128 GB box, so `ds4-server` streams routed experts
+from the local SSD through a 76 GB expert cache (`--ssd-streaming`). DSpark
+needs resident experts and is refused in this mode; vision stays off until the
+1017 encoder is proven in the image.
+
+| | |
+|---|---|
+| Base URL | `http://10.42.0.5:8732` (`lib/local-model.nix`'s `ds4` entry) |
+| Model id | `deepseek-v4.1-flash` |
+| Context | 32768 tokens; Think Max needs at least 393216, so requests get high |
+| Admitted from | the NAS (`10.42.0.1`) only, over `enp191s0` |
+| Auth | none |
+
+Nothing starts it at boot and nothing automated calls it. Bytes and image are
+explicit preparation steps:
+
+```console
+sudo podman pull docker.io/kyuz0/strix-halo-ds4-toolbox@sha256:34dec90a…   # the digest in modules/ds4.nix
+sudo env LOCAL_MODELS_MANIFEST=/etc/ds4/wanted.json local-models-borrow --dry-run
+sudo env LOCAL_MODELS_MANIFEST=/etc/ds4/wanted.json local-models-borrow --yes
+sudo systemctl start ds4     # Conflicts= stops the worker's Gufo text units
+sudo systemctl stop ds4 && sudo systemctl start gufo-llm
+```
+
+The fleet endpoint on strix-coordinator is untouched while ds4 runs. The
+coordinator keeps the `tp2` rank shape of the same module for the day both
+disks hold the Q2 (each rank needs the full file locally; the TP2 link is TCP
+until the image gains a usb4_rdma provider).
 
 ## The `utility` slot
 
 Callers name the stable ID `utility`, never a concrete model. The
 request-scoped `utility-model` wrapper
-([`../../pkgs/utility-model/utility_model.py`](../../pkgs/utility-model/utility_model.py),
-installed on the coordinator only) forwards one chat-completions request to
-the worker's halogen server and returns the answer. `/drain` and `/print`
-call `utility-model` with the same CLI flags they always have. The wrapper
-owns no process and loads nothing; the server on the worker is resident, and
-the coordinator's own Halogen units are never its target.
+([`../../modules/utility-model.nix`](../../modules/utility-model.nix),
+[`../../pkgs/utility-model/utility_model.py`](../../pkgs/utility-model/utility_model.py))
+forwards one chat-completions request to `http://strix-coordinator:8731` as
+`qwen3.8-flash-next` and returns the answer. `/drain` and `/print` call it
+with the same CLI flags as before. The wrapper owns no process and loads
+nothing.
+
+## dsh on the NAS
+
+dsh (`pkgs/dsh`, `home/dsh.nix`) is the agent harness; it follows the brain
+role to the NAS. Its routes ([`../../pkgs/dsh/config.nix`](../../pkgs/dsh/config.nix)):
+
+- `qwen-token-plan/deepseek-v4.1-flash`, the default (Qwen Cloud);
+- `gufo/qwen3.8-flash-next` and `gufo/qwen3.8-27b` (the latter only after
+  `gufo-switch qwen38-27b`);
+- `ds4/deepseek-v4.1-flash`, only while `ds4.service` runs on strix-worker.
+
+Both local routes use a public dummy bearer. Session-log and plugin-inventory
+upload to DeepSeek, DeepSeek sign-in and telemetry are disabled rows in the
+policy, and `dsh web` is refused by the wrapper.
 
 ## How an artifact reaches a host
 
@@ -92,14 +134,16 @@ identity and a pinned provenance record; it does not move a byte.
 1. **Library.** `library-fetch` on the NAS
    ([`../../hosts/nas/models.nix`](../../hosts/nas/models.nix)) is the only
    thing that talks to Hugging Face. It fills `/mnt/nas/models/weights/<id>/`
-   (exported to the twins at `/mnt/library/weights`) and never deletes.
-2. **Wanted set.** Each twin declares `services.local-models.artifacts`
+   (exported to the Strix pair at `/mnt/library/weights`) and never deletes.
+2. **Wanted set.** Each Strix declares `services.local-models.artifacts`
    ([`../../modules/local-models.nix`](../../modules/local-models.nix)), which
-   renders to `/etc/local-models/wanted.json`. A switch describes the set;
-   it transfers nothing.
+   renders to `/etc/local-models/wanted.json`. Large optional loans have
+   scoped manifests instead: `/etc/ds4/wanted.json`,
+   `/etc/gufo/tp2-q8-wanted.json` and `/etc/gufo/27b-q8-wanted.json`. A switch
+   describes a set; it transfers nothing.
 3. **Borrow.** An operator copies wanted artifacts from the Library into
-   `/var/lib/local-models/<id>/`, verified by size and SHA-256, with a free-space
-   gate:
+   `/var/lib/local-models/<id>/`, verified by size and SHA-256, with a
+   free-space gate:
 
    ```console
    sudo local-models-borrow --dry-run   # plan: bytes needed, bytes free, what is missing upstream
@@ -123,28 +167,25 @@ runbook for the Library itself.
 
 | Host | Wanted artifacts | Served by |
 |---|---|---|
-| `worker` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b` | `modules/halogen.nix`; Flash resident at boot, the 27B after `halogen-switch qwen38-27b` |
-| `coordinator` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` | Halogen only after `halogen-switch`; streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`) |
-| `client` | none (speech-wake and Parakeet were removed on 2026-09-30) | — |
+| `strix-coordinator`, `strix-worker` | `qwen38-flash-next-gguf`, `qwen38-27b-gguf`, `qwen38-27b-dflash2-gguf`, `qwen3-asr-1.7b`, `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` (exact list asserted in `flake.nix`) | Gufo Flash-Next resident at boot, the 27B after `gufo-switch`, Gufo ASR, TTS and image on demand; streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`) |
+| `strix-worker`, scoped | `/etc/ds4/wanted.json`: `deepseek-v41-flash-1017-q2-gguf` | ds4, by hand |
+| `client` | none | — |
 | `nas` | none (it holds the Library) | — |
 
 ## Running a loaned GGUF by hand
 
-Since 2026-09-30 every catalogue row has a declared consumer; the text
-embedder and the Mage rows were retired from the catalogue and the NAS Library
-(sweep F1). A GGUF that an operator brings back by hand (re-adding its row
-first, so `library-fetch` fills the Library) has no server. Both twins carry nix-strix-halo's `llama-cpp-rocm` and `llama-cpp-vulkan`
-commands ([`../../modules/strix-ai.nix`](../../modules/strix-ai.nix)), so an
-operator who has borrowed a row starts it in a shell and stops it when done:
+A GGUF that an operator brings back by hand (re-adding its row first, so
+`library-fetch` fills the Library) has no server. Both Strix carry
+nix-strix-halo's `llama-cpp-rocm` and `llama-cpp-vulkan` commands
+([`../../modules/strix-ai.nix`](../../modules/strix-ai.nix)), so an operator
+who has borrowed a row starts it in a shell and stops it when done:
 
 ```console
-llama-server --port 8080 --embedding -ngl 999 \
-  -m /var/lib/local-models/qwen3-embedding-8b-q8-0/Qwen3-Embedding-8B-Q8_0.gguf
+llama-server --port 8080 -ngl 999 -m /var/lib/local-models/<id>/<file>.gguf
 ```
 
-Point the caller at it through its `*_INFERENCE_URL` override. Runtime
-downloads (`-hf`) are forbidden by assertion: the bytes come from the Library
-or not at all. There is no embeddings server until an operator starts one.
+Runtime downloads (`-hf`) are out: the bytes come from the Library or not at
+all.
 
 ## Other rows
 
@@ -152,27 +193,40 @@ or not at all. There is no embeddings server until an operator starts one.
   the one TTS model (`modules/qwen-tts.nix`). VibeVoice-ASR-Streaming-7B is the
   one diarization model; `call-diarize` loads it from
   `/var/lib/local-models/vibevoice-asr-streaming-7b-bf16`.
-- **Mage (Mage-Flow Turbo, Mage-Flow Edit Turbo, Mage-VL)** were retired on
-  2026-09-30 (sweep F1): catalogue rows, `lib/mage-models.nix` and the NAS
-  Library copies. [`mage.md`](mage.md) keeps the selection record and the
-  pinned revisions, so a restore starts from git history.
-- **Voxtype** (streaming dictation, `parakeet-unified-en-0.6b`) is not a
-  catalogue artifact: `home/voxtype.nix` lets the tool own its own model
-  directory on the coordinator.
+- **MiniMax H3 FL2VA** is held by `source.gate` until Tom accepts its licence;
+  `library-fetch` skips it and no host may want it.
+- **Mage** rows were retired on 2026-09-30 (sweep F1); [`mage.md`](mage.md)
+  keeps the selection record.
+
+## History
+
+- **Halogen** (`modules/halogen.nix`, Peonist's `.hgn` server on `:8731`) was
+  the resident engine until 2026-10-23, when Tom ruled "halogen is OUT fullly"
+  and #605 replaced it with Gufo. Its NAS Library copies
+  (`/mnt/nas/models/weights/halogen-*`) are historical bytes awaiting an
+  explicit retirement. [`../gufo-cutover.md`](../gufo-cutover.md) records the
+  move.
+- On 2026-10-25 Tom ruled that the DeepSeek harness completely replaces the
+  Halogen runtime: dsh over Gufo and ds4 is the local agent path.
 
 ## Sources of truth
 
 1. [`../../lib/local-models.nix`](../../lib/local-models.nix) — the typed
    catalogue: identity, pinned revision, bytes, hashes.
-2. [`../../modules/halogen.nix`](../../modules/halogen.nix) — the Halogen
-   server; [`../../modules/strix.nix`](../../modules/strix.nix) — its
-   declaration on both twins and the twins' wanted sets.
-3. [`../../modules/local-models.nix`](../../modules/local-models.nix) — the
+2. [`../../lib/local-model.nix`](../../lib/local-model.nix) — the endpoints
+   and served model ids every consumer uses.
+3. [`../../modules/gufo.nix`](../../modules/gufo.nix) and
+   [`../../modules/ds4.nix`](../../modules/ds4.nix) — the two engines;
+   [`../../modules/strix.nix`](../../modules/strix.nix) and
+   [`../../modules/strix-compute.nix`](../../modules/strix-compute.nix) —
+   their declaration on the Strix pair and the wanted sets.
+4. [`../../modules/local-models.nix`](../../modules/local-models.nix) — the
    wanted-set manifest and the borrow transaction;
    [`../../pkgs/local-models-prune.nix`](../../pkgs/local-models-prune.nix)
    — the pruner.
-4. [`../../hosts/nas/models.nix`](../../hosts/nas/models.nix) — the Library
+5. [`../../hosts/nas/models.nix`](../../hosts/nas/models.nix) — the Library
    and `library-fetch`.
-5. [`model-roster.md`](model-roster.md) — the catalogue as a table.
-6. [`../../flake.nix`](../../flake.nix) — assertions pinning each host's
-   wanted set, so the table cannot drift silently.
+6. [`model-roster.md`](model-roster.md) — the catalogue as a table.
+7. [`../../flake.nix`](../../flake.nix) and `tests/ds4` — assertions pinning
+   each host's wanted set and the ds4 shape, so the tables cannot drift
+   silently.

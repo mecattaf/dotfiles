@@ -11,6 +11,13 @@ let
       modules = [ { services.gufo.tp2.model.artifact = "qwen38-flash-next-q8-gguf"; } ];
     }).config;
   w = self.nixosConfigurations.strix-worker.config;
+  # single-ssd streams experts from disk, so DSpark must be refused there.
+  wDspark =
+    (self.nixosConfigurations.strix-worker.extendModules {
+      modules = [ { services.ds4.dspark = lib.mkForce true; } ];
+    }).config;
+  localModel = import ../../lib/local-model.nix;
+  has = host: needle: lib.hasInfix needle host.systemd.services.ds4.serviceConfig.ExecStart;
   catalog = import ../../lib/local-models.nix { inherit lib; };
   all = builtins.fromJSON (builtins.readFile ../../lib/ds4-models.json);
   check =
@@ -21,7 +28,8 @@ let
     host.services.ds4.enable
     && unit.wantedBy == [ ]
     && lib.hasInfix "--pull=never" unit.serviceConfig.ExecStart
-    && lib.hasInfix "--transport tcp" unit.serviceConfig.ExecStart
+    # TCP is the only TP transport the pinned image has (no usb4_rdma provider).
+    && (host.services.ds4.mode != "tp2" || lib.hasInfix "--transport tcp" unit.serviceConfig.ExecStart)
     && !(lib.hasInfix "/dev/infiniband" unit.serviceConfig.ExecStart)
     && !(builtins.elem "deepseek-v41-flash-1017-q2-gguf" host.services.local-models.artifacts)
     && builtins.elem "gufo-tp2.service" unit.conflicts;
@@ -29,6 +37,31 @@ in
 assert check c && check w;
 assert c.services.ds4.role == "coordinator" && w.services.ds4.role == "worker";
 assert c.services.ds4.image == w.services.ds4.image;
+# Tom 2026-10-25: DeepSeek V4.1 serves from the worker alone (SSD expert
+# streaming, no DSpark) until both disks hold the Q2; the coordinator keeps the
+# TP2 rank shape.
+assert c.services.ds4.mode == "tp2" && w.services.ds4.mode == "single-ssd";
+assert has c "--tensor-parallel --role coordinator" && has c "--host 10.42.0.2 --port 8732";
+assert has w "ds4-server --rocm -m /models/";
+assert has w "--ssd-streaming --ssd-streaming-cache-experts 76GB --batched-session 1";
+assert has w "--host 10.42.0.5 --port 8732";
+assert lib.all (flag: !(has w flag)) [
+  "--tensor-parallel"
+  "--role"
+  "--transport"
+  "--mtp-model"
+  "--dspark"
+  "--vision"
+];
+assert lib.hasInfix "ip saddr 10.42.0.1 tcp dport 8732 accept" w.networking.firewall.extraInputRules;
+assert !(lib.hasInfix "tcp dport 9911" w.networking.firewall.extraInputRules);
+assert lib.any (
+  entry: lib.hasPrefix "ds4 single-ssd" entry.message && !entry.assertion
+) wDspark.assertions;
+# The dsh ds4 route (pkgs/dsh/config.nix) names exactly what the worker serves.
+assert
+  localModel.ds4.endpoint == "http://${w.services.ds4.apiAddress}:${toString w.services.ds4.port}";
+assert localModel.ds4.contextWindow == w.services.ds4.context;
 assert inputs.gufo.rev == "7b1bf049a0a3600345676fdf0a544152ac7ce6a1";
 assert lib.strings.trim (builtins.readFile (inputs.gufo + "/version.txt")) == "0.22.0";
 assert c.services.gufo.tp2.model.artifact == "qwen38-flash-next-gguf";

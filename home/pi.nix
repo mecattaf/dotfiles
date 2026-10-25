@@ -209,8 +209,8 @@ let
             reasoning = false;
             cost = zeroCost;
           }
-          # The alternates answer on the same port only while an operator has
-          # switched one in; the server answers 404 to the other ids, so a run
+          # The alternate answers on the same port only while an operator has
+          # switched it in; the server answers 404 to the other ids, so a run
           # names the row of the model that is resident.
           {
             id = "qwen3.8-27b";
@@ -221,15 +221,6 @@ let
               "text"
               "image"
             ];
-            reasoning = true;
-            cost = zeroCost;
-          }
-          {
-            id = "deepseek-v4-flash";
-            name = "DeepSeek V4 Flash (local alternate, Strix)";
-            contextWindow = 32768;
-            maxTokens = 16384;
-            input = [ "text" ];
             reasoning = true;
             cost = zeroCost;
           }

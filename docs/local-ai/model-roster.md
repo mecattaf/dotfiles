@@ -1,88 +1,83 @@
 # Local model roster
 
 The catalogue in [`../../lib/local-models.nix`](../../lib/local-models.nix)
-is summarised here
-(the speech-intake JSON rows it also merges are listed in
-`docs/speech-operations.md`). This page is read off that file; every byte figure is the exact sum of the
-pinned file sizes (decimal GB), and every revision is the pinned Hugging Face
-commit.
+is summarised here. It merges `lib/speech-intake-models.json`,
+`lib/gufo-models.json`, `lib/ds4-models.json` and a few inline rows. Every byte
+figure is the exact sum of the pinned file sizes (decimal GB), and every
+revision is the pinned Hugging Face commit (abbreviated).
 
 **A catalogue row is not a server.** Appearing here gives an artifact an
 identity and a provenance record. Bytes move only when `library-fetch` fills
 the NAS Library and an operator runs `local-models-borrow` on a host
-([`README.md`](README.md) walks the transaction). Two rows have a declared
-server, declared on both twins and never resident together on either:
-`halogen-qwen38-flash-next` (Halogen Flash, the everyday model, up at boot on
-the worker only) and `halogen-qwen38-27b` (halogen-server's Qwen3.8-27B, the
-alternate an operator brings up with `halogen-switch qwen38-27b` and puts back
-with `halogen-switch flash`). On the coordinator neither starts at boot;
-`halogen-switch off` releases its GPU.
+([`README.md`](README.md) walks the transaction). Two engines serve rows:
+
+- **Gufo** ([`../../modules/gufo.nix`](../../modules/gufo.nix)) on both Strix:
+  `qwen38-flash-next-gguf` resident as `qwen3.8-flash-next` on
+  `http://strix-coordinator:8731`; the Qwen3.8-27B alternate (`qwen3.8-27b`)
+  after `gufo-switch qwen38-27b`; the TP2 fork with Flash-Next Q4 or Q8; the
+  speech, ASR and image units on demand.
+- **ds4** ([`../../modules/ds4.nix`](../../modules/ds4.nix)) on strix-worker:
+  the DeepSeek V4.1 Flash 1017 Q2 as `deepseek-v4.1-flash` on
+  `http://10.42.0.5:8732`, single host with SSD expert streaming, started by
+  hand.
 
 ## Per-host wanted sets
 
-Each twin's `services.local-models.artifacts` is pinned by a `flake.nix`
-assertion.
+Each Strix's `services.local-models.artifacts` is pinned by a `flake.nix`
+assertion. Large optional loans use scoped manifests instead.
 
 | Host | Wanted artifacts | Served by |
 |---|---|---|
-| `worker` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b` | [`../../modules/halogen.nix`](../../modules/halogen.nix) at `http://worker:8731`; Flash resident at boot, the 27B only after `halogen-switch qwen38-27b` |
-| `coordinator` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b`, `vibevoice-asr-streaming-7b-bf16`, plus the Qwen speech rows from `modules/qwen-tts.nix` | Halogen at `http://coordinator:8731` only after `halogen-switch`; streaming ASR per `call-diarize` run; Qwen TTS on demand |
+| `strix-coordinator`, `strix-worker` | `qwen38-flash-next-gguf`, `qwen38-27b-gguf`, `qwen38-27b-dflash2-gguf`, `qwen3-asr-1.7b`, `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` | Gufo (Flash-Next at boot, the 27B after `gufo-switch`, ASR, TTS and image on demand); `call-diarize`; Qwen TTS on demand |
+| scoped, both Strix | `/etc/gufo/tp2-q8-wanted.json` (`qwen38-flash-next-q8-gguf`), `/etc/gufo/27b-q8-wanted.json` (`qwen38-27b-q8-gguf` + DFlash2) | `gufo-tp2`; the 27B Q8 alternate |
+| scoped, `strix-worker` | `/etc/ds4/wanted.json` (`deepseek-v41-flash-1017-q2-gguf`) | ds4 |
 | `nas` | none; it holds the Library | — |
 
 ## The catalogue
 
 | Artifact id | Kind | Precision | Source | Bytes | Serving |
 |---|---|---|---|---|---|
-| `halogen-qwen38-flash-next` | model (4-bit checkpoint + quality overlay + vision tower + flat tokenizer, 9 files) | W4B `.hgn` | [`peonist-ai/halogen-qwen3.8-flash-next@ac23b1b`](https://huggingface.co/peonist-ai/halogen-qwen3.8-flash-next/tree/ac23b1b223b4e9192d27c22367d4dbacf2b595ef) (base [`Qwen/Qwen3.8-Flash-Next`](https://huggingface.co/Qwen/Qwen3.8-Flash-Next)) | 127.47 GB | Halogen Flash server (resident on the worker, operator-started on the coordinator); the only thing that loads these bytes |
-| `halogen-qwen38-27b` | model (dense checkpoint + flat tokenizer, 6 files) | P1W4D-D2 `.hgn` | [`peonist-ai/halogen-qwen3.8-27b@d92dc33`](https://huggingface.co/peonist-ai/halogen-qwen3.8-27b/tree/d92dc33afed1cdc073846c76e51090fa493ce74a) | 35.9 GB | `podman-halogen-qwen38-27b`, the alternate engine on `:8731` of either twin, text only |
-| `vibevoice-asr-streaming-7b-bf16` | model (streaming transcription + speaker labels, 17-file snapshot with its own tokenizer) | BF16 | [`microsoft/VibeVoice-ASR-Streaming-7B@60d858b`](https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/tree/60d858b518b4e19d404af3737f848fc185b30177) | 17.36 GB | `call-diarize` on the coordinator; the one diarization model |
+| `qwen38-flash-next-gguf` | model (4 shards + MTP + BF16 projector) | UD-Q4_K_XL | `unsloth/Qwen3.8-Flash-Next-GGUF@38bb39e` | 115.03 GB | Gufo `gufo-llm`, the resident model |
+| `qwen38-flash-next-q8-gguf` | model (6 shards + MTP + projector) | Q8_0 | `unsloth/Qwen3.8-Flash-Next-GGUF@38bb39e` | 191.92 GB | Gufo TP2 only |
+| `qwen38-27b-gguf` | model + BF16 projector | UD-Q4_K_XL | `unsloth/Qwen3.8-27B-GGUF@4ca7207` | 18.49 GB | Gufo alternate `qwen38-27b` |
+| `qwen38-27b-q8-gguf` | model + BF16 projector | UD-Q8_K_XL | `unsloth/Qwen3.8-27B-GGUF@4ca7207` | 32.39 GB | Gufo alternate `qwen38-27b-q8` |
+| `qwen38-27b-dflash2-gguf` | draft | Q4_K_M | `z-lab/Qwen3.8-27B-DFlash2-GGUF@2d9571f` | 1.14 GB | the 27B's DFlash2 draft |
+| `deepseek-v41-flash-1017-q2-gguf` | model | IQ2_XXS-Q2_K-imatrix | `kyuz0/deepseek-v4.1-flash-gguf@20408f6` | 365.71 GB | ds4, single host on strix-worker |
+| `deepseek-v41-flash-vision-gguf` | mmproj (1017 vision) | BF16 | `kyuz0/deepseek-v4.1-flash-gguf@20408f6` | 0.97 GB | ds4 `--vision`; off until proven in the image |
+| `deepseek-v41-flash-dspark-gguf` | draft (1017 DSpark) | MXFP4 | `kyuz0/deepseek-v4.1-flash-gguf@20408f6` | 7.97 GB | ds4 TP2 only (needs resident experts) |
+| `deepseek-v4-flash-gguf` | model (0731) | IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8 | `antirez/deepseek-v4-gguf@1cd7b56` | 86.72 GB | none since 2026-10-25 (Library bytes kept until retired) |
+| `deepseek-v4-flash-dspark-gguf` | draft (0731) | — | `antirez/deepseek-v4-gguf@e7f0403` | 5.99 GB | none since 2026-10-25 |
+| `qwen3-asr-1.7b` | model | — | `Qwen/Qwen3-ASR-1.7B@7278e1e` | 4.70 GB | Gufo `gufo-asr`, per job |
+| `qwen3-tts-12hz-1.7b-base` | model | BF16 | `Qwen/Qwen3-TTS-12Hz-1.7B-Base@fd4b254` | 4.54 GB | Gufo `gufo-tts`, on demand |
+| `qwen-image-2.1` | model (25-file snapshot) | — | `Qwen/Qwen-Image-2.1@b3179ad` | 33.13 GB | Gufo `gufo-image`, on demand |
+| `minimax-h3-fl2va` | model (84 files) | BF16 | `MiniMaxAI/MiniMax-H3@42ed227` | 144.05 GB | gated until Tom accepts its licence; never fetched or wanted |
+| `qwen3-tts-1.7b-base-q8-0` | model | Q8_0 | `Serveurperso/Qwen3-TTS-GGUF@b7ee2e8` | 2.08 GB | `modules/qwen-tts.nix`, the one TTS model |
+| `qwen3-tts-tokenizer-f32` | tokenizer | F32 | `Serveurperso/Qwen3-TTS-GGUF@b7ee2e8` | 0.65 GB | its codec |
+| `qwen-k2so-midway-b` | template (voice) | — | local `speech/k2so-midway-b` | 0.003 GB | the one TTS voice |
+| `vibevoice-asr-streaming-7b-bf16` | model (17-file snapshot) | BF16 | `microsoft/VibeVoice-ASR-Streaming-7B@60d858b` | 17.36 GB | `call-diarize`; the one diarization model |
 
-Retired on 2026-09-30 (sweep F1), from the catalogue and the NAS Library:
-`qwen3-embedding-8b-q8-0`, `mage-flow-4b-turbo-bf16`,
-`mage-flow-edit-4b-turbo-bf16` and `mage-vl-bf16`. Their pinned revisions are in
-git history (`lib/mage-models.nix`, `lib/local-models.nix`).
+Retired from the active catalogue and wanted sets: every `halogen-*` row
+(2026-10-23; Library copies under `/mnt/nas/models/weights/halogen-*` await an
+explicit retirement), and on 2026-09-30 (sweep F1) `qwen3-embedding-8b-q8-0`
+and the three Mage rows. Speech input (Voxtype, Parakeet, the wake listener)
+left the fleet on 2026-09-30 (Tom; see `AGENTS.md`).
 
 ## The utility model
 
-Callers name the stable ID `utility` and never a concrete model. It resolves
-to the worker's Halogen Flash server, and the `utility-model` wrapper on the
-coordinator forwards one chat-completions request there and returns the
-answer. `/drain` and `/print` are its callers; their flags are unchanged. The
-server has no `/metrics`, but it logs one `serve_api:` line per request with its
-prompt, cached and completion tokens; the UTIL-01 sampler on the worker reads
-those lines per minute, so `tokens_in` / `tokens_out` are counted (dotfiles#312,
-`DECISIONS.md` 2026-09-13).
-
-## Voxtype and Parakeet
-
-Live cursor dictation runs on the coordinator only, through
-[`peteonrails/voxtype`](https://github.com/peteonrails/voxtype)'s
-`onnx-migraphx` package, configured in `home/voxtype.nix`. The model is
-`parakeet-unified-en-0.6b`. It is not a catalogue artifact: Voxtype owns and
-verifies its own model directory under `~/.local/share/voxtype/models/`, and
-the user service runs an idempotent `voxtype setup --download` before every
-start. The pinned streaming window values (`0.32` / `5.6` / `0.32` seconds)
-are load-bearing for parakeet-rs's mel-frame divisibility check, and
-acceptance requires the journal to show the MIGraphX execution provider
-initialising on gfx1151 with no CPU fallback.
+Callers name the stable ID `utility` and never a concrete model. The
+`utility-model` wrapper forwards one chat-completions request to
+`http://strix-coordinator:8731` as `qwen3.8-flash-next` and returns the
+answer. `/drain` and `/print` are its callers; their flags are unchanged.
 
 ## Operating rules
 
-- One declared server family, Halogen, with one resident engine per host at a
-  time. A different engine is a second module beside `modules/halogen.nix`,
-  reviewed as such; it is never a row that quietly starts serving because it
-  was borrowed.
-- Every loaned GGUF is Q8 (`Q8_0` or `UD-Q8_K_XL`). Speech and Mage snapshots,
-  tokenizers and the halogen `.hgn` bundles are explicit format exceptions, not
-  low-bit selections.
+- Two declared engines, Gufo and ds4, with one large model on a host's GPU at
+  a time (`Conflicts=` between their text units). A different engine is a new
+  module beside `modules/gufo.nix`, reviewed as such; it is never a row that
+  quietly starts serving because it was borrowed.
+- Runtime downloads (`-hf`, `hf download` from a service) are out. Bytes enter
+  through `library-fetch` on the NAS and reach a host through
+  `local-models-borrow`; `local-models-prune` is the only deleter.
 - One TTS model (Qwen3-TTS with the K-2SO voice) and one diarization model
   (VibeVoice-ASR-Streaming-7B), per Tom's 2026-09-16 ruling in `DECISIONS.md`.
-- Runtime downloads (`-hf`, `hf download` from a service) are forbidden by
-  assertion. Bytes enter through `library-fetch` on the NAS and reach a host
-  through `local-models-borrow`; `local-models-prune` is the only deleter.
-- The text embedder has no server until an operator starts one. The
-  multimodal Qwen3-VL embedder left with every Qwen3-VL row (Tom, 2026-09-16).
-- Mage-Flow is a diffusion pipeline and Mage-VL an offline Transformers
-  snapshot; neither is an OpenAI-compatible route.
-- Audio and video generation remain parked. Mage-Flow owns the selected
-  image-generation and image-editing lanes.
+- There is no embedder row and no embeddings server.

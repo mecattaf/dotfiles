@@ -11,6 +11,7 @@ let
   modelId = "deepseek-v41-flash-1017-q2-gguf";
   visionId = "deepseek-v41-flash-vision-gguf";
   draftId = "deepseek-v41-flash-dspark-gguf";
+  tp2 = cfg.mode == "tp2";
   artifacts = [ modelId ] ++ lib.optional cfg.vision visionId ++ lib.optional cfg.dspark draftId;
   manifest = (pkgs.formats.json { }).generate "ds4-wanted.json" (store.manifestFor artifacts);
   containerPath =
@@ -36,15 +37,26 @@ let
         (toString cfg.peerPort)
       ]
   );
+  # Single host (kyuz0's model card): the 340.6 GiB Q2 cannot be resident on
+  # one 128 GB box, so ds4 streams routed experts from the local SSD through a
+  # bounded expert cache. DSpark needs resident experts and is refused there.
+  singleArgs = [
+    "--ssd-streaming"
+    "--ssd-streaming-cache-experts"
+    cfg.ssdExpertCache
+    "--batched-session"
+    "1"
+  ];
+  serves = !tp2 || cfg.role == "coordinator";
   args = [
-    (if cfg.role == "coordinator" then "ds4-server" else "ds4")
+    (if serves then "ds4-server" else "ds4")
     "--rocm"
     "-m"
     (containerPath modelId)
     "--ctx"
     (toString cfg.context)
   ]
-  ++ rankArgs
+  ++ (if tp2 then rankArgs else singleArgs)
   ++ lib.optionals cfg.vision [
     "--vision"
     (containerPath visionId)
@@ -54,9 +66,9 @@ let
     (containerPath draftId)
     "--dspark"
   ]
-  ++ lib.optionals (cfg.role == "coordinator") [
+  ++ lib.optionals serves [
     "--host"
-    cfg.coordinatorAddress
+    cfg.apiAddress
     "--port"
     (toString cfg.port)
   ];
@@ -78,7 +90,24 @@ let
 in
 {
   options.services.ds4 = {
-    enable = lib.mkEnableOption "the hand-started kyuz0 DeepSeek V4.1 TP rank";
+    enable = lib.mkEnableOption "the hand-started kyuz0 DeepSeek V4.1 server (a TP rank or one host)";
+    mode = lib.mkOption {
+      type = lib.types.enum [
+        "tp2"
+        "single-ssd"
+      ];
+      default = "tp2";
+      description = ''
+        `tp2`: one resident tensor-parallel rank per Strix (both hosts keep the
+        full Q2 locally). `single-ssd`: this host alone serves the model with
+        SSD expert streaming; `role`, the peer and DSpark do not apply.
+      '';
+    };
+    ssdExpertCache = lib.mkOption {
+      type = lib.types.strMatching "[1-9][0-9]*(GB)?";
+      default = "76GB";
+      description = "single-ssd: the routed-expert cache (`--ssd-streaming-cache-experts`), a count or <n>GB; kyuz0 tested 76GB on a 128 GB Framework Desktop.";
+    };
     image = lib.mkOption {
       type = lib.types.strMatching "[^[:space:]]+@sha256:[a-f0-9]{64}";
       default = "docker.io/kyuz0/strix-halo-ds4-toolbox@sha256:34dec90acfba046123ec35b849db9db0aad7491284b6534b05b11a8f1b5f7d1c";
@@ -99,6 +128,12 @@ in
       type = lib.types.strMatching "([0-9]{1,3}\\.){3}[0-9]{1,3}";
       default = "10.42.0.5";
     };
+    apiAddress = lib.mkOption {
+      type = lib.types.strMatching "([0-9]{1,3}\\.){3}[0-9]{1,3}";
+      default = cfg.coordinatorAddress;
+      defaultText = lib.literalExpression "config.services.ds4.coordinatorAddress";
+      description = "Where the OpenAI-compatible API listens: the TP coordinator, or the single-ssd host's own LAN address.";
+    };
     interface = lib.mkOption {
       type = lib.types.str;
       default = "enp191s0";
@@ -115,9 +150,10 @@ in
       type = lib.types.ints.positive;
       default = 32768;
     };
+    # Off until the 1017 vision encoder is proven to load in the pinned image.
     vision = lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      default = false;
     };
     dspark = lib.mkOption {
       type = lib.types.bool;
@@ -135,13 +171,21 @@ in
         assertion = cfg.port != cfg.peerPort && cfg.port != config.services.gufo.port;
         message = "ds4 inference, peer and Gufo API ports must be distinct.";
       }
+      {
+        assertion = tp2 || !cfg.dspark;
+        message = "ds4 single-ssd streams experts from disk; DSpark needs them resident (services.ds4.dspark = false).";
+      }
     ];
     virtualisation.podman.enable = true;
     # Separate from boot's small wanted set: 349 GiB must not be borrowed
     # merely because a model is described/installed. Never put weights in Nix.
     environment.etc."ds4/wanted.json".source = manifest;
     systemd.services.ds4 = {
-      description = "DeepSeek V4.1 Flash 1017 TP ${cfg.role} (attended, TCP)";
+      description =
+        if tp2 then
+          "DeepSeek V4.1 Flash 1017 TP ${cfg.role} (attended, TCP)"
+        else
+          "DeepSeek V4.1 Flash 1017 single host, SSD expert streaming (attended)";
       wantedBy = [ ];
       wants = [ "network-online.target" ];
       after = [ "network-online.target" ];
@@ -185,13 +229,20 @@ in
         MemorySwapMax = 0;
       };
     };
-    # API has no application auth. Only NAS/client can reach the coordinator;
-    # the peer link accepts only the other compute host over wired Ethernet.
-    networking.firewall.extraInputRules = ''
-      iifname "${cfg.interface}" ip saddr ${cfg.peerAddress} tcp dport ${toString cfg.peerPort} accept
-    ''
-    + lib.optionalString (cfg.role == "coordinator") ''
-      iifname "${cfg.interface}" ip saddr { 10.42.0.1, 10.42.0.16 } tcp dport ${toString cfg.port} accept
-    '';
+    # API has no application auth. Only NAS/client can reach the TP
+    # coordinator, and only the NAS (dsh) a single-ssd host; the peer link
+    # accepts only the other compute host over wired Ethernet.
+    networking.firewall.extraInputRules =
+      if tp2 then
+        ''
+          iifname "${cfg.interface}" ip saddr ${cfg.peerAddress} tcp dport ${toString cfg.peerPort} accept
+        ''
+        + lib.optionalString (cfg.role == "coordinator") ''
+          iifname "${cfg.interface}" ip saddr { 10.42.0.1, 10.42.0.16 } tcp dport ${toString cfg.port} accept
+        ''
+      else
+        ''
+          iifname "${cfg.interface}" ip saddr 10.42.0.1 tcp dport ${toString cfg.port} accept
+        '';
   };
 }
