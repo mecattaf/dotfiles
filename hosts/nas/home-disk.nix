@@ -85,10 +85,14 @@ in
     fileSystems."/mnt/fast" = lib.mkIf shared {
       device = lib.mkForce "${cfg.device}-part1";
       fsType = lib.mkForce "btrfs";
+      # mkForce also drops the x-initrd.mount that neededForBoot adds. Without it the
+      # systemd initrd never mounts @fast, the /nix bind from /sysroot/mnt/fast/nix
+      # fails and stage 1 stops in emergency mode (the 2026-10-25 19:10 cutover hang).
       options = lib.mkForce [
         "subvol=@fast"
         "compress=zstd:1"
         "noatime"
+        "x-initrd.mount"
       ];
       neededForBoot = true;
     };
