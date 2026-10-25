@@ -1,7 +1,7 @@
 { ... }:
 {
-  # The closet's only Tailscale node. Reuse the already enrolled nas-saas
-  # identity from the retired container, never run both daemons over it.
+  # The fleet's only exit node and subnet router. Reuse the already enrolled
+  # nas-saas identity from the retired container, never run both daemons over it.
   # Keep /var/lib/tailscale and /var/lib/headscale intact for rollback.
   services.tailscale = {
     enable = true;

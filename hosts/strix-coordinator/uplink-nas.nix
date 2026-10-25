@@ -29,6 +29,8 @@
       # Tailscale's table 52, which is consulted before main, so LAN traffic
       # (NFS, the TP2 bootstrap, NAS SSH) hairpinned through tailscale0 and
       # this box went dark on the LAN (measured 2026-10-25, 05:54-06:06).
+      # This box now runs --accept-routes=false (modules/fleet-transport.nix);
+      # the rule stays as a guard against a hand `tailscale set`.
       routing-rule1 = "priority 2500 to 10.42.0.0/24 table 254";
     };
     ipv6.method = "disabled";

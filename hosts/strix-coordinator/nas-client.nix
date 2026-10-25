@@ -278,14 +278,13 @@ in
         };
       };
 
-      # Existing clients keep strix.tail8dd1.ts.net. "Only strix has
-      # a Tailscale identity" was the reason, and since 2026-09-01 it needs its
-      # qualifier: only strix has a TAILSCALE.COM identity. The NAS has a
-      # tailnet too now, on the headscale it runs itself
-      # (hosts/nas/headscale.nix), and these two nodes cannot see each other over
-      # either — different control planes, no shared netmap. Which is fine and is
-      # not what these sockets ride: they relay over the house LAN, and the
-      # tailnet is only how a ROAMING client reaches this door.
+      # LAN-only front doors (port URLs on 10.42.0.2 and the .internal names
+      # below). Roaming clients no longer come through here: the old `strix`
+      # tailnet name went with the strix -> strix-coordinator rename, and the
+      # NAS serves Immich, Navidrome and Plex on its own
+      # tailnet address (nas.tail8dd1.ts.net:2283/4533/32400, opened on
+      # tailscale0 in hosts/nas/tailscale.nix). This box is pure compute and
+      # the independent Tailscale recovery node (Tom, 2026-10-25).
       networking.firewall.interfaces.enp191s0.allowedTCPPorts = [
         2283
         4533

@@ -2441,19 +2441,19 @@
           # carries exactly one and modules/common.nix carries none.
 
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
-          # The compute nodes share the NAS PR's official Tailscale policy.
-          # They consume the NAS exit/subnet route, without advertising either.
-          # Keep the coordinator's enrolled identity; enrollment/expiry is an
-          # explicit operator step, not an agenix auth key.
+          # The coordinator keeps its own enrolled tailscale.com identity as the
+          # independent recovery box (Tom, 2026-10-25): no exit node, no
+          # accepted routes, internet straight through the BE550, so it stays
+          # reachable when the NAS is down. Enrollment/expiry is an explicit
+          # operator step, not an agenix auth key. The worker is LAN-only.
           assert strix.services.tailscale.enable;
           assert
             strix.services.tailscale.extraUpFlags == [
               "--hostname=strix-coordinator"
               "--accept-dns=false"
               "--ssh=false"
-              "--accept-routes=true"
-              "--exit-node=nas"
-              "--exit-node-allow-lan-access=true"
+              "--accept-routes=false"
+              "--exit-node="
             ];
           assert strix.services.tailscale.extraSetFlags == strix.services.tailscale.extraUpFlags;
           # It reuses its persistent state: no enrollment key is deployed, so a

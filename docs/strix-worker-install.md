@@ -154,6 +154,11 @@ A successful build alone is not this proof.
 
 ### Optional pre-enrollment on the mounted final worker root
 
+> **Superseded 2026-10-25.** strix-worker is not on the tailnet (Tom: "worker's
+> tailnet login: fine, and i was thinking let's not"); it runs no Tailscale and
+> is reached over the LAN. Do not run this procedure. See
+> `docs/nas-agent-transport.md`. It is kept as history.
+
 This uses the **same interactive user login and console non-expiry mechanism
 as #607**, with a fresh worker state directory. It is a prepared, unexecuted
 procedure, requiring the disk-write authorization above plus Tom's supervised
@@ -239,17 +244,16 @@ verified backup; it is not needed for the preferred route.
   fallback and loopback identities; do not import those retired NM profiles or
   their old Wi-Fi/default-route assumptions into today's BE550 Ethernet LAN.
   See `docs/usb4-pd-wedge-2026-08-21.md` for incident history, not current setup.
-- NAS is the agent/home host and sole Tailscale exit/subnet router. Both
-  compute hosts join the official `tailscale.com` service as plain nodes,
-  using ordinary OpenSSH. They select the NAS exit node with LAN access
-  allowed and accept its subnet route; neither advertises routes. Retain the
-  coordinator's existing enrolled state. After worker login, run the shared
-  `fleet-transport-check` from each machine and retain admin-console evidence
-  of **Key expiry disabled** for all four. The read-only checker requires four
-  distinct online identities, correct tailnet, no reported key expiry and NAS
-  exit/subnet approval and selection. Check these again after the power cycle.
+- NAS is the agent/home host and sole Tailscale exit/subnet router. Since
+  2026-10-25 only the coordinator joins the official `tailscale.com` service
+  among the compute hosts, as a plain node with its own login (the recovery
+  box): no exit node, no accepted routes, ordinary OpenSSH. The worker runs no
+  Tailscale and is reached over the LAN. Run the shared
+  `fleet-transport-check` on the three members and retain admin-console
+  evidence of **Key expiry disabled** for all three
+  (`docs/nas-agent-transport.md`).
 - Verify Linux 7.3 and matching RDMA modules, SSH on `.2`/`.5`, NAS NFS,
-  journal upload, fresh host-key trust and Tailscale on the worker. Borrow
+  journal upload and fresh host-key trust on the worker. Borrow
   models explicitly from the NAS; declaration/build success does not install
   weights or prove dual-node inference. Have the RDMA/integration checks prove
   both fast links and the NAS-to-compute inference/build offload separately.

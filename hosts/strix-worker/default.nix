@@ -9,6 +9,11 @@
   ];
   networking.hostName = "strix-worker";
   myFleet.roles = [ "compute" ];
+  # Not on the tailnet (Tom, 2026-10-25: "worker's tailnet login: fine, and i
+  # was thinking let's not"). The NAS reaches it over the house LAN
+  # (10.42.0.5, modules/fleet-hosts.nix), so no tailscaled, no tailscaled-set
+  # and no login to keep alive. modules/fleet-transport.nix leaves it out.
+  services.tailscale.enable = false;
   # The worker also holds Flash-Next Q8 (TP2 only; 191.92 GB with its
   # projector). The coordinator's disk cannot (108 GB free, D-A), so this is
   # the worker's alone, ordered after the boot set. ds4's Q2 joins this set
@@ -44,9 +49,9 @@
       dns = "10.42.0.1";
       ignore-auto-dns = true;
       route-metric = 100;
-      # Keep 10.42.0.0/24 on the main table ahead of Tailscale's table 52
-      # (--accept-routes=true); same rule and reason as the coordinator's
-      # LAN profile (hosts/strix-coordinator/uplink-nas.nix).
+      # Keep 10.42.0.0/24 on the main table ahead of any Tailscale table 52;
+      # same rule as the coordinator's LAN profile
+      # (hosts/strix-coordinator/uplink-nas.nix). Inert without Tailscale.
       routing-rule1 = "priority 2500 to 10.42.0.0/24 table 254";
     };
     ipv6.method = "disabled";
