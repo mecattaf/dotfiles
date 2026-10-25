@@ -76,13 +76,19 @@ in
           group = "users";
           mode = "600";
         };
-        system.userActivationScripts.seedAtuinKey.text = ''
-          if [ -r "${config.age.secrets.atuin-key.path}" ]; then
-            mkdir -p "$HOME/.local/share/atuin"
-            cp "${config.age.secrets.atuin-key.path}" "$HOME/.local/share/atuin/key"
-            chmod 600 "$HOME/.local/share/atuin/key"
-          fi
-        '';
+        # Seeded only where tom's home runs the atuin client (home/home.nix):
+        # the NAS home has none (T-55), so it gets no ~/.local/share/atuin.
+        system.userActivationScripts.seedAtuinKey =
+          lib.mkIf (config.home-manager.users.tom.programs.atuin.enable or false)
+            {
+              text = ''
+                if [ -r "${config.age.secrets.atuin-key.path}" ]; then
+                  mkdir -p "$HOME/.local/share/atuin"
+                  cp "${config.age.secrets.atuin-key.path}" "$HOME/.local/share/atuin/key"
+                  chmod 600 "$HOME/.local/share/atuin/key"
+                fi
+              '';
+            };
 
       })
 

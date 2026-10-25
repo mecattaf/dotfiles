@@ -239,28 +239,30 @@ in
   };
 
   # ---------------------------------------------------------------------------
-  # atuin — shell history, synced fleet-wide through a self-hosted server on the
-  # strix (hosts/strix/services.nix), tailnet-only. The package here
-  # replaces the old bare `atuin` entry in home.packages; fish's own init call +
-  # the Ctrl+E rebind stay in dot_config/fish/config.fish untouched
-  # (enableFishIntegration = false avoids home-manager wiring a second one).
+  # atuin — shell history for the seats, synced through the self-hosted server
+  # on the NAS (modules/atuin.nix, imported by hosts/nas/agent-host.nix). The
+  # package here replaces the old bare `atuin` entry in home.packages; fish's
+  # own init call + the Ctrl+E rebind stay in dot_config/fish/config.fish
+  # (enableFishIntegration = false avoids home-manager wiring a second one),
+  # behind its `type -q atuin` gate.
   #
-  # sync_address: each brain talks to its own server over localhost; every
-  # seat reaches the NAS over the LAN or tailnet (see the
-  # firewall rule on the server side).
+  # Not on the NAS home (T-55, 2026-10-25). Atuin is on its way out, so the
+  # NAS home is the vanilla fish one: fish's own history, no atuin client,
+  # no key seed (modules/secrets.nix). The NAS keeps serving the seats' sync
+  # until Atuin is retired. Tom: "atuin is ok for now but i mentioned
+  # previously that atuin was on its way out."
   #
   # The encryption key itself is fleet state, not per-host state: it's minted
   # once, delivered via agenix (secrets/atuin-key.age, common tier — see
   # secrets.nix), and force-copied into ~/.local/share/atuin/key on every
-  # activation (modules/secrets.nix) so every host decrypts the same history.
+  # activation of a host whose home enables this client (modules/secrets.nix).
   programs.atuin = {
-    enable = true;
+    enable = hostName != "nas";
     enableFishIntegration = false;
     settings = {
       auto_sync = true;
-      # port must match services.atuin.port in hosts/strix/services.nix.
-      sync_address =
-        if osConfig.myFleet.has "brain" then "http://localhost:27321" else "http://nas:27321";
+      # port must match services.atuin.port in modules/atuin.nix.
+      sync_address = "http://nas:27321";
     };
   };
 
