@@ -27,4 +27,16 @@
   networking.firewall.extraInputRules = ''
     ip saddr 10.42.0.2 tcp dport 22 accept comment "strix SSH"
   '';
+
+  # 2026-10-25: the SN7100 in the second M.2 moved the AQC113 (atlantic, ec:1a:c3:04:9d:54)
+  # from PCI 01:00.0 to 02:00.0; udev named it enp2s0 and orphaned every enp1s0-bound
+  # router setting. Pin the LAN name by permanent MAC (T-51). Deliberately NOT named
+  # "10-nas-lan": the imperative /etc/systemd/network/10-nas-lan.link must stay an
+  # unmanaged regular file until a generation with this link is the boot default and has
+  # been reboot-proven, because booting a generation without this link deletes its static
+  # symlink (setup-etc cleanup).
+  systemd.network.links."10-lan" = {
+    matchConfig.PermanentMACAddress = "ec:1a:c3:04:9d:54";
+    linkConfig.Name = "enp1s0";
+  };
 }
