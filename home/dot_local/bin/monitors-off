@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# monitors-off — power off every output on Sway now, all
+# monitors-off — power off every output on Sway or Hyprland, all
 # back on at the first input. Sway does not wake outputs on input, so a
 # one-shot swayidle does it: `timeout 1` powers off once the seat has been
 # idle for a second, `resume` powers on and then kills this swayidle (its
@@ -7,6 +7,8 @@
 # Mod+Shift+P (sway/binds.conf) and the F10 prompt (bin/sleep-monitors).
 set -euo pipefail
 command -v swayidle >/dev/null || { echo 'monitors-off: swayidle not on PATH' >&2; exit 1; }
+# The child shell, not this launcher, must expand swayidle's PID on resume.
+# shellcheck disable=SC2016
 exec swayidle -w \
-    timeout 1 'swaymsg output "*" power off' \
-    resume 'swaymsg output "*" power on; kill $PPID'
+    timeout 1 'desktop-control power-off' \
+    resume 'desktop-control power-on; kill $PPID'

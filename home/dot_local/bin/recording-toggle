@@ -5,8 +5,4 @@
 
 RECORD_SCRIPT="$(dirname "$0")/record"
 
-if pgrep -x wf-recorder >/dev/null; then
-    "$RECORD_SCRIPT" stop
-else
-    "$RECORD_SCRIPT" start
-fi
+exec "$RECORD_SCRIPT" toggle

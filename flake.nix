@@ -1192,8 +1192,8 @@
           assert hasChromeStream "strix";
 
           assert !(strixHome.systemd.user.services ? wayvnc);
-          # The seat EQUALITIES: greetd == Sway == myDisplay, greetd starts the
-          # Sway session launcher, and niri (retired 2026-10-13) is on nowhere.
+          # Every physical seat retains Sway for recovery; Hyprland is the
+          # selected client session. Headless hosts start neither compositor.
           assert builtins.all (
             h:
             let
@@ -1202,15 +1202,18 @@
             in
             c.services.greetd.enable == d.enable
             && c.programs.swayPhysical.enable == d.enable
+            && c.programs.hyprlandPhysical.enable == (d.enable && d.session == "hyprland")
             && !c.programs.niri.enable
             && (
               !d.enable
-              || nixpkgs.lib.hasSuffix "/bin/sway-physical-session" c.services.greetd.settings.initial_session.command
+              || nixpkgs.lib.hasSuffix "/bin/${d.session}-physical-session" c.services.greetd.settings.initial_session.command
             )
           ) displayHosts;
-          # The client is the Sway seat; the Herdr server remains independent.
+          # Tom's final choice is Sway; native Hyprland work remains opt-in.
           assert (cfgOf "client").myDisplay.enable;
+          assert (cfgOf "client").myDisplay.session == "sway";
           assert (cfgOf "client").programs.sway.enable;
+          assert !(cfgOf "client").programs.hyprland.enable;
           assert clientHome.programs.vicinae.enable;
           assert clientHome.services.mako.enable;
           assert clientHome.systemd.user.services.mako.Service.Type == "dbus";
@@ -1226,6 +1229,15 @@
           assert clientHome.home.sessionVariables.HERDR_SWAY_LOCAL == "0";
           assert strixHome.systemd.user.services.herdr.Unit.X-SwitchMethod == "keep-old";
           assert (cfgOf "client").systemd.user.services.sway-physical.restartIfChanged == false;
+          assert (cfgOf "client").systemd.services.greetd.restartIfChanged == false;
+          assert !(clientHome.systemd.user.services ? desktop-shell);
+          assert !(clientHome.systemd.user.services ? desktop-shell-core);
+          assert clientHome.systemd.user.services.vicinae.Install.WantedBy == [ "sway-physical-session.target" ];
+          assert clientHome.systemd.user.services.mako.Install.WantedBy == [ "sway-physical-session.target" ];
+          assert clientHome.xdg.configFile ? "themes/noir/desktop-shell.json";
+          assert !(clientHome.xdg.configFile ? "hypr");
+          assert clientHome.xdg.configFile ? "themes/noir/hyprland.conf";
+          assert !(strixHome.systemd.user.services ? desktop-shell);
           assert clientHome.programs.vicinae.settings.font.normal.family == "Anthropic Sans";
           assert clientHome.services.mako.settings.font == "Anthropic Sans 11";
           assert clientHome.xdg.configFile ? "sway-local.conf";
@@ -1799,7 +1811,7 @@
             }
             ''
               set -euo pipefail
-              bash ${./tests/screenshot/test-spool.sh} ${./home/dot_local/bin/screenshot}
+              PATH=${pkgs.python3}/bin:$PATH bash ${./tests/screenshot/test-spool.sh} ${./home/dot_local/bin/screenshot} ${./home/dot_local/bin/desktop-control}
               touch "$out"
             '';
 
@@ -2442,6 +2454,7 @@
                 ${./home/dot_local/bin/runtime-test}
               python3 ${./tests/herdr/test_launchers.py}
               python3 ${./tests/herdr/test_sway_picker.py}
+              python3 ${./tests/herdr/test_hyprland_picker.py}
               touch "$out"
             '';
 

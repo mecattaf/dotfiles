@@ -33,10 +33,13 @@ with open('/dev/null', 'wb') as null:
 (runtime / 'test-socket-directory' / 'file').write_text('disposable')
 for child in runtime.iterdir():
     shutil.rmtree(child) if child.is_dir() else child.unlink()
-assert not pathlib.Path('/proc/' + sys.argv[2]).exists(), 'host PID is visible'
+# Numeric PIDs can be reused in nested test namespaces. Compare namespace
+# identities rather than mistaking a private process with the same PID for
+# the parent's process.
+assert os.stat('/proc/self/ns/pid').st_ino != int(sys.argv[2]), 'host PID namespace is shared'
 sys.exit(23)
 '''
-            p = subprocess.run([str(RUNNER), '--', os.sys.executable, '-c', probe, str(sentinel), str(os.getpid())],
+            p = subprocess.run([str(RUNNER), '--', os.sys.executable, '-c', probe, str(sentinel), str(os.stat('/proc/self/ns/pid').st_ino)],
                                env=dict(os.environ, XDG_RUNTIME_DIR=str(runtime), NOTIFY_SOCKET='live-notify', DBUS_SESSION_BUS_ADDRESS='live-bus',
                                         HYPRLAND_INSTANCE_SIGNATURE='live-compositor', HYPRLAND_CMD='live-command'),
                                capture_output=True, text=True, timeout=15)

@@ -8,11 +8,12 @@
 # that runs the remote command locally (real rsync --server, real sha256sum);
 # grim, wl-copy, swaymsg, slurp, satty, hostname and date are fakes.
 #
-#   test-spool.sh <screenshot>
+#   test-spool.sh <screenshot> <desktop-control>
 set -euo pipefail
 
-[[ $# -eq 1 && -f "$1" ]] || { echo "usage: test-spool.sh <screenshot>" >&2; exit 2; }
+[[ $# -eq 2 && -f "$1" && -f "$2" ]] || { echo "usage: test-spool.sh <screenshot> <desktop-control>" >&2; exit 2; }
 script="$1"
+control="$2"
 
 root="$(mktemp -d)"
 trap 'rm -rf -- "$root"' EXIT
@@ -20,6 +21,8 @@ bin="$root/bin"
 client_home="$root/client"
 strix_home="$root/strix"
 mkdir -p "$bin" "$client_home" "$strix_home"
+cp "$control" "$bin/desktop-control"
+chmod +x "$bin/desktop-control"
 spool="$client_home/.local/state/screenshot-spool"
 remote="$strix_home/Pictures/Screenshots"
 ssh_log="$root/ssh.log"

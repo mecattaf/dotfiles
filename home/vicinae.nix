@@ -8,6 +8,9 @@
 }:
 let
   enabled = osConfig.myDisplay.enable;
+  nativeShell = osConfig.myDisplay.session == "hyprland";
+  sessionTarget = "sway-physical-session.target";
+  sessionTargets = [ sessionTarget ];
   package = inputs.vicinae.packages.${pkgs.stdenv.hostPlatform.system}.default;
   cfgHome = config.xdg.configHome;
   command = name: title: exec: {
@@ -28,7 +31,7 @@ in
       enableFirefoxIntegration = false;
       systemd = {
         enable = true;
-        target = "sway-physical-session.target";
+        target = sessionTarget;
         environment.QT_QPA_PLATFORM = "wayland";
       };
       settings = {
@@ -108,6 +111,15 @@ in
       Hidden=true
     '';
 
+    # Legacy services belong to the Sway recovery session. The Hyprland shell
+    # owns notifications and clipboard history; never run both collectors.
+    systemd.user.services.vicinae = {
+      Unit.After = lib.mkForce sessionTargets;
+      Unit.PartOf = lib.mkForce sessionTargets;
+      Unit.ConditionEnvironment = lib.mkIf nativeShell "!HYPRLAND_INSTANCE_SIGNATURE";
+      Install.WantedBy = lib.mkForce sessionTargets;
+    };
+
     services.mako = {
       enable = true;
       settings = {
@@ -126,10 +138,10 @@ in
     };
     systemd.user.services.mako = {
       Unit = {
-        Description = "Physical Sway notifications";
-        ConditionEnvironment = "WAYLAND_DISPLAY";
-        After = [ "sway-physical-session.target" ];
-        PartOf = lib.mkForce [ "sway-physical-session.target" ];
+        Description = "Physical desktop notifications";
+        ConditionEnvironment = [ "WAYLAND_DISPLAY" ] ++ lib.optional nativeShell "!HYPRLAND_INSTANCE_SIGNATURE";
+        After = sessionTargets;
+        PartOf = lib.mkForce sessionTargets;
       };
       # HM installs the vendor unit but does not declare its Service section.
       # A unit here replaces that file, so it must include the executable.
@@ -139,7 +151,7 @@ in
         ExecStart = "${config.services.mako.package}/bin/mako";
         ExecReload = "${config.services.mako.package}/bin/makoctl reload";
       };
-      Install.WantedBy = lib.mkForce [ "sway-physical-session.target" ];
+      Install.WantedBy = lib.mkForce sessionTargets;
     };
 
     home.packages = [ pkgs.libnotify ];
@@ -151,19 +163,19 @@ in
           "${config.home.homeDirectory}/.local/bin/herdr-picker";
       sway-workspace-new =
         command "New Herdr workspace" "Create an empty dedicated workspace"
-          "${config.home.homeDirectory}/.local/bin/sway-workspace new";
+          "${config.home.homeDirectory}/.local/bin/desktop-workspace new";
       sway-workspace-restore =
         command "Restore Herdr workspace" "Reopen the last closed workspace with its running session"
-          "${config.home.homeDirectory}/.local/bin/sway-workspace restore";
+          "${config.home.homeDirectory}/.local/bin/desktop-workspace restore";
       sway-workspace-rename =
-        command "Rename workspace" "Rename the current Sway workspace"
-          "${config.home.homeDirectory}/.local/bin/sway-workspace rename";
+        command "Rename workspace" "Rename the current desktop workspace"
+          "${config.home.homeDirectory}/.local/bin/desktop-workspace rename";
       notifications-dismiss =
         command "Dismiss notification" "Dismiss the newest Mako notification"
-          "${pkgs.mako}/bin/makoctl dismiss";
+          "${config.home.homeDirectory}/.local/bin/desktop-notifications dismiss";
       notifications-history =
         command "Restore notification" "Restore the most recently dismissed notification"
-          "${pkgs.mako}/bin/makoctl restore";
+          "${config.home.homeDirectory}/.local/bin/desktop-notifications history";
       network-settings =
         command "Network settings" "Configure NetworkManager"
           "${pkgs.kitty}/bin/kitty --class network-settings ${pkgs.networkmanager}/bin/nmtui";

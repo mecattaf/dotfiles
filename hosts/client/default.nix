@@ -68,8 +68,8 @@
 # hosts/zenbook-duo/hardware.nix merged with 77eac406^'s host module; each
 # omission is recorded where it would have gone.
 {
-  # Sway + Vicinae desktop (myDisplay.enable defaults to true); hardware
-  # stays host-specific.
+  # Staged for the next deliberate login/reboot; building does not switch the live seat.
+  myDisplay.session = "sway";
 
   imports = [
     ../../modules/local-models.nix

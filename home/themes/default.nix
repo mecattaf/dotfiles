@@ -291,6 +291,7 @@ rec {
   ) themes;
 
   render = t: {
+    "desktop-shell.json" = builtins.toJSON t;
     "kitty.conf" = kitty t;
     "ghostty" = ghostty t;
     "sway.conf" = sway t;

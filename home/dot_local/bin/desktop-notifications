@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-history}" in
+  dismiss)
+    if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+      exec desktop-shell notifications-dismiss
+    else
+      exec makoctl dismiss
+    fi ;;
+  history)
+    if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+      exec desktop-shell notifications
+    else
+      exec makoctl restore
+    fi ;;
+  *) echo 'usage: desktop-notifications dismiss|history' >&2; exit 2 ;;
+esac

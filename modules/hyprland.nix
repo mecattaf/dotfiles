@@ -4,8 +4,8 @@
   pkgs,
   ...
 }:
-# The physical Hyprland seat is distinct from browser-desktop's headless compositor.
-# Stock Sway supplies tiling and IPC; this module only owns session lifetime.
+# The physical Hyprland seat is distinct from browser-desktop's headless Sway.
+# Stock Hyprland owns composition, input and layout; this module owns session lifetime.
 let
   cfg = config.programs.hyprlandPhysical;
   schemaDirs = lib.concatMapStringsSep ":" (p: "${p}/share/gsettings-schemas/${p.name}") [
@@ -64,11 +64,11 @@ let
     # Nix keeps these schemas outside the ordinary profile share directory.
     # Plain gsettings, GTK clients and manager-launched apps need the same path.
     export XDG_DATA_DIRS="${schemaDirs}:''${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-    unset SWAYSOCK I3SOCK HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY DISPLAY
+    unset SWAYSOCK I3SOCK HYPRLAND_INSTANCE_SIGNATURE HYPRLAND_CMD WAYLAND_DISPLAY DISPLAY
     # Physical seats own the user's ordinary portals. The optional headless
     # browser compositor keeps its private display environment in its service.
     # Never clear failures globally or restart the manager / Herdr here.
-    ${pkgs.systemd}/bin/systemctl --user unset-environment SWAYSOCK I3SOCK HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY DISPLAY
+    ${pkgs.systemd}/bin/systemctl --user unset-environment SWAYSOCK I3SOCK HYPRLAND_INSTANCE_SIGNATURE HYPRLAND_CMD WAYLAND_DISPLAY DISPLAY
     # Import declared session settings (Qt, Chrome, Home Manager), without
     # copying arbitrary shell secrets or stale compositor variables.
     present=()
@@ -102,11 +102,6 @@ in
       # This module owns session targets and environment, as the Sway fallback does.
       withUWSM = false;
     };
-    # A second physical compositor must never displace an attached seat.
-    systemd.user.services.sway-physical.serviceConfig.ExecCondition =
-      "${pkgs.writeShellScript "sway-seat-available" ''
-        ! ${pkgs.systemd}/bin/systemctl --user -q is-active hyprland-physical.service
-      ''}";
     environment.systemPackages = [ session ];
     environment.etc."hypr/physical-session.conf".text = ''
       # Import only compositor-owned variables once the Wayland socket exists.

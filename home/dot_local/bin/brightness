@@ -103,7 +103,7 @@ step() {
     op="${size}%${dir}"
     if [ -n "$focused" ]; then
         local out dev
-        out="$(swaymsg -r -t get_outputs | jq -r 'map(select(.focused))[0].name // empty')"
+        out="$(desktop-control focused-output)"
         dev="$(backlight_for_output "$out")"
         if [ -n "$dev" ]; then
             brightnessctl --min-value=1 -d "$dev" set "$op"

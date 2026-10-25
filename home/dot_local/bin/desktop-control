@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""Small compositor adapter for capture, brightness and display power.
+
+Only fixed read operations and power commands are exposed. No command, selector
+or shell text is accepted from a window title or from the caller.
+"""
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+
+def backend():
+    desktop = os.environ.get('XDG_CURRENT_DESKTOP', '').lower()
+    if os.environ.get('HYPRLAND_INSTANCE_SIGNATURE') and (
+            not os.environ.get('SWAYSOCK') or 'hyprland' in desktop):
+        return 'hyprland'
+    if os.environ.get('SWAYSOCK'):
+        return 'sway'
+    raise ValueError('No Sway or Hyprland session is available.')
+
+
+def command(argv):
+    result = subprocess.run(argv, capture_output=True, text=True, timeout=5)
+    if result.returncode:
+        raise ValueError(result.stderr.strip() or result.stdout.strip() or f'{argv[0]} failed')
+    return result.stdout
+
+
+def geometry(x, y, width, height):
+    # grim's grammar takes integral logical coordinates; never forward JSON or
+    # unvalidated strings as geometry. An empty focus is not a whole-screen grab.
+    if any(isinstance(n, bool) or not isinstance(n, (int, float)) or int(n) != n
+           for n in (x, y, width, height)) or width <= 0 or height <= 0:
+        raise ValueError('Focused window has no valid capture geometry.')
+    return f'{int(x)},{int(y)} {int(width)}x{int(height)}'
+
+
+def control(action):
+    compositor = backend()
+    if action == 'backend':
+        return compositor
+    if action.startswith('power-'):
+        power = action.removeprefix('power-')
+        if compositor == 'hyprland':
+            reply = command(['hyprctl', 'dispatch', 'dpms', power]).strip()
+            if reply != 'ok':
+                raise ValueError('Hyprland refused display power: ' + reply)
+        else:
+            reply = json.loads(command(['swaymsg', '-r', '--', f'output * power {power}']))
+            if not reply or any(not row.get('success') for row in reply):
+                raise ValueError('Sway refused display power.')
+        return None
+    if action == 'focused-output':
+        args = ['hyprctl', '-j', 'monitors'] if compositor == 'hyprland' else ['swaymsg', '-r', '-t', 'get_outputs']
+        outputs = json.loads(command(args))
+        names = [out['name'] for out in outputs if out.get('focused') and isinstance(out.get('name'), str)]
+        if len(names) != 1 or not names[0] or any(ord(c) < 32 for c in names[0]):
+            raise ValueError('No unique focused output.')
+        return names[0]
+    if compositor == 'hyprland':
+        window = json.loads(command(['hyprctl', '-j', 'activewindow']))
+        return geometry(*window['at'], *window['size'])
+    root = json.loads(command(['swaymsg', '-r', '-t', 'get_tree']))
+
+    def focused(node):
+        if node.get('focused') and node.get('window_rect'):
+            yield node
+        for child in node.get('nodes', []) + node.get('floating_nodes', []):
+            yield from focused(child)
+
+    windows = list(focused(root))
+    if len(windows) != 1:
+        raise ValueError('No unique focused window.')
+    window = windows[0]
+    box, content = window['rect'], window['window_rect']
+    return geometry(box['x'] + content['x'], box['y'] + content['y'], content['width'], content['height'])
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=['backend', 'focused-output', 'focused-geometry', 'power-on', 'power-off'])
+    args = parser.parse_args()
+    result = control(args.action)
+    if result is not None:
+        print(result)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, KeyError, TypeError, OSError, subprocess.TimeoutExpired) as error:
+        print(f'desktop-control: {error}', file=sys.stderr)
+        sys.exit(1)

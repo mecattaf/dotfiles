@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# One native Kitty view, the same persistent Herdr runtime as the Sway fallback.
+# The compatibility config enables the verified client-local workspace form.
+set -euo pipefail
+exec "$(dirname "$(readlink -f "$0")")/herdr-sway-projector"

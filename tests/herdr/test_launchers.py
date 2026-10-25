@@ -57,6 +57,16 @@ class Launchers(unittest.TestCase):
         self.assertIn('refusing to start', p.stderr)
         self.assertEqual(len(self.calls()), 1)
 
+    def test_local_hyprland_projector_uses_same_guard_and_existing_server(self):
+        p = self.run_script('herdr-hyprland-projector', HERDR_SWAY_LOCAL='1')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(self.calls(), [['systemctl', '--user', '--quiet', 'is-active', 'herdr.service'], ['herdr', 'client']])
+
+    def test_hyprland_projector_refuses_inactive_local_server(self):
+        p = self.run_script('herdr-hyprland-projector', HERDR_SWAY_LOCAL='1', UNIT_STATUS='3')
+        self.assertEqual(p.returncode, 1)
+        self.assertEqual(len(self.calls()), 1)
+
     def run_chord(self, *args):
         # herdr-chord execs the herdr-picker beside it, so run a copy next to the mock.
         chord = self.bin / 'herdr-chord'

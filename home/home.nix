@@ -105,6 +105,7 @@ in
     ./client-apps.nix
     ./harness-records.nix
     ./herdr.nix
+    ./hyprland.nix
     ./nvim.nix
     ./paper.nix
     ./pi.nix
@@ -528,6 +529,8 @@ in
     gst_all_1.gst-plugins-good
     gst_all_1.gst-plugins-bad
     libjxl
+  ] ++ lib.optionals (osConfig.myDisplay.enable && osConfig.myDisplay.session == "sway") [
+    fuzzel # Mod+i top-display workspace switcher; ordinary layer-shell client.
   ];
 
   # nvim → implemented in ./nvim.nix (imported above).

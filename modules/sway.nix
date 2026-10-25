@@ -48,7 +48,7 @@ let
       exec "$SHELL" -l -c "exec $0 -l"
     fi
 
-    if ${pkgs.systemd}/bin/systemctl --user -q is-active sway-physical.service; then
+    if ${pkgs.systemd}/bin/systemctl --user -q is-active sway-physical.service hyprland-physical.service; then
       echo "A physical desktop is already running (sway-physical.service). Log out before starting Sway." >&2
       exit 1
     fi
@@ -65,11 +65,11 @@ let
     # Nix keeps these schemas outside the ordinary profile share directory.
     # Plain gsettings, GTK clients and manager-launched apps need the same path.
     export XDG_DATA_DIRS="${schemaDirs}:''${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-    unset SWAYSOCK I3SOCK WAYLAND_DISPLAY DISPLAY
+    unset SWAYSOCK I3SOCK HYPRLAND_INSTANCE_SIGNATURE HYPRLAND_CMD WAYLAND_DISPLAY DISPLAY
     # Physical seats own the user's ordinary portals. The optional headless
     # browser compositor keeps its private display environment in its service.
     # Never clear failures globally or restart the manager / Herdr here.
-    ${pkgs.systemd}/bin/systemctl --user unset-environment SWAYSOCK I3SOCK WAYLAND_DISPLAY DISPLAY
+    ${pkgs.systemd}/bin/systemctl --user unset-environment SWAYSOCK I3SOCK HYPRLAND_INSTANCE_SIGNATURE HYPRLAND_CMD WAYLAND_DISPLAY DISPLAY
     # Import declared session settings (Qt, Chrome, Home Manager), without
     # copying arbitrary shell secrets or stale compositor variables.
     present=()

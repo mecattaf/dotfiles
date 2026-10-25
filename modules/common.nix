@@ -11,7 +11,8 @@
     ./browser-trust.nix
     ./headless.nix # opt-in appliance profile without home-manager or desktop
     ./display.nix # myDisplay.enable — does a human sit at this box (default true); .session picks the compositor
-    ./sway.nix # physical native Sway session, separate from the headless browser
+    ./sway.nix # physical Sway fallback, separate from the headless browser
+    ./hyprland.nix # optional physical Hyprland session; never the headless browser
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
     ./user-password.nix # tom's login password via agenix hashedPasswordFile (#54)
@@ -212,16 +213,21 @@
   # path at all.
   security.sudo.wheelNeedsPassword = false;
 
-  # --- session: greetd → Sway ---
+  # --- session: greetd → the selected physical compositor ---
   # Both derive from myDisplay.enable (./display.nix, default true): a human
-  # sits here, so greetd starts Sway. A host without a seat gets no
+  # sits here, so greetd starts the selected session. A host without a seat gets no
   # compositor and no greeter. The greetd settings below stay unconditional
   # (the module ignores them when the service is off), so a host only ever
   # flips the option.
+  # Changing the selected session only takes effect at the next login.
+  systemd.services.greetd = lib.mkIf config.myDisplay.enable { restartIfChanged = false; };
   programs.swayPhysical.enable = config.myDisplay.enable;
+  programs.hyprlandPhysical.enable = config.myDisplay.enable && config.myDisplay.session == "hyprland";
   services.greetd =
     let
-      sessionCommand = "${config.programs.swayPhysical.sessionPackage}/bin/sway-physical-session";
+      sessionCommand = if config.myDisplay.session == "hyprland"
+        then "${config.programs.hyprlandPhysical.sessionPackage}/bin/hyprland-physical-session"
+        else "${config.programs.swayPhysical.sessionPackage}/bin/sway-physical-session";
     in
     {
       enable = config.myDisplay.enable;

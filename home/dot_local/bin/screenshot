@@ -108,7 +108,7 @@ annotate() {
 
 case "${1:-}" in
     screen)
-        output="$(swaymsg -r -t get_outputs | jq -er 'map(select(.focused))[0].name')"
+        output="$(desktop-control focused-output)"
         mkdir -p "$dir"
         grim -o "$output" "$file"
         wl-copy --type image/png < "$file" 8>&-
@@ -121,9 +121,7 @@ case "${1:-}" in
         annotate
         ;;
     window)
-        geometry="$(swaymsg -r -t get_tree | jq -er 'first(.. | objects
-            | select(.focused? == true and .window_rect? != null))
-            | "\(.rect.x + .window_rect.x),\(.rect.y + .window_rect.y) \(.window_rect.width)x\(.window_rect.height)"')"
+        geometry="$(desktop-control focused-geometry)"
         mkdir -p "$dir"
         grim -g "$geometry" "$file"
         wl-copy --type image/png < "$file" 8>&-

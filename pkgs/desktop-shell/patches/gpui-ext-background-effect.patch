@@ -1,0 +1,277 @@
+--- a/crates/gpui_linux/Cargo.toml
++++ b/crates/gpui_linux/Cargo.toml
+@@ -97,7 +97,7 @@
+ ], optional = true }
+ wayland-client = { version = "0.31.11", optional = true }
+ wayland-cursor = { version = "0.31.11", optional = true }
+-wayland-protocols = { version = "0.32.9", features = [
++wayland-protocols = { version = "0.32.13", features = [
+     "client",
+     "staging",
+     "unstable",
+--- a/crates/gpui_linux/src/linux/wayland/client.rs
++++ b/crates/gpui_linux/src/linux/wayland/client.rs
+@@ -1,5 +1,5 @@
+ use std::{
+-    cell::{RefCell, RefMut},
++    cell::{Cell, RefCell, RefMut},
+     hash::Hash,
+     os::fd::{AsRawFd, BorrowedFd},
+     path::PathBuf,
+@@ -36,6 +36,9 @@
+         wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
+         wl_shm_pool, wl_surface,
+     },
++};
++use wayland_protocols::ext::background_effect::v1::client::{
++    ext_background_effect_manager_v1, ext_background_effect_surface_v1,
+ };
+ use wayland_protocols::wp::pointer_gestures::zv1::client::{
+     zwp_pointer_gesture_pinch_v1, zwp_pointer_gestures_v1,
+@@ -222,6 +225,10 @@
+     pub decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
+     pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
+     pub blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
++    pub background_effect_manager:
++        Option<ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1>,
++    // Globals is cloned into every window. Capabilities can change after bind.
++    pub background_blur_supported: Rc<Cell<bool>>,
+     pub text_input_manager: Option<zwp_text_input_manager_v3::ZwpTextInputManagerV3>,
+     pub gesture_manager: Option<zwp_pointer_gestures_v1::ZwpPointerGesturesV1>,
+     pub dialog: Option<xdg_wm_dialog_v1::XdgWmDialogV1>,
+@@ -266,6 +273,8 @@
+             decoration_manager: globals.bind(&qh, 1..=1, ()).ok(),
+             layer_shell: globals.bind(&qh, 1..=5, ()).ok(),
+             blur_manager: globals.bind(&qh, 1..=1, ()).ok(),
++            background_effect_manager: globals.bind(&qh, 1..=1, ()).ok(),
++            background_blur_supported: Rc::new(Cell::new(false)),
+             text_input_manager: globals.bind(&qh, 1..=1, ()).ok(),
+             gesture_manager: globals.bind(&qh, 1..=3, ()).ok(),
+             dialog: globals.bind(&qh, dialog_v..=dialog_v, ()).ok(),
+@@ -1433,6 +1442,40 @@
+ delegate_noop!(WaylandClientStatePtr: ignore org_kde_kwin_blur_manager::OrgKdeKwinBlurManager);
+ delegate_noop!(WaylandClientStatePtr: ignore zwp_text_input_manager_v3::ZwpTextInputManagerV3);
+ delegate_noop!(WaylandClientStatePtr: ignore org_kde_kwin_blur::OrgKdeKwinBlur);
++delegate_noop!(WaylandClientStatePtr: ignore ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1);
++
++impl Dispatch<ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1, ()>
++    for WaylandClientStatePtr
++{
++    fn event(
++        this: &mut Self,
++        _: &ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1,
++        event: ext_background_effect_manager_v1::Event,
++        _: &(),
++        _: &Connection,
++        _: &QueueHandle<Self>,
++    ) {
++        if let ext_background_effect_manager_v1::Event::Capabilities { flags } = event {
++            let blur = match flags {
++                WEnum::Value(flags) => flags.contains(ext_background_effect_manager_v1::Capability::Blur),
++                // Retain the known bit if a future compositor adds flags.
++                WEnum::Unknown(flags) => flags & ext_background_effect_manager_v1::Capability::Blur.bits() != 0,
++            };
++            let client = this.get_client();
++            let state = client.borrow();
++            if state.globals.background_blur_supported.replace(blur) == blur {
++                return;
++            }
++            let windows = state.windows.values().cloned().collect::<Vec<_>>();
++            drop(state);
++            // A frame may re-enter the client; do not hold its RefCell borrow.
++            for window in windows {
++                window.background_effect_capabilities_changed();
++            }
++        }
++    }
++}
++
+ delegate_noop!(WaylandClientStatePtr: ignore wp_viewporter::WpViewporter);
+ delegate_noop!(WaylandClientStatePtr: ignore wp_viewport::WpViewport);
+ 
+--- a/crates/gpui_linux/src/linux/wayland/window.rs
++++ b/crates/gpui_linux/src/linux/wayland/window.rs
+@@ -17,6 +17,7 @@
+     Proxy,
+     protocol::{wl_callback, wl_output, wl_seat, wl_surface},
+ };
++use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_surface_v1;
+ use wayland_protocols::wp::viewporter::client::wp_viewport;
+ use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
+ use wayland_protocols::xdg::shell::client::xdg_popup;
+@@ -104,6 +105,7 @@
+     app_id: Option<String>,
+     appearance: WindowAppearance,
+     blur: Option<org_kde_kwin_blur::OrgKdeKwinBlur>,
++    background_effect: Option<ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1>,
+     viewport: Option<wp_viewport::WpViewport>,
+     outputs: HashMap<ObjectId, Output>,
+     display: Option<(ObjectId, Output)>,
+@@ -601,6 +603,7 @@
+             surface,
+             app_id: options.app_id,
+             blur: None,
++            background_effect: None,
+             viewport,
+             globals,
+             outputs: HashMap::default(),
+@@ -764,6 +767,11 @@
+ 
+         state.renderer.destroy();
+ 
++        // Destroy effect objects before their wl_surface. Surface destruction
++        // removes the effect; no extra buffer commit is needed at teardown.
++        if let Some(effect) = state.background_effect.take() {
++            effect.destroy();
++        }
+         // Destroy blur first, this has no dependencies.
+         if let Some(blur) = &state.blur {
+             blur.release();
+@@ -1464,6 +1472,8 @@
+             }
+             let device_bounds = state.bounds.to_device_pixels(state.scale);
+             state.renderer.update_drawable_size(device_bounds.size);
++            // Regions use logical surface coordinates, not scaled pixels.
++            update_background_effect(&mut state);
+             (state.bounds.size, state.scale)
+         };
+ 
+@@ -1480,6 +1490,18 @@
+                     .set_destination(f32::from(size.width) as i32, f32::from(size.height) as i32);
+             }
+         }
++    }
++
++    pub fn background_effect_capabilities_changed(&self) {
++        let mut state = self.state.borrow_mut();
++        if !state.surface.is_alive() {
++            return;
++        }
++        update_background_effect(&mut state);
++        drop(state);
++        // Effect regions are double-buffered. Use the normal frame/present
++        // path to commit, including when the surface content has not changed.
++        self.request_redraw();
+     }
+ 
+     pub fn resize(&self, size: Size<Pixels>) {
+@@ -2208,23 +2230,105 @@
+         state.surface.set_opaque_region(None);
+     }
+ 
+-    if let Some(ref blur_manager) = state.globals.blur_manager {
+-        if state.background_appearance == WindowBackgroundAppearance::Blurred {
++    update_background_effect(&mut state);
++
++    region.destroy();
++}
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++enum BackgroundBlurProtocol {
++    None,
++    Ext,
++    Kde,
++}
++
++fn background_blur_protocol(blurred: bool, ext: bool, kde: bool) -> BackgroundBlurProtocol {
++    if !blurred {
++        BackgroundBlurProtocol::None
++    } else if ext {
++        BackgroundBlurProtocol::Ext
++    } else if kde {
++        BackgroundBlurProtocol::Kde
++    } else {
++        BackgroundBlurProtocol::None
++    }
++}
++
++fn update_background_effect(state: &mut WaylandWindowState) {
++    let protocol = background_blur_protocol(
++        state.background_appearance == WindowBackgroundAppearance::Blurred,
++        state.globals.background_effect_manager.is_some()
++            && state.globals.background_blur_supported.get(),
++        state.globals.blur_manager.is_some(),
++    );
++
++    if protocol != BackgroundBlurProtocol::Ext {
++        if let Some(effect) = state.background_effect.take() {
++            // NULL removes blur; unlike KDE, NULL never means the whole surface.
++            effect.set_blur_region(None);
++            effect.destroy();
++        }
++    }
++    if protocol != BackgroundBlurProtocol::Kde {
++        if let Some(blur) = state.blur.take() {
++            if let Some(manager) = &state.globals.blur_manager {
++                manager.unset(&state.surface);
++            }
++            blur.release();
++        }
++    }
++
++    match protocol {
++        BackgroundBlurProtocol::Ext => {
++            if state.background_effect.is_none() {
++                let manager = state.globals.background_effect_manager.as_ref().unwrap();
++                state.background_effect = Some(manager.get_background_effect(
++                    &state.surface,
++                    &state.globals.qh,
++                    (),
++                ));
++            }
++            // Whole current surface, in logical surface-local coordinates.
++            // Recomputed on resize; fractional scaling must not multiply it.
++            let region = state.globals.compositor.create_region(&state.globals.qh, ());
++            region.add(
++                0,
++                0,
++                (f32::from(state.bounds.size.width).ceil() as i32).max(0),
++                (f32::from(state.bounds.size.height).ceil() as i32).max(0),
++            );
++            state.background_effect.as_ref().unwrap().set_blur_region(Some(&region));
++            // set_blur_region copies the region. The next ordinary surface
++            // presentation commits this state; do not bypass configure/frames.
++            region.destroy();
++        }
++        BackgroundBlurProtocol::Kde => {
+             if state.blur.is_none() {
+-                let blur = blur_manager.create(&state.surface, &state.globals.qh, ());
+-                state.blur = Some(blur);
++                let manager = state.globals.blur_manager.as_ref().unwrap();
++                state.blur = Some(manager.create(&state.surface, &state.globals.qh, ()));
+             }
+             state.blur.as_ref().unwrap().commit();
+-        } else {
+-            // It probably doesn't hurt to clear the blur for opaque windows
+-            blur_manager.unset(&state.surface);
+-            if let Some(b) = state.blur.take() {
+-                b.release()
+-            }
+-        }
+-    }
+-
+-    region.destroy();
++        }
++        BackgroundBlurProtocol::None => {}
++    }
++}
++
++#[cfg(test)]
++mod background_effect_tests {
++    use super::{BackgroundBlurProtocol, background_blur_protocol};
++
++    #[test]
++    fn blur_requires_explicit_appearance_and_prefers_advertised_ext_support() {
++        for ext in [false, true] {
++            for kde in [false, true] {
++                assert_eq!(background_blur_protocol(false, ext, kde), BackgroundBlurProtocol::None);
++            }
++        }
++        assert_eq!(background_blur_protocol(true, true, true), BackgroundBlurProtocol::Ext);
++        assert_eq!(background_blur_protocol(true, true, false), BackgroundBlurProtocol::Ext);
++        assert_eq!(background_blur_protocol(true, false, true), BackgroundBlurProtocol::Kde);
++        assert_eq!(background_blur_protocol(true, false, false), BackgroundBlurProtocol::None);
++    }
+ }
+ 
+ pub(crate) trait WindowDecorationsExt {
