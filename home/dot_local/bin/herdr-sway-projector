@@ -15,4 +15,5 @@ if [[ $local_server == 1 ]]; then
   fi
   exec herdr client
 fi
-exec "$(dirname "$(readlink -f "$0")")/herdr-projector"
+# The sibling sits beside the link, not beside its store target (see herdr-chord).
+exec "$(dirname "$0")/herdr-projector"

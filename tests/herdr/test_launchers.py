@@ -32,7 +32,7 @@ class Launchers(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.bin = self.root / 'bin'
         self.bin.mkdir()
-        for name in ('ssh', 'sleep', 'herdr', 'systemctl', 'herdr-picker'):
+        for name in ('ssh', 'sleep', 'herdr', 'systemctl', 'herdr-picker', 'herdr-projector'):
             p = self.bin / name
             p.write_text('#!' + os.sys.executable + '\n' + MOCK)
             p.chmod(0o755)
@@ -57,12 +57,21 @@ class Launchers(unittest.TestCase):
         self.assertIn('refusing to start', p.stderr)
         self.assertEqual(len(self.calls()), 1)
 
-    def run_chord(self, *args):
-        # herdr-chord execs the herdr-picker beside it, so run a copy next to the mock.
-        chord = self.bin / 'herdr-chord'
-        chord.write_text((ROOT / 'herdr-chord').read_text())
-        return subprocess.run(['bash', str(chord), *args], env=self.env,
+    def run_linked(self, name, *args, **env):
+        # Home Manager links each bin entry to its own store path (pkgs.linkFarm), so
+        # run the script through such a link: siblings must resolve beside the link.
+        link = self.bin / name
+        if not link.is_symlink():
+            store = self.root / 'store'
+            store.mkdir(exist_ok=True)
+            target = store / f'0000-{name}'
+            target.write_text((ROOT / name).read_text())
+            link.symlink_to(target)
+        return subprocess.run(['bash', str(link), *args], env=self.env | env,
                               capture_output=True, text=True, timeout=5)
+
+    def run_chord(self, *args):
+        return self.run_linked('herdr-chord', *args)
 
     def test_chords_hand_off_to_herdr_picker(self):
         for verb in ('new', 'sidebar', 'rename'):
@@ -76,6 +85,16 @@ class Launchers(unittest.TestCase):
         self.assertEqual(p.returncode, 2)
         self.assertIn('usage', p.stderr)
         self.assertFalse((self.root / 'calls').exists())
+
+    def test_workspace_ops_hand_off_to_herdr_picker_through_store_link(self):
+        p = self.run_linked('sway-workspace', 'new')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(self.calls(), [['herdr-picker', '--workspace', 'new']])
+
+    def test_remote_sway_projector_hands_off_through_store_link(self):
+        p = self.run_linked('herdr-sway-projector', HERDR_SWAY_LOCAL='0')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(self.calls(), [['herdr-projector']])
 
     def test_projector_diagnoses_failures_without_starting_unmanaged_server(self):
         cases = [

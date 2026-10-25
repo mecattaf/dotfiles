@@ -21,4 +21,6 @@ case "$verb" in
     ;;
 esac
 
-exec "$(dirname "$(readlink -f "$0")")/herdr-picker" --chord "$verb"
+# Home Manager may link each bin entry to its own store path (pkgs.linkFarm),
+# so find the sibling beside the link, never through it.
+exec "$(dirname "$0")/herdr-picker" --chord "$verb"
