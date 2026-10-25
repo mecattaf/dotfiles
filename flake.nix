@@ -1020,6 +1020,9 @@
           assert !(nas.networking.networkmanager.ensureProfiles.profiles ? freebox-uplink);
           assert !(nas.systemd.services ? wan0-watchdog);
           assert !(nas.systemd.network.links ? "10-wan0");
+          assert nas.systemd.network.links."10-lan".matchConfig.PermanentMACAddress == "ec:1a:c3:04:9d:54";
+          assert nas.systemd.network.links."10-lan".linkConfig.Name == "enp1s0";
+          assert !(nas.systemd.network.links ? "10-nas-lan");
           assert !(builtins.elem "usbcore.autosuspend=-1" nas.boot.kernelParams);
           assert !nas.networking.nat.enable;
           assert nas.networking.nftables.tables ? nas_upstream;
