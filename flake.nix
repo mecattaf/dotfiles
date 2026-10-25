@@ -45,10 +45,11 @@
     };
 
     # The installed Projects CLI becomes a declared brain-role GC root (#552).
-    project-cli = {
-      url = "git+https://github.com/agency-agency/backlog?rev=05e5f351ef5fdd1fc12fd5b805ee47e2e2be486a";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # No nixpkgs.follows: upstream pins its pnpm-deps fixed-output hash against
+    # its own lock (pnpm 12.3.4). Following our nixpkgs swapped in pnpm 11.15.0,
+    # whose fetch hashes differently, so a fresh store failed with a hash
+    # mismatch (2026-10-25, T-13; measured on both strix).
+    project-cli.url = "git+https://github.com/agency-agency/backlog?rev=05e5f351ef5fdd1fc12fd5b805ee47e2e2be486a";
 
     # Per-device hardware quirks. No nixpkgs.follows — it's just module files.
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
