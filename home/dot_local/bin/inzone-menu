@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Mod+Shift+F9: native INZONE Buds controls through the pinned ZoneOut CLI.
+# F9 selects the output/microphone pair; Shift+F9 remains call recording.
+set -euo pipefail
+
+zoneout=${ZONEOUT:-zoneout}
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/zoneout"
+mkdir -p "$state_dir"
+exec 9>"$state_dir/menu.lock"
+flock -n 9 || exit 0
+
+fail() {
+    printf '\n%s\n' "$*" >&2
+    read -r -t 5 || true
+    exit 1
+}
+command -v "$zoneout" >/dev/null || fail 'ZoneOut is not installed on this seat.'
+
+query() {
+    local value
+    if ! value=$(timeout 4 "$zoneout" --device buds --get "$1" 2>&1); then
+        printf '%s\n' "$value" >&2
+        return 1
+    fi
+    if [[ ! "$value" =~ ^[0-9]+$ ]] || ((value > $2)); then
+        printf 'Unexpected %s reading: %s\n' "$1" "$value" >&2
+        return 1
+    fi
+    printf '%s\n' "$value"
+}
+pick() {
+    local header=$1
+    shift
+    fzf --delimiter=$'\t' --with-nth='2..' --prompt='> ' \
+        --header="$header" --height=100% --reverse --no-info --pointer='›' \
+        --color='prompt:bold:8,header:italic:7,pointer:5' "$@"
+}
+balance_label() {
+    local value=$1
+    if ((value == 50)); then
+        printf 'Centered'
+    elif ((value < 50)); then
+        printf 'Game +%d' "$(((50 - value) / 10))"
+    else
+        printf 'Chat +%d' "$(((value - 50) / 10))"
+    fi
+}
+while :; do
+    volume=$(query volume 30) || fail 'Take the buds out of their case and check the USB receiver.'
+    balance=$(query balance 100) || fail 'Cannot read the INZONE Game/Chat balance.'
+    nc=$(query nc_mode 2) || fail 'Cannot read the INZONE noise control.'
+    case "$nc" in 0) noise='Off';; 1) noise='Noise cancelling';; 2) noise='Ambient sound';; esac
+    desktop=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null \
+        | awk '$1 == "Volume:" {printf "%d", $2 * 100 + 0.5}') || desktop='?'
+    choice=$(printf 'volume\t  Buds volume       %s / 30\nbalance\t  Game / Chat       %s\nnoise\t  Noise control     %s\n' \
+        "$volume" "$(balance_label "$balance")" "$noise" \
+        | pick "INZONE Buds · desktop ${desktop}%") || exit 0
+    case "${choice%%$'\t'*}" in
+        volume)
+            value=$(
+                for i in {0..30}; do
+                    printf '%d\t  %2d / 30\n' "$i" "$i"
+                done | pick 'Buds volume · independent of desktop volume' \
+                    --bind "start:pos($((volume + 1)))"
+            ) || continue
+            value=${value%%$'\t'*}
+            [[ "$value" =~ ^[0-9]+$ ]] && ((value <= 30)) || continue
+            timeout 4 "$zoneout" --device buds --set volume "$value"
+            ;;
+        balance)
+            value=$(
+                for i in {0..100..10}; do
+                    printf '%d\t  %s\n' "$i" "$(balance_label "$i")"
+                done | pick 'Game / Chat balance' \
+                    --bind "start:pos($(((balance + 5) / 10 + 1)))"
+            ) || continue
+            value=${value%%$'\t'*}
+            [[ "$value" =~ ^[0-9]+$ ]] && ((value <= 100)) || continue
+            timeout 4 "$zoneout" --device buds --set balance "$value"
+            ;;
+        noise)
+            value=$(printf '0\t  Off\n1\t  Noise cancelling\n2\t  Ambient sound\n' \
+                | pick 'Noise control' --bind "start:pos($((nc + 1)))") || continue
+            value=${value%%$'\t'*}
+            case "$value" in 0|1|2) timeout 4 "$zoneout" --device buds --set nc_mode "$value";; esac
+            ;;
+    esac
+    # Upstream sends writes without waiting for a state acknowledgement.
+    # Re-query all shown values after the Buds' documented response latency.
+    sleep 0.35
+done
