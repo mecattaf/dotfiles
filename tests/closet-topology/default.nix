@@ -46,7 +46,7 @@ assert builtins.elem "mt7925e" s.boot.blacklistedKernelModules;
 assert !s.myDisplay.enable && !s.services.greetd.enable;
 assert s.services.tailscale.enable;
 assert builtins.elem "--accept-dns=false" s.services.tailscale.extraSetFlags;
-assert builtins.elem "--accept-routes=true" s.services.tailscale.extraSetFlags;
+assert builtins.elem "--accept-routes=false" s.services.tailscale.extraSetFlags;
 assert builtins.elem "--ssh=false" s.services.tailscale.extraSetFlags;
 assert !s.hardware.bluetooth.enable;
 assert c.myTripwire.strix-reachability.enable;
@@ -61,6 +61,7 @@ assert builtins.elem "--state=/var/lib/tailscale-personal/tailscaled.state"
 assert builtins.elem "--statedir=/var/lib/tailscale-personal"
   n.services.tailscale.extraDaemonFlags;
 assert builtins.elem "--accept-routes=true" c.services.tailscale.extraSetFlags;
+assert builtins.elem "--accept-dns=true" c.services.tailscale.extraSetFlags;
 # D-55 "no-exit-client": the Zenbook's internet never depends on the NAS, so a
 # dead NAS leaves the Freebox rung of the Wi-Fi ladder usable.
 assert builtins.elem "--exit-node=" c.services.tailscale.extraSetFlags;
@@ -69,9 +70,11 @@ assert !builtins.elem "--exit-node-allow-lan-access=true" c.services.tailscale.e
 assert
   c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.routing-rule1
   == "priority 2500 to 10.42.0.0/24 table 254";
-# Both strix accept the NAS's subnet route too, so their LAN profiles carry the
-# client's rule: without it 10.42.0.0/24 resolves through tailscale0 (table 52)
-# and the coordinator lost the LAN on 2026-10-25.
+# Both strix LAN profiles carry the client's rule: with accepted Tailscale
+# routes 10.42.0.0/24 resolved through tailscale0 (table 52) and the
+# coordinator lost the LAN on 2026-10-25. Neither accepts the route now (the
+# coordinator runs --accept-routes=false, the worker has no Tailscale); the
+# rule stays as a guard.
 assert builtins.all
   (
     cfg:
@@ -135,28 +138,25 @@ assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.address1 == 
 assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.gateway == "10.42.0.3";
 assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.dns == "10.42.0.1";
 assert w.networking.networkmanager.ensureProfiles.profiles.lan.ipv6.method == "disabled";
-assert builtins.all
-  (
-    cfg:
-    cfg.myFleetTransport.enable
-    && cfg.services.tailscale.enable
-    && cfg.services.tailscale.useRoutingFeatures == "client"
-    && cfg.services.tailscale.authKeyFile == null
-    && cfg.services.tailscale.extraUpFlags == cfg.services.tailscale.extraSetFlags
-    && builtins.elem "--hostname=${cfg.networking.hostName}" cfg.services.tailscale.extraSetFlags
-    && builtins.elem "--exit-node=nas" cfg.services.tailscale.extraSetFlags
-    && builtins.elem "--exit-node-allow-lan-access=true" cfg.services.tailscale.extraSetFlags
-    && builtins.elem "--accept-routes=true" cfg.services.tailscale.extraSetFlags
-    && builtins.elem "--accept-dns=false" cfg.services.tailscale.extraSetFlags
-    && builtins.elem "--ssh=false" cfg.services.tailscale.extraSetFlags
-    && !builtins.any (
-      flag: lib.hasPrefix "--advertise-" flag || lib.hasPrefix "--login-server=" flag
-    ) cfg.services.tailscale.extraSetFlags
-  )
-  [
-    s
-    w
-  ];
+# Tom, 2026-10-25: the coordinator keeps its own Tailscale login as the
+# independent recovery box (no exit node, no accepted routes, internet through
+# the BE550); the worker is not on the tailnet and is reached over the LAN.
+assert
+  s.myFleetTransport.enable
+  && s.services.tailscale.enable
+  && s.services.tailscale.useRoutingFeatures == "client"
+  && s.services.tailscale.authKeyFile == null
+  && s.services.tailscale.extraUpFlags == s.services.tailscale.extraSetFlags
+  &&
+    s.services.tailscale.extraSetFlags == [
+      "--hostname=strix-coordinator"
+      "--accept-dns=false"
+      "--ssh=false"
+      "--accept-routes=false"
+      "--exit-node="
+    ];
+assert !w.myFleetTransport.enable && !w.services.tailscale.enable;
+assert !(w.systemd.services ? tailscaled-set);
 assert !w.services.k3s.enable && !w.mySecrets.enable;
 assert builtins.all (name: name == "gufo-tp2-control-token") (builtins.attrNames w.age.secrets);
 assert !w.myDisplay.enable && !w.services.greetd.enable;

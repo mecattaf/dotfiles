@@ -306,8 +306,9 @@
     enable = true;
     startWhenNeeded = true;
   };
-  # Tom, 2026-10-23: all four named fleet hosts use official tailscale.com.
-  # fleet-transport.nix owns NAS exit/subnet routing and client selection.
+  # Tom, 2026-10-23/25: client, nas and strix-coordinator use official
+  # tailscale.com; strix-worker is LAN-only. fleet-transport.nix owns the NAS
+  # exit/subnet routing and each member's preferences.
   # Ordinary OpenSSH is retained; no fleet-wide Tailscale SSH or VNC door.
   services.resolved.enable = true;
   networking.firewall.enable = true;

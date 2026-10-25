@@ -172,12 +172,11 @@ in
         }
       )
 
-      # navidrome-credentials: NOT consumed by the navidrome server (which now
-      # runs on the NAS, hosts/nas/media.nix, reached through the strix's
-      # navidrome-relay) — read client-side by the navidrome-scan fish function
-      # (NAVIDROME_USER / NAVIDROME_PASSWORD). Coordinator-only, matching the
-      # recipient tier in secrets.nix. (Its first reader, the cliamp TUI client,
-      # was removed 2026-09-17.)
+      # navidrome-credentials: NOT consumed by the navidrome server (which runs
+      # on the NAS, hosts/nas/media.nix) — read client-side by the
+      # navidrome-scan fish function (NAVIDROME_USER / NAVIDROME_PASSWORD),
+      # which dials http://nas:4533. Brain-only (the NAS). (Its first reader,
+      # the cliamp TUI client, was removed 2026-09-17.)
       (lib.mkIf (config.myFleet.has "brain") {
         age.secrets.navidrome-credentials = {
           file = ../secrets/navidrome-credentials.age;

@@ -17,8 +17,9 @@ def load(name, path):
 
 executor = load("executor", sys.argv.pop(1))
 transport = load("transport", sys.argv.pop(1))
-HOSTS = ["client", "nas", "strix-coordinator", "strix-worker"]
-EXIT_CLIENTS = ["strix-coordinator", "strix-worker"]
+# Tom, 2026-10-25: the worker is off the tailnet and no host selects the NAS exit.
+HOSTS = ["client", "nas", "strix-coordinator"]
+EXIT_CLIENTS = []
 POLICY = {"hosts": HOSTS, "tailnetSuffix": "tail8dd1.ts.net", "subnet": "10.42.0.0/24", "exitNode": "nas",
           "exitNodeClients": EXIT_CLIENTS}
 
@@ -34,13 +35,12 @@ def status(host):
 
 
 class TransportTest(unittest.TestCase):
-    def test_all_four_vantage_points(self):
+    def test_every_vantage_point(self):
         for name in HOSTS:
             self.assertEqual(transport.check(status(name), POLICY, name), [])
 
     def test_reject_incomplete_or_wrong_enrollment(self):
-        for vantage in ["client", "strix-worker"]:
-            other = "strix-coordinator"
+        for vantage, other in [("client", "strix-coordinator"), ("strix-coordinator", "client")]:
             cases = []
             bad = status(vantage); bad["Peer"].pop(other); cases.append(bad)
             bad = status(vantage); bad["CurrentTailnet"]["MagicDNSSuffix"] = "wrong.ts.net"; cases.append(bad)
@@ -53,21 +53,32 @@ class TransportTest(unittest.TestCase):
             for bad in cases:
                 self.assertTrue(transport.check(bad, POLICY, vantage))
 
-    def test_strix_must_select_the_online_nas_exit(self):
-        bad = status("strix-worker"); bad["ExitNodeStatus"]["ID"] = "other-id"
-        self.assertTrue(transport.check(bad, POLICY, "strix-worker"))
-        bad = status("strix-worker"); del bad["ExitNodeStatus"]
-        self.assertTrue(transport.check(bad, POLICY, "strix-worker"))
+    def test_listed_exit_client_must_select_the_online_nas_exit(self):
+        policy = dict(POLICY, exitNodeClients=["strix-coordinator"])
+        good = status("strix-coordinator"); good["ExitNodeStatus"] = {"ID": "nas-id", "Online": True}
+        self.assertEqual(transport.check(good, policy, "strix-coordinator"), [])
+        bad = copy.deepcopy(good); bad["ExitNodeStatus"]["ID"] = "other-id"
+        self.assertTrue(transport.check(bad, policy, "strix-coordinator"))
+        self.assertTrue(transport.check(status("strix-coordinator"), policy, "strix-coordinator"))
 
-    def test_client_selects_no_exit_node(self):
-        # D-55 "no-exit-client": a NAS outage must not take the Zenbook's internet.
-        bad = status("client"); bad["ExitNodeStatus"] = {"ID": "nas-id", "Online": True}
-        self.assertTrue(transport.check(bad, POLICY, "client"))
+    def test_no_host_selects_an_exit_node(self):
+        # D-55 "no-exit-client": a NAS outage must not take the Zenbook's internet,
+        # and the recovery coordinator must not depend on the NAS either.
+        for vantage in ["client", "strix-coordinator"]:
+            bad = status(vantage); bad["ExitNodeStatus"] = {"ID": "nas-id", "Online": True}
+            self.assertTrue(transport.check(bad, POLICY, vantage))
+
+    def test_worker_is_not_a_tailnet_identity(self):
+        # A stray strix-worker node is not required and not counted as missing.
+        extra = status("client")
+        extra["Peer"]["strix-worker"] = {"ID": "w-id", "DNSName": "strix-worker.tail8dd1.ts.net.", "Online": False}
+        self.assertEqual(transport.check(extra, POLICY, "client"), [])
 
     def test_policy_without_consumer_list_keeps_every_host_on_the_exit(self):
         legacy = {k: v for k, v in POLICY.items() if k != "exitNodeClients"}
         self.assertTrue(transport.check(status("client"), legacy, "client"))
-        self.assertEqual(transport.check(status("strix-worker"), legacy, "strix-worker"), [])
+        on_exit = status("strix-coordinator"); on_exit["ExitNodeStatus"] = {"ID": "nas-id", "Online": True}
+        self.assertEqual(transport.check(on_exit, legacy, "strix-coordinator"), [])
 
     def test_nas_cannot_route_through_itself(self):
         bad = status("nas")

@@ -1,5 +1,38 @@
 # DECISIONS
 
+2026-10-25 Tailscale is vanilla (D-55, T-58, T-54). The NAS is the only exit
+node and keeps advertising `10.42.0.0/24`; no host selects the exit node.
+The Zenbook (client) has its own login, accepts the NAS subnet route and
+keeps MagicDNS (`--accept-dns=true`, Tailscale's default) so
+`nas.tail8dd1.ts.net` resolves at home and on the go; it passes
+`--exit-node=`, and Tom can pick the NAS exit by hand when roaming.
+strix-coordinator keeps its own login under the node name strix-coordinator
+as the independent recovery box: no exit node, `--accept-routes=false`,
+internet straight through the BE550. strix-worker is not on the tailnet: no
+`tailscaled`, no `tailscaled-set`, reached over the LAN at 10.42.0.5.
+`tailscaled-set` on the three members keeps #622's bounded wait for the
+netmap. Every tailnet front door is on the NAS: the Herdr web UI at
+`https://nas.tail8dd1.ts.net/` (Serve :443), Immich, Navidrome and Plex on
+`nas.tail8dd1.ts.net` ports 2283, 4533 and 32400. The retired
+`strix.tail8dd1.ts.net` name and the coordinator's old Serve on :8443 are gone;
+`navidrome-scan` dials `http://nas:4533` on the NAS, where its credentials
+are. `docs/nas-agent-transport.md` has the table; `tests/fleet-agent-transport`
+and `tests/closet-topology` assert it.
+
+Tom, 2026-10-25: "i think the NAS is the right exit-node, instead of it being
+from the coordinator. strix coordiantor having its own tailscale login allows
+us to do the recovery process, exaclty like what happened tonight (we had a NAS
+issue, the strix coordinator working on freebox  saved the day)."
+
+Tom, 2026-10-25: "worker's tailnet login: fine, and i was thinking let's not"
+and "zenbook has its own tailscale (i might use it when o nthe go, not at home.
+nas+strix-x2 stay at home, where there is a be550 router, so client on zenbook
+is done so that it s friendly to when i m on the go." and "also we had the
+herdr-web-ui deployed from strix on tailscale - this must now change because the
+NAS is the central herdr."
+
+Tom, 2026-10-25 (D-55): "default vanilla, make it work."
+
 2026-10-25 A Strix's wanted set (`services.local-models.artifacts`, rendered
 to `/etc/local-models/wanted.json`) is everything that host holds, so a default
 `local-models-borrow` restores it and `local-models-prune` keeps it. The

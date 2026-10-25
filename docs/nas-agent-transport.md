@@ -16,40 +16,77 @@ Donnerkeule work with #605–#610 before qualifying the final generation.
 ## One enrollment and non-expiry mechanism
 
 Use **interactive user enrollment plus the official Tailscale admin console**
-for all four nodes. Reuse each node's existing identity and persistent state;
-do not create tagged service identities or distribute an auth key. There is
-no API/OAuth credential to provision and no periodic reauthentication job.
-The nodes are `client`, `nas`, `strix-coordinator`, and `strix-worker` in
+for the three tailnet nodes. Reuse each node's existing identity and persistent
+state; do not create tagged service identities or distribute an auth key.
+There is no API/OAuth credential to provision and no periodic
+reauthentication job. The nodes are `client`, `nas` and `strix-coordinator` in
 `tail8dd1.ts.net`, on the official tailscale.com control plane. Do not copy
 one machine's Tailscale state to another or run two daemons over one identity.
 
 `modules/fleet-transport.nix`, imported by `common.nix`, enables this policy
-automatically for those four exact hostnames. **#608 must remove its worker's
-`services.tailscale.enable = lib.mkForce false`**. Its former coordinator
-fallback flag list is superseded by the shared policy. Compute remains free
-of operator secrets. The old `strix` name on #607's stacked parent is left
-alone; the real renamed hosts get the new policy on integration.
+automatically for those three exact hostnames. **`strix-worker` is not on the
+tailnet** (Tom, 2026-10-25: "worker's tailnet login: fine, and i was thinking
+let's not"): `hosts/strix-worker/default.nix` sets
+`services.tailscale.enable = false`, so it runs no `tailscaled` and no
+`tailscaled-set`, and the NAS reaches it over the house LAN at 10.42.0.5.
+Compute remains free of operator secrets.
 
-| Node | Advertises | Selects | Local state to preserve on its final root |
-| --- | --- | --- | --- |
-| NAS | Exit node; `10.42.0.0/24` | No exit node; no imported subnet routes | `/var/lib/tailscale-personal/tailscaled.state` |
-| Client | Nothing | No exit node (D-55); subnet routes | `/var/lib/tailscale/` |
-| Coordinator | Nothing | NAS exit; subnet routes; LAN access allowed | `/var/lib/tailscale/` |
-| Worker | Nothing | NAS exit; subnet routes; LAN access allowed | Fresh, independently enrolled `/var/lib/tailscale/` |
+The target is vanilla (Tom, 2026-10-25: "default vanilla, make it work"):
 
-All use `--accept-dns=false --ssh=false`: keep existing DNS and ordinary
-OpenSSH. NAS forwarding/NAT remains declared by `router.nix` and Tailscale's
-server routing feature. NAS reaches the internet through BE550; it cannot
-select itself as an exit. Native tailnet peer connections can remain direct.
-Internet exit and access from outside the house to the LAN use NAS; this does
-not force peer-to-peer SSH or RDMA packets through it. With NAS unavailable,
-exit traffic fails closed; the Strix Ethernet underlay still reaches BE550
-for Tailscale transport/control and the explicit LAN exception retains LAN
-access. No automatic exit-node bypass is installed on the strix. The Zenbook
-(client) selects no exit node on any network (D-55 "no-exit-client"): its
-internet goes out through whichever Wi-Fi it is on, so a NAS outage leaves the
-Freebox rung of its Wi-Fi ladder usable; it still accepts `10.42.0.0/24`
-through the tailnet when roaming.
+| Node | Advertises | Selects | DNS | Local state to preserve on its final root |
+| --- | --- | --- | --- | --- |
+| NAS | Exit node; `10.42.0.0/24` | No exit node; no imported subnet routes | `--accept-dns=false` (it is the LAN resolver) | `/var/lib/tailscale-personal/tailscaled.state` |
+| Client | Nothing | No exit node (D-55); subnet routes | `--accept-dns=true` (MagicDNS) | `/var/lib/tailscale/` |
+| Coordinator | Nothing | No exit node; no subnet routes | `--accept-dns=false` | `/var/lib/tailscale/` |
+| Worker | Not on the tailnet | — | — | — |
+
+All use `--ssh=false` and keep ordinary OpenSSH. NAS forwarding/NAT remains
+declared by `router.nix` and Tailscale's server routing feature. NAS reaches
+the internet through BE550; it cannot select itself as an exit. Native tailnet
+peer connections can remain direct.
+
+**The NAS is the only exit node, and no host selects it.** Tom: "i think the
+NAS is the right exit-node, instead of it being from the coordinator". The
+Zenbook (client) selects no exit node on any network (D-55 "no-exit-client"):
+its internet goes out through whichever Wi-Fi it is on, so a NAS outage leaves
+the Freebox rung of its Wi-Fi ladder usable. Tom can pick the NAS exit by hand
+on the go (`tailscale set --exit-node=nas`, undone with `--exit-node=`); the
+next boot's `tailscaled-set` clears it again. The client accepts
+`10.42.0.0/24` through the tailnet when roaming and keeps MagicDNS: resolved
+keeps the Wi-Fi DNS as its default route and sends only `tail8dd1.ts.net` to
+100.100.100.100, so `nas.tail8dd1.ts.net` resolves at home and away.
+
+**strix-coordinator is the independent recovery box.** Tom: "strix
+coordiantor having its own tailscale login allows us to do the recovery
+process, exaclty like what happened tonight (we had a NAS issue, the strix
+coordinator working on freebox saved the day)". It keeps its own login and
+the node name `strix-coordinator`, selects no exit node and accepts no routes,
+so its internet goes straight through the BE550 and its tailnet path does
+not depend on the NAS. Its LAN profile keeps the 2500 rule that holds
+`10.42.0.0/24` on the main table, as a guard against a hand
+`tailscale set --accept-routes`.
+
+### Which host serves what on the tailnet
+
+The coordinator is pure compute and the NAS is the brain, so every tailnet
+front door is on the NAS:
+
+| Service | Tailnet address | Declared in |
+| --- | --- | --- |
+| Herdr web UI | `https://nas.tail8dd1.ts.net/` (private Serve :443 → 127.0.0.1:7317) | `modules/herdr-web-ui.nix`, `hosts/nas/agent-host.nix` |
+| Immich (photos) | `http://nas.tail8dd1.ts.net:2283` | `hosts/nas/media.nix`, `hosts/nas/tailscale.nix` |
+| Navidrome (music) | `http://nas.tail8dd1.ts.net:4533` | `hosts/nas/media.nix`, `hosts/nas/tailscale.nix` |
+| Plex (videos) | `http://nas.tail8dd1.ts.net:32400/web` | `hosts/nas/media.nix`, `hosts/nas/tailscale.nix` |
+
+The old `strix.tail8dd1.ts.net` name went with the strix -> strix-coordinator
+rename, so roaming apps that still name it must use the NAS addresses above
+(or `http://nas:<port>` through the subnet route). The coordinator's old
+Serve on `strix.tail8dd1.ts.net:8443` (a Herdr web UI on 127.0.0.1:7318 from
+its retired operator seat) is not declared anywhere and is removed from its
+Tailscale state. The coordinator's socket relays (2283/4533/32400) and its
+`.internal` Caddy names stay as LAN-only front doors. `navidrome-scan` runs on
+the NAS, where its credentials are, and dials `http://nas:4533`.
+`tests/fleet-agent-transport` asserts each of these.
 
 Tom's hands and credentials, during the supervised staging window:
 
@@ -59,10 +96,11 @@ Tom's hands and credentials, during the supervised staging window:
    valid. For a genuinely fresh node, run
    `sudo tailscale login --login-server=https://controlplane.tailscale.com` on that
    staged node and authenticate its URL as Tom, then approve the machine if
-   device approval or Tailnet Lock is enabled. Do this separately for worker;
-   never enroll using copied coordinator state. These actions were not run
-   by this task. The preserved NAS state is an intentional startup condition;
-   an absent file blocks its daemon rather than silently enrolling a new NAS.
+   device approval or Tailnet Lock is enabled. Never enroll using copied
+   state from another node. The worker is not enrolled at all. These actions
+   were not run by this task. The preserved NAS state is an intentional
+   startup condition; an absent file blocks its daemon rather than silently
+   enrolling a new NAS.
 2. On each final identity, set its unique name to the table's name, open its
    ellipsis menu and choose **Disable Key Expiry**. Record each device's stable
    ID, name and **Key expiry disabled** state in the integration receipt.
@@ -71,7 +109,7 @@ Tom's hands and credentials, during the supervised staging window:
    in the future does not pass. Console login expiry is a separate setting.
 3. On NAS's machine entry approve `10.42.0.0/24` under route settings and
    **Use as exit node** under exit-node settings. Ensure the existing tailnet
-   policy allows Tom's four nodes to reach each other, the house subnet, and
+   policy allows Tom's three nodes to reach each other, the house subnet, and
    `autogroup:internet` via the exit node; retain unrelated policy entries.
    Also enable the tailnet HTTPS certificate facility if not already enabled
    for the declared private `tailscale serve` UI. Funnel is unnecessary.
@@ -83,30 +121,31 @@ Tom's hands and credentials, during the supervised staging window:
    ```sh
    # NAS only
    sudo tailscale set --hostname=nas --accept-dns=false --ssh=false --advertise-routes=10.42.0.0/24 --advertise-exit-node --accept-routes=false
-   # Each of strix-coordinator and strix-worker, with its own hostname
-   sudo tailscale set --hostname=strix-worker --accept-dns=false --ssh=false --accept-routes=true --exit-node=nas --exit-node-allow-lan-access=true
-   # The client (no exit node; the empty value clears one)
-   sudo tailscale set --hostname=client --accept-dns=false --ssh=false --accept-routes=true --exit-node=
+   # strix-coordinator (recovery box: no exit node, no routes; the empty value clears an exit node)
+   sudo tailscale set --hostname=strix-coordinator --accept-dns=false --ssh=false --accept-routes=false --exit-node=
+   # The client (roaming: subnet routes and MagicDNS, no exit node)
+   sudo tailscale set --hostname=client --accept-dns=true --ssh=false --accept-routes=true --exit-node=
    ```
 
-   The hostname `nas` must resolve to the approved NAS node in the tailnet
-   map before selecting it. The unit therefore first waits, bounded at 120 s,
-   for `BackendState` Running with the NAS node (advertising the exit node on
-   the strix) in `tailscale status --json`; on a timeout, or a node that needs
-   a login, it runs the set anyway and the set reports its own error. Do not
+   The unit first waits, bounded at 120 s, for `BackendState` Running with
+   the NAS node in `tailscale status --json`, so the set never races
+   tailscaled's start (an earlier `--exit-node=nas` failed there before the
+   netmap arrived); on a timeout, or a node that needs a login, it runs the
+   set anyway and the set reports its own error. Do not
    use `--reset`, reset Serve/Funnel, log out, delete state or change live
    routes as an experiment.
 5. Run the declared **read-only** `fleet-transport-check` on each staged node.
-   It queries `tailscale status --json`, checks four exact DNS identities in
-   this tailnet, online state, no reported expiry, visible NAS exit/subnet
-   approval and the selected exit ID. It returns nonzero on an incomplete
+   It queries `tailscale status --json`, checks the three exact DNS identities
+   in this tailnet, online state, no reported expiry, visible NAS exit/subnet
+   approval and that no exit node is selected. It returns nonzero on an incomplete
    view. A saved status can be checked with `--status FILE`. Record console
    expiry receipts too: absent `KeyExpiry` alone is not an independent
    control-plane audit. If this Tailscale version omits route fields, retain
    the failed observation and verify in the console; do not call it a pass.
-6. From a roaming client network, verify NAS SSH, private Herdr HTTPS, a
-   LAN-only service through `10.42.0.0/24`, and internet egress through NAS.
-   On the LAN verify both Strix SSH paths and BE550 reachability. A status
+6. From a roaming client network, verify NAS SSH, private Herdr HTTPS
+   (`https://nas.tail8dd1.ts.net/`), a LAN-only service through
+   `10.42.0.0/24`, and SSH to `strix-coordinator` over the tailnet. On the LAN
+   verify both Strix SSH paths and BE550 reachability. A status
    parser cannot prove packet forwarding, ACLs, DNS, MTU or throughput.
 
 These steps require **Tom's existing admin/SSO login and root access on each
@@ -200,8 +239,8 @@ propagation without starting SSH, Herdr or a user manager.
 
 The renamed compute tests on #607's parent are **role/name fixtures**; the
 check automatically uses real named compute configurations once #608 is merged. The
-integration worker must check the actual #608 configurations, remove its
-worker disable, build all final Linux 7.3 generations and preserve #606's serial-bearing by-id home path and serial guard. The
+integration worker must check the actual #608 configurations, build all
+final Linux 7.3 generations and preserve #606's serial-bearing by-id home path and serial guard. The
 production NAS configuration needs no PARTUUID and no filesystem override.
 
 `tests/fleet-agent-transport/integration.nix` inspects the combined production
@@ -212,10 +251,8 @@ enrollment or remote hardware.
 Before telling Tom to unplug, integration still needs the real SSD/partition
 mapping and staged final boot entries, NAS home/databases/raw checkout and
 both Claude seat histories, Tom's 18-file rekey, verified worker SSH key,
-all four console non-expiry/enrollment receipts and the final production
-builds. If worker cannot be enrolled before the move, its first boot needs
-Tom's interactive login and console steps; that is an explicit remaining
-hands-on step, not unattended tailnet readiness.
+the three console non-expiry/enrollment receipts and the final production
+builds. The worker needs no tailnet enrollment.
 
 Actual exit/subnet forwarding, both remote builder jobs, and #610's
 two-cable/RDMA/Gufo qualification belong to supervised hardware acceptance.

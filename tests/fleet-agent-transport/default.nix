@@ -26,16 +26,19 @@ let
       self.nixosConfigurations.strix-worker.config
     else
       compute "strix-worker";
+  # Tom, 2026-10-25 ("default vanilla, make it work"): the NAS is the only
+  # exit node, nobody selects it, the coordinator keeps its own login as the
+  # recovery box, and the worker is not on the tailnet.
   consumers = [
     client
     coordinator
-    worker
   ];
-  # D-55 "no-exit-client": only the strix pair routes its internet through NAS.
-  exitConsumers = [
-    coordinator
-    worker
-  ];
+  members = [ nas ] ++ consumers;
+  flags = c: c.services.tailscale.extraSetFlags;
+  hasHerdrWebUi =
+    c:
+    c.systemd.services ? herdr-web-ui-serve
+    || (c.home-manager.users.tom.systemd.user.services or { }) ? herdr-web-ui;
   waitsForNetmap =
     c:
     builtins.any (lib.hasInfix "tailscaled-set-wait-netmap") (
@@ -56,33 +59,87 @@ assert builtins.all (
   c.myFleetTransport.enable
   && c.services.tailscale.enable
   && c.services.tailscale.useRoutingFeatures == "client"
-  && builtins.elem "--accept-routes=true" c.services.tailscale.extraSetFlags
+  # Every consumer clears any exit node and selects none.
+  && builtins.elem "--exit-node=" (flags c)
+  && !builtins.any (
+    f:
+    (lib.hasPrefix "--exit-node=" f && f != "--exit-node=")
+    || lib.hasPrefix "--exit-node-allow-lan-access" f
+  ) (flags c)
+  && !builtins.any (lib.hasPrefix "--advertise-") (flags c)
 ) consumers;
-assert builtins.all (
-  c:
-  builtins.elem "--exit-node=nas" c.services.tailscale.extraSetFlags
-  && builtins.elem "--exit-node-allow-lan-access=true" c.services.tailscale.extraSetFlags
-) exitConsumers;
-# The Zenbook clears any exit node and never selects one.
-assert builtins.elem "--exit-node=" client.services.tailscale.extraSetFlags;
+# The roaming Zenbook: the NAS subnet route and MagicDNS, as Tailscale defaults.
+assert builtins.elem "--accept-routes=true" (flags client);
+assert builtins.elem "--accept-dns=true" (flags client);
+# The recovery coordinator depends on nothing the NAS advertises.
 assert
-  !builtins.any (
-    f: (lib.hasPrefix "--exit-node=" f && f != "--exit-node=") || lib.hasPrefix "--exit-node-allow-lan-access" f
-  ) client.services.tailscale.extraSetFlags;
-# Every host's tailscaled-set waits (bounded) for a netmap with the NAS before
-# `tailscale set`, so the exit-node lookup no longer races tailscaled's start.
-assert builtins.all waitsForNetmap ([ nas ] ++ consumers);
+  flags coordinator == [
+    "--hostname=strix-coordinator"
+    "--accept-dns=false"
+    "--ssh=false"
+    "--accept-routes=false"
+    "--exit-node="
+  ];
+# The worker is LAN-only: no daemon, no preference unit, no policy file.
+assert !worker.myFleetTransport.enable;
+assert !worker.services.tailscale.enable;
+assert !(worker.systemd.services ? tailscaled-set);
+assert !(worker.systemd.services ? tailscaled);
+assert !(worker.environment.etc ? "fleet/transport.json");
+# Every member's tailscaled-set waits (bounded) for a netmap with the NAS
+# before `tailscale set`, so the set never races tailscaled's start.
+assert builtins.all waitsForNetmap members;
 assert builtins.all (
   c: c.systemd.services.tailscaled-set.serviceConfig.TimeoutStartSec == "180s"
-) ([ nas ] ++ consumers);
+) members;
 assert builtins.all (
   c:
   c.services.tailscale.extraUpFlags == c.services.tailscale.extraSetFlags
   && c.services.tailscale.authKeyFile == null
-  && builtins.elem "--accept-dns=false" c.services.tailscale.extraSetFlags
-  && builtins.elem "--ssh=false" c.services.tailscale.extraSetFlags
-  && !builtins.any (lib.hasPrefix "--login-server=") c.services.tailscale.extraSetFlags
-) ([ nas ] ++ consumers);
+  && builtins.elem "--ssh=false" (flags c)
+  && !builtins.any (lib.hasPrefix "--login-server=") (flags c)
+) members;
+assert builtins.all (c: builtins.elem "--accept-dns=false" (flags c)) [
+  nas
+  coordinator
+];
+# The Herdr web UI follows Herdr to the NAS: only the NAS serves it, over
+# private Tailscale HTTPS on :443 (https://nas.tail8dd1.ts.net/). The
+# coordinator's old Serve (strix.tail8dd1.ts.net:8443) is not declared anywhere.
+assert hasHerdrWebUi nas;
+assert lib.hasInfix "serve --https=443 http://127.0.0.1:7317"
+  nas.systemd.services.herdr-web-ui-serve.serviceConfig.ExecStart;
+assert
+  !builtins.any hasHerdrWebUi [
+    client
+    coordinator
+    worker
+  ];
+assert builtins.all (
+  c:
+  !builtins.any (unit: lib.hasInfix "--https=8443" (toString (unit.serviceConfig.ExecStart or ""))) (
+    builtins.attrValues c.systemd.services
+  )
+) (members ++ [ worker ]);
+# Navidrome is served by the NAS; its scan helper dials it there, never the
+# retired strix tailnet name.
+assert lib.hasInfix "set url http://nas:4533" (
+  builtins.readFile ../../home/dot_config/fish/functions/navidrome-scan.fish
+);
+assert builtins.all (path: !lib.hasInfix "strix.tail8dd1.ts.net" (builtins.readFile path)) [
+  ../../home/dot_config/fish/functions/navidrome-scan.fish
+  ../../hosts/strix-coordinator/nas-client.nix
+  ../../hosts/client/default.nix
+  ../../modules/fleet-transport.nix
+];
+assert builtins.all
+  (port: builtins.elem port nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts)
+  [
+    443
+    2283
+    4533
+    32400
+  ];
 assert nas.nix.distributedBuilds && nas.nix.settings.max-jobs == 0;
 assert nas.nix.settings.builders-use-substitutes;
 assert map (b: b.hostName) nas.nix.buildMachines == targets;

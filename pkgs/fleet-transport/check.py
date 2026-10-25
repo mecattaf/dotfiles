@@ -74,8 +74,9 @@ def main():
         for error in errors:
             print(f"FAIL: {error}", file=sys.stderr)
         return 1
-    print("PASS: four online identities, no reported key expiry, NAS exit/subnet approval visible, exit-node selection as declared.")
-    print("Also verify all four 'Key expiry disabled' entries in the admin console; this is not a traffic or hardware test.")
+    count = len(policy["hosts"])
+    print(f"PASS: {count} online identities, no reported key expiry, NAS exit/subnet approval visible, exit-node selection as declared.")
+    print(f"Also verify all {count} 'Key expiry disabled' entries in the admin console; this is not a traffic or hardware test.")
     return 0
 
 

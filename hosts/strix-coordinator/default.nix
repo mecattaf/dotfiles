@@ -42,9 +42,10 @@
   # The 2026-08-02 atomic cutover (#131): media core and its PostgreSQL now
   # live on the NAS; the strix keeps only the tailnet identity, the
   # socket relays (2283/4533/32400), the on-demand ML backend, and the NFS
-  # client mount at the immutable /mnt/nas path. Both compute hosts now use
-  # the NAS PR's shared official Tailscale policy, without advertising routes
-  # or exit-node service. The coordinator's enrolled node identity is retained.
+  # client mount at the immutable /mnt/nas path. The coordinator keeps its own
+  # enrolled Tailscale identity as the independent recovery box: no exit node,
+  # no accepted routes, internet straight through the BE550
+  # (modules/fleet-transport.nix). The worker is not on the tailnet.
   myCoordinatorMedia.enable = false;
   myNasClient.useRemoteStorage = true;
   myNasClient.relayMedia = true;
