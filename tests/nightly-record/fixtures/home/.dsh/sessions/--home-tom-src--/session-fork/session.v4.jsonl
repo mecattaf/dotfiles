@@ -1,0 +1,4 @@
+{"type":"session","version":4,"id":"session-fork","createdAt":0,"cwd":"/home/tom/src"}
+{"type":"assistant/message","seq":1,"time":1788588000000,"data":{"turn":1,"step":1,"message":{"role":"assistant","content":[],"source":{"kind":"model","provider":"qwen-token-plan","model":"deepseek-v4.1-flash"}},"usage":{"inputTokens":500,"outputTokens":50,"cacheReadTokens":0,"totalTokens":550}}}
+{"type":"session/end-seed","seq":2,"time":1788588300000,"data":{"inherited":true}}
+{"type":"assistant/message","seq":3,"time":1788588600000,"data":{"turn":1,"step":3,"message":{"role":"assistant","content":[],"source":{"kind":"model","provider":"qwen-token-plan","model":"deepseek-v4.1-flash"}},"usage":{"inputTokens":11,"outputTokens":1,"cacheReadTokens":4,"totalTokens":16}}}
