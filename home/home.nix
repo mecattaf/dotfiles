@@ -110,9 +110,7 @@ in
     ./client-apps.nix
     ./theme.nix
     ./vicinae.nix
-  ]
-  # Pi retirement is a sibling task; do not introduce it onto the NAS.
-  ++ lib.optional (hostName != "nas") ./pi.nix;
+  ];
 
   home.username = "tom";
   home.homeDirectory = "/home/tom";

@@ -52,7 +52,7 @@ final: _prev: {
     inherit herdr;
   };
 
-  # CLI-Anything — pinned cli-hub Python app plus immutable Codex/Claude/Pi
+  # CLI-Anything — pinned cli-hub Python app plus immutable Codex/Claude
   # integrations. Upstream has no flake; see modules/cli-anything.nix.
   cli-anything-hub = final.callPackage ../pkgs/cli-anything-hub.nix { };
 

@@ -272,7 +272,7 @@ class PureHelpers(unittest.TestCase):
             "input": "llm-agents", "to_rev": A1, "from_rev": A0, "base": "f" * 40,
             "from_date": 1000, "to_date": "2026-10-14T00:00:00Z", "tag": None,
             "run": "2026-10-14T02:00:00Z",
-            "changed": {"claude-code": ("1", "2"), "codex": ("1", "2"), "pi": ("1", "2")},
+            "changed": {"claude-code": ("1", "2"), "codex": ("1", "2"), "dsh": ("1", "2")},
             "gate": {"ok": True, "steps": []},
         }
         notes = [
@@ -280,12 +280,12 @@ class PureHelpers(unittest.TestCase):
              "releases": [release(f"v2.{n}", "2026-10-13", "c" * 4000) for n in range(20)]},
             {"package": "codex", "repo": "a/codex", "from": "1", "to": "2",
              "releases": [release(f"v3.{n}", "2026-10-13", "x" * 4000) for n in range(5)]},
-            {"package": "pi", "repo": "a/pi", "from": "1", "to": "2",
-             "releases": [release("v1.1", "2026-10-13", "## What's changed\n\npi notes")]},
+            {"package": "dsh", "repo": "a/dsh", "from": "1", "to": "2",
+             "releases": [release("v1.1", "2026-10-13", "## What's changed\n\ndsh notes")]},
         ]
         body = uc.build_body(report, {"switch": "-"}, notes, limit=30000)
         self.assertLessEqual(len(body), 30000)
-        self.assertIn("pi notes", body)
+        self.assertIn("dsh notes", body)
         self.assertIn("What's changed", body)
         for tag in ["v2.%d" % n for n in range(20)] + ["v3.%d" % n for n in range(5)]:
             self.assertIn(f"### <code>{tag}</code> ", body)  # every release keeps its heading
