@@ -10,9 +10,11 @@ trap 'rm -rf "$work"' EXIT
 export LOCAL_MODELS_ROOT="$work/root"
 export LOCAL_MODELS_LIBRARY="$work/library"
 export LOCAL_MODELS_MANIFEST="$work/wanted.json"
+export LOCAL_MODELS_KEEP_MANIFEST="$work/keep.json"
 export LOCAL_MODELS_BORROW_LOCK="$work/borrow.lock"
 export LOCAL_MODELS_RESERVE_BYTES=0
 mkdir -p "$LOCAL_MODELS_ROOT" "$LOCAL_MODELS_LIBRARY"
+printf '[]\n' >"$LOCAL_MODELS_KEEP_MANIFEST"
 
 fail() {
   echo "FAIL  $*" >&2
@@ -74,6 +76,17 @@ mv "$LOCAL_MODELS_LIBRARY/alpha/model.gguf" "$work/source-offline"
 expect_status 0 "$work/already-present.out" "$borrow" --yes
 grep -q 'PLAN 0 file(s), 0 bytes' "$work/already-present.out" \
   || fail "existing working copy was not treated as complete"
+
+# The closing audit compares against the host wanted set (the keep manifest),
+# not the manifest being borrowed: a scoped borrow of alpha must not list the
+# host's other loan (legacy) as would-prune.
+legacy_bytes="$(stat -c %s "$LOCAL_MODELS_ROOT/legacy/model.gguf")"
+printf '[{"id":"alpha","files":[{"name":"model.gguf","bytes":%s,"oid":"%s"}]},{"id":"legacy","files":[{"name":"model.gguf","bytes":%s,"oid":"unused"}]}]\n' \
+  "$bytes" "$oid" "$legacy_bytes" >"$LOCAL_MODELS_KEEP_MANIFEST"
+expect_status 0 "$work/scoped.out" "$borrow" --yes
+grep -q 'AUDIT prune-set 0 entries, 0 bytes' "$work/scoped.out" \
+  || fail "a scoped borrow audited against its own manifest instead of the host wanted set"
+test -e "$LOCAL_MODELS_ROOT/legacy/model.gguf" || fail "the audit removed a working copy"
 
 # The whole capacity plan is refused before any copy starts. Raise the safety
 # reserve above the fixture filesystem's capacity instead of allocating data.

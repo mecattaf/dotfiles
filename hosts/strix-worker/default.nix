@@ -9,6 +9,11 @@
   ];
   networking.hostName = "strix-worker";
   myFleet.roles = [ "compute" ];
+  # The worker also holds Flash-Next Q8 (TP2 only; 191.92 GB with its
+  # projector). The coordinator's disk cannot (108 GB free, D-A), so this is
+  # the worker's alone, ordered after the boot set. ds4's Q2 joins this set
+  # through services.ds4.wanted.
+  services.local-models.artifacts = lib.mkAfter [ "qwen38-flash-next-q8-gguf" ];
   mySecrets.enable = false;
   # First boot must use the reviewed closure's helpers, not the retired
   # worker's checkout (or a network bootstrap of main).

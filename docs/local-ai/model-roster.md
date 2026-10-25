@@ -24,13 +24,16 @@ the NAS Library and an operator runs `local-models-borrow` on a host
 ## Per-host wanted sets
 
 Each Strix's `services.local-models.artifacts` is pinned by a `flake.nix`
-assertion. Large optional loans use scoped manifests instead.
+assertion. It is everything the host holds: a default `local-models-borrow`
+restores it and `local-models-prune` keeps it. The scoped manifests
+(`/etc/gufo/tp2-q8-wanted.json`, `/etc/gufo/27b-q8-wanted.json`,
+`/etc/ds4/wanted.json`) borrow one bundle alone; they do not change what a
+host keeps.
 
 | Host | Wanted artifacts | Served by |
 |---|---|---|
-| `strix-coordinator`, `strix-worker` | `qwen38-flash-next-gguf`, `qwen38-27b-gguf`, `qwen38-27b-dflash2-gguf`, `qwen3-asr-1.7b`, `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` | Gufo (Flash-Next at boot, the 27B after `gufo-switch`, ASR, TTS and image on demand); `call-diarize`; Qwen TTS on demand |
-| scoped, both Strix | `/etc/gufo/tp2-q8-wanted.json` (`qwen38-flash-next-q8-gguf`), `/etc/gufo/27b-q8-wanted.json` (`qwen38-27b-q8-gguf` + DFlash2) | `gufo-tp2`; the 27B Q8 alternate |
-| scoped, `strix-worker` | `/etc/ds4/wanted.json` (`deepseek-v41-flash-1017-q2-gguf`) | ds4 |
+| `strix-coordinator`, `strix-worker` | `qwen38-flash-next-gguf`, `qwen38-27b-gguf`, `qwen38-27b-q8-gguf`, `qwen38-27b-dflash2-gguf`, `qwen3-asr-1.7b`, `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` | Gufo (Flash-Next at boot, the 27B or 27B Q8 after `gufo-switch`, ASR, TTS and image on demand); `call-diarize`; Qwen TTS on demand |
+| `strix-worker` only | `deepseek-v41-flash-1017-q2-gguf` (via `services.ds4.wanted`), `qwen38-flash-next-q8-gguf` | ds4; `gufo-tp2` with Q8. The coordinator's disk cannot hold either (D-A) |
 | `nas` | none; it holds the Library | — |
 
 ## The catalogue

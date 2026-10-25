@@ -23,9 +23,12 @@
 
   config = {
     services.local-models.artifacts = [
-      # Gufo text bundles, borrowed from the NAS Library.
+      # Gufo text bundles, borrowed from the NAS Library. The 27B Q8 is the
+      # qwen38-27b-q8 alternate's bundle; both Strix hold it since the
+      # 2026-10-25 loans, so a default borrow restores it and prune keeps it.
       "qwen38-flash-next-gguf"
       "qwen38-27b-gguf"
+      "qwen38-27b-q8-gguf"
       "qwen38-27b-dflash2-gguf"
       # Gufo's speech and image units (gufo-asr, gufo-tts, gufo-image) check
       # exactly these default artifacts. Wanted, so prune keeps the loans (Tom

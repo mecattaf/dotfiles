@@ -54,6 +54,10 @@
   '';
 
   services.utilityModel.enable = true;
+  # The TP2 rank shape stays, but each rank needs the full 340.6 GiB Q2 and
+  # this disk has 108 GB free (D-A), so ds4's files are not wanted here: a
+  # default borrow does not try them and prune would remove a stray copy.
+  services.ds4.wanted = false;
   # Compute holds no operator credentials. Existing state is retired separately
   # after NAS session continuity and the sealed backup have been verified.
   mySecrets.enable = false;

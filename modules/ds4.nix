@@ -159,6 +159,16 @@ in
       type = lib.types.bool;
       default = true;
     };
+    wanted = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Add ds4's artifacts (the Q2, plus vision and DSpark when on) to this
+        host's services.local-models.artifacts, so a default
+        `local-models-borrow` loans them and `local-models-prune` keeps them.
+        Turn it off on a host that declares ds4 but cannot hold its files.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -177,8 +187,13 @@ in
       }
     ];
     virtualisation.podman.enable = true;
-    # Separate from boot's small wanted set: 349 GiB must not be borrowed
-    # merely because a model is described/installed. Never put weights in Nix.
+    # The host that runs ds4 wants its files: they join the host wanted set
+    # (/etc/local-models/wanted.json), which is prune's keep set, so prune
+    # never lists a ds4 loan there. /etc/ds4/wanted.json stays as the scoped
+    # manifest for borrowing only ds4's files. Neither moves a byte; never put
+    # weights in Nix. Ordered last, so a fresh default borrow lands the
+    # resident Gufo model before 340 GiB of DeepSeek.
+    services.local-models.artifacts = lib.mkIf cfg.wanted (lib.mkAfter artifacts);
     environment.etc."ds4/wanted.json".source = manifest;
     systemd.services.ds4 = {
       description =
