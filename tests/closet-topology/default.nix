@@ -61,6 +61,11 @@ assert builtins.elem "--state=/var/lib/tailscale-personal/tailscaled.state"
 assert builtins.elem "--statedir=/var/lib/tailscale-personal"
   n.services.tailscale.extraDaemonFlags;
 assert builtins.elem "--accept-routes=true" c.services.tailscale.extraSetFlags;
+# D-55 "no-exit-client": the Zenbook's internet never depends on the NAS, so a
+# dead NAS leaves the Freebox rung of the Wi-Fi ladder usable.
+assert builtins.elem "--exit-node=" c.services.tailscale.extraSetFlags;
+assert !builtins.elem "--exit-node=nas" c.services.tailscale.extraSetFlags;
+assert !builtins.elem "--exit-node-allow-lan-access=true" c.services.tailscale.extraSetFlags;
 assert
   c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.routing-rule1
   == "priority 2500 to 10.42.0.0/24 table 254";

@@ -31,6 +31,16 @@ let
     coordinator
     worker
   ];
+  # D-55 "no-exit-client": only the strix pair routes its internet through NAS.
+  exitConsumers = [
+    coordinator
+    worker
+  ];
+  waitsForNetmap =
+    c:
+    builtins.any (lib.hasInfix "tailscaled-set-wait-netmap") (
+      lib.toList (c.systemd.services.tailscaled-set.serviceConfig.ExecStartPre or [ ])
+    );
   targets = [
     "strix-coordinator"
     "strix-worker"
@@ -46,10 +56,25 @@ assert builtins.all (
   c.myFleetTransport.enable
   && c.services.tailscale.enable
   && c.services.tailscale.useRoutingFeatures == "client"
-  && builtins.elem "--exit-node=nas" c.services.tailscale.extraSetFlags
-  && builtins.elem "--exit-node-allow-lan-access=true" c.services.tailscale.extraSetFlags
   && builtins.elem "--accept-routes=true" c.services.tailscale.extraSetFlags
 ) consumers;
+assert builtins.all (
+  c:
+  builtins.elem "--exit-node=nas" c.services.tailscale.extraSetFlags
+  && builtins.elem "--exit-node-allow-lan-access=true" c.services.tailscale.extraSetFlags
+) exitConsumers;
+# The Zenbook clears any exit node and never selects one.
+assert builtins.elem "--exit-node=" client.services.tailscale.extraSetFlags;
+assert
+  !builtins.any (
+    f: (lib.hasPrefix "--exit-node=" f && f != "--exit-node=") || lib.hasPrefix "--exit-node-allow-lan-access" f
+  ) client.services.tailscale.extraSetFlags;
+# Every host's tailscaled-set waits (bounded) for a netmap with the NAS before
+# `tailscale set`, so the exit-node lookup no longer races tailscaled's start.
+assert builtins.all waitsForNetmap ([ nas ] ++ consumers);
+assert builtins.all (
+  c: c.systemd.services.tailscaled-set.serviceConfig.TimeoutStartSec == "180s"
+) ([ nas ] ++ consumers);
 assert builtins.all (
   c:
   c.services.tailscale.extraUpFlags == c.services.tailscale.extraSetFlags

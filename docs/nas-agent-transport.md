@@ -33,7 +33,7 @@ alone; the real renamed hosts get the new policy on integration.
 | Node | Advertises | Selects | Local state to preserve on its final root |
 | --- | --- | --- | --- |
 | NAS | Exit node; `10.42.0.0/24` | No exit node; no imported subnet routes | `/var/lib/tailscale-personal/tailscaled.state` |
-| Client | Nothing | NAS exit; subnet routes; LAN access allowed | `/var/lib/tailscale/` |
+| Client | Nothing | No exit node (D-55); subnet routes | `/var/lib/tailscale/` |
 | Coordinator | Nothing | NAS exit; subnet routes; LAN access allowed | `/var/lib/tailscale/` |
 | Worker | Nothing | NAS exit; subnet routes; LAN access allowed | Fresh, independently enrolled `/var/lib/tailscale/` |
 
@@ -45,7 +45,11 @@ Internet exit and access from outside the house to the LAN use NAS; this does
 not force peer-to-peer SSH or RDMA packets through it. With NAS unavailable,
 exit traffic fails closed; the Strix Ethernet underlay still reaches BE550
 for Tailscale transport/control and the explicit LAN exception retains LAN
-access. No automatic exit-node bypass is installed.
+access. No automatic exit-node bypass is installed on the strix. The Zenbook
+(client) selects no exit node on any network (D-55 "no-exit-client"): its
+internet goes out through whichever Wi-Fi it is on, so a NAS outage leaves the
+Freebox rung of its Wi-Fi ladder usable; it still accepts `10.42.0.0/24`
+through the tailnet when roaming.
 
 Tom's hands and credentials, during the supervised staging window:
 
@@ -79,13 +83,19 @@ Tom's hands and credentials, during the supervised staging window:
    ```sh
    # NAS only
    sudo tailscale set --hostname=nas --accept-dns=false --ssh=false --advertise-routes=10.42.0.0/24 --advertise-exit-node --accept-routes=false
-   # Each of client, strix-coordinator, strix-worker, with its own hostname
+   # Each of strix-coordinator and strix-worker, with its own hostname
    sudo tailscale set --hostname=strix-worker --accept-dns=false --ssh=false --accept-routes=true --exit-node=nas --exit-node-allow-lan-access=true
+   # The client (no exit node; the empty value clears one)
+   sudo tailscale set --hostname=client --accept-dns=false --ssh=false --accept-routes=true --exit-node=
    ```
 
    The hostname `nas` must resolve to the approved NAS node in the tailnet
-   map before selecting it. Do not use `--reset`, reset Serve/Funnel, log out,
-   delete state or change live routes as an experiment.
+   map before selecting it. The unit therefore first waits, bounded at 120 s,
+   for `BackendState` Running with the NAS node (advertising the exit node on
+   the strix) in `tailscale status --json`; on a timeout, or a node that needs
+   a login, it runs the set anyway and the set reports its own error. Do not
+   use `--reset`, reset Serve/Funnel, log out, delete state or change live
+   routes as an experiment.
 5. Run the declared **read-only** `fleet-transport-check` on each staged node.
    It queries `tailscale status --json`, checks four exact DNS identities in
    this tailnet, online state, no reported expiry, visible NAS exit/subnet

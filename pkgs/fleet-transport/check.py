@@ -39,11 +39,16 @@ def check(status, policy, host):
     if policy["subnet"] not in (nas.get("PrimaryRoutes") or []):
         errors.append("NAS subnet approval is not visible")
     exit_status = status.get("ExitNodeStatus")
+    # Older policies listed no consumers: every non-NAS host selected the NAS.
+    exit_clients = policy.get("exitNodeClients", [h for h in policy["hosts"] if h != policy["exitNode"]])
     if host == policy["exitNode"]:
         if exit_status:
             errors.append("NAS must not select an exit node")
-    elif not (exit_status and nas.get("ID") and exit_status.get("ID") == nas["ID"] and exit_status.get("Online")):
-        errors.append("NAS is not the active online exit node")
+    elif host in exit_clients:
+        if not (exit_status and nas.get("ID") and exit_status.get("ID") == nas["ID"] and exit_status.get("Online")):
+            errors.append("NAS is not the active online exit node")
+    elif exit_status:
+        errors.append("this host must not select an exit node")
     return errors
 
 
@@ -69,7 +74,7 @@ def main():
         for error in errors:
             print(f"FAIL: {error}", file=sys.stderr)
         return 1
-    print("PASS: four online identities, no reported key expiry, NAS exit/subnet approval and selection visible.")
+    print("PASS: four online identities, no reported key expiry, NAS exit/subnet approval visible, exit-node selection as declared.")
     print("Also verify all four 'Key expiry disabled' entries in the admin console; this is not a traffic or hardware test.")
     return 0
 

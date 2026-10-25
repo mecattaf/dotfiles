@@ -48,9 +48,11 @@
 #     imported; the two LAN names it dials are pinned below instead, and the
 #     stock 127.0.0.2 self-mapping stays because nothing here binds by
 #     hostname.
-#   * official tailscale.com membership: NAS exit node and subnet router,
-#     with direct LAN access retained. Enrollment and non-expiring node keys
-#     use the admin-console procedure in docs/nas-agent-transport.md.
+#   * official tailscale.com membership: the NAS subnet route, no exit node
+#     (D-55 "no-exit-client": a NAS outage must not take the internet on the
+#     Freebox), with direct LAN access retained. Enrollment and
+#     non-expiring node keys use the admin-console procedure in
+#     docs/nas-agent-transport.md.
 #   * not a builder: updates are evaluated and built on the strix and pushed
 #     (Tom, 2026-10-11: "can't that be done on the strix side of things?
 #     since it's a much more powerful device"). From the strix:

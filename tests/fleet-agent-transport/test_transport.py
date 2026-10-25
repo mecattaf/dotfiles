@@ -18,7 +18,9 @@ def load(name, path):
 executor = load("executor", sys.argv.pop(1))
 transport = load("transport", sys.argv.pop(1))
 HOSTS = ["client", "nas", "strix-coordinator", "strix-worker"]
-POLICY = {"hosts": HOSTS, "tailnetSuffix": "tail8dd1.ts.net", "subnet": "10.42.0.0/24", "exitNode": "nas"}
+EXIT_CLIENTS = ["strix-coordinator", "strix-worker"]
+POLICY = {"hosts": HOSTS, "tailnetSuffix": "tail8dd1.ts.net", "subnet": "10.42.0.0/24", "exitNode": "nas",
+          "exitNodeClients": EXIT_CLIENTS}
 
 
 def status(host):
@@ -27,7 +29,7 @@ def status(host):
     return {
         "BackendState": "Running", "CurrentTailnet": {"MagicDNSSuffix": POLICY["tailnetSuffix"]},
         "Self": nodes.pop(host), "Peer": nodes,
-        **({} if host == "nas" else {"ExitNodeStatus": {"ID": "nas-id", "Online": True}}),
+        **({"ExitNodeStatus": {"ID": "nas-id", "Online": True}} if host in EXIT_CLIENTS else {}),
     }
 
 
@@ -37,18 +39,35 @@ class TransportTest(unittest.TestCase):
             self.assertEqual(transport.check(status(name), POLICY, name), [])
 
     def test_reject_incomplete_or_wrong_enrollment(self):
-        cases = []
-        bad = status("client"); bad["Peer"].pop("strix-worker"); cases.append(bad)
-        bad = status("client"); bad["CurrentTailnet"]["MagicDNSSuffix"] = "wrong.ts.net"; cases.append(bad)
-        bad = status("client"); bad["Peer"]["strix-worker"]["Online"] = False; cases.append(bad)
-        bad = status("client"); bad["Self"]["KeyExpiry"] = "2027-01-01T00:00:00Z"; cases.append(bad)
-        bad = status("client"); bad["Peer"]["nas"]["Expired"] = True; cases.append(bad)
-        bad = status("client"); bad["ExitNodeStatus"]["ID"] = "other-id"; cases.append(bad)
-        bad = status("client"); bad["Peer"]["nas"]["PrimaryRoutes"] = []; cases.append(bad)
-        bad = status("client"); bad["Peer"]["nas"]["ExitNodeOption"] = False; cases.append(bad)
-        bad = status("client"); bad["Peer"]["duplicate"] = copy.deepcopy(bad["Peer"]["nas"]); cases.append(bad)
-        for bad in cases:
-            self.assertTrue(transport.check(bad, POLICY, "client"))
+        for vantage in ["client", "strix-worker"]:
+            other = "strix-coordinator"
+            cases = []
+            bad = status(vantage); bad["Peer"].pop(other); cases.append(bad)
+            bad = status(vantage); bad["CurrentTailnet"]["MagicDNSSuffix"] = "wrong.ts.net"; cases.append(bad)
+            bad = status(vantage); bad["Peer"][other]["Online"] = False; cases.append(bad)
+            bad = status(vantage); bad["Self"]["KeyExpiry"] = "2027-01-01T00:00:00Z"; cases.append(bad)
+            bad = status(vantage); bad["Peer"]["nas"]["Expired"] = True; cases.append(bad)
+            bad = status(vantage); bad["Peer"]["nas"]["PrimaryRoutes"] = []; cases.append(bad)
+            bad = status(vantage); bad["Peer"]["nas"]["ExitNodeOption"] = False; cases.append(bad)
+            bad = status(vantage); bad["Peer"]["duplicate"] = copy.deepcopy(bad["Peer"]["nas"]); cases.append(bad)
+            for bad in cases:
+                self.assertTrue(transport.check(bad, POLICY, vantage))
+
+    def test_strix_must_select_the_online_nas_exit(self):
+        bad = status("strix-worker"); bad["ExitNodeStatus"]["ID"] = "other-id"
+        self.assertTrue(transport.check(bad, POLICY, "strix-worker"))
+        bad = status("strix-worker"); del bad["ExitNodeStatus"]
+        self.assertTrue(transport.check(bad, POLICY, "strix-worker"))
+
+    def test_client_selects_no_exit_node(self):
+        # D-55 "no-exit-client": a NAS outage must not take the Zenbook's internet.
+        bad = status("client"); bad["ExitNodeStatus"] = {"ID": "nas-id", "Online": True}
+        self.assertTrue(transport.check(bad, POLICY, "client"))
+
+    def test_policy_without_consumer_list_keeps_every_host_on_the_exit(self):
+        legacy = {k: v for k, v in POLICY.items() if k != "exitNodeClients"}
+        self.assertTrue(transport.check(status("client"), legacy, "client"))
+        self.assertEqual(transport.check(status("strix-worker"), legacy, "strix-worker"), [])
 
     def test_nas_cannot_route_through_itself(self):
         bad = status("nas")
