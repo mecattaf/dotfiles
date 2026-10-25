@@ -23,6 +23,13 @@
       dns-search = "~internal";
       ignore-auto-dns = true;
       route-metric = 100;
+      # Prefer the direct home LAN over accepted Tailscale subnet routes, as
+      # the client's home Wi-Fi profiles do (hosts/client/default.nix). With
+      # --accept-routes=true the NAS's advertised 10.42.0.0/24 lands in
+      # Tailscale's table 52, which is consulted before main, so LAN traffic
+      # (NFS, the TP2 bootstrap, NAS SSH) hairpinned through tailscale0 and
+      # this box went dark on the LAN (measured 2026-10-25, 05:54-06:06).
+      routing-rule1 = "priority 2500 to 10.42.0.0/24 table 254";
     };
     ipv6.method = "disabled";
   };
