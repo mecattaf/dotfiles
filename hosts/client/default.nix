@@ -77,6 +77,7 @@
     ./strix-reachability.nix
     ./trackpad.nix
     ./huion.nix # the Huion Note X10 paper inbox: patched bluetoothd, hid-generic unbind
+    ./wifi-ladder.nix # thomas-6ghz -> thomas-6ghz-direct -> Freebox and back (Tom, 2026-10-25)
     # No dedicated nixos-hardware module for the UX8406; compose the generics.
     # common-pc-laptop does NOT enable bolt — modules/common.nix does, fleet-
     # wide, and this docking host is exactly what that line is for.
@@ -128,6 +129,9 @@
           type = "wifi";
           autoconnect = true;
           autoconnect-priority = 110;
+          # Rung 1 of ./wifi-ladder.nix: two attempts, then autoconnect reaches
+          # thomas-6ghz-direct (priority 100) when the NAS hands out no lease.
+          autoconnect-retries = 2;
         };
         wifi = {
           mode = "infrastructure";
@@ -139,6 +143,8 @@
           psk = "$BE550_PSK";
         };
         ipv4.method = "auto";
+        ipv4.dhcp-timeout = 20; # dnsmasq answers in milliseconds; the 45 s default only delays the fallback
+        ipv4.may-fail = false; # IPv6 is ignored, so a missing lease must fail the activation
         # Prefer the direct home LAN over accepted Tailscale subnet routes.
         # NetworkManager removes this rule when this Wi-Fi profile goes down,
         # so roaming still uses the NAS subnet route without manual toggles.

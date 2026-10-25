@@ -1,5 +1,30 @@
 # DECISIONS
 
+2026-10-25 the client's home Wi-Fi is a three-rung ladder
+(`hosts/client/wifi-ladder.nix`). Rung 1 is thomas-6ghz with DHCP from the NAS
+(NAS gateway, AdGuard DNS), priority 110, normal life. Rung 2 is
+thomas-6ghz-direct: the same SSID with static 10.42.0.16/24, the BE550
+(10.42.0.3) as gateway and DNS, priority 100, for when the NAS is down and the
+BE550 is fine. Rung 3 is the Freebox-AB3ACE keyfile (priority 0), for when the
+BE550 or its SSID is gone. The NAS is also the client's gateway, so a DNS
+fallback alone is not a rule. Rung 1 gives up after two 20 s DHCP attempts
+(NetworkManager alone). A NAS that dies under the infinite lease is caught by
+NetworkManager's connectivity check, which starts the wifi-ladder-guard
+oneshot; it steps down only after three failed NAS probes and only when the
+next rung works. The dispatcher-started wifi-ladder-return loop brings the
+laptop back to thomas-6ghz after three healthy NAS probes. Neither unit has a
+timer or wantedBy (AGENTS.md "Scheduled work").
+
+What prompted it: on 2026-10-25 the NAS lost its LAN NIC name (T-51); the
+client stayed associated to thomas-6ghz with a dead gateway and DNS, and Tom
+moved it to the Freebox by hand. NetworkManager never moved it back.
+
+Tom, 2026-10-25 (T-58): "note that since we connected to the freebox from the
+zenbook, i want to put in a rule for it to connect to thomas-6ghz network in
+priority all the time, so that future nas failures do not kill my internet
+access yet when nas (and all sysems) are running properly we don't run into
+problems"
+
 2026-10-13 Paperless is REMOVED from the fleet: the NAS service and its
 database, the paperless-bridge, the strix relay and paperless.internal, the
 pinned nixpkgs-paperless input, its flake checks and its LaCie mirror rules.
