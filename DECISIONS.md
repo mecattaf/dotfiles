@@ -1,5 +1,32 @@
 # DECISIONS
 
+2026-10-25 The fleet's DeepSeek is kyuz0/deepseek-v4.1-flash-gguf, the matched
+1017 set at revision 20408f69: `DeepSeek-V4.1-Flash-1017-Q2.gguf`, its
+`-1017-vision-BF16` encoder and its `-1017-DSpark-MXFP4` draft (374.65 GB). It
+replaces the older DeepSeek V4 Flash 0731 that the gufo-rdma documentation
+still lists. The three `lib/ds4-models.json` ids are unchanged; their rows now
+point at kyuz0 instead of the antirez target, the original-release vision
+encoder (ds4 refuses it beside a 1017 language model) and the kernelpool draft.
+The engine is ds4 (the pinned kyuz0 ROCm image); Gufo cannot load the
+`deepseek41` format. This supersedes the September retirements of DS4 and
+DeepSeek in the 2026-09-16 entries below, as 7936d075 already began on
+2026-10-23 ("for deepseek we use kyuz0 lates ds4.1 flash"). The 0731 Library
+bytes stay until Tom approves the retire runbook.
+
+Tom, 2026-10-25: "all in-documentation from gufo-rdma models are offered by NAS
+and loaded on the two strix halo boxes with the exception that the deepseek
+model is the one described here
+https://huggingface.co/kyuz0/deepseek-v4.1-flash-gguf rather than the old
+deepseek flash model that wasn ot updated on their documentation."
+
+The same change gives both Strix the Gufo ASR, TTS Base and Qwen-Image rows in
+their wanted sets, and sets the five Donnerkeule path options (bind_services,
+allocate_rings, start_rings, negotiate_native, enable_tunnels) plus
+native_domain_mask=3 on both hosts, so the four USB4 rails can form (Phase A,
+no dmabuf or host-credit keys). Tom, 2026-10-25 (D-44): "rdma rails I WANT THAT
+but first we have to make sure that the differnet items work." The rails count
+as live only after a two-box qualification, never from a build.
+
 2026-10-25 the client's home Wi-Fi is a three-rung ladder
 (`hosts/client/wifi-ladder.nix`). Rung 1 is thomas-6ghz with DHCP from the NAS
 (NAS gateway, AdGuard DNS), priority 110, normal life. Rung 2 is

@@ -27,6 +27,12 @@
       "qwen38-flash-next-gguf"
       "qwen38-27b-gguf"
       "qwen38-27b-dflash2-gguf"
+      # Gufo's speech and image units (gufo-asr, gufo-tts, gufo-image) check
+      # exactly these default artifacts. Wanted, so prune keeps the loans (Tom
+      # 2026-10-25: every gufo-rdma documented model loaded on both Strix).
+      "qwen3-asr-1.7b"
+      "qwen3-tts-12hz-1.7b-base"
+      "qwen-image-2.1"
     ]
     ++ lib.optionals (config.myFleet.has "compute") [
       # The one diarization model (Tom, 2026-09-16), loaded by call-diarize.

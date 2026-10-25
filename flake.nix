@@ -2540,13 +2540,18 @@
 
           # ── mono-model: the wanted sets, exact ─────────────────────────────
           # Exact lists keep additional model loans explicit. Gufo's text
-          # bundles join the production diarization, TTS and voice artifacts;
+          # bundles and its ASR/TTS/image defaults (Tom 2026-10-25: every
+          # gufo-rdma documented model on both Strix) join the production
+          # diarization, TTS and voice artifacts;
           # retired engine formats are absent from both wanted set and catalog.
           assert
             strix.services.local-models.artifacts == [
               "qwen38-flash-next-gguf"
               "qwen38-27b-gguf"
               "qwen38-27b-dflash2-gguf"
+              "qwen3-asr-1.7b"
+              "qwen3-tts-12hz-1.7b-base"
+              "qwen-image-2.1"
               "vibevoice-asr-streaming-7b-bf16"
               "qwen3-tts-1.7b-base-q8-0"
               "qwen-k2so-midway-b"

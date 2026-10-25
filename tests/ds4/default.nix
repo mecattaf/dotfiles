@@ -38,8 +38,16 @@ assert lib.all (entry: entry.assertion) q8.assertions;
 assert catalog.artifacts.qwen38-flash-next-q8-gguf.quantization == "Q8_0";
 assert builtins.length catalog.artifacts.qwen38-flash-next-q8-gguf.source.files == 8;
 assert
-  all.deepseek-v41-flash-1017-q2-gguf.source.revision == "9dcee51692e6540f697141fc98b097e3c96492a3";
+  all.deepseek-v41-flash-1017-q2-gguf.source.revision == "20408f699619df7071aa7cda6034e9cef5bf804b";
 assert all.deepseek-v41-flash-1017-q2-gguf.source.files != [ ];
+# Tom 2026-10-25: the fleet's DeepSeek is kyuz0's 1017 set. Target, vision and
+# DSpark come from one repo revision, so ds4 never pairs a 1017 language model
+# with the original-release vision encoder (it dies at load).
+assert lib.all (
+  row:
+  row.source.hfUrl == "https://huggingface.co/kyuz0/deepseek-v4.1-flash-gguf"
+  && row.source.revision == all.deepseek-v41-flash-1017-q2-gguf.source.revision
+) (builtins.attrValues all);
 pkgs.runCommand "ds4-fleet-policy"
   {
     nativeBuildInputs = [

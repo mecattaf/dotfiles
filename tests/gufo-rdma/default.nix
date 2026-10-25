@@ -27,6 +27,16 @@ let
         && rdma.check.minReadyRails == 4
         && rdma.check.expectedRailSpeed == "20Gb/s"
         && lib.all (name: !(lib.hasPrefix "dmabuf_" name)) (builtins.attrNames rdma.config)
+        # Phase A four rails: the five path options (driver default off) on
+        # both controllers. Without them the driver forms zero rails.
+        && lib.all (name: (rdma.config.${name} or false) == true) [
+          "bind_services"
+          "allocate_rings"
+          "start_rings"
+          "negotiate_native"
+          "enable_tunnels"
+        ]
+        && (rdma.config.native_domain_mask or null) == 3
         && (moduleOf host).kernelVersion == host.boot.kernelPackages.kernel.version
         && (moduleOf host).donnerkeuleRevision == inputs.donnerkeule.rev
         && rdma.userspaceTools.package == self.packages.x86_64-linux.rdmaCoreUsb4
@@ -64,6 +74,10 @@ assert (moduleOf c).donnerkeuleRevision == (moduleOf w).donnerkeuleRevision;
 assert (moduleOf c).drvPath == (moduleOf w).drvPath;
 assert self.packages.x86_64-linux.rdmaCoreUsb4.donnerkeuleRevision == inputs.donnerkeule.rev;
 assert sameRanks;
+# Both ranks load the identical module option string.
+assert
+  c.hardware.thunderbolt-ibverbs.renderedModuleOptions
+  == w.hardware.thunderbolt-ibverbs.renderedModuleOptions;
 assert c.services.gufo.tp2.rank == 0 && w.services.gufo.tp2.rank == 1;
 assert
   c.services.gufo.tp2.peerAddress == "10.42.0.5" && w.services.gufo.tp2.peerAddress == "10.42.0.2";
