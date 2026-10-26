@@ -11,7 +11,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import NoReturn
 
@@ -129,6 +130,25 @@ def inline_markup(value: str) -> str:
     for index, fragment in enumerate(stash):
         escaped = escaped.replace(f"\x00{index}\x01", fragment)
     return escaped
+
+
+def local_image_sources(body: str) -> list[str]:
+    """Inspect the renderer's HTML, so Markdown examples in code stay text."""
+    class Images(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.local: list[str] = []
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            if tag != "img":
+                return
+            source = dict(attrs).get("src") or ""
+            if not source.startswith(("http://", "https://", "data:")):
+                self.local.append(source)
+
+    images = Images()
+    images.feed(body)
+    return images.local
 
 
 HR_PATTERN = re.compile(r"^\s*([-*_])(?:\s*\1){2,}\s*$")
@@ -357,7 +377,9 @@ def css_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def print_css(profile: Profile, *, label: bool = False) -> str:
+def print_css(profile: Profile, *, label: bool = False, layout: str = "standard") -> str:
+    margin = {"standard": "20mm 30mm 21mm", "compact": "18mm 25mm 19mm",
+              "dense": "17mm 23mm 18mm"}[layout]
     caption = (
         f"{profile.label} · {profile.size_pt:g} pt · {profile.line_height:g} line height"
     )
@@ -377,7 +399,7 @@ def print_css(profile: Profile, *, label: bool = False) -> str:
     return f"""
 @page {{
   size: A4 portrait;
-  margin: 20mm 30mm 21mm;
+  margin: {margin};
   /* Chrome runs with --no-pdf-header-footer, so these margin boxes are the
      only page furniture. Both sit in the reserved bottom margin, outside the
      content box: the bare folio at the right, the optional profile caption
@@ -498,6 +520,7 @@ def document_html(
     base_uri: str,
     profile: Profile,
     label: bool,
+    layout: str = "standard",
 ) -> str:
     return f"""<!doctype html>
 <html lang="en">
@@ -506,7 +529,7 @@ def document_html(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <base href="{html.escape(base_uri, quote=True)}">
 <title>{html.escape(title)}</title>
-<style>{print_css(profile, label=label)}</style>
+<style>{print_css(profile, label=label, layout=layout)}</style>
 </head>
 <body>
 <main>
@@ -524,6 +547,7 @@ def html_input_document(
     base_uri: str,
     profile: Profile,
     label: bool,
+    layout: str = "standard",
 ) -> str:
     if not re.search(r"<html[\s>]", source, flags=re.I):
         return document_html(
@@ -532,10 +556,11 @@ def html_input_document(
             base_uri=base_uri,
             profile=profile,
             label=label,
+            layout=layout,
         )
     additions = (
         f'<base href="{html.escape(base_uri, quote=True)}">\n'
-        f"<style>{print_css(profile, label=label)}</style>\n"
+        f"<style>{print_css(profile, label=label, layout=layout)}</style>\n"
     )
     if re.search(r"</head\s*>", source, flags=re.I):
         source = re.sub(r"</head\s*>", additions + "</head>", source, count=1, flags=re.I)
@@ -691,6 +716,8 @@ def parse_args() -> argparse.Namespace:
         help="render garamond, baskerville, source-serif, and times variants",
     )
     parser.add_argument("--list-profiles", action="store_true", help="list profiles and exit")
+    parser.add_argument("--check-assets", action="store_true",
+                        help="check compute portability without starting a browser or printing")
     parser.add_argument("-o", "--output", type=Path, help="output path for one profile")
     parser.add_argument(
         "--output-dir",
@@ -698,6 +725,8 @@ def parse_args() -> argparse.Namespace:
         help="directory for generated PDFs (default: beside input)",
     )
     parser.add_argument("--title", help="document title metadata override")
+    parser.add_argument("--layout", choices=("standard", "compact", "dense"), default="standard",
+                        help="bounded page fitting; source text is unchanged and type stays at least 10 pt")
     parser.add_argument(
         "--label",
         action="store_true",
@@ -797,6 +826,11 @@ def main() -> None:
         detected_title = None
     else:
         body, detected_title = markdown_to_html(source)
+    if args.check_assets:
+        if local_image_sources(body):
+            fail("a compute-rendered Markdown drop cannot read local images; "
+                 "drop an existing PDF or use self-contained image data")
+        return
     title = args.title or detected_title or stem.replace("-", " ").replace("_", " ").title()
 
     output_dir = (
@@ -811,6 +845,10 @@ def main() -> None:
     for profile_name in profile_names:
         profile = PROFILES[profile_name]
         require_font(profile)
+        if args.layout != "standard":
+            scale, leading = ((0.96, 1.34) if args.layout == "compact" else (0.91, 1.28))
+            profile = replace(profile, size_pt=max(10.0, profile.size_pt * scale),
+                              line_height=leading)
         output = (
             args.output.expanduser().resolve()
             if args.output
@@ -825,6 +863,7 @@ def main() -> None:
                 base_uri=base_uri,
                 profile=profile,
                 label=use_label,
+                layout=args.layout,
             )
             if suffix in (".html", ".htm")
             else document_html(
@@ -833,6 +872,7 @@ def main() -> None:
                 base_uri=base_uri,
                 profile=profile,
                 label=use_label,
+                layout=args.layout,
             )
         )
         outputs.append(render_pdf(chrome, page, output, keep_html=args.keep_html))

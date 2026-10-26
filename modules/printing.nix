@@ -5,9 +5,10 @@
   ...
 }:
 
-# Shared home-printer plane. common.nix imports it fleet-wide; headless.nix
-# force-disables it on appliances such as `nas`.
-lib.mkIf (!config.myHeadless.enable) {
+# Shared home-printer plane. The NAS brain owns the intake and lightweight
+# CUPS scheduler; headless compute renders through the paper-render package.
+# Other appliances carry no printer plane.
+lib.mkIf (!config.myHeadless.enable || config.myFleet.has "brain") {
   # CUPS supplies Chrome's system print dialog and the lp/lpr CLI. The Brother
   # HL-L2445DW speaks IPP Everywhere, so the permanent queue is driverless;
   # brlaser remains installed only as the already-proven fallback.
@@ -31,12 +32,12 @@ lib.mkIf (!config.myHeadless.enable) {
   # AirPrint/IPP discovery and .local resolution. systemd-resolved also wants
   # port 5353, so let Avahi own multicast DNS while resolved continues to
   # handle ordinary unicast DNS.
-  services.avahi = {
+  services.avahi = lib.mkIf (!config.myHeadless.enable) {
     enable = true;
     nssmdns4 = true;
     openFirewall = true;
   };
-  services.resolved.settings.Resolve.MulticastDNS = false;
+  services.resolved.settings.Resolve.MulticastDNS = lib.mkIf (!config.myHeadless.enable) false;
 
   # Discovery alone creates an on-demand temporary queue, which Chrome does
   # not reliably enumerate. Keep one persistent A4 queue with the name already
@@ -145,14 +146,14 @@ lib.mkIf (!config.myHeadless.enable) {
   # part of this set in common.nix. These names are the stable profiles used by
   # the print skill: book (Garamond/Baskerville), editorial (Source Serif),
   # Times-compatible academic, LaTeX/Computer Modern, and Apple-like sans.
-  fonts.packages = with pkgs; [
+  fonts.packages = lib.optionals (!config.myHeadless.enable) (with pkgs; [
     eb-garamond
     libre-baskerville
     source-serif
     liberation_ttf
     lmodern
     inter
-  ];
+  ]);
 
   # Claude Code's bounded raw-9100 path for trivial text. It defaults to the
   # printer's DHCP-reserved address and appends CRLF + form feed; rendered
