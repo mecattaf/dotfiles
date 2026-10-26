@@ -6,7 +6,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # nixpkgs-fresh — a second nixpkgs used ONLY to keep a handful of
-    # fast-moving user packages (currently google-chrome and uv, see overlays
+    # fast-moving packages (google-chrome, tailscale and uv, see overlays
     # list below) and the fleet's linuxPackages_7_3 kernel series current
     # independent of the `nixpkgs` pin above. That pin is deliberately
     # lagging — the exact-candidate fleet deploy keeps it as the only door
@@ -336,6 +336,11 @@
           in
           {
             google-chrome = fresh.google-chrome;
+            # Keep the tailnet client current independently of the NAS's stable
+            # userspace and the main graphics pin. A changed tailscaled unit
+            # still needs an attended activation if restarting it would disturb
+            # transport; the nightly checker only builds the candidate.
+            tailscale = fresh.tailscale;
             # uv — Astral's Python package/project manager. Point releases land
             # weekly; riding nixpkgs-fresh HEAD keeps it current without waiting on
             # the deliberately-lagging main pin (which exists only to gate kernel/

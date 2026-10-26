@@ -117,6 +117,9 @@
       ],
       "versions": {
         "google-chrome": "nixosConfigurations.client.pkgs.google-chrome.version",
+        "tailscale (nas)": "nixosConfigurations.nas.config.services.tailscale.package.version",
+        "tailscale (client)": "nixosConfigurations.client.config.services.tailscale.package.version",
+        "tailscale (coordinator)": "nixosConfigurations.strix-coordinator.config.services.tailscale.package.version",
         "uv": "nixosConfigurations.strix-coordinator.pkgs.uv.version",
         "linux (strix)": "nixosConfigurations.strix-coordinator.config.boot.kernelPackages.kernel.version",
         "linux (nas)": "nixosConfigurations.nas.config.boot.kernelPackages.kernel.version",
@@ -127,6 +130,10 @@
         "linux (worker)": "nixosConfigurations.strix-worker.config.boot.kernelPackages.kernel.version"
       },
       "notes": {
+        "tailscale (nas)": {
+          "repo": "tailscale/tailscale",
+          "tagPrefix": "v"
+        },
         "fish": {
           "repo": "fish-shell/fish-shell",
           "tagPrefix": ""
@@ -140,7 +147,7 @@
           "tagPrefix": "wrangler@"
         }
       },
-      "switch": "A new kernel is only staged: it runs after the next reboot, which stays Tom's to name. Chrome on the client updates with `deploy .#client`; the NAS takes this only on a NAS deploy, which is a decision."
+      "switch": "A new kernel is only staged: it runs after the next reboot, which stays Tom's to name. Chrome on the client updates with `deploy .#client`; an open browser keeps its running version until it is closed by its user. Tailscale follows this fresh input on the NAS, client and coordinator; the worker has no Tailscale service. A Tailscale bump changes tailscaled's unit and can restart the network transport, so leave that candidate staged whenever activation would interrupt a connection or session. The NAS takes this only on a NAS deploy, which is a decision."
     }
   ],
   "issues": [
