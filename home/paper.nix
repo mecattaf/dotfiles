@@ -13,7 +13,7 @@
 # printed/<id>/receipt.json, rejected/<id>/, failed/<id>/, work/ (in flight).
 # ~/Paper/inbox/ is NOT this loop's: it is the Huion's (DECISIONS 2026-09-13).
 #
-# Brain-only: the printer queue and the print skill live here.
+# Brain-only: NAS owns the source, queue and receipt; compute renders PDFs.
 let
   isBrain = osConfig.myFleet.has "brain";
   daemon = lib.getExe pkgs.paper-daemon;
@@ -59,6 +59,7 @@ lib.mkIf isBrain {
     Service = {
       Type = "oneshot";
       ExecStart = "${daemon} run";
+      Environment = [ "PAPER_RENDER_HOST=strix-coordinator" ];
       # Serial jobs, each allowed 120 s + 20 s/page at the printer.
       TimeoutStartSec = "6h";
     };
@@ -75,6 +76,7 @@ lib.mkIf isBrain {
     Service = {
       Type = "oneshot";
       ExecStart = "${daemon} flush";
+      Environment = [ "PAPER_RENDER_HOST=strix-coordinator" ];
       TimeoutStartSec = "6h";
     };
   };

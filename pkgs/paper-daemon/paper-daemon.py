@@ -94,6 +94,8 @@ PRINTER_SIDE = ("printer at ", "printer-state ")
 
 HERE = Path(__file__).resolve().parent
 PRINT_AUTO = Path(os.environ.get("PAPER_PRINT_AUTO", HERE / "scripts" / "print-auto.py"))
+RENDER_REMOTE = HERE / "render-remote.py"
+PRINT_PAPER = Path(os.environ.get("PAPER_PRINT_PAPER", HERE / "scripts" / "print-paper.py"))
 JOBS_TEST = Path(os.environ.get("PAPER_JOBS_TEST", HERE / "get-jobs.test"))
 PRINTER_TEST = Path(os.environ.get("PAPER_PRINTER_TEST", HERE / "printer-state.test"))
 
@@ -556,12 +558,24 @@ def fail_job(jobdir: Path, meta: dict, reason: str, extra: dict) -> bool:
     return False
 
 
+def hold_for_quiet_hours(jobdir: Path, meta: dict) -> bool:
+    """Rendering and queue probes can cross midnight; submission checks now."""
+    if not quiet_hours(now()) or meta.get("options", {}).get("force"):
+        return False
+    dest = jobdir if jobdir.parent == state_dir("outbox") else settle_into(jobdir, "outbox")
+    log(f"quiet hours: {dest.name} waits in outbox/ for the 06:05 flush")
+    return True
+
+
 def submit(jobdir: Path) -> bool:
     meta = json.loads((jobdir / "job.json").read_text())
     decision = json.loads((jobdir / "decision.json").read_text())
     pdf = jobdir / decision["decision"]["filename"]
     pages = decision.get("pages_rendered")
     repairs: list = []
+
+    if hold_for_quiet_hours(jobdir, meta):
+        return True
 
     remaining = ensure_queue(repairs)
     if remaining:
@@ -574,7 +588,12 @@ def submit(jobdir: Path) -> bool:
     sides = meta.get("options", {}).get("sides") or decision["decision"].get("sides", "duplex")
     # A dropped PDF with pages that are not A4 (a Letter invoice) is scaled
     # onto the A4 the printer holds rather than cropped (dotfiles#501).
-    fit = bool(decision.get("pdf", {}).get("fit_to_page"))
+    # Markdown decisions store the rendered PDF's PATH under `pdf`; PDF
+    # drops store pdfinfo facts there. Never treat the path as a mapping.
+    pdf_details = decision.get("pdf")
+    fit = bool(pdf_details.get("fit_to_page")) if isinstance(pdf_details, dict) else False
+    if hold_for_quiet_hours(jobdir, meta):
+        return True
     submitted = now()
     title = f"paper-{jobdir.name}-{submitted:%Y%m%dT%H%M%S}"
     cmd = ["lp", "-d", QUEUE, "-n", "1", "-o", "media=A4",
@@ -734,13 +753,19 @@ def process_pdf_job(jobdir: Path, source: Path, meta: dict, at: dt.datetime) -> 
 
 def process_job(jobdir: Path, source: Path, meta: dict, at: dt.datetime) -> bool:
     try:
-        meta["options"] = parse_front_matter(source.read_text(errors="replace"))
+        text = source.read_text(errors="replace")
+        meta["options"] = parse_front_matter(text)
+        if os.environ.get("PAPER_RENDER_HOST"):
+            assets = run([sys.executable, str(PRINT_PAPER), str(source), "--check-assets"])
+            if assets.returncode:
+                raise Rejected((assets.stderr or assets.stdout).strip())
     except Rejected as exc:
         return reject(jobdir, {"reason": str(exc)}, str(exc))
     write_json(jobdir / "job.json", meta)
     options = meta["options"]
 
-    cmd = [sys.executable, str(PRINT_AUTO), str(source), "--output-dir", str(jobdir)]
+    renderer = RENDER_REMOTE if os.environ.get("PAPER_RENDER_HOST") else PRINT_AUTO
+    cmd = [sys.executable, str(renderer), str(source), "--output-dir", str(jobdir)]
     if "target_pages" in options:
         cmd += ["--target-pages", str(options["target_pages"])]
     if "page_slack" in options:
@@ -757,6 +782,31 @@ def process_job(jobdir: Path, source: Path, meta: dict, at: dt.datetime) -> bool
                             {"render_command": shlex.join(cmd),
                              "render_output": (render.stdout + render.stderr)[-4000:]})
     decision = json.loads(decision_path.read_text())
+
+    if render.returncode not in (0, 3):
+        return fail_job(jobdir, meta, f"render failed (print-auto rc {render.returncode})",
+                        {"render_output": (render.stdout + render.stderr)[-4000:]})
+
+    # Re-read the artifact, even for a compute render. Classification metadata
+    # alone cannot certify that this is a readable, complete A4 PDF.
+    filename = decision.get("decision", {}).get("filename", "")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*\.pdf", filename):
+        raise ValueError("renderer returned an invalid PDF filename")
+    facts = pdf_facts(jobdir / filename)
+    if facts["pages"] != decision.get("pages_rendered"):
+        raise ValueError("rendered PDF page count differs from decision.json")
+    if facts["fit_to_page"]:
+        raise ValueError("Markdown renderer returned a PDF that is not A4")
+
+    # Enforce the caller's length gate ourselves; a renderer response cannot
+    # relax explicit front matter. Legacy hand renders remain readable.
+    target = options.get("target_pages")
+    slack = options.get("page_slack", 2)
+    if target is not None:
+        decision["length_check"] = "pass" if abs(facts["pages"] - target) <= slack else "fail"
+        decision["target_pages"] = target
+        decision["page_slack"] = slack
+        write_json(decision_path, decision)
 
     if decision.get("length_check") == "fail":
         write_json(jobdir / "reason.json", {

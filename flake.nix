@@ -535,6 +535,8 @@
             speech-session
             academic-ocr
             brother-print-text
+            paper-daemon
+            paper-render
             call-diarize
             browser-desktop
             chrome-stream
@@ -1604,6 +1606,7 @@
               export PAPER_DAEMON_SCRIPT=${./pkgs/paper-daemon/paper-daemon.py}
               export PAPER_JOBS_TEST_FILE=${./pkgs/paper-daemon/get-jobs.test}
               export PAPER_PRINTER_TEST_FILE=${./pkgs/paper-daemon/printer-state.test}
+              export PAPER_RENDER_BRIDGE=${./pkgs/paper-daemon/render-remote.py}
               mkdir -p "$HOME"
 
               python3 -m unittest discover \
@@ -2467,7 +2470,10 @@
           assert !nas.programs.niri.enable;
           assert !nas.services.greetd.enable;
           assert !nas.services.pipewire.enable;
-          assert !nas.services.printing.enable;
+          # The canonical brain owns the lightweight print scheduler. Browser
+          # rendering and local inference remain on the Strix compute pair.
+          assert nas.services.printing.enable;
+          assert !nas.services.printing.browsed.enable;
           # Discovery remains restricted to the wired LAN.
           assert nas.services.avahi.enable;
           assert nas.services.avahi.allowInterfaces == [ "enp1s0" ];
@@ -2861,7 +2867,7 @@
         # on EVERY host that prints (it rewrote the pinned DeviceURI to
         # implicitclass://, job 303); ensure-printers' postStart asserts the
         # pinned URI and the urf PPD filter (the raw queue of job 304); the
-        # paper-daemon units exist on the strix only; the retired
+        # paper-daemon units exist on the NAS brain only; the retired
         # trust-lp flusher is gone.
         print-plane =
           let
@@ -2869,27 +2875,39 @@
               nixpkgs.lib.mapAttrs (_: host: host.config) self.nixosConfigurations
             );
             printingHosts = builtins.filter (host: host.services.printing.enable) hosts;
-            strixHome = agentProbe.home-manager.users.tom;
-            daemonService = strixHome.systemd.user.services.paper-daemon;
+            nas = self.nixosConfigurations.nas.config;
+            brainHome = nas.home-manager.users.tom;
+            compute = self.nixosConfigurations.strix-coordinator.config;
+            daemonService = brainHome.systemd.user.services.paper-daemon;
             postStart =
               self.nixosConfigurations.strix-coordinator.config.systemd.services.ensure-printers.postStart;
           in
           assert printingHosts != [ ];
           assert nixpkgs.lib.all (host: !host.services.printing.browsed.enable) printingHosts;
+          # NAS has a stable userspace and compute tracks unstable: command
+          # store paths differ, but every scheduler must enforce the same guard.
           assert nixpkgs.lib.all (
-            host: host.systemd.services.ensure-printers.postStart == postStart
+            host:
+            let guard = host.systemd.services.ensure-printers.postStart;
+            in nixpkgs.lib.hasInfix "ipp://10.42.0.4:631/ipp/print" guard
+              && nixpkgs.lib.hasInfix ''cupsFilter2: "image/urf'' guard
+              && nixpkgs.lib.hasInfix "implicitclass:" guard
           ) printingHosts;
           assert nixpkgs.lib.hasInfix "ipp://10.42.0.4:631/ipp/print" postStart;
           assert nixpkgs.lib.hasInfix ''cupsFilter2: "image/urf'' postStart;
           assert nixpkgs.lib.hasInfix "implicitclass:" postStart;
-          assert strixHome.systemd.user.paths ? paper-daemon;
-          assert strixHome.systemd.user.paths.paper-daemon.Path.PathChanged == "%h/Paper/intake";
-          assert !(strixHome.systemd.user.timers ? paper-daemon-sweep);
-          assert strixHome.systemd.user.timers ? paper-daemon-flush;
-          assert strixHome.systemd.user.timers.paper-daemon-flush.Timer.Persistent;
+          assert nas.services.printing.enable;
+          assert brainHome.systemd.user.paths ? paper-daemon;
+          assert brainHome.systemd.user.paths.paper-daemon.Path.PathChanged == "%h/Paper/intake";
+          assert !(brainHome.systemd.user.timers ? paper-daemon-sweep);
+          assert brainHome.systemd.user.timers ? paper-daemon-flush;
+          assert brainHome.systemd.user.timers.paper-daemon-flush.Timer.Persistent;
           assert daemonService.Unit.X-RestartIfChanged == false;
           assert daemonService.Unit.StartLimitIntervalSec == 0;
-          assert !(strixHome.systemd.user.services ? paper-print-flush);
+          assert nixpkgs.lib.elem "PAPER_RENDER_HOST=strix-coordinator" daemonService.Service.Environment;
+          assert !(brainHome.systemd.user.services ? paper-print-flush);
+          assert !(compute.home-manager.users.tom.systemd.user.paths ? paper-daemon);
+          assert builtins.any (package: nixpkgs.lib.getName package == "paper-render") compute.environment.systemPackages;
 
           pkgs.runCommand "print-plane" { } ''
             ${builtins.head (nixpkgs.lib.toList daemonService.Service.ExecStart)} --help >/dev/null 2>&1 \

@@ -6,6 +6,7 @@
   cups,
   poppler-utils,
   coreutils,
+  openssh,
 }:
 
 # paper-daemon (dotfiles#384): the print loop owned end to end. An agent drops
@@ -34,6 +35,7 @@ stdenvNoCC.mkDerivation {
     runHook preInstall
     share=$out/share/paper-daemon
     install -Dm644 ${./paper-daemon.py} $share/paper-daemon.py
+    install -Dm644 ${./render-remote.py} $share/render-remote.py
     install -Dm644 ${./get-jobs.test} $share/get-jobs.test
     install -Dm644 ${./printer-state.test} $share/printer-state.test
     install -Dm644 ${../../home/dot_claude/skills/print/scripts/print-auto.py} $share/scripts/print-auto.py
@@ -50,8 +52,13 @@ stdenvNoCC.mkDerivation {
           cups
           poppler-utils
           coreutils
+          openssh
         ]
       }
+    makeWrapper ${lib.getExe python3} $out/bin/paper-render-remote \
+      --add-flags $share/render-remote.py \
+      --set PYTHONDONTWRITEBYTECODE 1 \
+      --prefix PATH : ${lib.makeBinPath [ openssh ]}
     runHook postInstall
   '';
 

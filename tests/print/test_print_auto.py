@@ -31,13 +31,15 @@ class RenderOnlyTests(unittest.TestCase):
     """print-auto renders and never submits (#384): paper-daemon is the one
     submitter, and it steers the render through --profile/--sides."""
 
-    def render(self, *flags: str, pages: int = 2, classifier_sides: str = "duplex"):
+    def render(self, *flags: str, pages: int = 2, classifier_sides: str = "duplex",
+               fitted_pages: list[int] | None = None):
         commands: list[list[str]] = []
 
         def fake_run(command, *args, **kwargs):
             commands.append(command)
             out = Path(command[command.index("-o") + 1])
-            out.write_bytes(b"%PDF\n" + b"/Type /Page\n" * pages)
+            measured = fitted_pages[min(len(commands) - 1, len(fitted_pages) - 1)] if fitted_pages else pages
+            out.write_bytes(b"%PDF\n" + b"/Type /Page\n" * measured)
             return mock.Mock(returncode=0)
 
         decision = {
@@ -120,6 +122,43 @@ class RenderOnlyTests(unittest.TestCase):
         rc, _, receipt = self.render("--target-pages", "2", pages=2)
         self.assertEqual(rc, 0)
         self.assertEqual(receipt["length_check"], "pass")
+
+    def test_layout_is_measured_and_stops_on_first_fit(self) -> None:
+        rc, commands, receipt = self.render("--target-pages", "1", "--page-slack", "0",
+                                             fitted_pages=[2, 1])
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(commands), 2)
+        self.assertEqual(commands[1][-3:], ["--layout", "compact", "--force"])
+        self.assertEqual(receipt["render_attempts"], [
+            {"layout": "standard", "pages": 2}, {"layout": "compact", "pages": 1}])
+
+    def test_unfittable_source_is_rejected_after_three_layouts(self) -> None:
+        rc, commands, receipt = self.render("--target-pages", "1", "--page-slack", "0", pages=8)
+        self.assertEqual(rc, 3)
+        self.assertEqual(len(commands), 3)
+        self.assertEqual(receipt["layout"], "dense")
+
+    def test_short_source_is_not_padded_or_repeated(self) -> None:
+        rc, commands, _ = self.render("--target-pages", "10", pages=1)
+        self.assertEqual(rc, 3)
+        self.assertEqual(len(commands), 1)
+
+
+class ClassifierTests(unittest.TestCase):
+    def test_non_objects_and_wrong_field_types_are_invalid_not_crashes(self) -> None:
+        good = print_auto.default_decision(Path("brief.md"))
+        for data in (None, [], ["x"], True, "text", {**good, "profile": []},
+                     {**good, "sides": {}}, {**good, "title": None},
+                     {**good, "filename": ["brief.pdf"]}):
+            with self.subTest(data=data):
+                self.assertIsInstance(print_auto.validate(json.dumps(data)), str)
+
+    def test_two_malformed_gufo_decisions_fall_back(self) -> None:
+        with (mock.patch.object(print_auto, "ask_utility", side_effect=["null", "[]"]),
+              contextlib.redirect_stderr(io.StringIO())):
+            decision, provenance = print_auto.decide("# Brief", None, Path("brief.md"))
+        self.assertEqual(provenance, "fallback")
+        self.assertEqual(decision["profile"], "source-serif")
 
 
 if __name__ == "__main__":

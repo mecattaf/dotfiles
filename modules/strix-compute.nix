@@ -40,6 +40,9 @@ in
   myGvisor.enable = lib.mkDefault false;
   services.qwen-tts.enable = true;
   services.utilityModel.enable = true;
+  # A request-scoped renderer, not a daemon or a print queue. The NAS sends
+  # Markdown over its pinned SSH channel and keeps submission/receipt ownership.
+  environment.systemPackages = [ pkgs.paper-render ];
 
   # Each NHI has two payload ring pairs. Donnerkeule's four-rail mode owns
   # both on each cable: the old tbnet + tbstream consumers cannot share that
