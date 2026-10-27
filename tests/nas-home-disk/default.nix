@@ -21,7 +21,7 @@ let
   disk = nas.myNas.homeDisk.device;
 in
 assert home.device == "${disk}-part1";
-assert disk == "/dev/disk/by-id/nvme-WD_BLACK_SN7100_500GB_260538801482";
+assert disk == "/dev/disk/by-id/nvme-WD_BLACK_SN7100_1TB_26051Y809195";
 assert !(base.options.myNas.homeDisk ? partUuid);
 assert home.fsType == "btrfs" && !home.neededForBoot;
 assert lib.all (option: lib.elem option home.options) [

@@ -34,13 +34,13 @@ in
     device = lib.mkOption {
       type = lib.types.str;
       # VERIFY on the installer bench before the simultaneous fleet power-off.
-      default = "/dev/disk/by-id/nvme-WD_BLACK_SN7100_500GB_260538801482";
+      default = "/dev/disk/by-id/nvme-WD_BLACK_SN7100_1TB_26051Y809195";
       description = "Whole-disk by-id identity; shared pool uses p1, legacy home-only layout uses p2";
     };
     serial = lib.mkOption {
       type = lib.types.str;
       # VERIFY on arrival; this is the expected serial from the survey.
-      default = "260538801482";
+      default = "26051Y809195";
       description = "Expected hardware serial of the incoming home SSD";
     };
   };

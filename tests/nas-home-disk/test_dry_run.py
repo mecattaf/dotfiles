@@ -14,8 +14,8 @@ import unittest
 
 
 SOURCE = Path(os.environ.get("MIGRATE_SOURCE", Path(__file__).resolve().parents[2] / "pkgs/nas-home-migrate"))
-SERIAL = "260538801482"
-DISK = f"/dev/disk/by-id/nvme-WD_BLACK_SN7100_500GB_{SERIAL}"
+SERIAL = "26051Y809195"
+DISK = f"/dev/disk/by-id/nvme-WD_BLACK_SN7100_1TB_{SERIAL}"
 HDD_UUID = "2345893a-8769-492c-90cb-23b79984a559"
 POOL_UUID = "e15ec2c3-9613-42ea-a1ed-5abeca1194bb"
 

@@ -16,10 +16,6 @@ let
       address = "10.42.0.2";
       inherit (coordinator) hostKey;
     };
-    strix-worker = {
-      address = "10.42.0.5";
-      inherit (worker) hostKey;
-    };
   };
 in
 {
