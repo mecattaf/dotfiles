@@ -13,6 +13,7 @@
     ./disko.nix
     ./tailscale.nix
     ./network.nix
+    ./initrd-ssh.nix # stage-1 SSH on 10.42.0.1:2222 for headless boot failures
     ./router.nix # Gateway, DHCP and DNS; Ethernet upstream through BE550
     # printer-keepalive.nix DELETED same-day it was born (Tom: "there has to
     # be a smarter way"): with the CUPS queue dialing the printer's pinned IP
