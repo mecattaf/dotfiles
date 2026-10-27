@@ -21,7 +21,7 @@ in
     enable = true;
     ssh = {
       enable = true;
-      port = 2222;
+      inherit (registry.nas.initrd) port;
       authorizedKeys = [ registry.strix-coordinator.userKey ];
       hostKeys = [ "/etc/ssh/initrd_ssh_host_ed25519_key" ];
     };
