@@ -44,7 +44,8 @@ let
     builtins.any (lib.hasInfix "tailscaled-set-wait-netmap") (
       lib.toList (c.systemd.services.tailscaled-set.serviceConfig.ExecStartPre or [ ])
     );
-  targets = [
+  # Every compute host in service builds for the NAS; a dormant one does not.
+  targets = lib.filter (name: nas.myFleet.active name) [
     "strix-coordinator"
     "strix-worker"
   ];

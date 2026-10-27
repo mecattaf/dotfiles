@@ -14,6 +14,9 @@ let
   );
   exportFor = path: lib.filter (line: lib.hasPrefix "${path} " line) exports;
   onlyExport = path: expected: exportFor path == [ expected ];
+  # The worker's read-only half, present only while it is in service.
+  worker =
+    opts: lib.optionalString (configs.nas.config.myFleet.active "strix-worker") " 10.42.0.5(${opts})";
   clean =
     cfg:
     let
@@ -63,7 +66,7 @@ assert exportFor "/mnt/nas/services" == [ ];
 assert exportFor "/mnt/nas/backups" == [ ];
 assert exportFor "/mnt/nas/.snapshots" == [ ];
 assert onlyExport "/mnt/nas"
-  "/mnt/nas 10.42.0.2(ro,sync,fsid=0,no_subtree_check,root_squash) 10.42.0.5(ro,sync,fsid=0,no_subtree_check,root_squash)";
+  "/mnt/nas 10.42.0.2(ro,sync,fsid=0,no_subtree_check,root_squash)${worker "ro,sync,fsid=0,no_subtree_check,root_squash"}";
 assert lib.all
   (
     entry:
@@ -84,7 +87,7 @@ assert lib.all
     }
   ];
 assert onlyExport "/mnt/nas/documents"
-  "/mnt/nas/documents 10.42.0.2(rw,sync,fsid=3,no_subtree_check,root_squash) 10.42.0.5(ro,sync,fsid=3,no_subtree_check,root_squash)";
+  "/mnt/nas/documents 10.42.0.2(rw,sync,fsid=3,no_subtree_check,root_squash)${worker "ro,sync,fsid=3,no_subtree_check,root_squash"}";
 assert onlyExport "/mnt/nas/models"
-  "/mnt/nas/models 10.42.0.2(ro,sync,fsid=6,no_subtree_check,root_squash) 10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)";
+  "/mnt/nas/models 10.42.0.2(ro,sync,fsid=6,no_subtree_check,root_squash)${worker "ro,sync,fsid=6,no_subtree_check,root_squash"}";
 pkgs.runCommand "fleet-roles" { } ''touch "$out"''

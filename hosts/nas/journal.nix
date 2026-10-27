@@ -1,4 +1,4 @@
-{ ... }:
+{ config, lib, ... }:
 # Fleet journald substrate, receiver side (issue #135, workstream 1). The NAS
 # holds the fleet's remote journal on the dedicated NVMe (disko mounts it at
 # /var/log/journal/remote — journal-remote's default output). SplitMode = "host"
@@ -61,8 +61,12 @@
   # lease shuffle.
   #
   # This renders because the NAS runs the nftables backend (see network.nix).
-  networking.firewall.extraInputRules = ''
-    ip saddr 10.42.0.5 tcp dport 19532 accept comment "journald-remote upload from strix-worker"
-    ip saddr 10.42.0.2 tcp dport 19532 accept comment "journald-remote upload from strix (LAN; /30 retired 2026-08-21)"
-  '';
+  # A dormant worker (modules/mesh-registry.nix) is not admitted.
+  networking.firewall.extraInputRules =
+    lib.optionalString (config.myFleet.active "strix-worker") ''
+      ip saddr 10.42.0.5 tcp dport 19532 accept comment "journald-remote upload from strix-worker"
+    ''
+    + ''
+      ip saddr 10.42.0.2 tcp dport 19532 accept comment "journald-remote upload from strix (LAN; /30 retired 2026-08-21)"
+    '';
 }

@@ -9,6 +9,8 @@ let
   n = self.nixosConfigurations.nas.config;
   c = self.nixosConfigurations.client.config;
   registry = import ../../modules/mesh-registry.nix;
+  # The NAS admits the worker only while its registry row is in service.
+  workerActive = n.myFleet.active "strix-worker";
   names = [
     "client"
     "nas"
@@ -115,7 +117,8 @@ assert
 assert !(s.home-manager.users.tom.systemd.user.paths ? paper-daemon);
 assert !(s.home-manager.users.tom.systemd.user.services ? herdr);
 assert !(settings ? model) && !(settings ? effortLevel) && !(settings ? modelSettings);
-assert builtins.all (host: lib.hasInfix "10.42.0.5" host.services.nfs.server.exports) [ n ];
+assert lib.hasInfix "10.42.0.5" n.services.nfs.server.exports == workerActive;
+assert registry.strix-worker.dormant -> !workerActive;
 assert !n.services.k3s.enable && !s.services.k3s.enable;
 assert !n.services.dockerRegistry.enable;
 assert builtins.elem "user@1000.service" s.systemd.services.keyring-unlock-boot.wantedBy;
@@ -193,14 +196,18 @@ assert builtins.all
   ];
 assert w.fileSystems."/mnt/nas/documents".device == "nas:/documents";
 assert builtins.elem "ro" w.fileSystems."/mnt/nas/documents".options;
-assert lib.hasInfix "10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)"
-  n.services.nfs.server.exports;
-assert lib.hasInfix "10.42.0.5(ro,sync,fsid=3,no_subtree_check,root_squash)"
-  n.services.nfs.server.exports;
-assert lib.hasInfix "ip saddr 10.42.0.5 tcp dport 2049 accept"
-  n.networking.firewall.extraInputRules;
-assert lib.hasInfix "ip saddr 10.42.0.5 tcp dport 19532 accept"
-  n.networking.firewall.extraInputRules;
+assert
+  lib.hasInfix "10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)" n.services.nfs.server.exports
+  == workerActive;
+assert
+  lib.hasInfix "10.42.0.5(ro,sync,fsid=3,no_subtree_check,root_squash)" n.services.nfs.server.exports
+  == workerActive;
+assert
+  lib.hasInfix "ip saddr 10.42.0.5 tcp dport 2049 accept" n.networking.firewall.extraInputRules
+  == workerActive;
+assert
+  lib.hasInfix "ip saddr 10.42.0.5 tcp dport 19532 accept" n.networking.firewall.extraInputRules
+  == workerActive;
 assert builtins.elem "10.42.0.5" n.services.adguardhome.settings.dns.ratelimit_whitelist;
 assert builtins.all
   (

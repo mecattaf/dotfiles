@@ -17,17 +17,19 @@ files, `/tmp`, and networking remain accessible. Do not suppress unexpected
 coredumps or service failures. Do not restart Herdr or the whole user manager
 to repair a test incident while live agent sessions must be preserved.
 
-# NAS agent host: send compute to the Strix pair
+# NAS agent host: send compute to strix-coordinator
 
 On `nas`, keep Herdr, Claude Code, Codex and dsh sessions and their credentials
-local. Nix uses SSH builders `strix-coordinator` and `strix-worker` with zero
-local build jobs. Do not override that setting or fall back to a NAS build.
+local. Nix uses the SSH builder `strix-coordinator` with zero local build jobs.
+`strix-worker` is dormant until its replacement Strix Halo arrives: it is not a
+builder, and nothing goes to it. Do not override that setting or fall back to a
+NAS build.
 Evaluate on NAS when useful; compile and run memory/GPU-intensive jobs on
 compute. Before every `nix build`, check `df -h /` on the build host and stop
 if it has less than 25 GB free.
 
 For other heavy commands, use `fleet-exec strix-coordinator --cwd
-/absolute/remote/checkout -- command args...` (or `strix-worker`). Stage the
+/absolute/remote/checkout -- command args...`. Stage the
 needed checkout and non-secret inputs there first. The helper preserves argv,
 requires a known SSH host key and never falls back locally. It does not copy
 credentials, forward an SSH agent or make a remote checkout for you. Keep

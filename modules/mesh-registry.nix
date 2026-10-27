@@ -14,6 +14,11 @@
 # `nixos-anywhere --extra-files`. userKey is the fleet SSH key rotated on
 # 2026-07-29 after the previous key was exposed on a returned device. It is an SSH
 # login key only, never an agenix editor recipient; see ../secrets.nix.
+#
+# `dormant = true` keeps a host's row, flake node and configuration while its box
+# is out of service. Consumers ask `config.myFleet.active` (modules/fleet-role.nix)
+# and skip it: no remote builder, no NAS NFS or journal-remote admission, no
+# fleet-status fan-out, no update-center build.
 {
   strix-coordinator = {
     aliases = [
@@ -29,11 +34,18 @@
   };
 
   strix-worker = {
+    # Dormant since 2026-10-27: the Framework went back to Windows Server for
+    # Sodimo, and a replacement Strix Halo takes this name, address and role
+    # (Tom: "i m getting a remplacement strix halo device to become the worker,
+    # very soon"). To reactivate: set false, record the new box's hostKey below,
+    # its MAC in hosts/nas/router.nix, then rekey (REKEY.md).
+    dormant = true;
     aliases = [
       "strix-worker"
       "10.42.0.5"
     ];
     # Fresh install identity generated privately for the attended 2026-10-23 cutover.
+    # The Framework's key; the replacement box brings its own.
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIJBGzAq5wvS0olgNKONXK22r/+c+xo2xanMXZVIxqXH strix-worker-cutover-20261023";
     userKey = ""; # compute receives no operator private key
   };
