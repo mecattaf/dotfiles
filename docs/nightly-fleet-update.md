@@ -13,17 +13,21 @@ harness sessions remain on NAS; the dormant worker receives no work.
 
 ## What a run does
 
-`lib/fleet-update.json` selects the four package sources: compute nixpkgs, NAS
-stable nixpkgs, the fresh leaf overlay (including Tailscale), and llm-agents.
+`lib/fleet-update.json` selects the package sources: compute nixpkgs, NAS
+stable nixpkgs, the fresh leaf overlay (including Tailscale), llm-agents, and
+an independent `agent-tools` pin of the same packaged catalog.
 Updates mean versions available from these configured Nix branches. Explicitly
 pinned hardware, inference engines, Home Manager releases and project tools
 remain deliberate source changes; no upstream binary/npm installer bypasses
 the Nix package graph.
 
-Each job first prepares an llm-agents-only candidate, tests/builds both system
+Each job first prepares an `agent-tools`-only candidate, tests/builds both system
 generations on strix-coordinator, adopts its lock-only commit and installs it
 when each target is idle and safe. This advances Claude Code, Codex and DSH
 without coupling their new-launch versions to a Tailscale or base-system change.
+Only Claude Code, Codex and DSH use that independent pin. QMD and other catalog
+consumers remain on `llm-agents` until the full candidate passes; updating a
+memory-index activation helper must not silently bypass code inspection.
 It then prepares a full candidate from the selected package sources using the
 same pipeline. Source and flake input trees are staged on compute; credentials
 are never copied or forwarded. `df -h /` and a 25 GiB minimum gate precede every
@@ -33,8 +37,10 @@ Exact output paths receive GC roots as part of `nix build`, outside disposable
 source staging. Pending candidates survive GC. Roots for the newest three
 resolved jobs are retained; pending jobs and installed/previous profiles are
 preserved. Main adoption uses compare-and-swap against the tested base, never
-an overwrite of intervening work. A dirty canonical checkout, another branch,
+an overwrite of intervening work. Tracked/index edits, another branch,
 source drift or changes beyond `flake.lock` defer source adoption.
+Noncolliding untracked user files are preserved by the lock-only Git fast
+forward; the updater never stashes, cleans or removes them.
 
 Before adopting a full candidate, both targets receive a fresh assessment so
 unsafe base pins cannot become the following night's program-only baseline.
@@ -56,10 +62,20 @@ Active user units are resolved from their effective Home Manager, global NixOS
 or packaged origin, rather than assuming that every user service belongs to
 Home Manager. Unchanged global D-Bus/user activation units are safe; changed,
 missing or unknown origins remain pending. A separately loaded user unit needs
-an actual readable fragment outside both generations. Generated `/etc` trees
+an actual readable fragment outside both generations. Applicable managed user
+drop-ins (including type, prefix and template overrides) are compared at every
+origin; additions, removals or changed bytes remain pending even for keep-old
+main units. Generated `/etc` trees
 are compared through store symlinks: only the managed user profile pointer and
 the inspected Home Manager service may change without further review. Other
 configuration changes remain pending, including privilege or transport policy.
+
+One bounded exception permits the broker's native `notify-reload` when NixOS
+changes only D-Bus search-path/trigger hashes. The generated XML must have the
+same policy and service data through immutable store links; broker code and all
+applicable system/user overrides must retain the known native reload behavior.
+Changed policy, services, reload code or unknown overrides defer. Bus starts
+and restarts remain forbidden, and protected PIDs must survive installation.
 
 **Tailscale remains staged whenever its update requires a transport restart.**
 Peer activity alone cannot prove that restarting the NAS exit/subnet router is

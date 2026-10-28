@@ -21,6 +21,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
 STATE = Path(os.environ.get("FLEET_UPDATE_STATE", Path.home() / ".local/state/fleet-update"))
@@ -105,6 +106,117 @@ def normal(text):
     return STORE.sub("$STORE", text)
 
 
+def data_tree_equal(old, new, visited=None):
+    """Compare immutable generated data through store links, with a hard bound."""
+    visited = set() if visited is None else visited
+    if old == new:
+        return True
+    pair = (str(old), str(new))
+    if pair in visited or len(visited) >= 8192:
+        return False
+    visited.add(pair)
+    for path in (old, new):
+        if path.is_symlink() and not str(path.resolve()).startswith("/nix/store/"):
+            return False
+    if not old.exists() or not new.exists():
+        return not old.exists() and not new.exists() and not old.is_symlink() and not new.is_symlink()
+    if old.is_file() and new.is_file():
+        return old.read_bytes() == new.read_bytes()
+    if old.is_dir() and new.is_dir():
+        left, right = {p.name for p in old.iterdir()}, {p.name for p in new.iterdir()}
+        return left == right and all(data_tree_equal(old / name, new / name, visited) for name in sorted(left))
+    return False
+
+
+def dbus_config_equal(old, new):
+    """Only immutable search-path moves with identical contents are no-ops."""
+    try:
+        before, after = ET.fromstring(old.read_bytes()), ET.fromstring(new.read_bytes())
+        left, right = list(before.iter()), list(after.iter())
+        if len(left) != len(right):
+            return False
+        for a, b in zip(left, right):
+            if a.tag == b.tag and a.text != b.text and a.tag in {"servicedir", "includedir", "include"}:
+                if not all(value and STORE_FILE.fullmatch(value) for value in (a.text, b.text)):
+                    return False
+                if not data_tree_equal(Path(a.text), Path(b.text)):
+                    return False
+                a.text = b.text = "$UNCHANGED_IMMUTABLE_DATA"
+        return ET.tostring(before) == ET.tostring(after)
+    except (OSError, ET.ParseError, ValueError):
+        return False
+
+
+def dbus_trigger_override_equal(before, after, old_etc, new_etc):
+    """A trigger may only point at the separately verified generated bus config."""
+    pattern = re.compile(rb"^X-Restart-Triggers=(" + STORE_FILE.pattern.encode() + rb")\n", re.M)
+    left, right = pattern.findall(before), pattern.findall(after)
+    if len(left) != 1 or len(right) != 1 or pattern.sub(b"", before) != pattern.sub(b"", after):
+        return False
+    try:
+        return all(Path(value.decode()).read_text().strip() == str((etc / "dbus-1").resolve())
+                   for value, etc in ((left[0], old_etc), (right[0], new_etc)))
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+def dbus_reload_safe(old_etc, new_etc, extra_directories=None):
+    """Known broker notify-reload only; changed policy, code or overrides defer.
+
+    NixOS puts the entire system profile in D-Bus search paths, so even a
+    nixos-version revision creates new config/trigger paths. Prove the actual
+    policy and activation-service contents are identical before permitting its
+    native reload. Starting/restarting either bus is never covered by this.
+    """
+    try:
+        if not all(dbus_config_equal(old_etc / "dbus-1" / name, new_etc / "dbus-1" / name)
+                   for name in ("session.conf", "system.conf")):
+            return False
+        for scope in ("system", "user"):
+            relative = Path("systemd") / scope / "dbus-broker.service"
+            before, after = (old_etc / relative).read_bytes(), (new_etc / relative).read_bytes()
+            if before != after or b"\nType=notify-reload\n" not in before:
+                return False
+            if re.search(rb"^(?:Exec(?!Start=)[^=]*|ReloadSignal|PropagatesReloadTo|ReloadPropagatedFrom)=", before, re.M):
+                return False
+            command = re.search(rb"^ExecStart=(.+)$", before, re.M)
+            if not command or not re.fullmatch(rb"/nix/store/[0-9a-z]{32}-dbus-broker-[^/\s]+/bin/dbus-broker-launch --scope "
+                                                + scope.encode() + (rb" --audit" if scope == "system" else b""), command[1]):
+                return False
+            directories = [(old_etc / "systemd" / scope, new_etc / "systemd" / scope)]
+            directories += (extra_directories or {}).get(scope, [])
+            native_reload = False
+            # Includes both alias names, the service type, and dash prefix.
+            for left_root, right_root in directories:
+                for name in ("service.d", "dbus-.service.d", "dbus.service.d", "dbus-broker.service.d"):
+                    left, right = left_root / name, right_root / name
+                    a_names = {p.name for p in left.glob("*.conf")}
+                    b_names = {p.name for p in right.glob("*.conf")}
+                    if a_names != b_names or len(a_names) > 1024:
+                        return False
+                    for filename in a_names:
+                        a, b = (left / filename).read_bytes(), (right / filename).read_bytes()
+                        # Unknown, even unchanged, overrides cannot borrow the
+                        # native notify-reload proof (ExecReload, ReloadSignal,
+                        # Type and propagation overrides are all excluded).
+                        for line in a.splitlines():
+                            if not line.strip() or line.lstrip().startswith((b"#", b";")):
+                                continue
+                            if not re.fullmatch(rb"\[(?:Unit|Service)\]|X-Restart-Triggers=(?:" + STORE_FILE.pattern.encode() + rb")|"
+                                                rb"X-ReloadIfChanged=true|RequiresMountsFor=/tmp|Environment=.*", line):
+                                return False
+                        native_reload |= b"\nX-ReloadIfChanged=true\n" in a
+                        if a != b and (left_root != old_etc / "systemd" / scope or
+                                       name != "dbus-broker.service.d" or filename != "overrides.conf" or
+                                       not dbus_trigger_override_equal(a, b, old_etc, new_etc)):
+                            return False
+            if not native_reload:
+                return False
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def etc_tree_reasons(old, new, seen=None):
     """Only a managed profile pointer and its inspected HM unit may change.
 
@@ -115,6 +227,7 @@ def etc_tree_reasons(old, new, seen=None):
     """
     seen = set() if seen is None else seen
     reasons, visited = [], set()
+    bus_noop = dbus_reload_safe(old, new)
 
     def compare(before, after, relative):
         if len(visited) > 8192:
@@ -146,6 +259,12 @@ def etc_tree_reasons(old, new, seen=None):
                 return
             if relative == "systemd/system/home-manager-tom.service":
                 reasons.extend(activation_code_reasons(before, after, seen))
+                return
+            if bus_noop and relative in {
+                "dbus-1/session.conf", "dbus-1/system.conf",
+                "systemd/system/dbus-broker.service.d/overrides.conf",
+                "systemd/user/dbus-broker.service.d/overrides.conf",
+            }:
                 return
         reasons.append(f"generated /etc content changed: {relative}")
 
@@ -316,20 +435,68 @@ def user_generation(system):
     return Path(match.group(1))
 
 
-def effective_user_unit(system, home, unit):
+def user_unit_directories(system, home):
     """The managed user-unit search order, including NixOS global units."""
-    for origin, directory in (
+    return (
         ("home-config", home / "home-files/.config/systemd/user"),
         ("global-config", system / "etc/systemd/user"),
         ("home-data", home / "home-files/.local/share/systemd/user"),
         ("home-packages", home / "home-path/share/systemd/user"),
         ("system-packages", system / "sw/lib/systemd/user"),
         ("system-share", system / "sw/share/systemd/user"),
-    ):
+    )
+
+
+def effective_user_unit(system, home, unit):
+    for origin, directory in user_unit_directories(system, home):
         path = directory / unit
         if path.exists() or path.is_symlink():
             return origin, path
     return None
+
+
+def user_drop_ins(system, home, unit):
+    """Inspect every applicable managed drop-in, including type/prefix ones.
+
+    Comparing each origin is conservative when a higher-priority file masks
+    one below it. It also prevents a new override from escaping the main-unit
+    comparison, even when Home Manager's main unit promises keep-old.
+    """
+    aliases = {unit}
+    main = effective_user_unit(system, home, unit)
+    if main and main[1].is_file():
+        for _, directory in user_unit_directories(system, home):
+            for alias in directory.glob("*.*"):
+                if alias.is_symlink() and alias.resolve() == main[1].resolve():
+                    aliases.add(alias.name)
+                if len(aliases) > 1024:
+                    raise Pending(f"active user unit alias set exceeds limit: {unit}")
+    names = set()
+    for alias in aliases:
+        stem, separator, kind = alias.rpartition(".")
+        if not separator or not stem or not kind:
+            raise Pending(f"cannot identify active user unit type: {alias}")
+        names.update((kind + ".d", alias + ".d"))
+        if "@" in stem:
+            names.add(stem.split("@", 1)[0] + "@." + kind + ".d")
+        prefix = stem.split("@", 1)[0]
+        names.update(prefix[:index + 1] + "." + kind + ".d"
+                     for index, character in enumerate(prefix) if character == "-")
+    files = {}
+    for origin, directory in user_unit_directories(system, home):
+        for name in sorted(names):
+            path = directory / name
+            if not path.exists() and not path.is_symlink():
+                continue
+            if not path.is_dir():
+                raise Pending(f"user unit drop-in directory is unreadable: {path}")
+            for fragment in path.iterdir():
+                if fragment.suffix != ".conf":
+                    continue
+                if len(files) >= 1024 or not fragment.is_file():
+                    raise Pending(f"user unit drop-in is unreadable or exceeds limit: {fragment}")
+                files[(origin, name, fragment.name)] = fragment.read_bytes()
+    return files
 
 
 def user_unit_origins(units):
@@ -343,6 +510,31 @@ def user_unit_origins(units):
     return origins
 
 
+def dbus_runtime_reload_reasons(system):
+    """Runtime-only overrides must not replace the audited native reload."""
+    home = user_generation(system)
+    for scope in ("system", "user"):
+        prefix = (["runuser", "-u", "tom", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000", "systemctl", "--user"]
+                  if scope == "user" else ["systemctl"])
+        directories = ([directory for _, directory in user_unit_directories(system, home)] if scope == "user"
+                       else [system / "etc/systemd/system", system / "sw/lib/systemd/system",
+                             system / "sw/share/systemd/system"])
+        known = {path.resolve() for directory in directories
+                 for name in ("service.d", "dbus-.service.d", "dbus.service.d", "dbus-broker.service.d")
+                 for path in (directory / name).glob("*.conf")}
+        for property, expected in (("Type", "notify-reload"), ("ExecReload", ""), ("ReloadSignal", "1")):
+            actual = run([*prefix, "show", "dbus-broker.service", f"--property={property}", "--value"]).stdout.strip()
+            if actual != expected:
+                return [f"{scope} D-Bus runtime {property} is not the audited native reload"]
+        fragment = run([*prefix, "show", "dbus-broker.service", "--property=FragmentPath", "--value"]).stdout.strip()
+        if Path(fragment).resolve() != (system / "etc/systemd" / scope / "dbus-broker.service").resolve():
+            return [f"{scope} D-Bus runtime unit origin differs from the generation"]
+        actual = run([*prefix, "show", "dbus-broker.service", "--property=DropInPaths", "--value"]).stdout.split()
+        if any(Path(path).resolve() not in known for path in actual):
+            return [f"{scope} D-Bus has an unmanaged runtime override"]
+    return []
+
+
 def effect_reasons(old, new, dry, active_user, origins=None):
     reasons = []
     # A source pin bump may alter module-generated activation code. Unknown code
@@ -350,6 +542,17 @@ def effect_reasons(old, new, dry, active_user, origins=None):
     for filename in ("activate", "dry-activate", "bin/switch-to-configuration"):
         reasons += activation_code_reasons(old / filename, new / filename)
     old_home, new_home = user_generation(old), user_generation(new)
+    bus_noop = dbus_reload_safe(old / "etc", new / "etc", {
+        "system": [(old / "sw" / directory, new / "sw" / directory)
+                   for directory in ("lib/systemd/system", "share/systemd/system")],
+        "user": [(left, right) for (_, left), (_, right) in zip(
+            user_unit_directories(old, old_home), user_unit_directories(new, new_home))
+                 if left != old / "etc/systemd/user"],
+    })
+    for system, home in ((old, old_home), (new, new_home)):
+        origin = effective_user_unit(system, home, "dbus-broker.service")
+        if origin is None or origin[0] != "global-config":
+            bus_noop = False
     reasons += activation_code_reasons(old_home / "activate", new_home / "activate")
     old_units = old_home / "home-files/.config/systemd/user"
     new_units = new_home / "home-files/.config/systemd/user"
@@ -357,6 +560,19 @@ def effect_reasons(old, new, dry, active_user, origins=None):
         if unit.is_file() and not (old_units / unit.name).exists():
             reasons.append(f"new user unit requires supervised admission: {unit.name}")
     for unit in active_user:
+        try:
+            left = user_drop_ins(old, old_home, unit)
+            right = user_drop_ins(new, new_home, unit)
+            bus_trigger = ("global-config", "dbus-broker.service.d", "overrides.conf")
+            if (bus_noop and unit in {"dbus-broker.service", "dbus.service"}
+                    and bus_trigger in left and bus_trigger in right
+                    and dbus_trigger_override_equal(left[bus_trigger], right[bus_trigger], old / "etc", new / "etc")):
+                left.pop(bus_trigger)
+                right.pop(bus_trigger)
+            if left != right:
+                reasons.append(f"active user unit drop-ins would change: {unit}")
+        except (OSError, Pending) as error:
+            reasons.append(str(error))
         before = effective_user_unit(old, old_home, unit)
         after = effective_user_unit(new, new_home, unit)
         if before is None and after is None:
@@ -384,9 +600,12 @@ def effect_reasons(old, new, dry, active_user, origins=None):
             continue
         reasons.append(f"active user unit would change: {unit}")
     for line in dry.splitlines():
-        if re.search(r"would (?:start|stop|restart|reload)(?: the following)? units:", line):
+        action = re.search(r"would (start|stop|restart|reload)(?: the following)? (?:user )?units:", line)
+        if action:
             units = line.partition(":")[2].replace(",", " ").split()
             for unit in units:
+                if bus_noop and action[1] == "reload" and unit in {"dbus.service", "dbus-broker.service"}:
+                    continue
                 if PROTECTED.match(unit):
                     reasons.append(f"dry activation would affect protected unit: {unit}")
         elif "would restart systemd" in line or "would stop swap" in line:
@@ -438,6 +657,11 @@ def target_activate(path, revision, expected, assess_only=False):
         dry = run([str(path / "bin/switch-to-configuration"), "dry-activate"], timeout=180)
         reasons = effect_reasons(old, path, dry.stdout + dry.stderr,
                                  active_user, origins)
+        if re.search(r"would reload[^\n]*\bdbus(?:-broker)?\.service\b", dry.stdout + dry.stderr):
+            try:
+                reasons += dbus_runtime_reload_reasons(old)
+            except Failure:
+                reasons.append("cannot inspect D-Bus runtime reload behavior")
         if reasons:
             raise Pending("; ".join(reasons))
         if assess_only:
@@ -446,7 +670,8 @@ def target_activate(path, revision, expected, assess_only=False):
         # passed. Root still requires the exact tested raw checkout at install.
         source = Path("/home/tom/mecattaf/dotfiles")
         source_head = run(["runuser", "-u", "tom", "--", "git", "-C", str(source), "rev-parse", "HEAD"]).stdout.strip()
-        source_dirty = run(["runuser", "-u", "tom", "--", "git", "-C", str(source), "status", "--porcelain"]).stdout
+        source_dirty = run(["runuser", "-u", "tom", "--", "git", "-C", str(source),
+                            "status", "--porcelain", "--untracked-files=no"]).stdout
         if source_head != revision or source_dirty:
             raise Pending("raw dotfile checkout is dirty or differs from candidate")
         # Retain both paths independently of profile GC before any side effect.
@@ -568,7 +793,7 @@ class Transaction:
         if config["hosts"] != list(TARGETS):
             raise Failure("nightly targets must be NAS and coordinator; worker is dormant")
         if self.state.get("lane") == "programs":
-            config["inputs"] = ["llm-agents"]
+            config["inputs"] = ["agent-tools"]
         self.state.update(base=base, source=str(directory), branch="update/fleet-" + self.identifier,
                           remote="/home/tom/.cache/fleet-update/" + self.identifier, config=config)
         self.save()
@@ -698,7 +923,7 @@ class Transaction:
         # User-owned raw source transaction: no checkout switch/reset/stash,
         # ignored local credentials copied, or overwrite of modified files.
         source = "/home/tom/mecattaf/dotfiles"
-        dirty = ssh(host, ["git", "-C", source, "status", "--porcelain"]).stdout
+        dirty = ssh(host, ["git", "-C", source, "status", "--porcelain", "--untracked-files=no"]).stdout
         if dirty:
             raise Pending(f"{host} canonical raw dotfiles checkout is dirty")
         if ssh(host, ["git", "-C", source, "branch", "--show-current"]).stdout.strip() != "main":
