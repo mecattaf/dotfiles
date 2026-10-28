@@ -90,12 +90,12 @@
   # is sequenced manually in #131.
   myNas.media.enable = true;
   myNas.models.enable = true;
-  # ws2a snapshots — flipped 2026-08-21 per the runbook in ./snapshots.nix:
-  # subvolume layout verified live (photos/music/documents/videos/services/
-  # .snapshots all real subvolumes), dry-run + strix containment check
-  # done at deploy time. Cadence: MONTHLY, first Saturday 08:00 (see the COST
-  # paragraph in snapshots.nix for the ruling trail).
-  myNas.snapshots.enable = true;
+  # ws2a snapshots — flipped on 2026-08-21, OFF since 2026-10-28 on Tom's word:
+  # "dleete the nine snapshots and turn off job YES. no time machine for file
+  # etc". The snapshots and the .snapshots subvolume were deleted by hand the
+  # same day; the 4TB holds music, photos, videos, Documents and the model
+  # Library only.
+  myNas.snapshots.enable = false;
   # ws5 — flipped 2026-08-21 per the runbook in ./attic.nix: state rsynced
   # from the strix with atticd stopped, signing key verified intact,
   # env file placed on the root NVMe.

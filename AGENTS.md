@@ -29,7 +29,7 @@ hand-run service, a path/udev/session trigger, or a factory schedule:
 | D42 | tripwire-coredump, tripwire-user-unit-failure (all); tripwire-nas-reachability, tripwire-attic-cache-health (strix); tripwire-strix-reachability (client, #514) | all | `modules/tripwire.nix` |
 | D43 | nix-gc (weekly), gc-root-reaper (daily) | all | `modules/gc-retention.nix`, `modules/gc-root-reaper.nix` |
 | D44 | atticd GC every 12 h | NAS | `hosts/nas/attic.nix` |
-| D45 | btrbk-nas (first Saturday 08:00), btrfs-scrub-mnt-nas (monthly) | NAS | `hosts/nas/snapshots.nix`, `hosts/nas/storage.nix` |
+| D45 | btrfs-scrub-mnt-nas (monthly); btrbk-nas off since 2026-10-28 | NAS | `hosts/nas/storage.nix`, `hosts/nas/snapshots.nix` (gate off) |
 | D48 | artifact-reaper (daily) | strix | `modules/caddy-artifacts.nix` |
 | D49 | fstrim, logrotate, fwupd-refresh, systemd-tmpfiles-clean (system and user) | all | NixOS defaults |
 | D50 | smartd (`-n standby,q`; a daemon, not a timer) | NAS | `hosts/nas/storage.nix` |

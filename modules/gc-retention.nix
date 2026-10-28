@@ -38,7 +38,8 @@
 # `rollback-offline --list` (#106) and the boot menu would stop offering the
 # generation you booted from, even though its paths were still on disk.
 let
-  keep = 20;
+  # Tom, 2026-10-28: "cap nbr of saved versions on every machine to 3."
+  keep = 3;
 
   pruneGenerations = pkgs.writeShellScript "nix-gc-prune-generations" ''
     set -eu

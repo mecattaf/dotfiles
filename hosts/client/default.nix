@@ -253,10 +253,6 @@
       config.allowUnfree = true;
     }).linuxPackages_7_3;
 
-  # A short boot menu: five generations is rollback enough on a thin client
-  # (the 20-entry fleet default left 19 stale entries here, 2026-09-14).
-  boot.loader.systemd-boot.configurationLimit = 5;
-
   # Both panels come up at full brightness on every boot (Tom, 2026-09-14:
   # the saved level was 4/400 and the seat woke nearly black). systemd-backlight
   # would restore whatever was saved at shutdown, so its two DRM instances are

@@ -65,8 +65,9 @@
   boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
   boot.loader.systemd-boot.enable = lib.mkDefault true;
   # #133 item 6: bound the boot menu to the same depth as the generation
-  # retention in modules/gc-retention.nix (keep-last-20 + booted).
-  boot.loader.systemd-boot.configurationLimit = lib.mkDefault 20;
+  # retention in modules/gc-retention.nix (keep-last-3 + booted; Tom,
+  # 2026-10-28: "cap nbr of saved versions on every machine to 3.").
+  boot.loader.systemd-boot.configurationLimit = lib.mkDefault 3;
   boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
   boot.plymouth.enable = true;
   # Many long-lived per-user watchers (persistent terminal sessions, file

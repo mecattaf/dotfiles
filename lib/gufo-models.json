@@ -103,45 +103,6 @@
       ]
     }
   },
-  "deepseek-v4-flash-gguf": {
-    "kind": "model",
-    "maker": "antirez",
-    "quantization": "IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8",
-    "notes": "Gufo's large text model (gufo-switch deepseek-v4-flash): DeepSeek V4 Flash 0731, text only, 80.76 GiB, never resident with Flash-Next.",
-    "source": {
-      "hfUrl": "https://huggingface.co/antirez/deepseek-v4-gguf",
-      "revision": "1cd7b564460821938add0475a60b942c409295e0",
-      "layout": "flat",
-      "primary": "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
-      "files": [
-        {
-          "path": "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
-          "bytes": 86720111488,
-          "oid": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
-          "hash": "sha256-yiKuL4OOFAd8IrwcFBe3G0W15aNoe9lsKsbhf9tiYcA="
-        }
-      ]
-    }
-  },
-  "deepseek-v4-flash-dspark-gguf": {
-    "kind": "draft",
-    "maker": "antirez",
-    "notes": "DSpark support model for DeepSeek V4 Flash (--dspark-model); optional.",
-    "source": {
-      "hfUrl": "https://huggingface.co/antirez/deepseek-v4-gguf",
-      "revision": "e7f04037032990db0346398d249baf9fb9df1ccc",
-      "layout": "flat",
-      "primary": "DeepSeek-V4-Flash-DSpark-support-0731.gguf",
-      "files": [
-        {
-          "path": "DeepSeek-V4-Flash-DSpark-support-0731.gguf",
-          "bytes": 5989114272,
-          "oid": "7e319924541db3f7a163ed7e11d7532a70d48228ab59d36cb81e1d4511885360",
-          "hash": "sha256-fjGZJFQds/ehY+1+EddTKnDUgiirWdNsuB4dRRGIU2A="
-        }
-      ]
-    }
-  },
   "qwen3-asr-1.7b": {
     "kind": "model",
     "maker": "Qwen",

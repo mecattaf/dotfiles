@@ -216,7 +216,6 @@ in
       "z ${storageRoot}/documents 0750 tom users -"
       "z ${storageRoot}/videos 0750 tom users -"
       "z ${storageRoot}/services 0711 root root -"
-      "z ${storageRoot}/.snapshots 0700 root root -"
     ];
   };
 }
