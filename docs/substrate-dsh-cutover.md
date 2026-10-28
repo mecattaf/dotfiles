@@ -3,8 +3,8 @@
 The Cloudflare Floor remains the only nightly clock. NAS owns the capacity
 pusher, interpreter, DSH processes, credentials and histories. Strix coordinator
 owns inference and explicit build/test execution. The dormant worker receives no
-work. The local runtime is DSH with provider `gufo`, model
-`qwen3.8-flash-next`, and capacity seat `gufo`.
+work. The default runtime and model are local DSH with provider `gufo`, model
+`qwen3.8-flash-next`, and capacity seat `gufo`. Claude remains an explicit runtime.
 
 The module renders one local DSH execution slot and a 1 GiB soft / 2 GiB hard
 memory budget. Its user profile supplies the harnesses; no Pi package or Pi
@@ -23,7 +23,11 @@ substrate-dsh-catalog
 substrate-dsh-catalog --apply
 ```
 
-The apply operation holds a separate lock, creates a mode-0600 exact backup,
+Apply during exclusive catalog maintenance: pause catalog edits or make other
+writers take `models.toml.migration.lock`. The lock serializes this tool but
+cannot constrain an editor that ignores it. The pre-publication byte check
+rejects observed changes; it is not an atomic compare/exchange against manual
+renames. The apply operation creates a mode-0600 exact backup,
 converts the existing local Flash-Next row to DSH/Gufo and removes legacy
 Pi-specific metadata and retired provider rows from the active catalog. Their
 full original data remains in the backup. It preserves other supported model

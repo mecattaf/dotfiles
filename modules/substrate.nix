@@ -154,9 +154,11 @@ let
     with open(sys.argv[1], "rb") as source:
         models = tomllib.load(source).get("models", [])
     if any(model.get("harness") == "pi" for model in models):
-        raise SystemExit("substrate-puller: retired Pi catalog; review substrate-dsh-catalog, then apply explicitly")
+        print("substrate-puller: retired Pi catalog; review substrate-dsh-catalog, then apply explicitly", file=sys.stderr)
+        raise SystemExit(78)
     if not any(model.get("harness") == "dsh" and model.get("provider") == "gufo" for model in models):
-        raise SystemExit("substrate-puller: no DSH Gufo model configured")
+        print("substrate-puller: no DSH Gufo model configured", file=sys.stderr)
+        raise SystemExit(78)
     PYTHON
     # Review 2026-09-24 (low): hostHarnessEnv passes CREDENTIALS_DIRECTORY through to every host agent. The token
     # paths are already in the rendered files, so the variable is dropped here; the directory stays readable.
@@ -364,7 +366,7 @@ in
 
       defaultModel = mkOption {
         type = types.str;
-        default = "claude-opus-5-5";
+        default = "qwen3.8-flash-next";
         description = "[puller].default_model.";
       };
 
@@ -483,7 +485,7 @@ in
       runtimes = mkOption {
         type = tomlFormat.type;
         default = {
-          default = "opus";
+          default = "gufo";
           # The model catalog lives outside the store (puller.modelsFile); the runners re-read it on every call.
           models_file = cfg.puller.modelsFile;
           # The project MCP for substrate sessions (projects build 2026-10-12, EXCHANGE.md section 8): the runner

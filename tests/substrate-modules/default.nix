@@ -189,7 +189,7 @@ pkgs.runCommand "substrate-modules"
     known = {"host", "runtime-test", "herdr", "gvisor", "microvm", "ssh", "workerd", "ax"}
     for name, table in rt["runtime"].items():
         assert table["type"] in known, (name, table)
-    assert rt["default"] == "opus", rt["default"]
+    assert rt["default"] == "gufo", rt["default"]
     assert rt["allow"] == ["opus", "gufo", "codex", "codex-rw", "ssh:strix"], rt["allow"]
     assert set(rt["runtime"]) == {"opus", "gufo", "codex", "codex-rw", "ssh:strix"}, list(rt["runtime"])
     assert not {"herdr", "gvisor"} & set(rt["runtime"]), list(rt["runtime"])
@@ -251,7 +251,7 @@ pkgs.runCommand "substrate-modules"
     assert p["state_dir"] == "/home/tom/.local/state/substrate/puller"
     assert p["pidfile"] == "@RUNTIME_DIRECTORY@/puller.pid" and isinstance(p["cap"], int) and p["cap"] >= 1, p
     assert "s|@RUNTIME_DIRECTORY@|$RUNTIME_DIRECTORY|" in start, "the start script must fill the pidfile placeholder"
-    assert p["default_model"] == "claude-opus-5-5", p
+    assert p["default_model"] == "qwen3.8-flash-next", p
     assert p["demand_dir"] == "/home/tom/.local/state/substrate/demand", p
     assert p["drain_timeout_s"] == 60 and p["capacity_wait_s"] == 600, p
     assert "health_addr" not in p and "ax_server" not in p, p
