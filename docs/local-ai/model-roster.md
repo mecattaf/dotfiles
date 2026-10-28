@@ -48,8 +48,6 @@ host keeps.
 | `deepseek-v41-flash-1017-q2-gguf` | model | IQ2_XXS-Q2_K-imatrix | `kyuz0/deepseek-v4.1-flash-gguf@20408f6` | 365.71 GB | ds4, single host on strix-worker |
 | `deepseek-v41-flash-vision-gguf` | mmproj (1017 vision) | BF16 | `kyuz0/deepseek-v4.1-flash-gguf@20408f6` | 0.97 GB | ds4 `--vision`; off until proven in the image |
 | `deepseek-v41-flash-dspark-gguf` | draft (1017 DSpark) | MXFP4 | `kyuz0/deepseek-v4.1-flash-gguf@20408f6` | 7.97 GB | ds4 TP2 only (needs resident experts) |
-| `deepseek-v4-flash-gguf` | model (0731) | IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8 | `antirez/deepseek-v4-gguf@1cd7b56` | 86.72 GB | none since 2026-10-25 (Library bytes kept until retired) |
-| `deepseek-v4-flash-dspark-gguf` | draft (0731) | — | `antirez/deepseek-v4-gguf@e7f0403` | 5.99 GB | none since 2026-10-25 |
 | `qwen3-asr-1.7b` | model | — | `Qwen/Qwen3-ASR-1.7B@7278e1e` | 4.70 GB | Gufo `gufo-asr`, per job |
 | `qwen3-tts-12hz-1.7b-base` | model | BF16 | `Qwen/Qwen3-TTS-12Hz-1.7B-Base@fd4b254` | 4.54 GB | Gufo `gufo-tts`, on demand |
 | `qwen-image-2.1` | model (25-file snapshot) | — | `Qwen/Qwen-Image-2.1@b3179ad` | 33.13 GB | Gufo `gufo-image`, on demand |
@@ -59,9 +57,10 @@ host keeps.
 | `qwen-k2so-midway-b` | template (voice) | — | local `speech/k2so-midway-b` | 0.003 GB | the one TTS voice |
 | `vibevoice-asr-streaming-7b-bf16` | model (17-file snapshot) | BF16 | `microsoft/VibeVoice-ASR-Streaming-7B@60d858b` | 17.36 GB | `call-diarize`; the one diarization model |
 
-Retired from the active catalogue and wanted sets: every `halogen-*` row
-(2026-10-23; Library copies under `/mnt/nas/models/weights/halogen-*` await an
-explicit retirement), and on 2026-09-30 (sweep F1) `qwen3-embedding-8b-q8-0`
+Retired from the active catalogue and wanted sets: `deepseek-v4-flash-gguf`
+and `deepseek-v4-flash-dspark-gguf` (2026-10-28, superseded by V4.1), every
+`halogen-*` row (2026-10-23); the Library copies of all of these were deleted
+on 2026-10-28 (`RETIRED-2026-10-28.tsv`), and on 2026-09-30 (sweep F1) `qwen3-embedding-8b-q8-0`
 and the three Mage rows. Speech input (Voxtype, Parakeet, the wake listener)
 left the fleet on 2026-09-30 (Tom; see `AGENTS.md`).
 

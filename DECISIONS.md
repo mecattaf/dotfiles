@@ -1,5 +1,27 @@
 # DECISIONS
 
+2026-10-28 The NAS 4TB holds only music, photos (Immich), videos, Documents
+and the model Library (dotfiles T-89). btrbk is off (`myNas.snapshots.enable =
+false`, the flake gate inverted); its nine snapshots and the `.snapshots`
+subvolume were deleted by hand, as were `backups/strix-home-2026-10-23`, the
+August `*.pre-nvme-20260802` service copies, the old remote-journal archive,
+the fleet-move capture tree (its write-ups moved to `~/friday-oct23/`) and
+Otto's `documents/build-cache`. Generation retention is keep-last-3 plus the
+booted, current and last-known-good generations (`modules/gc-retention.nix`),
+and every host's boot menu is capped at 3 (`modules/common.nix`; the client's
+own limit of 5 is gone). DeepSeek V4 Flash 0731 and its DSpark draft leave the
+catalogue; with the retired `halogen-*` rows, their Library bytes are deleted
+under `RETIRED-2026-10-28.tsv`.
+
+Tom, 2026-10-28: "the 4tb drive should only hold music, images (immich),
+videos, and Documents (what was previously my R2 on cloudflare)" and "and the
+models as a "model library" that the local ai devices - mainlyt he
+strix-coordinator now - can 'lease' models from it."
+
+Tom, 2026-10-28: "dleete the nine snapshots and turn off job YES. no time
+machine for file etc", "9) indeed: retire halogen weights and deepseek v4." and
+"11) yes indeed. cap nbr of saved versions on every machine to 3."
+
 2026-10-25 Tailscale is vanilla (D-55, T-58, T-54). The NAS is the only exit
 node and keeps advertising `10.42.0.0/24`; no host selects the exit node.
 The Zenbook (client) has its own login, accepts the NAS subnet route and

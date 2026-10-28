@@ -1077,7 +1077,10 @@
           # but this assertion did not, against this block's own standing
           # instruction to invert it in the same commit — so it had been failing.
           # Inverted here with the #229 work; the gate discipline is intact again.
-          assert nas.myNas.snapshots.enable; # ws2a hosts/nas/snapshots.nix
+          # FLIPPED OFF 2026-10-28 on Tom's word ("no time machine for file etc"):
+          # the nine btrbk snapshots were deleted by hand with the .snapshots
+          # subvolume; files are backed up as files, not as snapshots.
+          assert !nas.myNas.snapshots.enable; # ws2a hosts/nas/snapshots.nix
           # ws4 flipped ON 2026-08-20 (the Library's cold store): subvolume
           # created live with compression=none, gate + export + receipt
           # discipline landed together, per this block's own instructions.
@@ -2579,8 +2582,6 @@
           # v0.22.0 plus Q8 and the separately pinned ds4 V4.1 model.
           assert
             builtins.attrNames localModelCatalog.artifacts == [
-              "deepseek-v4-flash-dspark-gguf"
-              "deepseek-v4-flash-gguf"
               "deepseek-v41-flash-1017-q2-gguf"
               "deepseek-v41-flash-dspark-gguf"
               "deepseek-v41-flash-vision-gguf"
