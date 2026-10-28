@@ -117,10 +117,8 @@ missing-primary case as a degraded but bootable router.
 - Zenbook→NAS Herdr and native harness continuity are proved locally on NAS.
 - Backup/restore receipts and the old boot generation remain available.
 
-Only then release `myNas.memoryDisk.enable`, after attending to the old
-Fanxiang whole-disk serial `26040259615000015`, retaining its independent
-backup and formatting its sole partition as ext4 with label `agent-memory`.
-No command here formats that old disk. The gated mount at `/mnt/agent-memory`
-checks both serial and label before mounting. A default final configuration
-keeps that gate off and declares only its purpose/reservation; it does not
-mount old fast secrets as memory data, or start Screenpipe/CUA.
+Superseded 2026-10-28: the old Fanxiang (serial `26040259615000015`) was not
+kept as a recording/memory reservation. On Tom's word it was reformatted as ext4
+with label `immich` and became Immich's fast tier at `/mnt/immich`
+(`hosts/nas/immich-disk.nix`): the PostgreSQL cluster and Immich's generated
+media. The mount checks both serial and label first.
