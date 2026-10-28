@@ -105,6 +105,54 @@ def normal(text):
     return STORE.sub("$STORE", text)
 
 
+def etc_tree_reasons(old, new, seen=None):
+    """Only a managed profile pointer and its inspected HM unit may change.
+
+    /etc is generated data, not an executable helper directory. Compare its
+    effective contents through store symlinks; do not treat an arbitrary /etc
+    tree change as a harmless store-hash change. Unmanaged/runtime symlinks are
+    compared literally and never traversed.
+    """
+    seen = set() if seen is None else seen
+    reasons, visited = [], set()
+
+    def compare(before, after, relative):
+        if len(visited) > 8192:
+            reasons.append("generated /etc tree exceeds inspection limit")
+            return
+        pair = (str(before), str(after))
+        if pair in visited:
+            return
+        visited.add(pair)
+        if before.is_symlink() and after.is_symlink() and os.readlink(before) == os.readlink(after):
+            return
+        if before.resolve() == after.resolve() and before.exists():
+            return
+        if relative == "profiles/per-user/tom" and before.is_dir() and after.is_dir():
+            return
+        if any(path.is_symlink() and not str(path.resolve()).startswith("/nix/store/") for path in (before, after)):
+            reasons.append(f"generated /etc runtime link changed: {relative}")
+            return
+        if not before.exists() or not after.exists():
+            reasons.append(f"generated /etc entry added, removed or unreadable: {relative}")
+            return
+        if before.is_dir() and after.is_dir():
+            names = {p.name for p in before.iterdir()} | {p.name for p in after.iterdir()}
+            for name in sorted(names):
+                compare(before / name, after / name, (relative + "/" + name).lstrip("/"))
+            return
+        if before.is_file() and after.is_file():
+            if before.read_bytes() == after.read_bytes():
+                return
+            if relative == "systemd/system/home-manager-tom.service":
+                reasons.extend(activation_code_reasons(before, after, seen))
+                return
+        reasons.append(f"generated /etc content changed: {relative}")
+
+    compare(old, new, "")
+    return reasons
+
+
 def activation_code_reasons(old, new, seen=None):
     """Follow changed, literal activation helpers as well as their callers.
 
@@ -150,7 +198,11 @@ def activation_code_reasons(old, new, seen=None):
         elif old_ref.is_dir() and new_ref.is_dir():
             # Data roots change on a package/profile update. The generation
             # activation scripts and active user units have separate checks.
-            name = STORE.match(right_ref).group().split("-", 1)[1]
+            name = Path(STORE.match(right_ref).group()).name.split("-", 1)[1]
+            old_name = Path(STORE.match(left_ref).group()).name.split("-", 1)[1]
+            if name == old_name == "etc" and old_ref.name == new_ref.name == "etc":
+                reasons += etc_tree_reasons(old_ref, new_ref, seen)
+                continue
             allowed = (name.startswith("nixos-system-") or name in {"home-path", "home-manager-generation", "home-manager-files"}
                        or re.match(r"^(?:bash|coreutils|gnugrep|gnused|findutils|diffutils|gawk|glibc|shadow|util-linux|perl|python3)-[0-9]", name))
             if not allowed:
@@ -264,7 +316,34 @@ def user_generation(system):
     return Path(match.group(1))
 
 
-def effect_reasons(old, new, dry, active_user):
+def effective_user_unit(system, home, unit):
+    """The managed user-unit search order, including NixOS global units."""
+    for origin, directory in (
+        ("home-config", home / "home-files/.config/systemd/user"),
+        ("global-config", system / "etc/systemd/user"),
+        ("home-data", home / "home-files/.local/share/systemd/user"),
+        ("home-packages", home / "home-path/share/systemd/user"),
+        ("system-packages", system / "sw/lib/systemd/user"),
+        ("system-share", system / "sw/share/systemd/user"),
+    ):
+        path = directory / unit
+        if path.exists() or path.is_symlink():
+            return origin, path
+    return None
+
+
+def user_unit_origins(units):
+    origins = {}
+    for unit in units:
+        result = run(["runuser", "-u", "tom", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000",
+                      "systemctl", "--user", "show", unit, "--property=FragmentPath", "--value"])
+        path = result.stdout.strip()
+        if path:
+            origins[unit] = path
+    return origins
+
+
+def effect_reasons(old, new, dry, active_user, origins=None):
     reasons = []
     # A source pin bump may alter module-generated activation code. Unknown code
     # waits for a supervised deployment; dry-activate alone is not sufficient.
@@ -278,12 +357,30 @@ def effect_reasons(old, new, dry, active_user):
         if unit.is_file() and not (old_units / unit.name).exists():
             reasons.append(f"new user unit requires supervised admission: {unit.name}")
     for unit in active_user:
-        before, after = old_units / unit, new_units / unit
-        if before.exists() and after.exists() and before.read_bytes() == after.read_bytes():
+        before = effective_user_unit(old, old_home, unit)
+        after = effective_user_unit(new, new_home, unit)
+        if before is None and after is None:
+            # A loaded unit supplied outside either generation is untouched by
+            # this candidate. Require an actual readable origin; missing or
+            # transient-without-a-fragment remains unknown, not assumed safe.
+            origin = (origins or {}).get(unit)
+            if origin and Path(origin).is_file():
+                continue
+            reasons.append(f"active user unit origin is unknown: {unit}")
+            continue
+        if before is None or after is None or before[0] != after[0]:
+            reasons.append(f"active user unit origin changed or missing: {unit}")
+            continue
+        origin_kind = before[0]
+        before, after = before[1], after[1]
+        if not before.is_file() or not after.is_file():
+            reasons.append(f"active user unit origin is unreadable: {unit}")
+            continue
+        if before.read_bytes() == after.read_bytes():
             continue
         # sd-switch's native keep-old contract is used by Herdr. Do not invent
         # an environment variable or skip Home Manager activation to bypass it.
-        if before.exists() and after.exists() and "X-SwitchMethod=keep-old" in after.read_text():
+        if origin_kind == "home-config" and "X-SwitchMethod=keep-old" in after.read_text():
             continue
         reasons.append(f"active user unit would change: {unit}")
     for line in dry.splitlines():
@@ -334,12 +431,13 @@ def target_activate(path, revision, expected, assess_only=False):
         # script fragment. It runs only on the target after conservative idle.
         pids = protected_pids()
         active_user = [unit[5:] for unit in pids if unit.startswith("user:")]
-        reasons = effect_reasons(old, path, "", active_user)
+        origins = user_unit_origins(active_user)
+        reasons = effect_reasons(old, path, "", active_user, origins)
         if reasons:
             raise Pending("; ".join(reasons))
         dry = run([str(path / "bin/switch-to-configuration"), "dry-activate"], timeout=180)
         reasons = effect_reasons(old, path, dry.stdout + dry.stderr,
-                                 active_user)
+                                 active_user, origins)
         if reasons:
             raise Pending("; ".join(reasons))
         if assess_only:

@@ -52,6 +52,15 @@ generations are retained, protected service PIDs are checked after installation,
 and actual installed command versions are verified through Tom's managed
 profile. Existing sessions keep the executable they started with.
 
+Active user units are resolved from their effective Home Manager, global NixOS
+or packaged origin, rather than assuming that every user service belongs to
+Home Manager. Unchanged global D-Bus/user activation units are safe; changed,
+missing or unknown origins remain pending. A separately loaded user unit needs
+an actual readable fragment outside both generations. Generated `/etc` trees
+are compared through store symlinks: only the managed user profile pointer and
+the inspected Home Manager service may change without further review. Other
+configuration changes remain pending, including privilege or transport policy.
+
 **Tailscale remains staged whenever its update requires a transport restart.**
 Peer activity alone cannot prove that restarting the NAS exit/subnet router is
 safe. Such candidates need a proven transport-idle or attended window. A kernel
