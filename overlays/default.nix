@@ -41,6 +41,7 @@ final: _prev: {
   # Replaces paper-intake (paper-print-flush). See home/paper.nix.
   paper-daemon = final.callPackage ../pkgs/paper-daemon { };
   paper-render = final.callPackage ../pkgs/paper-render { };
+  utility-model = final.callPackage ../pkgs/utility-model { };
 
   # dsh (DeepSeek Harness) from llm-agents.nix behind the fleet policy: Qwen
   # Cloud as the default, Gufo for local picks, every DeepSeek-bound row off,

@@ -14,15 +14,8 @@ let
   cfg = config.services.utilityModel;
   localModel = import ../lib/local-model.nix;
 
-  utilityRunner = pkgs.writeShellApplication {
-    name = "utility-model";
-    runtimeInputs = [ pkgs.python3 ];
-    text = ''
-      exec ${pkgs.python3}/bin/python3 ${../pkgs/utility-model/utility_model.py} "$@" \
-        --endpoint ${lib.escapeShellArg cfg.endpoint} \
-        --concrete-model ${lib.escapeShellArg cfg.modelId} \
-        --context-tokens ${toString cfg.contextTokens}
-    '';
+  utilityRunner = pkgs.utility-model.override {
+    inherit (cfg) endpoint modelId contextTokens;
   };
 in
 {

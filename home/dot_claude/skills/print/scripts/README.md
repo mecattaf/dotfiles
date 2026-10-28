@@ -12,8 +12,8 @@ hand: make a PDF without printing, and compare typefaces.
     print-auto.py INPUT.md [--intent brief|document|form|specimen] \
       [--target-pages N] [--page-slack N] [--profile P] [--sides one-sided|duplex] [--output-dir DIR]
 
-The request-scoped utility model (`utility-model` on the strix, which
-forwards to the local model server on the strix) picks profile, one-page
+The request-scoped utility model (`utility-model` bundled with `paper-render`, which
+forwards to Gufo at `http://strix-coordinator:8731`) picks profile, one-page
 enforcement, duplex, filename and title; `--profile`/`--sides` override it.
 Classification failure is non-fatal: one stderr line, the deterministic
 default (source-serif, duplex, no one-page enforcement), provenance

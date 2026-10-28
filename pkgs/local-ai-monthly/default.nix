@@ -16,7 +16,8 @@
   jq,
   nix,
   tinyxxd,
-  llm-agents,
+  python3,
+  utility-model,
 }:
 let
   shellRuntime = [
@@ -66,10 +67,14 @@ let
     runtimeInputs = [
       coreutils
       jq
-      llm-agents.pi
+      python3
+      utility-model
     ];
     text = ''
-      export LOCAL_AI_PI=${lib.escapeShellArg "${llm-agents.pi}/bin/pi"}
+      export LOCAL_AI_MODEL_ID=${lib.escapeShellArg (import ../../lib/local-model.nix).modelId}
+      export LOCAL_AI_MODEL_ENDPOINT=${lib.escapeShellArg (import ../../lib/local-model.nix).endpoint}
+      export LOCAL_AI_JUDGE_PYTHON=${./lib/judge.py}
+      export LOCAL_AI_UTILITY=${lib.getExe utility-model}
       exec ${bash}/bin/bash ${./lib/judge.sh} "$@"
     '';
   };
@@ -98,17 +103,9 @@ let
     '';
   };
 
-  tallyEntry = writeShellApplication {
-    name = "local-ai-monthly-tally";
-    runtimeInputs = [ supervisor ];
-    text = ''
-      exec local-ai-monthly --publish "$@"
-    '';
-  };
-
   tests = writeShellApplication {
     name = "local-ai-monthly-tests";
-    runtimeInputs = shellRuntime;
+    runtimeInputs = shellRuntime ++ [ python3 ];
     text = ''
       export LOCAL_MODEL_ENDPOINT="''${LOCAL_MODEL_ENDPOINT:-${(import ../../lib/local-model.nix).endpoint}}"
       export LOCAL_AI_CAPTURE=${lib.escapeShellArg "${capture}/bin/local-ai-monthly-capture"}
@@ -117,6 +114,9 @@ let
       export LOCAL_AI_CAPTURE_SOURCE=${./lib/capture.sh}
       export LOCAL_AI_HF_CAPTURE_SOURCE=${./lib/hf-capture.sh}
       export LOCAL_AI_JUDGE_SOURCE=${./lib/judge.sh}
+      export LOCAL_AI_JUDGE_PYTHON=${./lib/judge.py}
+      export LOCAL_AI_MODEL_ID=${lib.escapeShellArg (import ../../lib/local-model.nix).modelId}
+      export LOCAL_AI_MODEL_ENDPOINT=${lib.escapeShellArg (import ../../lib/local-model.nix).endpoint}
       export LOCAL_AI_PURE_STAGE_SOURCE=${./lib/pure-stage.sh}
       exec ${bash}/bin/bash ${./tests/test-workflow.sh}
     '';
@@ -126,14 +126,13 @@ symlinkJoin {
   name = "local-ai-monthly-2.0.0";
   paths = [
     supervisor
-    tallyEntry
   ];
   postBuild = ''
     ${tests}/bin/local-ai-monthly-tests
   '';
 
   meta = {
-    description = "Evidence-first monthly local-AI update bot scheduled by Tally";
+    description = "Evidence-first local-AI review using the Gufo utility model, invoked by Substrate";
     license = lib.licenses.mit;
     platforms = lib.platforms.linux;
     mainProgram = "local-ai-monthly";
