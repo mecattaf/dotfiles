@@ -103,6 +103,15 @@ export const Lease = Rpc.make("Lease", {
     endpoint: Schema.optionalKey(Schema.String) // Buildkite ping endpoint switch
   })
 })
+/** An explicit narrowing request. A separate RPC tag fails closed against older Floors,
+ * which must never silently ignore a new optional Lease field and grant unrelated jobs.
+ */
+export const SessionScope = Schema.Array(Schema.Struct({ project: Schema.String, thread: Schema.String }));
+export type SessionScope = typeof SessionScope.Type;
+export const LeaseScoped = Rpc.make("LeaseScoped", {
+  payload: { ...Lease.payloadSchema.fields, sessionScope: SessionScope },
+  success: Lease.successSchema,
+});
 // Temporal RecordActivityTaskHeartbeat with cancel_requested, batched per session. `leaseIds` is the COMPLETE set
 // the holder believes it holds (level-triggered, ARC): an orphaned lease it omits is requeued (L3 a).
 // Round 4: `pendingRequestKey` (Forgejo request key, B8) is the Lease requestKey the holder journaled and has not
@@ -127,7 +136,7 @@ export const Complete = Rpc.make("Complete", {
     withdrewTransitions: Schema.optionalKey(Schema.Int) }),
   error: CompleteError
 })
-export class FloorLink extends RpcGroup.make(Lease, Heartbeat, Complete) {}
+export class FloorLink extends RpcGroup.make(Lease, LeaseScoped, Heartbeat, Complete) {}
 
 // The link's own view of the same wire (round 1, finding "poison grant"): identical tags, payloads and JSON, but each
 // grant is decoded by the link one at a time, so one malformed job fails only its own lease (pre-start/invalid-spec)
@@ -143,6 +152,10 @@ export const LeaseLenient = Rpc.make("Lease", {
     endpoint: Schema.optionalKey(Schema.Unknown)
   })
 })
+export const LeaseScopedLenient = Rpc.make("LeaseScoped", {
+  payload: { ...LeaseLenient.payloadSchema.fields, sessionScope: SessionScope },
+  success: LeaseLenient.successSchema,
+});
 // Round 2: the link decodes Complete's error code as any string, so a code the floor adds later is a permanent refusal
 // (dropped, logged with the code), never a decode defect retried for ever at the head of the outbox.
 // Round 3: its success is lenient as well. Any 2xx Exit Success means the floor applied the verdict; a drifted key
@@ -161,7 +174,7 @@ export const HeartbeatLenient = Rpc.make("Heartbeat", {
   success: Schema.Struct({ renewed: Schema.optionalKey(Schema.Unknown), lost: Schema.optionalKey(Schema.Unknown),
     cancelRequested: Schema.optionalKey(Schema.Unknown), stats: Schema.optionalKey(Schema.Unknown) })
 })
-export class FloorLinkClient extends RpcGroup.make(LeaseLenient, HeartbeatLenient, CompleteLenient) {}
+export class FloorLinkClient extends RpcGroup.make(LeaseLenient, LeaseScopedLenient, HeartbeatLenient, CompleteLenient) {}
 
 // On result "failure" the link's `output` is this shape (Buildkite finish signal_reason, ARC failure reason).
 // The reasons in RETRYABLE are the floor's to retry as attempt+1 (Temporal retry policy, Buildkite finish -1 on a

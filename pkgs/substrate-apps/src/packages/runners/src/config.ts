@@ -255,6 +255,12 @@ export const RuntimesFile = Schema.Struct({
     project_bin: Schema.optionalKey(Schema.String),
     project_url: Schema.String,
     project_token_file: Schema.String,
+    maintenance: Schema.optionalKey(Schema.Array(Schema.Struct({
+      project: Schema.String,
+      thread: Schema.String,
+      command: Schema.Array(Schema.String),
+      status_command: Schema.Array(Schema.String),
+    }))),
   })),
 });
 export type RuntimesFile = typeof RuntimesFile.Type;
@@ -292,7 +298,15 @@ export interface RuntimesConfig {
   /** G-BK8: operator lifecycle hooks. */
   readonly hooks?: { readonly preStart?: readonly string[]; readonly preExit?: readonly string[]; readonly timeoutMs?: number };
   /** `[sessions]`: the project MCP of agent({session}) calls; absent, such a call is refused. */
-  readonly sessions?: { readonly projectBin: string; readonly projectUrl: string; readonly projectTokenFile: string };
+  readonly sessions?: { readonly projectBin: string; readonly projectUrl: string; readonly projectTokenFile: string; readonly maintenance?: readonly MaintenanceBinding[] };
+}
+
+/** Operator-owned fixed commands exposed only to one explicitly authorized thread's DSH session. */
+export interface MaintenanceBinding {
+  readonly project: string;
+  readonly thread: string;
+  readonly command: readonly string[];
+  readonly statusCommand: readonly string[];
 }
 
 export const DEFAULT_PATH = "~/.config/substrate/runtimes.toml";
@@ -373,8 +387,21 @@ export function decodeRuntimes(doc: unknown, source: string, home = homedir()): 
       projectBin: expandHome(file.sessions.project_bin ?? "project", home),
       projectUrl: file.sessions.project_url,
       projectTokenFile: expandHome(file.sessions.project_token_file, home),
+      ...(file.sessions.maintenance === undefined ? {} : { maintenance: file.sessions.maintenance.map(b => ({
+        project: b.project, thread: b.thread, command: b.command, statusCommand: b.status_command,
+      })) }),
     } } : {}),
   };
+  const bindings = new Set<string>();
+  for (const b of config.sessions?.maintenance ?? []) {
+    const key = `${b.project}/${b.thread}`;
+    if (!/^[a-z][a-z0-9-]*$/.test(b.project) || !/^T-[1-9][0-9]*$/.test(b.thread)) throw new RuntimesConfigError(`${source}: sessions.maintenance must name a project and explicit T-N thread`);
+    if (bindings.has(key)) throw new RuntimesConfigError(`${source}: duplicate maintenance binding ${key}`);
+    bindings.add(key);
+    for (const argv of [b.command, b.statusCommand]) {
+      if (!argv.length || !argv[0]?.startsWith("/") || argv.some(a => !a || a.includes("\0"))) throw new RuntimesConfigError(`${source}: maintenance commands need fixed argv and an absolute executable`);
+    }
+  }
   const problems: string[] = [...(file.models !== undefined ? modelAllowlistProblems(file.models) : [])];
   if (config.modelsFile !== undefined) {
     if (!config.modelsFile.startsWith("/")) problems.push(`models_file must be absolute (or ~/...), got ${file.models_file}`);

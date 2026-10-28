@@ -12,6 +12,7 @@ export interface PullerSection {
   readonly link_token_file?: string
   readonly state_dir?: string
   readonly runtimes?: string
+  readonly session_scope?: ReadonlyArray<{ readonly project: string; readonly thread: string }>
   readonly max_runs?: number
   readonly seat?: string
   readonly default_model?: string

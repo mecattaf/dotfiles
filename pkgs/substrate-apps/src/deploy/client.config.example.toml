@@ -12,6 +12,7 @@ holder = "coordinator"                                        # the holder its l
 link_token_file = "~/.local/state/substrate/link-token-coordinator"
 state_dir = "~/.local/state/substrate/puller"                  # held leases, verdict outbox, runs/<id>/ journals
 pidfile = "~/.local/state/substrate/puller.pid"
+# session_scope = [{ project = "dotfiles", thread = "T-69" }]   # optional server-enforced session admission; [] admits none
 max_runs = 1                                                  # runs held at once (the Lease capacity)
 node_dispatch = "local"                                       # "local": the runners here; "floor": nodes go back to the floor
 # local

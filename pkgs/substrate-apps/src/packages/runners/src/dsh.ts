@@ -14,7 +14,7 @@ export function dshPatch(home: string, model: string, effort?: string, session?:
   if (session !== undefined) {
     rows.push({ insert: [{ id: "substrate-project", name: new URL("./dsh-project.mjs", import.meta.url).href, config: {
       serverName: "project", transport: "stdio", command: session.mcp.command, args: ["mcp"], env: session.mcp.env,
-      failOnStartupError: true, ...(session.tools === undefined ? {} : { tools: session.tools }),
+      failOnStartupError: true, ...(session.maintenance === undefined ? {} : { maintenance: session.maintenance }), ...(session.tools === undefined ? {} : { tools: session.tools }),
     } }] }, { id: "headless-runner", inject: ["headlessStartup", "substrateProjectReady"] });
     if (session.tools !== undefined) {
       // A coordinator owns read + role-gated project MCP only. It cannot execute shell, write files,

@@ -108,6 +108,7 @@ export interface HarnessSession {
   readonly mcpConfig: string;
   /** pi: the tools a coordinator is limited to (`--tools`); absent for a thread. */
   readonly tools?: readonly string[];
+  readonly maintenance?: { readonly command: readonly string[]; readonly statusCommand: readonly string[] };
 }
 
 /** Options a harness can honour; a call asking for another is refused, never silently dropped. */

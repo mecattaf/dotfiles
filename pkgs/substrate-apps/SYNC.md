@@ -1,11 +1,11 @@
 # Vendored scheduler execution programs
 
 - Upstream: `agency-agency/substrate`, canonical checkout `~/mecattaf/substrate`.
-- Source sha: `16ce55063c8cfd615d406558279af14f5d5728e6` (synced 2026-10-28, apps/puller present)
+- Source sha: `359f589ad4ee3e2e2012439fcadf0a8e20c8b547` (synced 2026-10-28T16:23:12Z, apps/puller present)
 
 The source includes the existing fleet Gufo capacity contract imported upstream
 in `18d287d` and the native DSH runner, persistent-session recovery and required
-project MCP plugin. The earlier Gufo-only local delta is now represented by
+project MCP plugin, trusted fixed maintenance tools, and scoped lease admission. The earlier Gufo-only local delta is now represented by
 upstream commits; no second patch must be applied after syncing this revision.
 
 `sync.sh CHECKOUT SHA` archives the workspace metadata, source, protocols,

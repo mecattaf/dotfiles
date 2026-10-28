@@ -29,6 +29,7 @@ export const main = async (env: NodeJS.ProcessEnv = process.env): Promise<number
     if (!p.holder) throw new ConfigError("[puller] holder is required (the holder name its link token is bound to)")
     if (!p.link_token_file) throw new ConfigError("[puller] link_token_file is required")
     if (!cfg.floor_url) throw new ConfigError("floor_url is required")
+    if (p.session_scope !== undefined && (!Array.isArray(p.session_scope) || p.session_scope.length > 32 || p.session_scope.some(s => typeof s !== "object" || s === null || !/^[a-z][a-z0-9-]*$/.test(s.project) || !/^T-[1-9][0-9]*$/.test(s.thread)))) throw new ConfigError("[puller] session_scope must be an array of explicit project/thread pairs");
     const stateDir = expandHome(p.state_dir ?? "~/.local/state/substrate/puller")
     const client = clientFromConfig(cfg)
     const linkToken = readSecretFile(expandHome(p.link_token_file), "[puller] link_token_file")
@@ -53,7 +54,7 @@ export const main = async (env: NodeJS.ProcessEnv = process.env): Promise<number
       })
     }
     const floor = await connectFloor({ url: cfg.floor_url, token: linkToken, sessionId: state.sessionId() })
-    const puller = new Puller({ holder: p.holder, maxRuns: p.max_runs ?? 1, stateDir, pollMs: 5000, heartbeatMs: 10_000, serverPoll: true },
+    const puller = new Puller({ holder: p.holder, maxRuns: p.max_runs ?? 1, ...(p.session_scope === undefined ? {} : { sessionScope: p.session_scope }), stateDir, pollMs: 5000, heartbeatMs: 10_000, serverPoll: true },
       { floor: floor.port, client, execute, log, appendLog: (name, c) => client.appendLog(name, c) })
     // G-BK4, Buildkite's stop ladder: the first signal drains (no new leases; runs finish up to drain_timeout_s), the
     // second aborts every run (each harness gets its cancel grace, G-BK1), the third SIGKILLs every group and exits.
