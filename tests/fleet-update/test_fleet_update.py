@@ -162,6 +162,116 @@ class Effects(unittest.TestCase):
         self.assertTrue(fu.effect_reasons(self.old, self.new, "", ["manual.service"],
                                        {"manual.service": str(fragment)}))
 
+    def test_active_user_drop_ins_are_compared_across_all_managed_origins(self):
+        for system in (self.old, self.new):
+            (system / "hm/home-files/.config/systemd/user/herdr.service").write_text(
+                "[Unit]\nX-SwitchMethod=keep-old\n[Service]\nExecStart=/stable/herdr\n")
+            directory = system / "sw/lib/systemd/user/herdr.service.d"
+            directory.mkdir(parents=True)
+            (directory / "override.conf").write_text("[Service]\nEnvironment=MODE=stable\n")
+        self.assertEqual(self.effects(active=["herdr.service"]), [])
+        override = self.new / "sw/lib/systemd/user/herdr.service.d/override.conf"
+        override.write_text("[Service]\nExecStart=\nExecStart=/changed/helper\n")
+        self.assertTrue(self.effects(active=["herdr.service"]), "keep-old does not bypass override changes")
+        override.unlink()
+        self.assertTrue(self.effects(active=["herdr.service"]), "removed drop-ins remain changes")
+
+    def test_new_type_prefix_and_template_drop_ins_fail_closed(self):
+        unit = "work-agent@session.service"
+        for system in (self.old, self.new):
+            (system / "hm/home-files/.config/systemd/user" / unit).write_text("stable unit\n")
+        for name in ("service.d", "work-.service.d", "work-agent@.service.d", unit + ".d"):
+            directory = self.new / "hm/home-files/.local/share/systemd/user" / name
+            directory.mkdir(parents=True)
+            (directory / "new.conf").write_text("[Service]\nExecStartPost=/new/helper\n")
+            self.assertTrue(self.effects(active=[unit]), name)
+            (directory / "new.conf").unlink()
+        self.assertEqual(self.effects(active=[unit]), [])
+
+    def test_active_user_alias_drop_ins_are_inspected(self):
+        for system in (self.old, self.new):
+            directory = system / "hm/home-files/.config/systemd/user"
+            (directory / "primary.service").write_text("stable unit\n")
+            (directory / "alias.service").symlink_to("primary.service")
+        self.assertEqual(self.effects(active=["primary.service"]), [])
+        override = self.new / "etc/systemd/user/alias.service.d"
+        override.mkdir(parents=True)
+        (override / "new.conf").write_text("[Service]\nExecStartPost=/new/helper\n")
+        self.assertTrue(self.effects(active=["primary.service"]))
+
+    def bus_fixture(self):
+        store = Path(self.temp.name) / "store"
+        for system, number in ((self.old, "0"), (self.new, "1")):
+            data = store / (number * 32 + "-system-path") / "share/dbus-1/services"
+            data.mkdir(parents=True)
+            (data / "same.service").write_text("[D-BUS Service]\nName=org.example.Stable\nExec=/stable/service\n")
+            bus = system / "etc/dbus-1"
+            bus.mkdir(parents=True)
+            for name in ("session.conf", "system.conf"):
+                (bus / name).write_text(f'<busconfig><servicedir>{data}</servicedir><policy context="default"/></busconfig>')
+            trigger = store / (number * 32 + "-X-Restart-Triggers-dbus-broker")
+            trigger.write_text(str(bus.resolve()))
+            for scope in ("system", "user"):
+                units = system / "etc/systemd" / scope
+                units.mkdir(parents=True)
+                (units / "dbus-broker.service").write_text(
+                    "[Service]\nType=notify-reload\nExecStart=/nix/store/" + "a" * 32 +
+                    "-dbus-broker-37/bin/dbus-broker-launch --scope " + scope + (" --audit" if scope == "system" else "") + "\n")
+                drop = units / "dbus-broker.service.d"
+                drop.mkdir()
+                (drop / "overrides.conf").write_text(f"[Unit]\nX-Restart-Triggers={trigger}\n[Service]\nX-ReloadIfChanged=true\n")
+        # Production accepts only immutable /nix/store refs. Fixtures use the
+        # same rooted shape inside their private temporary tree.
+        return patch.object(fu, "STORE_FILE", re.compile(re.escape(str(store)) + r"/[0-9a-z]{32}-[^\s'\";:)$`{}<>\\]+"))
+
+    def test_dbus_reload_requires_identical_effective_policy_and_native_code(self):
+        with self.bus_fixture():
+            self.assertTrue(fu.dbus_reload_safe(self.old / "etc", self.new / "etc"))
+            self.assertEqual(self.effects("would reload the following units: dbus-broker.service\n",
+                                          ["dbus-broker.service"]), [])
+            self.assertTrue(self.effects("would restart the following units: dbus-broker.service\n"))
+            self.assertTrue(self.effects("would start the following units: dbus-broker.service\n"))
+            self.assertTrue(self.effects("would restart the following user units: dbus-broker.service\n"))
+            data = next((Path(self.temp.name) / "store").glob("1*-system-path"))
+            (data / "share/dbus-1/services/same.service").write_text("changed service activation\n")
+            self.assertFalse(fu.dbus_reload_safe(self.old / "etc", self.new / "etc"))
+            self.assertTrue(self.effects("would reload the following units: dbus-broker.service\n"))
+
+    def test_dbus_runtime_overrides_must_match_the_audited_generation(self):
+        with self.bus_fixture():
+            def run(argv, **kwargs):
+                scope = "user" if "--user" in argv else "system"
+                field = next(arg.partition("=")[2] for arg in argv if arg.startswith("--property="))
+                value = {"Type": "notify-reload", "ExecReload": "", "ReloadSignal": "1",
+                         "FragmentPath": str(self.old / "etc/systemd" / scope / "dbus-broker.service"),
+                         "DropInPaths": str(self.old / "etc/systemd" / scope / "dbus-broker.service.d/overrides.conf")}[field]
+                return subprocess.CompletedProcess(argv, 0, value, "")
+            with patch.object(fu, "run", run):
+                self.assertEqual(fu.dbus_runtime_reload_reasons(self.old), [])
+            def unexpected(argv, **kwargs):
+                result = run(argv, **kwargs)
+                if "--property=DropInPaths" in argv:
+                    result.stdout += " /run/user/1000/systemd/user/dbus.service.d/custom.conf"
+                return result
+            with patch.object(fu, "run", unexpected):
+                self.assertTrue(fu.dbus_runtime_reload_reasons(self.old))
+
+    def test_dbus_reload_rejects_unchanged_non_native_type_and_alias_overrides(self):
+        with self.bus_fixture():
+            for name in ("service.d", "dbus-.service.d", "dbus.service.d"):
+                for system in (self.old, self.new):
+                    path = system / "etc/systemd/system" / name
+                    path.mkdir()
+                    (path / "custom.conf").write_text("[Service]\nExecReload=/unknown/helper\n")
+                self.assertFalse(fu.dbus_reload_safe(self.old / "etc", self.new / "etc"), name)
+                for system in (self.old, self.new):
+                    (system / "etc/systemd/system" / name / "custom.conf").unlink()
+            for system in (self.old, self.new):
+                path = system / "hm/home-files/.config/systemd/user/service.d"
+                path.mkdir()
+                (path / "custom.conf").write_text("[Service]\nReloadSignal=SIGKILL\n")
+            self.assertTrue(self.effects("would reload the following units: dbus-broker.service\n"))
+
     def test_etc_profile_pointer_changes_are_bounded_to_the_managed_profile(self):
         for root, name in ((self.old, "old-tool"), (self.new, "new-tool")):
             profile = root / "etc/profiles/per-user/tom"
@@ -266,6 +376,45 @@ class DurableTransaction(unittest.TestCase):
             self.tx.execute()
         self.assertEqual(calls, ["programs", "full", "full"])
         self.assertEqual(self.state["programs_job"]["status"], "complete")
+
+    def test_lock_only_fast_forward_preserves_untracked_work_but_defers_tracked_edits(self):
+        source, origin = fu.STATE / "checkout", fu.STATE / "origin.git"
+        def git(*argv, **kwargs):
+            return subprocess.run(["git", *argv], check=True, text=True, capture_output=True, **kwargs)
+        git("init", "--bare", str(origin))
+        git("init", "--initial-branch=main", str(source))
+        git("-C", str(source), "config", "user.name", "Fixture")
+        git("-C", str(source), "config", "user.email", "fixture@localhost")
+        lock = source / "flake.lock"
+        lock.write_text("old pin\n")
+        git("-C", str(source), "add", "flake.lock")
+        git("-C", str(source), "commit", "-m", "baseline")
+        base = git("-C", str(source), "rev-parse", "HEAD").stdout.strip()
+        lock.write_text("new pin\n")
+        git("-C", str(source), "commit", "-am", "lock-only candidate")
+        candidate = git("-C", str(source), "rev-parse", "HEAD").stdout.strip()
+        git("-C", str(source), "remote", "add", "origin", str(origin))
+        git("-C", str(source), "push", "origin", "main")
+        git("-C", str(source), "reset", "--hard", base)
+        private = source / "notify-send"
+        private.write_text("private user-owned helper\n")
+        self.state.update(candidate=candidate, paths={"nas": "/candidate"})
+        self.tx.assess = lambda host: {"generation": "/old"}
+        def ssh(host, argv, **kw):
+            if argv[:2] == ["git", "-C"]:
+                return subprocess.run(["git", "-C", str(source), *argv[3:]], text=True,
+                                      capture_output=True, check=kw.get("check", True))
+            return subprocess.CompletedProcess(argv, 0, '{"status":"installed"}', "")
+        with patch.object(fu, "ssh", ssh):
+            self.assertEqual(self.tx.install("nas")["status"], "installed")
+            self.assertEqual(private.read_text(), "private user-owned helper\n")
+            self.assertEqual(git("-C", str(source), "rev-parse", "HEAD").stdout.strip(), candidate)
+            lock.write_text("uncommitted tracked change\n")
+            with self.assertRaises(fu.Pending):
+                self.tx.install("nas")
+            git("-C", str(source), "add", "flake.lock")
+            with self.assertRaises(fu.Pending):
+                self.tx.install("nas")
 
     def test_new_cf_request_coalesces_unadopted_pending_base(self):
         self.state["status"] = "pending"
