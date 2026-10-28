@@ -6,7 +6,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # nixpkgs-fresh — a second nixpkgs used ONLY to keep a handful of
-    # fast-moving user packages (currently google-chrome and uv, see overlays
+    # fast-moving packages (google-chrome, tailscale and uv, see overlays
     # list below) and the fleet's linuxPackages_7_3 kernel series current
     # independent of the `nixpkgs` pin above. That pin is deliberately
     # lagging — the exact-candidate fleet deploy keeps it as the only door
@@ -336,6 +336,9 @@
           in
           {
             google-chrome = fresh.google-chrome;
+            # Fleet update stages daemon changes while live transport is in use.
+            # The CLI and daemon package share the same Nix freshness source.
+            tailscale = fresh.tailscale;
             # uv — Astral's Python package/project manager. Point releases land
             # weekly; riding nixpkgs-fresh HEAD keeps it current without waiting on
             # the deliberately-lagging main pin (which exists only to gate kernel/
@@ -1748,6 +1751,40 @@
         # closed when main catches up; and lib/update-watch.json is read
         # against this flake.lock, so a watched input that stops being bumpable
         # turns the check red.
+        fleet-update =
+          let
+            nasHome = self.nixosConfigurations.nas.config.home-manager.users.tom;
+            helpers = nixpkgs.lib.filter (
+              p:
+              builtins.elem (nixpkgs.lib.getName p) [
+                "fleet-update"
+                "fleet-update-start"
+                "fleet-update-target"
+                "fleet-update-assess"
+                "fleet-update-probe"
+                "fleet-update-verify"
+              ]
+            ) self.nixosConfigurations.nas.config.environment.systemPackages;
+          in
+          assert nasHome.systemd.user.services.fleet-update.Service.NoNewPrivileges == false;
+          assert nasHome.systemd.user.services.fleet-update.Unit.X-SwitchMethod == "keep-old";
+          assert !(builtins.hasAttr "fleet-update" nasHome.systemd.user.timers);
+          pkgs.runCommand "fleet-update"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.coreutils
+              ]
+              ++ helpers;
+              PYTHONTZPATH = "${pkgs.tzdata}/share/zoneinfo";
+            }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              export FLEET_UPDATE_SCRIPT=${./home/dot_local/bin/fleet-update}
+              python3 -m unittest discover -s ${./tests/fleet-update} -v
+              touch "$out"
+            '';
+
         update-check =
           pkgs.runCommand "update-check"
             {
@@ -2157,19 +2194,26 @@
             '';
 
         # Native controls are exercised with fake CLI/desktop commands only.
-        inzone-audio = pkgs.runCommand "inzone-audio" {
-          nativeBuildInputs = [
-            pkgs.python3 pkgs.bash pkgs.coreutils pkgs.util-linux pkgs.gawk
-          ];
-        } ''
-          export HOME="$TMPDIR/home"
-          export PYTHONDONTWRITEBYTECODE=1
-          export INZONE_MENU_SCRIPT=${./home/dot_local/bin/inzone-menu}
-          export INZONE_VOLUME_SCRIPT=${./home/dot_local/bin/volume}
-          mkdir -p "$HOME"
-          python3 -m unittest discover -s ${./tests/inzone-audio} -p 'test_*.py' -v
-          touch "$out"
-        '';
+        inzone-audio =
+          pkgs.runCommand "inzone-audio"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.util-linux
+                pkgs.gawk
+              ];
+            }
+            ''
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export INZONE_MENU_SCRIPT=${./home/dot_local/bin/inzone-menu}
+              export INZONE_VOLUME_SCRIPT=${./home/dot_local/bin/volume}
+              mkdir -p "$HOME"
+              python3 -m unittest discover -s ${./tests/inzone-audio} -p 'test_*.py' -v
+              touch "$out"
+            '';
 
         # Model bytes are explicit transactions, never activation work. Drive
         # the evaluated worker borrow binary against tiny fixtures, then keep
@@ -2567,8 +2611,7 @@
               "qwen3-tts-tokenizer-f32"
             ];
           assert
-            strixWorker.services.local-models.artifacts
-            == strix.services.local-models.artifacts
+            strixWorker.services.local-models.artifacts == strix.services.local-models.artifacts
             ++ [
               "deepseek-v41-flash-1017-q2-gguf"
               "qwen38-flash-next-q8-gguf"
