@@ -31,7 +31,7 @@ renames. The apply operation creates a mode-0600 exact backup,
 converts the existing local Flash-Next row to DSH/Gufo and removes legacy
 Pi-specific metadata and retired provider rows from the active catalog. Their
 full original data remains in the backup. It preserves other supported model
-choices, adds `local` and `nightly` aliases, and refuses unknown local models,
+choices, marks the actual local model capability `reasoning = false`, adds `local` and `nightly` aliases, and refuses unknown local models,
 alias conflicts, alternate defaults and symlinks. A second apply changes
 nothing. The executor exits once with configuration status 78 for a stale Pi catalog,
 rather than silently routing
@@ -40,6 +40,8 @@ through a removed harness.
 The NAS executor narrows leases server-side to `dotfiles/T-69` via the distinct
 `LeaseScoped` operation. An older Floor fails closed; it cannot ignore an
 optional filter and grant unrelated queued work. Historical queues stay intact.
+The model capability prevents inherited project effort settings from requesting
+unsupported reasoning; receipts distinguish requested effort from effective off.
 Only this thread receives trusted fixed-argv `fleet_update_start` and
 `fleet_update_status` tools from separate Floor provenance. Neither envelope
 text nor model-supplied call options can grant those tools. The launcher starts

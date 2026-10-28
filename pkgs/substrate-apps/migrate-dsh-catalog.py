@@ -55,6 +55,7 @@ def migrate(data):
         if any(alias == row.get("id") or alias in row.get("aliases", []) for row in kept if row is not local):
             raise ValueError("alias belongs to another model: " + alias)
     local["provider"] = "gufo"
+    local["reasoning"] = False
     local["default"] = True
     local["aliases"] = list(dict.fromkeys(local.get("aliases", []) + ["local", "nightly"]))
     result["models"] = kept

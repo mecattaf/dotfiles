@@ -71,6 +71,7 @@ class Migration(unittest.TestCase):
         local = data["models"][1]
         self.assertEqual(local["harness"], "dsh")
         self.assertEqual(local["provider"], "gufo")
+        self.assertFalse(local["reasoning"])
         self.assertEqual(local["aliases"], ["local", "nightly"])
         self.assertNotIn("pi", local)
 
