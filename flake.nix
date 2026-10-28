@@ -1821,6 +1821,7 @@
               nativeBuildInputs = [
                 pkgs.python3
                 pkgs.coreutils
+                pkgs.git
               ]
               ++ helpers;
               PYTHONTZPATH = "${pkgs.tzdata}/share/zoneinfo";
