@@ -203,7 +203,8 @@ def dbus_reload_safe(old_etc, new_etc, extra_directories=None):
                             if not line.strip() or line.lstrip().startswith((b"#", b";")):
                                 continue
                             if not re.fullmatch(rb"\[(?:Unit|Service)\]|X-Restart-Triggers=(?:" + STORE_FILE.pattern.encode() + rb")|"
-                                                rb"X-ReloadIfChanged=true|RequiresMountsFor=/tmp|Environment=.*", line):
+                                                rb"X-ReloadIfChanged=true|RequiresMountsFor=/tmp|Environment=.*|"
+                                                rb"OnFailure=failure-notify@%N\.service", line):
                                 return False
                         native_reload |= b"\nX-ReloadIfChanged=true\n" in a
                         if a != b and (left_root != old_etc / "systemd" / scope or

@@ -258,10 +258,15 @@ class Effects(unittest.TestCase):
 
     def test_dbus_reload_rejects_unchanged_non_native_type_and_alias_overrides(self):
         with self.bus_fixture():
+            for system in (self.old, self.new):
+                directory = system / "etc/systemd/system/service.d"
+                directory.mkdir()
+                (directory / "10-fleet-onfailure.conf").write_text("[Unit]\nOnFailure=failure-notify@%N.service\n")
+            self.assertTrue(fu.dbus_reload_safe(self.old / "etc", self.new / "etc"))
             for name in ("service.d", "dbus-.service.d", "dbus.service.d"):
                 for system in (self.old, self.new):
                     path = system / "etc/systemd/system" / name
-                    path.mkdir()
+                    path.mkdir(exist_ok=True)
                     (path / "custom.conf").write_text("[Service]\nExecReload=/unknown/helper\n")
                 self.assertFalse(fu.dbus_reload_safe(self.old / "etc", self.new / "etc"), name)
                 for system in (self.old, self.new):
