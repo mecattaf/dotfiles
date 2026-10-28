@@ -152,17 +152,29 @@ assert lib.any (
 ) pullerUnit.path;
 assert self.nixosConfigurations.nas.config.services.substrate.puller.enable;
 assert self.nixosConfigurations.nas.config.services.substrate.pusher.enable;
-assert self.nixosConfigurations.nas.config.services.substrate.puller.sessionScope == [
-  { project = "dotfiles"; thread = "T-69"; }
-];
-assert self.nixosConfigurations.nas.config.services.substrate.puller.runtimes.sessions.maintenance == [
-  {
-    project = "dotfiles";
-    thread = "T-69";
-    command = [ "/run/current-system/sw/bin/fleet-update-start" "--json" ];
-    status_command = [ "/run/current-system/sw/bin/fleet-update" "--status" "--json" ];
-  }
-];
+assert
+  self.nixosConfigurations.nas.config.services.substrate.puller.sessionScope == [
+    {
+      project = "dotfiles";
+      thread = "T-69";
+    }
+  ];
+assert
+  self.nixosConfigurations.nas.config.services.substrate.puller.runtimes.sessions.maintenance == [
+    {
+      project = "dotfiles";
+      thread = "T-69";
+      command = [
+        "/run/current-system/sw/bin/fleet-update-start"
+        "--json"
+      ];
+      status_command = [
+        "/run/current-system/sw/bin/fleet-update"
+        "--status"
+        "--json"
+      ];
+    }
+  ];
 assert self.nixosConfigurations.nas.config.services.substrate.puller.maxRuns == 1;
 assert self.nixosConfigurations.nas.config.services.substrate.puller.cap == 1;
 assert
