@@ -32,7 +32,7 @@ let
   version = "0.1.0-unstable-2026-10-28";
   src = ./src;
   # Exact upstream commit, including the fleet Gufo contract and native DSH.
-  sourceSha = "c815232f1d5b9420ff0683feed9aab0057311c71";
+  sourceSha = "096dd6e2e60ae8e4a2b5fe5795df4fb7d1182214";
 
   pnpmDeps = pnpm_10.fetchDeps {
     pname = "substrate-apps";

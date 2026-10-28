@@ -17,7 +17,7 @@ import type { SubstrateClient } from "@substrate/api"
 import type { AgentJob, Grant, SessionScope } from "@substrate/link/contract.ts"
 import type { CompletePayload, FloorApi, LeaseReply } from "@substrate/link/floor.ts"
 import { CompleteRefused, FloorError } from "@substrate/link/floor.ts"
-import { PullerState } from "./state.ts"
+import { PullerState, type ScopedAdmission } from "./state.ts"
 import { LogShipper } from "./logship.ts"
 import type { AppendLog } from "./logship.ts"
 
@@ -125,6 +125,8 @@ export interface PullerStatus {
 }
 
 const sha256 = async (s: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, "0")).join("")
+const grantSha256 = (g: Grant) => createHash("sha256").update(JSON.stringify(g)).digest("hex")
+const scopePrefix = (scope: SessionScope | undefined) => scope === undefined ? "" : `scope-v1-${createHash("sha256").update(JSON.stringify([...scope].sort((a,b) => `${a.project}/${a.thread}`.localeCompare(`${b.project}/${b.thread}`)))).digest("hex").slice(0,24)}-`
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((ok) => {
   const t = setTimeout(ok, ms)
   signal?.addEventListener("abort", () => { clearTimeout(t); ok() }, { once: true })
@@ -134,6 +136,8 @@ export class Puller {
   readonly state: PullerState
   readonly active = new Map<string, Active>()
   #held: Record<string, Grant>
+  readonly #scope: string
+  readonly #scopedAdmissions: Record<string, ScopedAdmission>
   #stop = new AbortController()
   #hbMs: number
   #pollMs: number
@@ -155,6 +159,8 @@ export class Puller {
   constructor(readonly cfg: PullerConfig, readonly deps: PullerDeps) {
     this.state = new PullerState(cfg.stateDir)
     this.#held = this.state.held()
+    this.#scope = scopePrefix(cfg.sessionScope)
+    this.#scopedAdmissions = this.#scope ? this.state.scopedAdmissions() : {}
     this.#hbMs = cfg.heartbeatMs ?? 10_000
     this.#pollMs = cfg.pollMs ?? 5_000
     this.#log = deps.log ?? (() => undefined)
@@ -167,6 +173,7 @@ export class Puller {
   /** Runs until stop() or a fatal floor answer (bad token, second session, redirect, misroute), which it rethrows. */
   async run(): Promise<void> {
     const stop = this.#stop.signal
+    this.assertScopedRecovery()
     await this.flushOutbox()
     await this.readopt()
     const hb = this.heartbeatLoop()
@@ -267,13 +274,32 @@ export class Puller {
   }
   private persistHeld() { this.state.putHeld(this.#held) }
 
+  private scopedGrant(g: Grant): boolean {
+    const receipt = this.#scopedAdmissions[g.leaseId]
+    return !this.#scope || (receipt?.scope === this.#scope && receipt.attempt === g.attempt && receipt.grantSha256 === grantSha256(g))
+  }
+
+  /** A heartbeat proves ownership, not project/thread scope. Only our own scoped-RPC admission receipt can do that. */
+  private assertScopedRecovery() {
+    if (!this.#scope) return
+    const key = this.state.pendingKey()
+    if (key !== undefined && !key.startsWith(this.#scope)) throw new Error("pending lease request belongs to another scope; inspect it before changing scope")
+    for (const g of Object.values(this.#held)) if (!this.scopedGrant(g))
+      throw new Error(`held lease ${g.leaseId} has no matching scoped admission receipt; inspect persisted state before recovery`)
+    for (const v of this.state.outbox()) {
+      const receipt = this.#scopedAdmissions[v.leaseId]
+      if (receipt?.scope !== this.#scope || receipt.attempt !== v.attempt)
+        throw new Error(`verdict ${v.leaseId} has no matching scoped admission receipt; inspect persisted state before recovery`)
+    }
+  }
+
   /**
    * May this held grant start (or restart) here? Not while its own verdict waits in the outbox (codex review 3, C3-2:
    * a restart would run it again and overwrite that verdict), and not while a verdict of an attempt it supersedes
    * waits there (codex review 2, C2-2: the floor may still accept that verdict and withdraw this attempt, rule 4b).
    */
   private launchable(g: Grant): boolean {
-    if (this.active.has(g.leaseId)) return false
+    if (this.active.has(g.leaseId) || !this.scopedGrant(g)) return false
     const pending = new Set(this.state.outbox().map((v) => v.leaseId))
     return !pending.has(g.leaseId) && !(g.supersedes ?? []).some((old) => pending.has(old))
   }
@@ -296,9 +322,8 @@ export class Puller {
 
   private async lease(capacity: number) {
     let key = this.state.pendingKey()
-    const scopePrefix = this.cfg.sessionScope === undefined ? "" : `scope-v1-${createHash("sha256").update(JSON.stringify([...this.cfg.sessionScope].sort((a,b) => `${a.project}/${a.thread}`.localeCompare(`${b.project}/${b.thread}`)))).digest("hex").slice(0,24)}-`;
-    if (key !== undefined && scopePrefix && !key.startsWith(scopePrefix)) { this.#fatal = new Error("pending lease request belongs to another scope; inspect it before changing scope"); this.#stop.abort(); return; }
-    if (key === undefined) { key = scopePrefix + randomUUID(); this.state.setPendingKey(key) }
+    if (key !== undefined && this.#scope && !key.startsWith(this.#scope)) { this.#fatal = new Error("pending lease request belongs to another scope; inspect it before changing scope"); this.#stop.abort(); return; }
+    if (key === undefined) { key = this.#scope + randomUUID(); this.state.setPendingKey(key) }
     let r: LeaseReply
     const sentAt = Date.now()
     try { r = await this.#floor.lease({ holderIdentity: this.cfg.holder, capacity, requestKey: key, ...(this.cfg.sessionScope === undefined ? {} : { sessionScope: this.cfg.sessionScope }) }) } catch (e) {
@@ -307,6 +332,16 @@ export class Puller {
     if (typeof r.heartbeatSeconds === "number" && r.heartbeatSeconds > 0) this.#hbMs = Math.min(this.cfg.heartbeatMs ?? Infinity, r.heartbeatSeconds * 1000)
     if (typeof r.nextPollSeconds === "number" && r.nextPollSeconds > 0 && this.cfg.serverPoll)
       this.#pollMs = Math.min(this.cfg.maxPollMs ?? 300_000, Math.max(this.cfg.pollMs ?? 5_000, r.nextPollSeconds * 1000))
+    if (this.#scope) {
+      // Receipts outlive held/outbox writes for crash safety; retire unused ones only on the next Lease reply.
+      const retained = new Set([...Object.keys(this.#held), ...this.state.outbox().map(v => v.leaseId)])
+      for (const id of Object.keys(this.#scopedAdmissions)) if (!retained.has(id)) delete this.#scopedAdmissions[id]
+      for (const g of r.grants) this.#scopedAdmissions[g.leaseId] = { scope: this.#scope, attempt: g.attempt, grantSha256: grantSha256(g) }
+      for (const bad of r.invalid ?? []) if (bad.leaseId !== undefined && bad.attempt !== undefined)
+        this.#scopedAdmissions[bad.leaseId] = { scope: this.#scope, attempt: bad.attempt }
+      // Crash ordering: proof precedes both held.json and any invalid-grant verdict in the outbox.
+      this.state.putScopedAdmissions(this.#scopedAdmissions)
+    }
     for (const g of r.grants) { this.#held[g.leaseId] = g; this.#renewedAt.set(g.leaseId, sentAt); this.count("grants") }
     this.persistHeld()
     this.state.setPendingKey(undefined)
@@ -439,6 +474,7 @@ export class Puller {
   #flushGen = 0
   /** Sends every verdict in the outbox; a transient failure leaves it for the next pass. */
   flushOutbox(): Promise<void> {
+    this.assertScopedRecovery()
     if (this.#flushing) return this.#flushing
     const gen = ++this.#flushGen
     const p = (async () => {

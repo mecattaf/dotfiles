@@ -1,7 +1,7 @@
 # Vendored scheduler execution programs
 
 - Upstream: `agency-agency/substrate`, canonical checkout `~/mecattaf/substrate`.
-- Source sha: `c815232f1d5b9420ff0683feed9aab0057311c71` (synced 2026-10-28T16:32:15Z, apps/puller present)
+- Source sha: `096dd6e2e60ae8e4a2b5fe5795df4fb7d1182214` (synced 2026-10-28T16:48:04Z, apps/puller present)
 
 The source includes the existing fleet Gufo capacity contract imported upstream
 in `18d287d` and the native DSH runner, persistent-session recovery and required
