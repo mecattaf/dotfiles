@@ -130,6 +130,8 @@ export interface RunnerBackendOptions {
   readonly piHostAgentDir?: string;
   /** Where job transcripts are archived (never a run dir). Default: transcriptRootFor(seatShadowRoot). */
   readonly transcriptRoot?: string;
+  /** Snapshot from the Floor-generated turn args before the workflow executes; model opts cannot mint it. */
+  readonly sessionProvenance?: { readonly id: string; readonly project: string; readonly thread: string; readonly role: string };
 }
 
 /**
@@ -933,6 +935,9 @@ export class RunnerBackend {
       writeSessionFile(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { project: { ...server, exposure: "direct" } } }, null, 1) + "\n");
     }
     const harnessSession: HarnessSession = {
+      ...(harness === "dsh" && s.role === "thread" && this.options.sessionProvenance?.id === s.id && this.options.sessionProvenance.role === "thread"
+        ? (() => { const b = cfg.maintenance?.find(b => b.project === this.options.sessionProvenance!.project && b.thread === this.options.sessionProvenance!.thread);
+          return b === undefined ? {} : { maintenance: { command: b.command, statusCommand: b.statusCommand } }; })() : {}),
       id: nativeId, resume, mcp: { command: cfg.projectBin, env }, mcpConfig,
       ...((harness === "pi" || harness === "dsh") && s.role === "coordinator" ? { tools: COORDINATOR_TOOLS } : {}),
     };

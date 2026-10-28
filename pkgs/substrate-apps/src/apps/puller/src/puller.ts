@@ -14,7 +14,7 @@ import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Effect } from "effect"
 import type { SubstrateClient } from "@substrate/api"
-import type { AgentJob, Grant } from "@substrate/link/contract.ts"
+import type { AgentJob, Grant, SessionScope } from "@substrate/link/contract.ts"
 import type { CompletePayload, FloorApi, LeaseReply } from "@substrate/link/floor.ts"
 import { CompleteRefused, FloorError } from "@substrate/link/floor.ts"
 import { PullerState } from "./state.ts"
@@ -26,7 +26,7 @@ export const INTERPRETER_LABEL = "runtime:interpreter"
 
 /** The floor's three calls as promises; a failure rejects with the link's own FloorError or CompleteRefused. */
 export interface FloorPort {
-  lease(p: { holderIdentity: string; capacity: number; requestKey: string }): Promise<LeaseReply>
+  lease(p: { holderIdentity: string; capacity: number; requestKey: string; sessionScope?: SessionScope }): Promise<LeaseReply>
   heartbeat(p: { holderIdentity: string; leaseIds: ReadonlyArray<string>; pendingRequestKey?: string }): Promise<{ renewed: ReadonlyArray<string>; lost: ReadonlyArray<string>; cancelRequested: ReadonlyArray<string> }>
   complete(p: CompletePayload): Promise<{ duplicate: boolean }>
 }
@@ -56,6 +56,7 @@ export type Executor = (t: RunTask) => Promise<RunVerdict>
 
 export interface PullerConfig {
   readonly holder: string
+  readonly sessionScope?: SessionScope
   readonly maxRuns: number
   readonly stateDir: string
   readonly pollMs?: number
@@ -295,10 +296,12 @@ export class Puller {
 
   private async lease(capacity: number) {
     let key = this.state.pendingKey()
-    if (key === undefined) { key = randomUUID(); this.state.setPendingKey(key) }
+    const scopePrefix = this.cfg.sessionScope === undefined ? "" : `scope-v1-${createHash("sha256").update(JSON.stringify([...this.cfg.sessionScope].sort((a,b) => `${a.project}/${a.thread}`.localeCompare(`${b.project}/${b.thread}`)))).digest("hex").slice(0,24)}-`;
+    if (key !== undefined && scopePrefix && !key.startsWith(scopePrefix)) { this.#fatal = new Error("pending lease request belongs to another scope; inspect it before changing scope"); this.#stop.abort(); return; }
+    if (key === undefined) { key = scopePrefix + randomUUID(); this.state.setPendingKey(key) }
     let r: LeaseReply
     const sentAt = Date.now()
-    try { r = await this.#floor.lease({ holderIdentity: this.cfg.holder, capacity, requestKey: key }) } catch (e) {
+    try { r = await this.#floor.lease({ holderIdentity: this.cfg.holder, capacity, requestKey: key, ...(this.cfg.sessionScope === undefined ? {} : { sessionScope: this.cfg.sessionScope }) }) } catch (e) {
       this.#log("lease-error", { kind: (e as FloorError)?.kind, message: String((e as Error)?.message ?? e) }); this.fatal(e); return
     }
     if (typeof r.heartbeatSeconds === "number" && r.heartbeatSeconds > 0) this.#hbMs = Math.min(this.cfg.heartbeatMs ?? Infinity, r.heartbeatSeconds * 1000)
