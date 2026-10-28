@@ -2,6 +2,8 @@
   lib,
   stdenvNoCC,
   nodejs_24,
+  python3,
+  writeShellApplication,
   pnpm_10,
   esbuild,
   makeWrapper,
@@ -40,6 +42,12 @@ let
     # fc2f8bd, 2026-09-24: its lockfile only adds the apps/evaluator importer, no new packages).
     hash = "sha256-/10ykNk5FGChNhjBxfP8lfrUJI4G5O4kE+phfewLODc=";
     fetcherVersion = 3;
+  };
+
+  catalogMigrate = writeShellApplication {
+    name = "substrate-dsh-catalog";
+    runtimeInputs = [ python3 ];
+    text = ''exec python3 ${./migrate-dsh-catalog.py} "$@"'';
   };
 
   link = stdenvNoCC.mkDerivation {
@@ -168,6 +176,7 @@ in
     pusher
     puller
     pnpmDeps
+    catalogMigrate
     sourceSha
     ;
 }

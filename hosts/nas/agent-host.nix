@@ -2,9 +2,26 @@
 {
   imports = [
     ../../modules/agent-offload.nix
+    ../../modules/substrate.nix
     ../../modules/herdr-web-ui.nix
     ../../modules/atuin.nix
   ];
+
+  services.substrate = {
+    floorUrl = "https://substrate.mecattaf.dev";
+    pusher = {
+      enable = true;
+      owners.codex = "tom";
+    };
+    puller = {
+      enable = true;
+      maxRuns = 1;
+      cap = 1;
+      defaultModel = "qwen3.8-flash-next";
+      claudeSeat = "cc";
+      claudeConfigDir = "/home/tom/.claude";
+    };
+  };
 
   services.herdr-web-ui = {
     enable = true;
