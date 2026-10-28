@@ -1,5 +1,17 @@
 # DECISIONS
 
+2026-10-28 The NAS's 256GB secondary SSD (the Fanxiang, the pre-cutover
+/mnt/fast) is Immich's fast tier (dotfiles T-89): reformatted ext4, label
+`immich`, mounted at `/mnt/immich` by `hosts/nas/immich-disk.nix` after a
+serial-and-label check. The PostgreSQL cluster (Immich's `tom` database, with
+atuin and paperless) and Immich's generated media (thumbs, encoded-video,
+profile) live there. Navidrome, Plex, Attic, the remote journal and `/nix` stay
+on the 1TB pool's `@fast`. This replaces the never-enabled Screenpipe/CUA
+reservation `myNas.memoryDisk` at `/mnt/agent-memory`.
+
+Tom, 2026-10-28: "immich db (that needs "fast" storage, so the 256gb ssd
+secondary becomes the place where the immich cache or whatever lives)."
+
 2026-10-28 The NAS 4TB holds only music, photos (Immich), videos, Documents
 and the model Library (dotfiles T-89). btrbk is off (`myNas.snapshots.enable =
 false`, the flake gate inverted); its nine snapshots and the `.snapshots`

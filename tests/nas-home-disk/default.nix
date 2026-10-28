@@ -10,7 +10,6 @@ let
       modules = [ { myNas.homeDisk.device = lib.mkForce "/dev/disk/by-id/nvme-wrong-serial"; } ];
     }).config;
   nas = base.config;
-  memory = (base.extendModules { modules = [ { myNas.memoryDisk.enable = true; } ]; }).config;
   legacy =
     (base.extendModules { modules = [ { myNas.homeDisk.layout = lib.mkForce "legacy-split"; } ]; })
     .config;
@@ -54,11 +53,16 @@ assert nas.fileSystems."/nix".device == "/mnt/fast/nix";
 assert nas.fileSystems."/nix".neededForBoot;
 assert nas.fileSystems."/nix".depends == [ "/mnt/fast" ];
 assert !(nas.disko.devices.disk ? home);
-assert !nas.myNas.memoryDisk.enable;
-assert !(nas.fileSystems ? "/mnt/agent-memory");
-assert memory.fileSystems."/mnt/agent-memory".device == "${fanxiang}-part1";
-assert lib.hasInfix "agent-memory" memory.systemd.services.nas-memory-disk-identity.script;
-assert lib.hasInfix "26040259615000015" memory.systemd.services.nas-memory-disk-identity.script;
+# The 256GB Fanxiang is Immich's fast tier: PostgreSQL and generated media.
+assert nas.myNas.immichDisk.enable;
+assert nas.fileSystems."/mnt/immich".device == "${fanxiang}-part1";
+assert nas.fileSystems."/mnt/immich".fsType == "ext4";
+assert lib.elem "nofail" nas.fileSystems."/mnt/immich".options;
+assert lib.hasInfix "= immich" nas.systemd.services.nas-immich-disk-identity.script;
+assert lib.hasInfix "26040259615000015" nas.systemd.services.nas-immich-disk-identity.script;
+assert lib.hasPrefix "/mnt/immich/postgresql/" nas.services.postgresql.dataDir;
+assert lib.elem "/mnt/immich" nas.systemd.services.postgresql.unitConfig.RequiresMountsFor;
+assert lib.elem "/mnt/immich" nas.systemd.services.immich-server.unitConfig.RequiresMountsFor;
 assert legacy.fileSystems."/home".device == "${disk}-part2";
 assert legacy.fileSystems."/mnt/fast".fsType == "ext4";
 assert lib.all (device: lib.any (watch: watch.device == device) nas.services.smartd.devices) [

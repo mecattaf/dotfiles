@@ -27,7 +27,7 @@
     ./journal.nix
     ./storage.nix
     ./home-disk.nix # #599, bench-prepared home; stage before the fleet power-off
-    ./memory-disk.nix # 256GB recording/memory reservation, gated until fast-tier move
+    ./immich-disk.nix # 256GB secondary SSD: Immich fast tier (PostgreSQL + generated media)
     ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)
     ./media.nix
     # ./phone-ingest.nix DELETED 2026-08-21 (Tom: "DEAD and no longer needed
@@ -89,6 +89,8 @@
   # disk; deployment order (NAS restore first, then the strix cutover)
   # is sequenced manually in #131.
   myNas.media.enable = true;
+  # Tom, 2026-10-28: the 256GB secondary SSD holds Immich's database and cache.
+  myNas.immichDisk.enable = true;
   myNas.models.enable = true;
   # ws2a snapshots — flipped on 2026-08-21, OFF since 2026-10-28 on Tom's word:
   # "dleete the nine snapshots and turn off job YES. no time machine for file
