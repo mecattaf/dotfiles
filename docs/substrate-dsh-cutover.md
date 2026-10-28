@@ -33,8 +33,19 @@ Pi-specific metadata and retired provider rows from the active catalog. Their
 full original data remains in the backup. It preserves other supported model
 choices, adds `local` and `nightly` aliases, and refuses unknown local models,
 alias conflicts, alternate defaults and symlinks. A second apply changes
-nothing. The executor refuses a stale Pi catalog rather than silently routing
+nothing. The executor exits once with configuration status 78 for a stale Pi catalog,
+rather than silently routing
 through a removed harness.
+
+The NAS executor narrows leases server-side to `dotfiles/T-69` via the distinct
+`LeaseScoped` operation. An older Floor fails closed; it cannot ignore an
+optional filter and grant unrelated queued work. Historical queues stay intact.
+Only this thread receives trusted fixed-argv `fleet_update_start` and
+`fleet_update_status` tools from separate Floor provenance. Neither envelope
+text nor model-supplied call options can grant those tools. The launcher starts
+an independent user service, so the updater retains NAS credentials and the
+narrow activation helper without relaxing the DSH shell sandbox or the
+interpreter's `NoNewPrivileges`. It introduces no timer or boot activation.
 
 Before starting the restored holder, inspect the Floor's current sessions,
 queued messages and jobs. Keep the existing `coordinator` holder paused during
@@ -53,7 +64,7 @@ a successful model turn or detached launch.
 ## Validation boundaries
 
 `checks.x86_64-linux.substrate-modules` parses rendered unit, runtime, model
-catalog and credential-placeholder data; its eight file migration tests cover
+catalog and credential-placeholder data; its file migration and startup readiness tests cover
 backup, idempotence and refusal behavior. `fleet-roles` ensures compute hosts
 receive no agent service or credential wiring. Execute these derivations on
 strix-coordinator, checking `df -h /` and at least 25 GiB free before every

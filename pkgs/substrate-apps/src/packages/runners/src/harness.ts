@@ -34,7 +34,7 @@ export const CLAUDE_MODEL = "claude-opus-5-5";
 export const GUFO_PROVIDER = "gufo";
 export const GUFO_MODEL = "qwen3.8-flash-next";
 
-export type HarnessName = "claude" | "pi" | "codex";
+export type HarnessName = "claude" | "pi" | "dsh" | "codex";
 
 /**
  * The pi providers a runtime table may name (`provider = "..."`), each with
@@ -52,6 +52,9 @@ export const PI_PROVIDERS = {
 export type PiProvider = keyof typeof PI_PROVIDERS;
 export const PI_PROVIDER_NAMES = Object.keys(PI_PROVIDERS) as readonly PiProvider[];
 export const isPiProvider = (v: unknown): v is PiProvider => typeof v === "string" && Object.hasOwn(PI_PROVIDERS, v);
+
+export type ModelProvider = PiProvider | "gufo";
+export const MODEL_PROVIDER_NAMES = PI_PROVIDER_NAMES;
 
 export interface HarnessCall {
   readonly prompt: string;
@@ -82,6 +85,9 @@ export interface HarnessCall {
   readonly piSessionDir?: string;
   /** pi: a job-scoped agent dir carrying a generated models.json (`PI_CODING_AGENT_DIR`); absent means pi's own. */
   readonly piAgentDir?: string;
+  /** DSH headless composition generated for this job; never a pi models.json. */
+  readonly dshPatch?: string;
+  readonly dshHome?: string;
   /** agent({session}): the harness session this call resumes by id, and its project MCP (sessions chapter, 2026-10-12). */
   readonly session?: HarnessSession;
 }
@@ -109,6 +115,7 @@ export const HARNESS_OPTIONS: Readonly<Record<HarnessName, readonly ("effort" | 
   claude: ["effort", "agentType"],
   // pi maps effort to `--thinking <level>` (sessions chapter, correction 7).
   pi: ["effort"],
+  dsh: ["effort"],
   codex: [],
 };
 
@@ -187,6 +194,21 @@ export function piInvocation(call: HarnessCall): HarnessInvocation {
   };
 }
 
+/** DSH 0.2.1-rc.2 headless protocol: model and MCP are Cordis patch rows, prompt on stdin.
+ * --session-id adopts an EXISTING DSH identity; a fresh invocation reports its own opening session event.
+ */
+export function dshInvocation(call: HarnessCall): HarnessInvocation {
+  if (call.dshPatch === undefined || call.dshHome === undefined) throw new Error("dsh harness needs a generated patch and private DSH_HOME");
+  const prompt = call.schema
+    ? `${promptOf(call)}\n\nReply with one JSON value only, no prose and no code fence, valid against this JSON Schema:\n${JSON.stringify(call.schema)}`
+    : promptOf(call);
+  return {
+    argv: ["dsh", "--profile", "headless", "--patch", call.dshPatch, "--json", ...(call.session?.resume ? ["--session-id", call.session.id] : []), "-"],
+    stdin: prompt,
+    env: { DSH_HOME: call.dshHome, DSH_TELEMETRY_DISABLED: "1" },
+  };
+}
+
 export function codexInvocation(call: HarnessCall): HarnessInvocation {
   const prompt = call.schema
     ? `${promptOf(call)}\n\nReply with one JSON value only, no prose and no code fence, valid against this JSON Schema:\n${JSON.stringify(call.schema)}`
@@ -207,7 +229,7 @@ export function codexInvocation(call: HarnessCall): HarnessInvocation {
 }
 
 export const invocationFor = (h: HarnessName, call: HarnessCall): HarnessInvocation =>
-  h === "pi" ? piInvocation(call) : h === "codex" ? codexInvocation(call) : claudeInvocation(call);
+  h === "dsh" ? dshInvocation(call) : h === "pi" ? piInvocation(call) : h === "codex" ? codexInvocation(call) : claudeInvocation(call);
 
 export interface Parsed {
   readonly text?: string;
@@ -305,6 +327,38 @@ export function parsePi(stdout: string, wantObject: boolean): Parsed {
   return parseJsonReply(text);
 }
 
+/** DSH's bounded NDJSON projection, as shipped in @deepseek-ai/dsh-headless 0.2.1-rc.2.
+ * Usage is per step (including failed attempts), not per text event. A partial/failed run retains its id and spend.
+ */
+export function parseDsh(stdout: string, wantObject: boolean): Parsed {
+  let text: string | undefined, agentId: string | undefined, failure: string | undefined;
+  let usage: Usage | undefined;
+  for (const line of stdout.split("\n")) {
+    if (line.trim() === "") continue;
+    let ev: Record<string, unknown>;
+    try { ev = JSON.parse(line); } catch { return { ...(agentId ? { agentId } : {}), ...(usage ? { usage } : {}), error: "dsh stdout is not an NDJSON event stream" }; }
+    if (ev.type === "session" && typeof ev.sessionId === "string") {
+      if (agentId !== undefined && agentId !== ev.sessionId) return { agentId, ...(usage ? { usage } : {}), error: "dsh stream changed session identity" };
+      agentId = ev.sessionId;
+    }
+    if (ev.type === "final" && typeof ev.text === "string") text = ev.text;
+    if (ev.type === "error") failure = typeof ev.message === "string" ? ev.message : "driver error";
+    if (ev.type === "status" && ev.phase === "turn_end" && (ev.reason as { kind?: unknown } | undefined)?.kind !== "completed") failure = `turn ended: ${JSON.stringify(ev.reason)}`;
+    if (ev.type === "status" && ev.phase === "step_end" && ev.usage !== null && typeof ev.usage === "object") {
+      const u = ev.usage as Record<string, unknown>;
+      const next: Usage = { inputTokens: count(u.inputTokens) ?? 0, outputTokens: count(u.outputTokens) ?? 0,
+        ...extra({ cacheCreationTokens: count(u.cacheWriteTokens), cacheReadTokens: count(u.cacheReadTokens), reasoningTokens: count(u.reasoningTokens) }) };
+      usage = usage === undefined ? next : { inputTokens: usage.inputTokens + next.inputTokens, outputTokens: usage.outputTokens + next.outputTokens,
+        ...extra(Object.fromEntries((["cacheCreationTokens", "cacheReadTokens", "reasoningTokens"] as const).map(k => [k, usage![k] === undefined || next[k] === undefined ? undefined : usage![k]! + next[k]!])) ) };
+    }
+  }
+  const base = { ...(agentId ? { agentId } : {}), ...(usage ? { usage } : {}) };
+  if (failure !== undefined) return { ...base, error: `dsh reported a failure: ${failure}` };
+  if (text === undefined) return { ...base, error: "dsh stdout carried no final event" };
+  if (agentId === undefined) return { ...base, error: "dsh stdout carried no session identity" };
+  return wantObject ? { ...base, ...parseJsonReply(text) } : { ...base, text };
+}
+
 /** `codex exec --json`: one JSON event per line; the last agent message is the reply. */
 export function parseCodex(stdout: string, wantObject: boolean): Parsed {
   let text: string | undefined;
@@ -335,4 +389,4 @@ export function parseCodex(stdout: string, wantObject: boolean): Parsed {
 }
 
 export const parseFor = (h: HarnessName, stdout: string, wantObject: boolean): Parsed =>
-  h === "pi" ? parsePi(stdout, wantObject) : h === "codex" ? parseCodex(stdout, wantObject) : parseClaude(stdout, wantObject);
+  h === "dsh" ? parseDsh(stdout, wantObject) : h === "pi" ? parsePi(stdout, wantObject) : h === "codex" ? parseCodex(stdout, wantObject) : parseClaude(stdout, wantObject);

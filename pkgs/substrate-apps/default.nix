@@ -29,11 +29,10 @@
 # Re-vendor: ./sync.sh <substrate checkout> <sha>, then refresh pnpmDeps.hash (lib.fakeHash, build,
 # paste the got: value). E1: the code that wraps ax lives in dotfiles, pinned by sha, never a flake input.
 let
-  version = "0.1.0-unstable-2026-09-24";
+  version = "0.1.0-unstable-2026-10-28";
   src = ./src;
-  # The upstream base commit; SYNC.md also records the local Gufo contract patch.
-  # A future sync must carry that patch upstream before replacing this tree.
-  sourceSha = "200767b24484b3e0568795af121fb35dade05d20";
+  # Exact upstream commit, including the fleet Gufo contract and native DSH.
+  sourceSha = "16ce55063c8cfd615d406558279af14f5d5728e6";
 
   pnpmDeps = pnpm_10.fetchDeps {
     pname = "substrate-apps";

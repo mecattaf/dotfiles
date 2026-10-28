@@ -37,10 +37,10 @@ import { homedir } from "node:os";
 import { Schema } from "effect";
 import { parse as parseToml } from "smol-toml";
 import { catalogEntry, loadModelsFile, modelAllowlistProblems, ModelEntrySchema, ModelsFileError, type ModelAllowlist } from "./models.ts";
-import { PI_PROVIDER_NAMES, PI_PROVIDERS, type PiProvider } from "./harness.ts";
+import { MODEL_PROVIDER_NAMES, PI_PROVIDERS, type HarnessName, type ModelProvider, type PiProvider } from "./harness.ts";
 
-const Harness = Schema.Literals(["claude", "pi", "codex"]);
-const PiProviderSchema = Schema.Literals(PI_PROVIDER_NAMES as unknown as readonly [PiProvider, ...PiProvider[]]);
+const Harness = Schema.Literals(["claude", "pi", "dsh", "codex"]);
+const PiProviderSchema = Schema.Literals(MODEL_PROVIDER_NAMES as unknown as readonly [ModelProvider, ...ModelProvider[]]);
 
 /** Fields every runtime table may carry. */
 const common = {
@@ -411,7 +411,7 @@ export function decodeRuntimes(doc: unknown, source: string, home = homedir()): 
     }
   }
   for (const n of config.allow ?? []) if (!known(n)) problems.push(`allow names ${JSON.stringify(n)}, which is no runtime`);
-  for (const h of Object.keys(config.seats)) if (!["claude", "pi", "codex"].includes(h)) problems.push(`seats.${h}: no such harness`);
+  for (const h of Object.keys(config.seats)) if (!["claude", "pi", "dsh", "codex"].includes(h)) problems.push(`seats.${h}: no such harness`);
   if (!config.credentials.claude.startsWith("/")) problems.push(`credentials.claude must be absolute`);
   problems.push(...guardrailProblems(config));
   for (const s of config.credentials.seatSpellingConflicts ?? []) problems.push(`credentials: seat ${s} has one dir in [credentials.seats] and another in seat_dirs`);
@@ -530,10 +530,13 @@ function baseSelection(config: RuntimesConfig, phase: string | undefined): Selec
 export const LOCAL_CREDENTIAL = new Set<Runtime["type"]>(["host", "runtime-test", "herdr", "gvisor", "microvm"]);
 
 /** The harness a runtime runs an agent() call with. */
-export const harnessOf = (r: Runtime): "claude" | "pi" | "codex" => r.harness ?? "claude";
+export const harnessOf = (r: Runtime): HarnessName => r.harness ?? "claude";
 
 /** The pi provider a runtime's pi calls run against (default gufo); undefined for another harness. */
-export const piProviderOf = (r: Runtime): PiProvider | undefined => (harnessOf(r) === "pi" ? (r.provider ?? "gufo") : undefined);
+export const piProviderOf = (r: Runtime): PiProvider | undefined => (harnessOf(r) === "pi" ? (r.provider as PiProvider | undefined ?? "gufo") : undefined);
+
+/** Provider selection is separate from the harness; DSH reads a generated Cordis patch. */
+export const modelProviderOf = (r: Runtime): ModelProvider | undefined => harnessOf(r) === "dsh" ? "gufo" : piProviderOf(r);
 
 /** Runtime types that read the HOST's pi models.json (and so every provider in it). */
 const HOST_PI_CONFIG = new Set<Runtime["type"]>(["host", "runtime-test", "herdr", "ssh"]);
@@ -609,8 +612,10 @@ function guardrailProblems(config: RuntimesConfig): string[] {
   for (const [name, r] of reachable) {
     const h = harnessOf(r);
     if (r.codexSandbox !== undefined && h !== "codex") problems.push(`runtime.${name}.codexSandbox applies to the codex harness only (harness is ${h})`);
-    if (r.provider !== undefined && h !== "pi") problems.push(`runtime.${name}.provider applies to the pi harness only (harness is ${h})`);
-    if (r.provider !== undefined && r.provider !== "gufo" && !HOST_PI_CONFIG.has(r.type)) {
+    if (h === "dsh" && r.provider !== undefined && r.provider !== "gufo") problems.push(`runtime.${name}: dsh currently serves provider gufo only`);
+    if (h === "dsh" && r.type !== "host" && r.type !== "runtime-test") problems.push(`runtime.${name}: dsh needs host or runtime-test so its fleet wrapper and private home are honoured`);
+    if (r.provider !== undefined && h !== "pi" && h !== "dsh") problems.push(`runtime.${name}.provider applies to the pi or dsh harness only (harness is ${h})`);
+    if (h === "pi" && r.provider !== undefined && r.provider !== "gufo" && !HOST_PI_CONFIG.has(r.type)) {
       problems.push(`runtime.${name}: provider ${r.provider} needs the host's pi models.json (host, runtime-test, herdr, ssh); a ${r.type} job gets a Gufo-only one`);
     }
     if (!carriesCredential(r) && h === "claude") problems.push(`runtime.${name}: credential = false with the claude harness, which cannot run without a seat credential`);
@@ -738,7 +743,7 @@ export function sessionRuntime(config: RuntimesConfig, catalog: ModelAllowlist, 
   const entry = catalogEntry(catalog, model) ?? refuse(`model ${model} has no catalog entry, so no harness is known to serve it`);
   if (entry.harness === "codex") refuse(`model ${model} is served by the codex harness, which runs no session`);
   if (typeof harness === "string" && harness !== entry.harness) refuse(`model ${model} is served by the ${entry.harness} harness; this session runs on ${harness}`);
-  const provider = entry.harness === "pi" ? (entry.provider ?? "gufo") : undefined;
+  const provider = entry.harness === "dsh" ? (entry.provider ?? "gufo") : entry.harness === "pi" ? (entry.provider ?? "gufo") : undefined;
   for (const n of new Set([config.default, ...Object.keys(config.runtimes), ...(config.allow ?? [])])) {
     let sel: Selection;
     try {
@@ -746,7 +751,7 @@ export function sessionRuntime(config: RuntimesConfig, catalog: ModelAllowlist, 
     } catch {
       continue; // not permitted to this call
     }
-    if (sel.runtime.type === "host" && harnessOf(sel.runtime) === entry.harness && piProviderOf(sel.runtime) === provider) return { ...sel, via: "model" };
+    if (sel.runtime.type === "host" && harnessOf(sel.runtime) === entry.harness && modelProviderOf(sel.runtime) === provider) return { ...sel, via: "model" };
   }
   return refuse(`no host runtime this file permits serves model ${model} (harness ${entry.harness}${provider !== undefined ? `, pi provider ${provider}` : ""})`);
 }

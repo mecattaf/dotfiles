@@ -152,14 +152,14 @@ function walk(root: string, want: (rel: string) => boolean, max = MAX_TRANSCRIPT
  */
 export function archiveShadowTranscripts(shadow: string, dest: string, cap = DEFAULT_TRANSCRIPT_CAP): TranscriptFile[] {
   if (!existsSync(shadow)) return [];
-  const want = (rel: string) => (rel.startsWith("projects/") && rel.endsWith(".jsonl")) || rel.startsWith("pi-agent/sessions/");
+  const want = (rel: string) => (rel.startsWith("projects/") && rel.endsWith(".jsonl")) || rel.startsWith("pi-agent/sessions/") || (rel.startsWith("dsh-home/sessions/") && rel.endsWith(".jsonl"));
   const files = walk(shadow, want);
   if (files.length === 0) return [];
   mkdirSync(dest, { recursive: true, mode: 0o700 });
   const out: TranscriptFile[] = [];
   for (const f of files) {
     const rel = relative(shadow, f);
-    const name = rel.startsWith("projects/") ? `claude-${safeName(rel.slice("projects/".length).replace(/\//g, "__"))}` : `pi-${safeName(rel.slice("pi-agent/sessions/".length).replace(/\//g, "__"))}`;
+    const name = rel.startsWith("dsh-home/sessions/") ? `dsh-${safeName(rel.slice("dsh-home/sessions/".length).replace(/\//g, "__"))}` : rel.startsWith("projects/") ? `claude-${safeName(rel.slice("projects/".length).replace(/\//g, "__"))}` : `pi-${safeName(rel.slice("pi-agent/sessions/".length).replace(/\//g, "__"))}`;
     if (existsSync(join(dest, name))) continue;
     const t = copyCapped(f, dest, name, rel, cap);
     if (t) out.push(t);
@@ -198,6 +198,36 @@ export function findCodexRollout(codexHome: string, threadId: string): string | 
 /** A pi session file by id under a session's own dir: `<dir>/[...]/<timestamp>_<id>.jsonl` (pi docs/session-format.md). */
 export function findPiSession(dir: string, sessionId: string): string | undefined {
   return walk(dir, (rel) => rel.endsWith(`_${sessionId}.jsonl`), 1, 2)[0];
+}
+
+/** DSH 0.2.1 plaintext persistence: sessions/<project>/<id>/<generation>.jsonl.
+ * Only a regular file in that exact id directory can establish an adoptable identity.
+ */
+export function findDshSession(home: string, sessionId: string): string | undefined {
+  if (!/^[A-Za-z0-9-]{8,80}$/.test(sessionId)) return undefined;
+  return walk(join(home, "sessions"), rel => {
+    const parts = rel.split(/[\\/]/);
+    return parts.length === 3 && parts[1] === sessionId && parts[2]!.endsWith(".jsonl");
+  }, 1, 3)[0];
+}
+
+/** Recover an interrupted first turn before the Floor has learned DSH's minted id.
+ * Only top-level Session headers in this session's private home qualify; child/fork histories do not.
+ */
+export function findDshRootSessions(home: string, cwd: string): string[] {
+  const ids = new Set<string>();
+  for (const path of walk(join(home, "sessions"), rel => rel.split(/[\\/]/).length === 3 && rel.endsWith(".jsonl"), MAX_TRANSCRIPT_FILES, 3)) {
+    let fd: number | undefined;
+    try {
+      fd = openSync(path, fsc.O_RDONLY | fsc.O_NOFOLLOW | fsc.O_NONBLOCK);
+      if (!fstatSync(fd).isFile()) continue;
+      const header = JSON.parse(readRange(fd, 0, Math.min(fstatSync(fd).size, 8192)).toString("utf8").split("\n")[0]!);
+      if (header.type === "session" && typeof header.id === "string" && /^[A-Za-z0-9-]{8,80}$/.test(header.id) && header.cwd === cwd
+        && header.parentSession === undefined && header.origin !== "subagent" && (header.delegationDepth ?? 0) === 0) ids.add(header.id);
+    } catch { /* a missing or incomplete header cannot establish identity */ }
+    finally { if (fd !== undefined) closeSync(fd); }
+  }
+  return [...ids];
 }
 
 /** Sum of a job's archive, for the receipt. */

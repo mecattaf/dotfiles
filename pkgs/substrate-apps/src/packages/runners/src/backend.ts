@@ -26,18 +26,19 @@
  */
 import { accessSync, closeSync, constants as fsc, existsSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { carriesCredential, credentialDirFor, harnessOf, piProviderOf, RuntimesConfigError, seatOf, selectForCall, sessionRuntime, type RuntimesConfig, type Runtime, type Selection } from "./config.ts";
+import { carriesCredential, credentialDirFor, harnessOf, modelProviderOf, piProviderOf, RuntimesConfigError, seatOf, selectForCall, sessionRuntime, type RuntimesConfig, type Runtime, type Selection } from "./config.ts";
 import { DEFAULT_TIMEOUT_MS } from "./host.ts";
 import { isRefusal, JOB_ID, type Mount, type ProcessJob, type Runner } from "./job.ts";
 import { runnerFor } from "./registry.ts";
 import { catalogEntry, catalogFor, entryFor, resolveModel, type ModelAllowlist, type ModelCeilings, type ModelEntry } from "./models.ts";
-import { CLAUDE_MODEL, GUFO_MODEL, GUFO_PROVIDER, HARNESS_OPTIONS, invocationFor, parseFor, PI_PROVIDERS, type HarnessName, type HarnessSession, type PiProvider, type Usage } from "./harness.ts";
+import { CLAUDE_MODEL, GUFO_MODEL, GUFO_PROVIDER, HARNESS_OPTIONS, invocationFor, parseFor, PI_PROVIDERS, type HarnessName, type HarnessSession, type ModelProvider, type PiProvider, type Usage } from "./harness.ts";
 import { spawnSync } from "node:child_process";
 import { axTaskSpec } from "./ax.ts";
 import { SANDBOX_HOME } from "./gvisor.ts";
 import { createHash } from "node:crypto";
 import { procStartTicks, runProc, sameProcess } from "./proc.ts";
-import { archiveShadowTranscripts, copyCapped, findClaudeSession, findCodexRollout, findPiSession, storeText, transcriptRootFor, transcriptSummary, type TranscriptFile } from "./transcripts.ts";
+import { archiveShadowTranscripts, copyCapped, findClaudeSession, findCodexRollout, findPiSession, findDshSession, findDshRootSessions, storeText, transcriptRootFor, transcriptSummary, type TranscriptFile } from "./transcripts.ts";
+import { dshPatch } from "./dsh.ts";
 import { homedir } from "node:os";
 
 /**
@@ -476,8 +477,8 @@ function sessionHarnessProblem(sel: Selection, opts: { readonly session?: unknow
   const entry = catalogEntry(catalog(), opts.model);
   if (entry === undefined) return `model ${opts.model} has no catalog entry, so runtime ${sel.name} cannot serve it`;
   if (entry.harness !== h) return `model ${opts.model} is served by the ${entry.harness} harness; runtime ${sel.name} runs ${h}`;
-  const provider = entry.harness === "pi" ? (entry.provider ?? "gufo") : undefined;
-  if (provider !== piProviderOf(sel.runtime)) return `model ${opts.model} is served by pi provider ${provider}; runtime ${sel.name} runs pi provider ${piProviderOf(sel.runtime)}`;
+  const provider = entry.harness === "dsh" ? (entry.provider ?? "gufo") : entry.harness === "pi" ? (entry.provider ?? "gufo") : undefined;
+  if (provider !== modelProviderOf(sel.runtime)) return `model ${opts.model} is served by pi provider ${provider}; runtime ${sel.name} runs pi provider ${piProviderOf(sel.runtime)}`;
   return undefined;
 }
 
@@ -513,7 +514,7 @@ export interface Route {
   /** The capacity seat this harness spends, or undefined when `[seats]` binds none. */
   readonly seat: string | undefined;
   /** pi only: the provider the call runs against (harness.ts PI_PROVIDERS). */
-  readonly provider?: PiProvider;
+  readonly provider?: ModelProvider;
   /** pi only: the provider its seat's capacity reading must carry (the gate checks it). */
   readonly seatProvider?: string;
   /**
@@ -569,7 +570,7 @@ export class RunnerBackend {
     const provider = piProviderOf(sel.runtime);
     const catalog = this.catalog(); // throws ModelsFileError: the route is refused with the file's own error
     const pick = (h: HarnessName, fallback: string) => {
-      const r = resolveModel(catalog, h, declared, h === "pi" ? provider : undefined);
+      const r = resolveModel(catalog, h, declared, h === "pi" ? provider : h === "dsh" ? "gufo" : undefined);
       return {
         model: r.id ?? fallback,
         ...(r.requested !== undefined ? { requestedModel: r.requested } : {}),
@@ -587,6 +588,11 @@ export class RunnerBackend {
       if (h === "pi") return { selection: sel, harness: "pi", ...pick("pi", GUFO_MODEL), seat };
       if (h === "codex") return { selection: sel, harness: "codex", ...pick("codex", "codex"), seat: undefined };
       return { selection: sel, harness: "ax", ...pick("claude", CLAUDE_MODEL), seat };
+    }
+    if (h === "dsh") {
+      const r = resolveModel(catalog, h, declared, "gufo");
+      if (r.id === undefined) throw new Error(`runtime ${sel.name}: no model configured for dsh provider gufo`);
+      return { selection: sel, harness: h, ...pick(h, r.id), seat, provider: "gufo", seatProvider: "gufo" };
     }
     if (h === "pi") {
       const p = provider ?? GUFO_PROVIDER;
@@ -777,7 +783,8 @@ export class RunnerBackend {
     } catch (e) {
       return refuse((e as Error).message);
     }
-    const resolved = resolveModel(catalog, harness, declaredModel, piProvider);
+    const resolved = resolveModel(catalog, harness, declaredModel, modelProviderOf(sel.runtime));
+    if (harness === "dsh" && resolved.id === undefined) return refuse("no model configured for dsh provider gufo");
     if (harness === "pi" && resolved.id === undefined) return refuse(parkedReason(sel.name, piProvider ?? GUFO_PROVIDER, this.config.modelsFile).replace(/^runtime \S+: /, ""));
     // The seat shadow lives OUTSIDE the run dir and is removed when the job
     // is over, refused or not (successor review r3: a hard link to the seat
@@ -793,7 +800,7 @@ export class RunnerBackend {
     let turn: { session: SessionArg; dir: string; cwd: string; harnessSession: HarnessSession; env: Record<string, string> } | undefined;
     if (session !== undefined) {
       try {
-        turn = this.#sessionTurn(session, harness, piProvider ?? GUFO_PROVIDER, entryFor(catalog, harness, resolved.id, piProvider), seat, fromRunSeat);
+        turn = this.#sessionTurn(session, harness, piProvider ?? GUFO_PROVIDER, entryFor(catalog, harness, resolved.id, modelProviderOf(sel.runtime)), seat, fromRunSeat);
       } catch (e) {
         return refuse(`cannot prepare the session dir of ${session.id}: ${(e as Error).message}`);
       }
@@ -820,9 +827,20 @@ export class RunnerBackend {
         piDirs.piAgentDir = agentDir;
       }
     }
+    let dshDirs: { dshPatch: string; dshHome: string } | undefined;
+    if (harness === "dsh") {
+      const home = join(turn?.dir ?? shadow, "dsh-home");
+      const patch = join(turn?.dir ?? shadow, "dsh.patch.json");
+      try {
+        mkdirSync(home, { recursive: true, mode: 0o700 });
+        writeSessionFile(patch, dshPatch(home, resolved.id!, typeof o.effort === "string" ? o.effort : undefined, turn?.harnessSession));
+      } catch (e) { return refuse(`cannot prepare dsh: ${(e as Error).message}`); }
+      dshDirs = { dshHome: home, dshPatch: patch };
+    }
     const inv = invocationFor(harness, {
       ...(piProvider !== undefined ? { piProvider } : {}),
       ...(piDirs ?? {}),
+      ...(dshDirs ?? {}),
       prompt: call.prompt,
       ...(resolved.id !== undefined ? { model: resolved.id } : {}),
       ...(call.opts.schema ? { schema: call.opts.schema } : {}),
@@ -880,9 +898,22 @@ export class RunnerBackend {
     const mcpConfig = join(dir, "mcp.json");
     writeSessionFile(mcpConfig, JSON.stringify({ mcpServers: { project: server } }, null, 1) + "\n");
     let resume = false;
+    let nativeId = s.harnessSessionId;
     if (harness === "claude") {
       const d = credentialDirFor(this.config, seat, fromRunSeat);
       resume = "dir" in d && findClaudeSession(d.dir, s.harnessSessionId) !== undefined;
+    }
+    if (harness === "dsh") {
+      const home = join(dir, "dsh-home");
+      resume = findDshSession(home, s.harnessSessionId) !== undefined;
+      // DSH mints its first id; later turns adopt only that persisted identity. A missing
+      // pinned transcript is an incident, never permission to start an empty conversation.
+      if (s.harness === "dsh" && !resume) throw new Error(`persisted dsh session ${s.harnessSessionId} is missing`);
+      if (!resume) {
+        const prior = findDshRootSessions(home, cwd);
+        if (prior.length > 1) throw new Error("ambiguous interrupted dsh session histories; inspect before retrying");
+        if (prior.length === 1) { nativeId = prior[0]!; resume = true; }
+      }
     }
     if (harness === "codex") resume = findCodexRollout(process.env.CODEX_HOME ?? join(homedir(), ".codex"), s.harnessSessionId) !== undefined;
     if (harness === "pi") {
@@ -902,8 +933,8 @@ export class RunnerBackend {
       writeSessionFile(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { project: { ...server, exposure: "direct" } } }, null, 1) + "\n");
     }
     const harnessSession: HarnessSession = {
-      id: s.harnessSessionId, resume, mcp: { command: cfg.projectBin, env }, mcpConfig,
-      ...(harness === "pi" && s.role === "coordinator" ? { tools: COORDINATOR_TOOLS } : {}),
+      id: nativeId, resume, mcp: { command: cfg.projectBin, env }, mcpConfig,
+      ...((harness === "pi" || harness === "dsh") && s.role === "coordinator" ? { tools: COORDINATOR_TOOLS } : {}),
     };
     return { session: s, dir, cwd, harnessSession, env };
   }
@@ -991,9 +1022,13 @@ export class RunnerBackend {
     } catch {
       spent = undefined;
     }
+    if (harness === "dsh" && turn?.harnessSession.resume && spent?.agentId !== undefined && spent.agentId !== turn.harnessSession.id) {
+      receipt({ refused: "dsh resumed a different session identity", expected: turn.harnessSession.id, actual: spent.agentId });
+      return { ...(spent.usage ? { usage: spent.usage } : {}), error: "dsh resumed a different session identity" };
+    }
     // A session call knows its harness session id before the harness prints anything, so a killed or timed-out turn
     // still names it (#26); codex's first turn mints its own thread id, read from its events.
-    const sessionId = turn ? (harness === "codex" ? spent?.agentId ?? (turn.harnessSession.resume ? turn.harnessSession.id : undefined) : turn.harnessSession.id) : spent?.agentId;
+    const sessionId = turn ? ((harness === "codex" || harness === "dsh") ? spent?.agentId ?? (turn.harnessSession.resume ? turn.harnessSession.id : undefined) : turn.harnessSession.id) : spent?.agentId;
     const sessionFile = turn && sessionId !== undefined ? this.#sessionFile(harness, cred, turn.dir, sessionId, inv.env) : undefined;
     const archived = this.#archive(sel, harness, cred, shadow, txDest, res, sessionId, inv.env, turn !== undefined);
     tx.archived = true;
@@ -1036,6 +1071,7 @@ export class RunnerBackend {
   /** A session's harness file on this host, found by id: claude's transcript, pi's session file, codex's rollout. */
   #sessionFile(harness: HarnessName, cred: Mount | undefined, dir: string, sessionId: string, invEnv: Readonly<Record<string, string>> | undefined): string | undefined {
     if (harness === "claude") return cred !== undefined ? findClaudeSession(cred.source, sessionId) : undefined;
+    if (harness === "dsh") return findDshSession(invEnv?.["DSH_HOME"] ?? join(dir, "dsh-home"), sessionId);
     if (harness === "pi") return findPiSession(join(dir, "pi"), sessionId);
     return findCodexRollout(invEnv?.["CODEX_HOME"] ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), sessionId);
   }
@@ -1065,6 +1101,10 @@ export class RunnerBackend {
       else if (t === "host" || t === "runtime-test" || t === "herdr") {
         // pi saves its session into the job's shadow (`--session-dir`, run()); the archive is what seats reads.
         if (harness === "pi") files.push(...archiveShadowTranscripts(shadow, dest));
+        if (harness === "dsh" && sessionId !== undefined && invEnv?.["DSH_HOME"] !== undefined) {
+          const path = findDshSession(invEnv["DSH_HOME"], sessionId);
+          if (path) push(copyCapped(path, dest, `dsh-${sessionId}.jsonl`, "dsh-session"));
+        }
         if (harness === "claude" && sessionId !== undefined && cred !== undefined) {
           const p = findClaudeSession(cred.source, sessionId);
           if (p) push(copyCapped(p, dest, `claude-${sessionId}.jsonl`, "host-session"));

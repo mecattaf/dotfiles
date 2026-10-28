@@ -152,6 +152,17 @@ assert lib.any (
 ) pullerUnit.path;
 assert self.nixosConfigurations.nas.config.services.substrate.puller.enable;
 assert self.nixosConfigurations.nas.config.services.substrate.pusher.enable;
+assert self.nixosConfigurations.nas.config.services.substrate.puller.sessionScope == [
+  { project = "dotfiles"; thread = "T-69"; }
+];
+assert self.nixosConfigurations.nas.config.services.substrate.puller.runtimes.sessions.maintenance == [
+  {
+    project = "dotfiles";
+    thread = "T-69";
+    command = [ "/run/current-system/sw/bin/fleet-update-start" "--json" ];
+    status_command = [ "/run/current-system/sw/bin/fleet-update" "--status" "--json" ];
+  }
+];
 assert self.nixosConfigurations.nas.config.services.substrate.puller.maxRuns == 1;
 assert self.nixosConfigurations.nas.config.services.substrate.puller.cap == 1;
 assert
@@ -222,7 +233,7 @@ pkgs.runCommand "substrate-modules"
     assert rt["models_file"] == "/home/tom/.config/substrate/models.toml", rt.get("models_file")
     assert 'models_file = "/home/tom/.config/substrate/models.toml"' in open(sys.argv[2]).read()
     # The project MCP for substrate sessions (projects build, EXCHANGE.md section 8): the CLI out-link's binary, a URL and a token path.
-    assert rt["sessions"] == {"project_bin": "/home/tom/.local/state/agency/project/cli/bin/project", "project_url": "https://project.mecattaf.dev", "project_token_file": "/home/tom/.config/project/token"}, rt.get("sessions")
+    assert rt["sessions"] == {"project_bin": "/home/tom/.local/state/agency/project/cli/bin/project", "project_url": "https://project.mecattaf.dev", "project_token_file": "/home/tom/.config/project/token", "maintenance": []}, rt.get("sessions")
     assert "substrate-models-seed" in start and "models.toml" in start, "the start script must seed the catalog"
     assert re.search(r'if \[ ! -e "\$models" \]', start), "seed only when absent"
     assert "install -m 600" in start, "the seeded catalog is private to the user"
@@ -247,6 +258,7 @@ pkgs.runCommand "substrate-modules"
     assert client["floor_url"].startswith("https://") and client["token_file"] == "@FLOOR_TOKEN_FILE@", client
     p = client["puller"]
     assert p["holder"] == "coordinator" and p["link_token_file"] == "@LINK_TOKEN_FILE@" and p["seat"] == "cc", p
+    assert "session_scope" not in p, p
     assert p["node_dispatch"] == "local" and p["runtimes"].endswith("substrate-runtimes.toml") and isinstance(p["max_runs"], int) and p["max_runs"] >= 1, p
     assert p["state_dir"] == "/home/tom/.local/state/substrate/puller"
     assert p["pidfile"] == "@RUNTIME_DIRECTORY@/puller.pid" and isinstance(p["cap"], int) and p["cap"] >= 1, p

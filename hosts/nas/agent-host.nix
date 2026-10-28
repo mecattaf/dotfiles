@@ -18,6 +18,14 @@
       maxRuns = 1;
       cap = 1;
       defaultModel = "qwen3.8-flash-next";
+      # Keep the historical queues intact while commissioning only this work.
+      sessionScope = [ { project = "dotfiles"; thread = "T-69"; } ];
+      maintenance = [ {
+        project = "dotfiles";
+        thread = "T-69";
+        command = [ "/run/current-system/sw/bin/fleet-update-start" "--json" ];
+        status_command = [ "/run/current-system/sw/bin/fleet-update" "--status" "--json" ];
+      } ];
       claudeSeat = "cc";
       claudeConfigDir = "/home/tom/.claude";
     };
