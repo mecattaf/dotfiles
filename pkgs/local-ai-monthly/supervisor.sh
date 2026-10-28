@@ -8,7 +8,6 @@ period="$(TZ=Europe/Paris date +%Y-%m)"
 cutoff="$(TZ=Europe/Paris date +%F)"
 runtime_base="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/local-ai-monthly"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/local-ai-monthly"
-tally_program=tally
 
 usage() {
   cat <<'EOF'
@@ -20,8 +19,7 @@ usage: local-ai-monthly [options]
   --dotfiles-url URL        publication repository
   --base-branch BRANCH      accepted-state branch (default: main)
   --runtime-base PATH       transient run parent
-  --state-dir PATH          fixed Tally receipt directory
-  --tally PATH              exact tally executable for the nested GPU job
+  --state-dir PATH          durable receipt directory
 EOF
 }
 
@@ -53,10 +51,6 @@ while (($#)); do
       ;;
     --state-dir)
       state_dir="${2:?--state-dir requires a path}"
-      shift 2
-      ;;
-    --tally)
-      tally_program="${2:?--tally requires a path}"
       shift 2
       ;;
     --help|-h)
@@ -175,6 +169,21 @@ on_exit() {
 trap on_exit EXIT
 write_receipt
 
+# Nix on the NAS has zero local build jobs and the pinned compute builder.
+# Recheck capacity for every build stage, including the final package gate.
+build_on_compute() {
+  local available
+  fleet-exec strix-coordinator --cwd / -- df -h / >&2 || return
+  available="$(fleet-exec strix-coordinator --cwd / -- df --output=avail -B1 /)"
+  available="${available##*$'\n'}"
+  available="${available//[[:space:]]/}"
+  if [[ ! "$available" =~ ^[0-9]+$ ]] || ((available < 25 * 1024 * 1024 * 1024)); then
+    printf 'local-ai-monthly: compute has less than 25 GiB free or capacity is unknown\n' >&2
+    return 1
+  fi
+  nix build "$@"
+}
+
 dotfiles="$run_dir/dotfiles"
 capture="$run_dir/capture"
 clones="$run_dir/sources"
@@ -201,7 +210,6 @@ nix eval --json --no-write-lock-file "path:$dotfiles#lib.localModelCatalog" \
   > "$capture/catalog.json"
 endpoint="$(jq -r '.inference.url // empty' "$registry")"
 endpoint="${endpoint:-${LOCAL_MODEL_ENDPOINT:?LOCAL_MODEL_ENDPOINT is required}}"
-tally_pool="$(jq -er '.inference.tally_pool | select(type == "string" and length > 0)' "$registry")"
 models_url="${endpoint%/}"
 if [[ "$models_url" != */v1 ]]; then
   models_url="$models_url/v1"
@@ -219,7 +227,7 @@ if ((${#tallies[@]} > 0)); then
 fi
 shopt -u nullglob
 
-prepared="$(nix build --offline --no-link --print-out-paths \
+prepared="$(build_on_compute --offline --no-link --print-out-paths \
   --file "$LOCAL_AI_STAGES" \
   --argstr system "$LOCAL_AI_STAGE_SYSTEM" \
   --argstr bashPath "$LOCAL_AI_STAGE_BASH" \
@@ -231,7 +239,7 @@ prepared="$(nix build --offline --no-link --print-out-paths \
 
 hf_response_limit="$(jq -r '.limits.hf_metadata_response_bytes // 5000000' "$registry")"
 "$LOCAL_AI_HF_CAPTURE" "$prepared/hf-requests.json" "$hf_capture" "$hf_response_limit"
-enriched="$(nix build --offline --no-link --print-out-paths \
+enriched="$(build_on_compute --offline --no-link --print-out-paths \
   --file "$LOCAL_AI_STAGES" \
   --argstr system "$LOCAL_AI_STAGE_SYSTEM" \
   --argstr bashPath "$LOCAL_AI_STAGE_BASH" \
@@ -252,33 +260,18 @@ provider="$(jq -r '.provider' "$enriched/model.json")"
 model_id="$(jq -r '.model_id' "$enriched/model.json")"
 model_timeout="$(jq -r '.limits.model_timeout_seconds' "$registry")"
 commentary="$run_dir/pr-commentary.md"
-pi_state="$run_dir/pi-state"
-evidence_digest="$(sha256sum "$enriched/evidence.md" "$enriched/context.md" "$enriched/hf-metadata.md" \
-  | sha256sum | cut -d' ' -f1)"
+utility_state="$run_dir/utility-state"
 
-if [[ -z "${TALLY_SOCKET:-}" || -z "${TALLY_JOB_ID:-}" ]]; then
-  printf 'local-ai-monthly: the Pi step requires a parent Tally job with child enqueue capability\n' >&2
-  exit 1
-fi
-"$tally_program" --socket "$TALLY_SOCKET" enqueue \
-  --source orchestrator \
-  --pool "$tally_pool" \
-  --priority low \
-  --dedup-key "local-ai-judge-$period-${evidence_digest:0:20}" \
-  --runtime-max-sec "$model_timeout" \
-  --no-enqueue \
-  --wait \
-  --evidence exit:0 \
-  --evidence "artifact:$commentary" \
-  --evidence hash:sha256 \
-  -- "$LOCAL_AI_JUDGE" \
+# Substrate admits the outer job. This evidence-only call needs neither an
+# agent harness nor a nested job on the retired Tally scheduler.
+LOCAL_AI_MODEL_TIMEOUT="$model_timeout" "$LOCAL_AI_JUDGE" \
     "$LOCAL_AI_PROMPT" \
     "$enriched/evidence.md" \
     "$enriched/context.md" \
     "$enriched/hf-metadata.md" \
-    "$provider" "$model_id" "$commentary" "$pi_state"
+    "$provider" "$model_id" "$commentary" "$utility_state" "$endpoint"
 
-finalized="$(nix build --offline --no-link --print-out-paths \
+finalized="$(build_on_compute --offline --no-link --print-out-paths \
   --file "$LOCAL_AI_STAGES" \
   --argstr system "$LOCAL_AI_STAGE_SYSTEM" \
   --argstr bashPath "$LOCAL_AI_STAGE_BASH" \
@@ -315,7 +308,7 @@ if ((${#staged[@]} != 1)) || [[ "${staged[0]}" != pkgs/local-ai-monthly/sources.
 fi
 git -C "$pr_tree" diff --cached --check
 jq -e '.schema_version == 1' "$pr_tree/pkgs/local-ai-monthly/sources.json" >/dev/null
-nix build --no-link --no-write-lock-file "path:$pr_tree#local-ai-monthly"
+build_on_compute --no-link --no-write-lock-file "path:$pr_tree#local-ai-monthly"
 
 git -C "$pr_tree" commit -m "chore(local-ai): advance $period review pins"
 remote_sha="$(git -C "$pr_tree" ls-remote --heads origin "refs/heads/$branch" | cut -f1)"

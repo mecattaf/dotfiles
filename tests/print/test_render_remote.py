@@ -106,6 +106,18 @@ class RemoteRenderTests(unittest.TestCase):
                 bridge.client(args)
             self.assertFalse(args.output_dir.exists())
 
+    def test_dormant_worker_is_rejected_before_ssh(self):
+        with tempfile.TemporaryDirectory() as raw:
+            args = bridge.parser().parse_args([str(Path(raw) / "source.md"),
+                                              "--output-dir", str(Path(raw) / "job")])
+            args.input.write_text("# Brief\n")
+            with (mock.patch.dict(os.environ, {"PAPER_RENDER_HOST": "strix-worker"}),
+                  mock.patch.object(bridge, "exchange") as exchange,
+                  self.assertRaisesRegex(ValueError, "dormant")):
+                bridge.client(args)
+            exchange.assert_not_called()
+            self.assertFalse(args.output_dir.exists())
+
     def test_exchange_stops_unbounded_output(self):
         with self.assertRaisesRegex(ValueError, "response/log limit"):
             bridge.exchange([sys.executable, "-c", "import sys; sys.stdout.write('x'*200000)"],

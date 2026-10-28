@@ -1,6 +1,6 @@
 ---
 name: drain
-description: Manually distill the exact current root Claude Code or Codex session into the local Markdown journal through the request-scoped GPU utility model (the utility-model wrapper on the strix, which forwards one request to the local model server on strix-coordinator). Use only when the user explicitly invokes /drain or $drain, or plainly asks to drain the current session.
+description: Manually distill the exact current root Claude Code or Codex session into the local Markdown journal through the request-scoped GPU utility model (utility-model on the NAS agent host forwards one request to Gufo on strix-coordinator). Use only when the user explicitly invokes /drain or $drain, or plainly asks to drain the current session.
 ---
 
 # Drain the current session
