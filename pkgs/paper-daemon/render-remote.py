@@ -80,8 +80,8 @@ def client(args: argparse.Namespace) -> int:
     if len(source) > MAX_SOURCE:
         raise ValueError(f"Markdown exceeds {MAX_SOURCE} bytes")
     host = os.environ.get("PAPER_RENDER_HOST", "strix-coordinator")
-    if host not in ("strix-coordinator", "strix-worker"):
-        raise ValueError("PAPER_RENDER_HOST must name a Strix compute host")
+    if host != "strix-coordinator":
+        raise ValueError("PAPER_RENDER_HOST must be strix-coordinator; strix-worker is dormant")
     program = os.environ.get("PAPER_RENDER_PROGRAM", "/run/current-system/sw/bin/paper-render")
     if not program.startswith("/") or "\x00" in program:
         raise ValueError("PAPER_RENDER_PROGRAM must be an absolute compute path")

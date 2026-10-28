@@ -12,21 +12,17 @@
   liberation_ttf,
   dejavu_fonts,
   poppler-utils,
-  writeShellApplication,
+  utility-model,
 }:
 let
-  localModel = import ../../lib/local-model.nix;
-  utility = writeShellApplication {
-    name = "utility-model";
-    runtimeInputs = [ python3 ];
-    text = ''
-      exec ${lib.getExe python3} ${../utility-model/utility_model.py} "$@" \
-        --endpoint ${lib.escapeShellArg localModel.endpoint} \
-        --concrete-model ${lib.escapeShellArg localModel.modelId} --context-tokens 102400
-    '';
-  };
   fonts = makeFontsConf {
-    fontDirectories = [ eb-garamond libre-baskerville source-serif liberation_ttf dejavu_fonts ];
+    fontDirectories = [
+      eb-garamond
+      libre-baskerville
+      source-serif
+      liberation_ttf
+      dejavu_fonts
+    ];
   };
 in
 stdenvNoCC.mkDerivation {
@@ -45,7 +41,14 @@ stdenvNoCC.mkDerivation {
       --set PAPER_PRINT_AUTO $share/scripts/print-auto.py \
       --set FONTCONFIG_FILE ${fonts} \
       --set PYTHONDONTWRITEBYTECODE 1 \
-      --prefix PATH : ${lib.makeBinPath [ chromium fontconfig poppler-utils utility ]}
+      --prefix PATH : ${
+        lib.makeBinPath [
+          chromium
+          fontconfig
+          poppler-utils
+          utility-model
+        ]
+      }
     runHook postInstall
   '';
   meta = {
