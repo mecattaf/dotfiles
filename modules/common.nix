@@ -27,6 +27,7 @@
     ./printing.nix # CUPS + Brother IPP/raw-text path (active fleet + future hosts)
     ./failure-surfacing.nix # OnFailure + coredump surfacing, fleet-wide — refs #134
     ./fleet-revision.nix # every closure records its flake revision (was in update-adopt.nix)
+    ./fleet-update.nix # deterministic Floor-owned update transaction; no local clock
   ];
 
   myFailureSurfacing = {

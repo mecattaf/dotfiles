@@ -2,6 +2,17 @@
   "_comment": "What the nightly update check (home/dot_local/bin/update-check, #550) watches. One entry per flake input, one rolling PR per entry (branch update/<input>). follow = branch: the input tracks a branch and `nix flake update <input>` moves it. follow = release: flake.nix pins a tag or a commit, and the check moves the pin to the newest stable GitHub release. versions are flake attribute paths read before and after; notes name the GitHub releases whose bodies go into the PR for the version range. hosts are the closures the gate builds; build names any further flake output it builds (a package no host enables yet). switch is what a switch to the bump restarts, written for Tom. Adding a program is an edit here. The clock is a routine on the substrate floor (substrate T-7); nothing in this repo schedules it. issues watches report new upstream kernel series without changing the selected series; kernel compares major.minor only and ignores release candidates.",
   "inputs": [
     {
+      "name": "nixpkgs-stable",
+      "follow": "branch",
+      "hosts": [
+        "nas"
+      ],
+      "versions": {
+        "nixos (nas)": "nixosConfigurations.nas.config.system.nixos.version"
+      },
+      "switch": "NAS stable userspace follows its configured Nix branch. fleet-update tests/builds on coordinator, then inspects activation effects and idleness; unknown or disruptive effects remain pending."
+    },
+    {
       "name": "llm-agents",
       "follow": "branch",
       "hosts": [
@@ -117,6 +128,9 @@
       ],
       "versions": {
         "google-chrome": "nixosConfigurations.client.pkgs.google-chrome.version",
+        "tailscale (nas)": "nixosConfigurations.nas.config.services.tailscale.package.version",
+        "tailscale (client)": "nixosConfigurations.client.config.services.tailscale.package.version",
+        "tailscale (coordinator)": "nixosConfigurations.strix-coordinator.config.services.tailscale.package.version",
         "uv": "nixosConfigurations.strix-coordinator.pkgs.uv.version",
         "linux (strix)": "nixosConfigurations.strix-coordinator.config.boot.kernelPackages.kernel.version",
         "linux (nas)": "nixosConfigurations.nas.config.boot.kernelPackages.kernel.version",
@@ -127,6 +141,10 @@
         "linux (worker)": "nixosConfigurations.strix-worker.config.boot.kernelPackages.kernel.version"
       },
       "notes": {
+        "tailscale (nas)": {
+          "repo": "tailscale/tailscale",
+          "tagPrefix": "v"
+        },
         "fish": {
           "repo": "fish-shell/fish-shell",
           "tagPrefix": ""
@@ -140,7 +158,7 @@
           "tagPrefix": "wrangler@"
         }
       },
-      "switch": "A new kernel is only staged: it runs after the next reboot, which stays Tom's to name. Chrome on the client updates with `deploy .#client`; the NAS takes this only on a NAS deploy, which is a decision."
+      "switch": "Kernels are staged until the next explicit reboot. fleet-update builds NAS and coordinator on compute and installs each when idle and safe. Any Tailscale daemon restart that could affect transport remains pending; existing sessions and open applications retain their process."
     }
   ],
   "issues": [

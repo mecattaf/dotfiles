@@ -5,6 +5,22 @@ description: Run the dotfiles nightly update check on the strix and digest what 
 
 # Update check
 
+The nightly installation path is now the fixed trusted maintenance tool
+`fleet_update_start` (no arguments), which runs
+`/run/current-system/sw/bin/fleet-update-start --json` on NAS. It starts an
+independent `fleet-update.service`; no model shell, turn limit or additional
+timer owns the build. Read `fleet_update_status` (no arguments) or
+`fleet-update --status --json` for actual completion and pending exceptions.
+A service/worker launch is not completion. The worker updates configured Nix
+package inputs, builds/tests NAS and coordinator on coordinator, and installs
+only after target-local idle and activation safety checks. It first advances
+llm-agents programs independently of the full base, so staged Tailscale or
+systemd changes cannot starve new-launch tools. See
+`docs/nightly-fleet-update.md` for state, recovery and transport limitations.
+
+The following workflow is the **manual PR and optional digest tool**. Do not
+dispatch it as the nightly installation job.
+
 The nightly update check is mechanical by default (#550). The optional digest is comment-only. The clock is a routine on the
 substrate floor (substrate T-7); nothing in dotfiles schedules it. The logic
 is here: `update-check` (home/dot_local/bin/update-check) does every

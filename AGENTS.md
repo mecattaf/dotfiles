@@ -44,31 +44,35 @@ NetworkManager dispatcher only when a fallback Wi-Fi rung comes up, and it exits
 as soon as thomas-6ghz is back. Nothing starts it at boot or on a schedule; it
 has no timer and no `OnCalendar` (tests/closet-topology asserts both).
 
-**Nightly update check (#550, Tom 2026-10-14).** Tom: "nightly, i want to be
-chekcing codex and cc and other programs for their latest version and
-ingesting it, potentially also with the new features that they entail". The
-clock is a substrate floor routine (substrate T-7), never a timer here. This
-repo holds the logic: `update-check` (home/dot_local/bin) reads
-`lib/update-watch.json`, and for each input whose upstream moved a program we
-use, rebuilds the rolling branch `update/<input>` from main, runs the gate and
-opens or refreshes one PR. The PR is a draft when the gate fails. The check
-skips the bump when no watched program changed version, and closes the PR
-once main carries the input. Fish, kitty and Wrangler ride the existing nixpkgs-fresh leaf overlay;
-new stable kernel major.minor series are issue watches. The Projects
-floor routine uses `update-check --if-idle --background --json`: soft hourly opportunities,
-load/Nix/Herdr admission checks and one completed attempt per Paris night.
-Every defer and failure is recorded. The detached worker survives the Floor
-turn limit, inherits its lock and writes a durable job result; a launch receipt
-is not a successful check. No local timer is installed. Digests are
-opt-in and comment-only; the routine makes no adoption commits. Earlier
-review commits without `Update-Check: bump` survive refreshes, or a conflict
-aborts before the remote changes. Nothing merges, switches or restarts without
-Tom. Adding a program is an entry in the watch file.
-Imported release notes must stay in collision-safe literal text fences, with
-only their release-page links outside. Contributor mentions and upstream
-issue/PR references must never become active GitHub Markdown in generated PR
-bodies or digest comments (2026-10-22 notification incident). Truncate source
-text before fencing it, never the rendered wrapper.
+**Nightly fleet updates (#550, Tom 2026-10-28).** The single Floor clock
+fires the trusted DSH maintenance tool for dotfiles T-69. That fixed launcher
+starts `fleet-update.service` in the NAS user manager, outside model bash and
+its NoNewPrivileges sandbox. No local timer or boot trigger is added.
+`fleet-update` updates the configured Nix package inputs, stages exact sources
+on strix-coordinator and builds/tests both NAS and coordinator generations
+there, with no NAS builds, no dormant-worker work and a >=25 GiB disk gate
+before each build. It first advances llm-agents programs, then the full
+package base; this keeps staged Tailscale/systemd changes from starving new
+Claude Code, Codex and DSH launches. NAS retains every credential.
+
+The standing authorization covers mechanical lock-only adoption and known-safe
+idle activation. Target-local Herdr/Nix/load/Gufo work checks, activation helper
+inspection and protected-service checks remain mandatory. Unknown effects and
+transport restarts stay pending; no automatic reboot or Herdr/user-manager
+restart. The same worker resumes pending work, with truthful durable owner and
+completion receipts. A later Floor firing coalesces a pending night into the
+newest candidate without losing the desired full upgrade. Source drift or a
+dirty canonical checkout never gets overwritten. See
+`docs/nightly-fleet-update.md` for state, recovery and commissioning limits.
+A PR, launch, build or schedule alone is not evidence that the fleet is updated.
+
+`update-check` remains the manual release-note/rolling-PR tool on coordinator;
+its digest is opt-in and comment-only. It never installs. Imported notes stay
+in collision-safe literal fences, with only release-page links outside; never
+activate contributor mentions or upstream issue/PR references in generated
+GitHub text. Its legacy gate refuses NAS execution and excludes the dormant
+worker. `lib/update-watch.json` remains its watch list; `lib/fleet-update.json`
+selects the deterministic installer's package inputs and actual test outputs.
 
 **Fleet target (Tom, 2026-10-22/23).** Rename strix to `strix-coordinator`;
 `strix-worker` returns. Both are headless Ethernet compute hosts. The NAS is
@@ -78,8 +82,8 @@ Tailscale and the Library. The Zenbook client is the physical seat, with Huion
 and Magic Trackpad; Otto is the incoming compositor base. strix-coordinator
 keeps its independent Tailscale fallback; use ordinary OpenSSH. Speech defaults to
 client; synthesis stays on compute. These are cutover targets, not a claim
-that the migration is live. Preserve Herdr sessions; activation and reboot
-remain deliberate, supervised steps.
+that the migration is live. Preserve Herdr sessions; ordinary package activation follows the explicit
+nightly idle/safety policy, and reboot remains a deliberate, supervised step.
 
 **Runtime isolation (2026-09-16 incident).** Tests and experiments that source
 shell-script fragments, clean runtime directories, or launch test compositors
