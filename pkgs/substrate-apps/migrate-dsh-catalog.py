@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Plan/apply the explicit Pi-to-DSH model-catalog migration; never run at activation."""
+"""Plan/apply Pi-to-DSH catalog migration during exclusive catalog maintenance.
+
+Stop catalog edits while applying, or have writers take models.toml.migration.lock.
+This tool serializes migrations; it cannot serialize an editor that ignores locks.
+Never run automatically at Nix activation.
+"""
 import argparse
 import copy
 import contextlib
@@ -117,7 +122,8 @@ def main():
                     out.write(rendered)
                     out.flush()
                     os.fsync(out.fileno())
-                # Never overwrite an intervening manual edit.
+                # Detect edits before publication. Manual writers must share the
+                # migration lock or stop editing during this explicit maintenance.
                 if path.read_bytes() != original:
                     raise ValueError("catalog changed during migration; original left in place")
                 os.replace(staged, path)
