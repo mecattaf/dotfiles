@@ -474,24 +474,30 @@ in
       };
 
       sessionScope = mkOption {
-        type = types.nullOr (types.listOf (types.submodule {
-          options = {
-            project = mkOption { type = types.str; };
-            thread = mkOption { type = types.str; };
-          };
-        }));
+        type = types.nullOr (
+          types.listOf (
+            types.submodule {
+              options = {
+                project = mkOption { type = types.str; };
+                thread = mkOption { type = types.str; };
+              };
+            }
+          )
+        );
         default = null;
         description = "Optional project/thread admission pairs. Null keeps unscoped admission; an explicit empty list denies all. Uses LeaseScoped so an older Floor fails closed instead of replaying unrelated queued work.";
       };
       maintenance = mkOption {
-        type = types.listOf (types.submodule {
-          options = {
-            project = mkOption { type = types.str; };
-            thread = mkOption { type = types.str; };
-            command = mkOption { type = types.listOf types.str; };
-            status_command = mkOption { type = types.listOf types.str; };
-          };
-        });
+        type = types.listOf (
+          types.submodule {
+            options = {
+              project = mkOption { type = types.str; };
+              thread = mkOption { type = types.str; };
+              command = mkOption { type = types.listOf types.str; };
+              status_command = mkOption { type = types.listOf types.str; };
+            };
+          }
+        );
         default = [ ];
         description = "Trusted fixed maintenance argv exposed only to the exact Floor-generated thread provenance; never a model shell command.";
       };
