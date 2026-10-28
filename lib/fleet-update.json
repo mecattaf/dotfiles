@@ -1,7 +1,8 @@
 {
   "hosts": ["nas", "strix-coordinator"],
-  "inputs": ["nixpkgs", "nixpkgs-stable", "nixpkgs-fresh", "llm-agents"],
+  "inputs": ["nixpkgs", "nixpkgs-stable", "nixpkgs-fresh", "llm-agents", "agent-tools"],
   "checks": [
+    ".#checks.x86_64-linux.agent-tools-source",
     ".#checks.x86_64-linux.fleet-update",
     ".#checks.x86_64-linux.update-check",
     ".#checks.x86_64-linux.dsh-config",

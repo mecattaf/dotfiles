@@ -130,15 +130,18 @@
     # and tooling (claude-code, codex, gemini-cli, opencode, crush, goose, amp,
     # ...). Its `overlays.default` exposes the whole set, prebuilt against its OWN
     # fresh nixpkgs-unstable, under the namespaced `pkgs.llm-agents.*` — so it
-    # neither re-evaluates our nixpkgs nor collides with it. This is how we get
-    # newest claude-code DECOUPLED from our (deliberately lagging) nixpkgs pin.
-    # Nightly fleet builds re-resolve this input at HEAD via
-    # `rollingInputOverrides`; `nix flake update llm-agents` updates the local and
-    # failure-fallback lock without touching kernel/Mesa.
+    # neither re-evaluates our nixpkgs nor collides with it. Catalog helpers
+    # stay on this pin; the three harnesses use agent-tools below. Updating
+    # either catalog does not touch the fleet's kernel/Mesa source.
     # Deliberately NO inputs.nixpkgs.follows — following our pin would rebuild
     # against stale deps and miss the numtide cache (substituter added in
-    # modules/common.nix). home/home.nix installs the entire set via buildEnv.
+    # modules/common.nix). home/agent-tools.nix installs an explicit allowlist.
     llm-agents.url = "github:numtide/llm-agents.nix";
+
+    # The three interactive harnesses advance independently of catalog helpers
+    # such as QMD. Keep a separate lock, including upstream's own dependency
+    # graph, so a programs-only update cannot rebuild those other consumers.
+    agent-tools.url = "github:numtide/llm-agents.nix";
 
     # flake-utils — shared by git-ai and deploy-rs through `follows`. It used to
     # be reached as "tally/flake-utils"; the Tally inputs (tally, tally-b,
@@ -261,6 +264,10 @@
           url = "github:numtide/llm-agents.nix";
         }
         {
+          name = "agent-tools";
+          url = "github:numtide/llm-agents.nix";
+        }
+        {
           name = "nix-amd-ai";
           url = "github:noamsto/nix-amd-ai";
         }
@@ -312,10 +319,16 @@
       overlays = [
         self.overlays.default
         (final: _prev: {
-          # Whole llm-agents catalog under `pkgs.llm-agents.*` (prebuilt from its
-          # own nixpkgs — no second eval of ours). home/home.nix pulls an
-          # allowlisted set out of this namespace. See the input comment above.
-          llm-agents = inputs.llm-agents.packages.${system};
+          # Preserve the catalog API used by home/agent-tools.nix and pkgs/dsh.
+          # Only the three harnesses use the independent freshness input; QMD
+          # and all other catalog helpers retain their original source graph.
+          llm-agents =
+            inputs.llm-agents.packages.${system}
+            // builtins.intersectAttrs {
+              claude-code = null;
+              codex = null;
+              dsh = null;
+            } inputs.agent-tools.packages.${system};
           sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { };
           sf-pro = final.callPackage ./pkgs/sf-pro.nix { };
           anthropic-mono-nerd = final.callPackage ./pkgs/anthropic-mono-nerd.nix { };
@@ -626,6 +639,36 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        agent-tools-source =
+          let
+            agentNames = [
+              "claude-code"
+              "codex"
+              "dsh"
+            ];
+            helperNames = [
+              "ccusage"
+              "ck"
+              "claude-agent-acp"
+              "claude-code-router"
+              "qmd"
+              "spec-kit"
+              "cc-switch-cli"
+            ];
+            brain = self.nixosConfigurations.nas.pkgs;
+          in
+          assert nixpkgs.lib.all (
+            name:
+            pkgs.llm-agents.${name}.drvPath == inputs.agent-tools.packages.${system}.${name}.drvPath
+            && brain.llm-agents.${name}.drvPath == inputs.agent-tools.packages.${system}.${name}.drvPath
+          ) agentNames;
+          assert nixpkgs.lib.all (
+            name:
+            pkgs.llm-agents.${name}.drvPath == inputs.llm-agents.packages.${system}.${name}.drvPath
+            && brain.llm-agents.${name}.drvPath == inputs.llm-agents.packages.${system}.${name}.drvPath
+          ) helperNames;
+          assert brain.dsh.unwrapped.drvPath == inputs.agent-tools.packages.${system}.dsh.drvPath;
+          pkgs.runCommand "agent-tools-source" { } ''touch "$out"'';
         fleet-agent-transport = import ./tests/fleet-agent-transport {
           inherit pkgs self;
           inherit (nixpkgs) lib;
