@@ -40,6 +40,10 @@ through a removed harness.
 The NAS executor narrows leases server-side to `dotfiles/T-69` via the distinct
 `LeaseScoped` operation. An older Floor fails closed; it cannot ignore an
 optional filter and grant unrelated queued work. Historical queues stay intact.
+Scoped admission receipts are persisted before grants or verdicts. Recovery
+requires a matching scope, attempt and grant hash, so the same job can resume
+after a crash. Legacy or changed-scope held state, verdicts and pending request
+keys are refused before any renewal or completion; inspect them explicitly.
 The model capability prevents inherited project effort settings from requesting
 unsupported reasoning; receipts distinguish requested effort from effective off.
 Only this thread receives trusted fixed-argv `fleet_update_start` and
