@@ -44,7 +44,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { Schema } from "effect";
 import { parse as parseToml } from "smol-toml";
-import { PI_PROVIDER_NAMES, type HarnessName, type PiProvider } from "./harness.ts";
+import { MODEL_PROVIDER_NAMES, type HarnessName, type ModelProvider } from "./harness.ts";
 
 /** Utilization ceilings in percent: at or above one, the capacity gate refuses this model. */
 export interface ModelCeilings {
@@ -74,7 +74,7 @@ export interface ModelEntry {
   readonly id: string;
   readonly harness: HarnessName;
   /** pi only: the provider this id is served by (harness.ts PI_PROVIDERS). Absent: gufo. */
-  readonly provider?: PiProvider;
+  readonly provider?: ModelProvider;
   readonly aliases?: readonly string[];
   /** The harness default when a call names no allowed model. At most one per harness (per provider for pi). */
   readonly default?: boolean;
@@ -107,6 +107,7 @@ export type ModelAllowlist = readonly ModelEntry[];
 export const DEFAULT_MODEL_ALLOWLIST: ModelAllowlist = [
   { id: "claude-opus-5-5", harness: "claude", aliases: ["opus"], default: true },
   { id: "claude-fable-5-1", harness: "claude", aliases: ["fable"], ceilings: { model_scoped: 90 } },
+  { id: "qwen3.8-flash-next", harness: "dsh", provider: "gufo", default: true, aliases: ["local", "nightly"] },
   { id: "qwen3.8-flash-next", harness: "pi", default: true },
   { id: "qwen3.8-max", harness: "pi", provider: "qwen-token-plan", default: true },
   { id: "deepseek/deepseek-v4-pro", harness: "pi", provider: "openrouter", aliases: ["deepseek"], default: true },
@@ -116,7 +117,7 @@ export const DEFAULT_MODEL_ALLOWLIST: ModelAllowlist = [
 ];
 
 /** The provider an entry belongs to: its own for pi (default gufo), none for the other harnesses. */
-const providerOf = (e: ModelEntry): PiProvider | undefined => (e.harness === "pi" ? (e.provider ?? "gufo") : undefined);
+const providerOf = (e: ModelEntry): ModelProvider | undefined => (e.harness === "dsh" ? (e.provider ?? "gufo") : e.harness === "pi" ? (e.provider ?? "gufo") : undefined);
 
 export interface ResolvedModel {
   /** The full id that runs; undefined only for a harness with no default (codex's own default). */
@@ -126,8 +127,8 @@ export interface ResolvedModel {
   readonly ceilings?: ModelCeilings;
 }
 
-export function resolveModel(list: ModelAllowlist, harness: HarnessName, declared: string | undefined, provider?: PiProvider): ResolvedModel {
-  const want = harness === "pi" ? (provider ?? "gufo") : undefined;
+export function resolveModel(list: ModelAllowlist, harness: HarnessName, declared: string | undefined, provider?: ModelProvider): ResolvedModel {
+  const want = harness === "dsh" ? (provider ?? "gufo") : harness === "pi" ? (provider ?? "gufo") : undefined;
   const mine = list.filter((e) => e.harness === harness && providerOf(e) === want);
   const hit =
     declared === undefined
@@ -144,15 +145,17 @@ export function modelAllowlistProblems(list: ModelAllowlist): string[] {
   const ids = new Set<string>();
   const defaults = new Map<string, number>();
   for (const e of list) {
-    if (ids.has(e.id)) problems.push(`models: ${e.id} is listed twice`);
-    ids.add(e.id);
-    if (e.provider !== undefined && e.harness !== "pi") problems.push(`models: ${e.id} names provider ${e.provider}, which only a pi entry may`);
-    if (e.pi !== undefined && e.harness !== "pi") problems.push(`models: ${e.id} carries a [models.pi] table, which only a pi entry may`);
+    const identity = `${e.harness}:${providerOf(e) ?? ""}:${e.id}`;
+    if (ids.has(identity)) problems.push(`models: ${e.id} is listed twice`);
+    ids.add(identity);
+    if (e.provider !== undefined && e.harness !== "pi" && e.harness !== "dsh") problems.push(`models: ${e.id} names provider ${e.provider}, which only a pi or dsh entry may`);
+    if (e.pi !== undefined && e.harness !== "pi") problems.push(`models: ${e.id} carries a [models.pi] table, which only a pi or dsh entry may`);
     for (const k of ["context_window", "max_tokens"] as const) {
       const v = e.pi?.[k];
       if (v !== undefined && !(Number.isInteger(v) && v > 0)) problems.push(`models: ${e.id} pi.${k} must be a positive integer`);
     }
-    const slot = e.harness === "pi" ? `pi (provider ${providerOf(e)})` : e.harness;
+    if (e.harness === "dsh" && (e.provider ?? "gufo") !== "gufo") problems.push(`models: ${e.id} dsh currently serves provider gufo only`);
+    const slot = e.harness === "pi" || e.harness === "dsh" ? `${e.harness} (provider ${providerOf(e)})` : e.harness;
     if (e.default) defaults.set(slot, (defaults.get(slot) ?? 0) + 1);
     for (const [k, v] of Object.entries(e.ceilings ?? {})) {
       if (typeof v !== "number" || !(v > 0 && v <= 100)) problems.push(`models: ${e.id} ceiling ${k} must be in (0, 100]`);
@@ -184,8 +187,8 @@ const PiMeta = Schema.Struct({
 /** One `[[models]]` table (runtimes.toml inline, or the models file). */
 export const ModelEntrySchema = Schema.Struct({
   id: Schema.String,
-  harness: Schema.Literals(["claude", "pi", "codex"]),
-  provider: Schema.optionalKey(Schema.Literals(PI_PROVIDER_NAMES as unknown as readonly [PiProvider, ...PiProvider[]])),
+  harness: Schema.Literals(["claude", "pi", "dsh", "codex"]),
+  provider: Schema.optionalKey(Schema.Literals(MODEL_PROVIDER_NAMES as unknown as readonly [ModelProvider, ...ModelProvider[]])),
   aliases: Schema.optionalKey(Schema.Array(Schema.String)),
   default: Schema.optionalKey(Schema.Boolean),
   ceilings: Schema.optionalKey(Ceilings),
@@ -241,9 +244,9 @@ export function catalogFor(config: { readonly models?: ModelAllowlist; readonly 
 }
 
 /** The entry that `resolveModel` chose, for its metadata (ceilings, pi). */
-export function entryFor(list: ModelAllowlist, harness: HarnessName, id: string | undefined, provider?: PiProvider): ModelEntry | undefined {
+export function entryFor(list: ModelAllowlist, harness: HarnessName, id: string | undefined, provider?: ModelProvider): ModelEntry | undefined {
   if (id === undefined) return undefined;
-  const want = harness === "pi" ? (provider ?? "gufo") : undefined;
+  const want = harness === "dsh" ? (provider ?? "gufo") : harness === "pi" ? (provider ?? "gufo") : undefined;
   return list.find((e) => e.harness === harness && providerOf(e) === want && e.id === id);
 }
 

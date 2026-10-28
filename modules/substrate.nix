@@ -113,6 +113,7 @@ let
       drain_timeout_s = cfg.puller.drainTimeoutS;
       capacity_wait_s = cfg.puller.capacityWaitS;
     }
+    // lib.optionalAttrs (cfg.puller.sessionScope != null) { session_scope = cfg.puller.sessionScope; }
     // lib.optionalAttrs (cfg.puller.axServer != null) { ax_server = cfg.puller.axServer; }
     // lib.optionalAttrs (cfg.puller.healthAddr != null) { health_addr = cfg.puller.healthAddr; };
   });
@@ -149,17 +150,7 @@ let
       echo "substrate-puller: seeded $models" >&2
     fi
     command -v dsh >/dev/null || { echo "substrate-puller: DSH is absent from the NAS profile" >&2; exit 78; }
-    ${pkgs.python3}/bin/python3 - "$models" <<'PYTHON'
-    import sys, tomllib
-    with open(sys.argv[1], "rb") as source:
-        models = tomllib.load(source).get("models", [])
-    if any(model.get("harness") == "pi" for model in models):
-        print("substrate-puller: retired Pi catalog; review substrate-dsh-catalog, then apply explicitly", file=sys.stderr)
-        raise SystemExit(78)
-    if not any(model.get("harness") == "dsh" and model.get("provider") == "gufo" for model in models):
-        print("substrate-puller: no DSH Gufo model configured", file=sys.stderr)
-        raise SystemExit(78)
-    PYTHON
+    ${lib.getExe substrateApps.catalogMigrate} --check --file "$models"
     # Review 2026-09-24 (low): hostHarnessEnv passes CREDENTIALS_DIRECTORY through to every host agent. The token
     # paths are already in the rendered files, so the variable is dropped here; the directory stays readable.
     unset CREDENTIALS_DIRECTORY
@@ -482,6 +473,28 @@ in
         description = "Extra type = \"ssh\" runtimes, one [runtime.\"<name>\"] table each (name ^ssh:[A-Za-z0-9][A-Za-z0-9_.@-]*$), MERGED into the default `runtimes` and appended to its allow list; timeoutMs is callTimeoutMs.<name>, else callTimeoutMs.gufo. The runner (packages/runners/src/ssh.ts) runs the job in its own remote session, kills that process group on timeout or abort over a second ssh, and reaps leftover groups after a runner crash. Setting `runtimes` by hand drops these (an assertion says so).";
       };
 
+      sessionScope = mkOption {
+        type = types.nullOr (types.listOf (types.submodule {
+          options = {
+            project = mkOption { type = types.str; };
+            thread = mkOption { type = types.str; };
+          };
+        }));
+        default = null;
+        description = "Optional project/thread admission pairs. Null keeps unscoped admission; an explicit empty list denies all. Uses LeaseScoped so an older Floor fails closed instead of replaying unrelated queued work.";
+      };
+      maintenance = mkOption {
+        type = types.listOf (types.submodule {
+          options = {
+            project = mkOption { type = types.str; };
+            thread = mkOption { type = types.str; };
+            command = mkOption { type = types.listOf types.str; };
+            status_command = mkOption { type = types.listOf types.str; };
+          };
+        });
+        default = [ ];
+        description = "Trusted fixed maintenance argv exposed only to the exact Floor-generated thread provenance; never a model shell command.";
+      };
       runtimes = mkOption {
         type = tomlFormat.type;
         default = {
@@ -496,6 +509,7 @@ in
             project_bin = "${home}/.local/state/agency/project/cli/bin/project";
             project_url = "https://project.mecattaf.dev";
             project_token_file = "${home}/.config/project/token";
+            maintenance = cfg.puller.maintenance;
           };
           allow = [
             "opus"

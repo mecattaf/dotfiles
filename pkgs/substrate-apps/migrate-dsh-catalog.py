@@ -12,6 +12,7 @@ import datetime
 import fcntl
 import json
 import os
+import sys
 from pathlib import Path
 import tempfile
 import tomllib
@@ -91,9 +92,22 @@ def serialize(data):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--file", type=Path, default=Path.home() / ".config/substrate/models.toml")
-    ap.add_argument("--apply", action="store_true", help="write after private backup; default is read-only plan")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true", help="write after private backup; default is read-only plan")
+    mode.add_argument("--check", action="store_true", help="read-only executor readiness check; bad config exits 78")
     args = ap.parse_args()
     path = args.file.expanduser()
+    if args.check:
+        with path.open("rb") as source:
+            models = tomllib.load(source).get("models", [])
+        if any(model.get("harness") == "pi" for model in models):
+            print("substrate-puller: retired Pi catalog; review substrate-dsh-catalog, then apply explicitly", file=sys.stderr)
+            raise SystemExit(78)
+        if not any(model.get("harness") == "dsh" and model.get("provider") == "gufo" for model in models):
+            print("substrate-puller: no DSH Gufo model configured", file=sys.stderr)
+            raise SystemExit(78)
+        print(json.dumps({"status": "ready", "catalog": str(path)}))
+        return
     if path.is_symlink():
         raise ValueError("catalog is a symlink; migrate its explicit target instead")
     # Read-only plans create no lock or backup. Apply locks survive replacement.

@@ -111,7 +111,7 @@ export interface GateContext {
  * mounted cc credential paid). `ax` runs claude. codex spends a `codex`
  * seat, whose owner field still decides whether it is dispatchable.
  */
-export const HARNESS_PROVIDER: Readonly<Record<string, string | null>> = { claude: "claude", ax: "claude", pi: "gufo", codex: "codex" };
+export const HARNESS_PROVIDER: Readonly<Record<string, string | null>> = { claude: "claude", ax: "claude", pi: "gufo", dsh: "gufo", codex: "codex" };
 
 /**
  * The model a capacity source is asked about. Only a model that names one known
@@ -141,7 +141,7 @@ export function decideCapacity(
   let seat = read.seat;
   if (ctx.harness !== undefined) {
     const want =
-      ctx.harness === "pi" && ctx.seatProvider !== undefined
+      (ctx.harness === "pi" || ctx.harness === "dsh") && ctx.seatProvider !== undefined
         ? ctx.seatProvider
         : Object.hasOwn(HARNESS_PROVIDER, ctx.harness) ? HARNESS_PROVIDER[ctx.harness] : undefined;
     if (want === null || want === undefined || seat.provider !== want) {

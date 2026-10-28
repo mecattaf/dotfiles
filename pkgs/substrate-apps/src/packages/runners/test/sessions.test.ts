@@ -193,7 +193,7 @@ describe("agent({session}) is honoured or refused, never dropped", () => {
 describe("the runtime of a session call that names none", () => {
   it("runtime from model: the first permitted host runtime of the model's catalog harness and pi provider, never codex", async () => {
     const w = world({ extra: `[runtime.opus2]\ntype = "host"\n[runtime.vm]\ntype = "gvisor"\nrunsc = "/nix/store/x/bin/runsc"\nharness = "pi"\n` });
-    const cat = DEFAULT_MODEL_ALLOWLIST;
+    const cat = DEFAULT_MODEL_ALLOWLIST.filter(e => e.harness !== "dsh");
     expect(sessionRuntime(w.config, cat, "claude-opus-5-5", undefined)).toMatchObject({ name: "opus", via: "model" });
     expect(sessionRuntime(w.config, cat, "opus", "claude").name).toBe("opus");
     expect(sessionRuntime(w.config, cat, "qwen3.8-flash-next", "pi")).toMatchObject({ name: "gufo", runtime: { type: "host", harness: "pi" } });

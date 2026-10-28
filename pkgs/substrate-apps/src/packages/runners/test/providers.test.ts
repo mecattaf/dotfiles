@@ -104,7 +104,7 @@ describe("the model allowlist is per pi provider", () => {
   it("one default per (pi, provider); provider only on pi entries", () => {
     expect(() => parseRuntimesToml(`[[models]]\nid = "a"\nharness = "pi"\nprovider = "openrouter"\ndefault = true\n[[models]]\nid = "b"\nharness = "pi"\nprovider = "openrouter"\ndefault = true\n`, "t")).toThrow(/2 defaults/);
     expect(() => parseRuntimesToml(`[[models]]\nid = "a"\nharness = "pi"\ndefault = true\n[[models]]\nid = "b"\nharness = "pi"\nprovider = "openrouter"\ndefault = true\n`, "t")).not.toThrow();
-    expect(() => parseRuntimesToml(`[[models]]\nid = "a"\nharness = "claude"\nprovider = "openrouter"\n`, "t")).toThrow(/only a pi entry/);
+    expect(() => parseRuntimesToml(`[[models]]\nid = "a"\nharness = "claude"\nprovider = "openrouter"\n`, "t")).toThrow(/only a pi or dsh entry/);
   });
 });
 
@@ -127,7 +127,7 @@ describe("runtime tables with a provider", () => {
   });
 
   it("refuses a provider on another harness, and a cloud provider inside a sandbox", () => {
-    expect(() => parseRuntimesToml(`default = "x"\n[runtime.x]\ntype = "host"\nharness = "claude"\nprovider = "openrouter"\n`, "t")).toThrow(/pi harness only/);
+    expect(() => parseRuntimesToml(`default = "x"\n[runtime.x]\ntype = "host"\nharness = "claude"\nprovider = "openrouter"\n`, "t")).toThrow(/pi or dsh harness only/);
     expect(() => parseRuntimesToml(`default = "x"\n[runtime.x]\ntype = "gvisor"\nrunsc = "/bin/runsc"\nharness = "pi"\nprovider = "openrouter"\n`, "t")).toThrow(/host's pi models.json/);
     expect(() => parseRuntimesToml(`default = "x"\n[runtime.x]\ntype = "host"\nharness = "pi"\nprovider = "anthropic"\n`, "t")).toThrow();
   });

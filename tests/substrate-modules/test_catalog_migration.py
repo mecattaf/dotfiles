@@ -45,6 +45,14 @@ class Migration(unittest.TestCase):
         self.assertEqual(p.returncode == 0, success, p.stdout + p.stderr)
         return json.loads(p.stdout) if success else p.stderr
 
+    def test_startup_refuses_pi_once_with_config_exit_code(self):
+        p = subprocess.run([sys.executable, str(SCRIPT), "--file", str(self.catalog), "--check"], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 78, p.stderr)
+        self.assertIn("retired Pi catalog", p.stderr)
+        self.assertEqual(list(self.catalog.parent.iterdir()), [self.catalog])
+        self.run_migration("--apply")
+        self.assertEqual(self.run_migration("--check")["status"], "ready")
+
     def test_plan_has_no_filesystem_side_effect(self):
         result = self.run_migration()
         self.assertEqual(result["retired_models"], ["old-cloud-model"])
