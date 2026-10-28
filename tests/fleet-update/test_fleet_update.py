@@ -130,6 +130,64 @@ class Effects(unittest.TestCase):
         self.assertEqual(self.effects(active=["herdr.service"]), [])
         self.assertTrue(self.effects(active=["other-active.service"]))
 
+    def test_unchanged_global_user_units_are_not_false_changes(self):
+        for system in (self.old, self.new):
+            units = system / "etc/systemd/user"
+            units.mkdir(parents=True)
+            for name in ("dbus-broker.service", "nixos-activation.service", "herdr-web-ui.service"):
+                (units / name).write_text("[Service]\nExecStart=/stable/executable\n")
+        active = ["dbus-broker.service", "nixos-activation.service", "herdr-web-ui.service"]
+        self.assertEqual(self.effects(active=active), [])
+        (self.new / "etc/systemd/user/dbus-broker.service").write_text("[Unit]\nX-SwitchMethod=keep-old\n[Service]\nExecStart=/changed/daemon\n")
+        self.assertTrue(self.effects(active=active), "global units cannot borrow HM's keep-old contract")
+
+    def test_changed_or_missing_user_unit_origin_fails_closed(self):
+        for system in (self.old, self.new):
+            units = system / "etc/systemd/user"
+            units.mkdir(parents=True)
+            (units / "dbus-broker.service").write_text("identical unit bytes\n")
+        (self.new / "hm/home-files/.config/systemd/user/dbus-broker.service").write_text("identical unit bytes\n")
+        self.assertTrue(self.effects(active=["dbus-broker.service"]))
+        (self.new / "hm/home-files/.config/systemd/user/dbus-broker.service").unlink()
+        (self.new / "etc/systemd/user/dbus-broker.service").unlink()
+        self.assertTrue(self.effects(active=["dbus-broker.service"]))
+
+    def test_unmanaged_user_unit_requires_a_readable_actual_fragment(self):
+        fragment = Path(self.temp.name) / "manual.service"
+        fragment.write_text("[Service]\nExecStart=/unchanged/manually-started-tool\n")
+        self.assertTrue(self.effects(active=["manual.service"]))
+        self.assertEqual(fu.effect_reasons(self.old, self.new, "", ["manual.service"],
+                                         {"manual.service": str(fragment)}), [])
+        fragment.unlink()
+        self.assertTrue(fu.effect_reasons(self.old, self.new, "", ["manual.service"],
+                                       {"manual.service": str(fragment)}))
+
+    def test_etc_profile_pointer_changes_are_bounded_to_the_managed_profile(self):
+        for root, name in ((self.old, "old-tool"), (self.new, "new-tool")):
+            profile = root / "etc/profiles/per-user/tom"
+            profile.mkdir(parents=True)
+            (profile / name).write_text("packaged CLI\n")
+            (root / "etc/sudoers").write_text("unchanged policy\n")
+        self.assertEqual(fu.etc_tree_reasons(self.old / "etc", self.new / "etc"), [])
+        (self.new / "etc/sudoers").write_text("changed privilege policy\n")
+        self.assertTrue(fu.etc_tree_reasons(self.old / "etc", self.new / "etc"))
+
+    def test_real_etc_directory_reference_is_inspected_instead_of_ignored(self):
+        store = Path(self.temp.name) / "store"
+        for system, number in ((self.old, "0"), (self.new, "1")):
+            etc = store / (number * 32 + "-etc") / "etc"
+            profile = etc / "profiles/per-user/tom"
+            profile.mkdir(parents=True)
+            (profile / ("tool-" + number)).write_text("CLI\n")
+            (etc / "sudoers").write_text("stable policy\n")
+            (system / "activate").write_text(f"new_etc={etc}\n")
+        prefix = re.escape(str(store))
+        with patch.object(fu, "STORE", re.compile(prefix + r"/[0-9a-z]{32}-[^/\s'\";:)]+")), \
+             patch.object(fu, "STORE_FILE", re.compile(prefix + r"/[0-9a-z]{32}-[^\s'\";:)$`{}<>\\]+")):
+            self.assertEqual(self.effects(), [])
+            (store / ("1" * 32 + "-etc") / "etc/sudoers").write_text("unknown new policy\n")
+            self.assertTrue(self.effects())
+
 
 class DurableTransaction(unittest.TestCase):
     def setUp(self):
