@@ -252,6 +252,7 @@ pkgs.runCommand "substrate-modules"
             lane = (m["harness"], m.get("provider", "gufo") if m["harness"] == "dsh" else None)
             assert lane not in lanes, ("two defaults on one lane", lane, lanes[lane], m["id"])
             lanes[lane] = m["id"]
+    assert next(m for m in seed["models"] if m["id"] == "qwen3.8-flash-next")["reasoning"] is False
     assert lanes[("claude", None)] == "claude-opus-5-5" and lanes[("dsh", "gufo")] == "qwen3.8-flash-next", lanes
     assert set(lanes) == {("claude", None), ("dsh", "gufo")}, lanes
     client = tomllib.load(open(sys.argv[4], "rb"))
