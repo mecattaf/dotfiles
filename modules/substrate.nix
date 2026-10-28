@@ -614,7 +614,8 @@ in
           id = "qwen3.8-flash-next"
           harness = "dsh"
           provider = "gufo"
-          aliases = ["local"]
+          aliases = ["local", "nightly"]
+          reasoning = false
           default = true
         '';
         description = "The TOML text installed at modelsFile when that file is absent at unit start (mode 600). Fresh catalogs contain the local DSH/Gufo route and the existing Claude models. Changing this option changes only what a FRESH box gets; an existing file is never touched.";
