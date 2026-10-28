@@ -78,6 +78,8 @@ export interface ModelEntry {
   readonly aliases?: readonly string[];
   /** The harness default when a call names no allowed model. At most one per harness (per provider for pi). */
   readonly default?: boolean;
+  /** Explicit model capability. DSH omits reasoning effort when false; other harnesses retain their own behavior. */
+  readonly reasoning?: boolean;
   readonly ceilings?: ModelCeilings;
   /** pi only: declares the model to pi when its catalog does not know it (see PiModelMeta). */
   readonly pi?: PiModelMeta;
@@ -107,7 +109,7 @@ export type ModelAllowlist = readonly ModelEntry[];
 export const DEFAULT_MODEL_ALLOWLIST: ModelAllowlist = [
   { id: "claude-opus-5-5", harness: "claude", aliases: ["opus"], default: true },
   { id: "claude-fable-5-1", harness: "claude", aliases: ["fable"], ceilings: { model_scoped: 90 } },
-  { id: "qwen3.8-flash-next", harness: "dsh", provider: "gufo", default: true, aliases: ["local", "nightly"] },
+  { id: "qwen3.8-flash-next", harness: "dsh", provider: "gufo", default: true, reasoning: false, aliases: ["local", "nightly"] },
   { id: "qwen3.8-flash-next", harness: "pi", default: true },
   { id: "qwen3.8-max", harness: "pi", provider: "qwen-token-plan", default: true },
   { id: "deepseek/deepseek-v4-pro", harness: "pi", provider: "openrouter", aliases: ["deepseek"], default: true },
@@ -125,6 +127,19 @@ export interface ResolvedModel {
   /** What the call asked for, when it differs from what runs. */
   readonly requested?: string;
   readonly ceilings?: ModelCeilings;
+}
+
+/** An explicit capability normalization, retained in admission and execution evidence. */
+export interface EffortAdjustment {
+  readonly requested: string | null;
+  readonly effective: "off";
+  readonly source: "model-capability";
+}
+
+export function effortFor(entry: ModelEntry | undefined, requested: string | undefined): { readonly value: string | undefined; readonly adjustment?: EffortAdjustment } {
+  return entry?.harness === "dsh" && entry.reasoning === false
+    ? { value: undefined, adjustment: { requested: requested ?? null, effective: "off", source: "model-capability" } }
+    : { value: requested };
 }
 
 export function resolveModel(list: ModelAllowlist, harness: HarnessName, declared: string | undefined, provider?: ModelProvider): ResolvedModel {
@@ -191,6 +206,7 @@ export const ModelEntrySchema = Schema.Struct({
   provider: Schema.optionalKey(Schema.Literals(MODEL_PROVIDER_NAMES as unknown as readonly [ModelProvider, ...ModelProvider[]])),
   aliases: Schema.optionalKey(Schema.Array(Schema.String)),
   default: Schema.optionalKey(Schema.Boolean),
+  reasoning: Schema.optionalKey(Schema.Boolean),
   ceilings: Schema.optionalKey(Ceilings),
   pi: Schema.optionalKey(PiMeta),
 });

@@ -30,7 +30,7 @@ import { carriesCredential, credentialDirFor, harnessOf, modelProviderOf, piProv
 import { DEFAULT_TIMEOUT_MS } from "./host.ts";
 import { isRefusal, JOB_ID, type Mount, type ProcessJob, type Runner } from "./job.ts";
 import { runnerFor } from "./registry.ts";
-import { catalogEntry, catalogFor, entryFor, resolveModel, type ModelAllowlist, type ModelCeilings, type ModelEntry } from "./models.ts";
+import { catalogEntry, catalogFor, effortFor, entryFor, resolveModel, type EffortAdjustment, type ModelAllowlist, type ModelCeilings, type ModelEntry } from "./models.ts";
 import { CLAUDE_MODEL, GUFO_MODEL, GUFO_PROVIDER, HARNESS_OPTIONS, invocationFor, parseFor, PI_PROVIDERS, type HarnessName, type HarnessSession, type ModelProvider, type PiProvider, type Usage } from "./harness.ts";
 import { spawnSync } from "node:child_process";
 import { axTaskSpec } from "./ax.ts";
@@ -99,7 +99,7 @@ export interface RunnerAgentOutcome {
   /** C3-4: set when this outcome was adopted from an earlier start's finished job; nothing ran. The earlier job id. */
   readonly adoptedFrom?: string;
   /** agent({session}): the runtime and harness that served the call (the floor pins them on a session's first turn). */
-  readonly route?: { readonly runtime: string; readonly harness: HarnessName };
+  readonly route?: { readonly runtime: string; readonly harness: HarnessName; readonly effort?: EffortAdjustment };
   /** agent({session}): the harness session file on this host, found by id (claude's transcript, pi's session file,
    *  codex's rollout). Its path is reported; the file is never copied into the archive. */
   readonly sessionFile?: string;
@@ -511,6 +511,8 @@ export interface Route {
   readonly model: string;
   /** What the call asked for, when the allowlist ran something else. */
   readonly requestedModel?: string;
+  /** A model capability changed the requested effort; absent means the request is unchanged. */
+  readonly effort?: EffortAdjustment;
   /** The allowlist's per-window ceilings for this model, for the capacity gate. */
   readonly ceilings?: ModelCeilings;
   /** The capacity seat this harness spends, or undefined when `[seats]` binds none. */
@@ -555,7 +557,7 @@ export class RunnerBackend {
    * here: its route names why (`sessionRefused`) and run() refuses it with
    * the receipt (integration pass 2026-10-13, CARRIED item 13).
    */
-  route(call: { readonly opts: { readonly runtime?: unknown; readonly model?: unknown; readonly seat?: unknown; readonly runsOn?: unknown; readonly session?: unknown }; readonly phase: string | undefined }): Route {
+  route(call: { readonly opts: { readonly runtime?: unknown; readonly model?: unknown; readonly seat?: unknown; readonly runsOn?: unknown; readonly session?: unknown; readonly effort?: unknown }; readonly phase: string | undefined }): Route {
     const sel = this.#select(call);
     let sessionRefused: string | undefined;
     try {
@@ -565,16 +567,18 @@ export class RunnerBackend {
     }
     // An unserved session call is routed as a call naming no model: the runtime's own default is what admission gates.
     const declared = sessionRefused === undefined && typeof call.opts.model === "string" ? call.opts.model : undefined;
-    const r = this.#route(sel, declared);
+    const r = this.#route(sel, declared, typeof call.opts.effort === "string" ? call.opts.effort : undefined);
     return sessionRefused === undefined ? r : { ...r, sessionRefused };
   }
-  #route(sel: Selection, declared: string | undefined): Route {
+  #route(sel: Selection, declared: string | undefined, requestedEffort: string | undefined): Route {
     const provider = piProviderOf(sel.runtime);
     const catalog = this.catalog(); // throws ModelsFileError: the route is refused with the file's own error
     const pick = (h: HarnessName, fallback: string) => {
       const r = resolveModel(catalog, h, declared, h === "pi" ? provider : h === "dsh" ? "gufo" : undefined);
+      const effort = effortFor(entryFor(catalog, h, r.id, modelProviderOf(sel.runtime)), requestedEffort).adjustment;
       return {
         model: r.id ?? fallback,
+        ...(effort ? { effort } : {}),
         ...(r.requested !== undefined ? { requestedModel: r.requested } : {}),
         ...(r.ceilings !== undefined ? { ceilings: r.ceilings } : {}),
       };
@@ -664,7 +668,8 @@ export class RunnerBackend {
     } catch (e) {
       return { error: `runtime ${sel.name}: job dir ${jobDir} already exists (${(e as NodeJS.ErrnoException).code}); refusing to reuse it` };
     }
-    const receiptBody = (o: Record<string, unknown>) => JSON.stringify({ jobId: id, runtime: sel.name, type: sel.runtime.type, via: sel.via, ...o }, null, 1);
+    let effortAdjustment: EffortAdjustment | undefined;
+    const receiptBody = (o: Record<string, unknown>) => JSON.stringify({ jobId: id, runtime: sel.name, type: sel.runtime.type, via: sel.via, ...(effortAdjustment ? { effort: effortAdjustment } : {}), ...o }, null, 1);
     /** The receipt goes into the job dir only if nothing is there (never through a planted link); else beside it. */
     const receipt = (o: Record<string, unknown>): boolean => {
       if (writeFresh(join(jobDir, "receipt.json"), receiptBody(o))) return true;
@@ -786,6 +791,8 @@ export class RunnerBackend {
       return refuse((e as Error).message);
     }
     const resolved = resolveModel(catalog, harness, declaredModel, modelProviderOf(sel.runtime));
+    const effort = effortFor(entryFor(catalog, harness, resolved.id, modelProviderOf(sel.runtime)), typeof o.effort === "string" ? o.effort : undefined);
+    effortAdjustment = effort.adjustment;
     if (harness === "dsh" && resolved.id === undefined) return refuse("no model configured for dsh provider gufo");
     if (harness === "pi" && resolved.id === undefined) return refuse(parkedReason(sel.name, piProvider ?? GUFO_PROVIDER, this.config.modelsFile).replace(/^runtime \S+: /, ""));
     // The seat shadow lives OUTSIDE the run dir and is removed when the job
@@ -835,7 +842,7 @@ export class RunnerBackend {
       const patch = join(turn?.dir ?? shadow, "dsh.patch.json");
       try {
         mkdirSync(home, { recursive: true, mode: 0o700 });
-        writeSessionFile(patch, dshPatch(home, resolved.id!, typeof o.effort === "string" ? o.effort : undefined, turn?.harnessSession));
+        writeSessionFile(patch, dshPatch(home, resolved.id!, effort.value, turn?.harnessSession));
       } catch (e) { return refuse(`cannot prepare dsh: ${(e as Error).message}`); }
       dshDirs = { dshHome: home, dshPatch: patch };
     }
@@ -846,7 +853,7 @@ export class RunnerBackend {
       prompt: call.prompt,
       ...(resolved.id !== undefined ? { model: resolved.id } : {}),
       ...(call.opts.schema ? { schema: call.opts.schema } : {}),
-      ...(typeof o.effort === "string" ? { effort: o.effort } : {}),
+      ...(effort.value !== undefined ? { effort: effort.value } : {}),
       ...(typeof o.agentType === "string" ? { agentType: o.agentType } : {}),
       ...(call.previousErrors && call.previousErrors.length ? { previousErrors: call.previousErrors } : {}),
       // a retry (only a reply the schema rejected is retried) of a turn the harness session already holds sends the
@@ -865,7 +872,7 @@ export class RunnerBackend {
     const txDest = join(transcriptRootFor(seatShadowRoot(this.config, this.options.seatShadowRoot), this.options.transcriptRoot), jobIdFor(this.options.runId, 0, 0).replace(/-0-a0$/, ""), id);
     const tx = { archived: false };
     try {
-      return await this.#runJob(call, sel, id, jobDir, harness, inv, mounts, worktree, receipt, shadow, txDest, tx, { seat, ...(timeoutMs !== undefined ? { timeoutMs } : {}), ...credDirOf(this.config, harness, seat, fromRunSeat), ...(turn ? { turn } : {}) });
+      return await this.#runJob(call, sel, id, jobDir, harness, inv, mounts, worktree, receipt, shadow, txDest, tx, { seat, ...(effortAdjustment ? { effort: effortAdjustment } : {}), ...(timeoutMs !== undefined ? { timeoutMs } : {}), ...credDirOf(this.config, harness, seat, fromRunSeat), ...(turn ? { turn } : {}) });
     } finally {
       // The runner threw or the call aborted before the archive ran: the shadow's sessions are kept anyway.
       if (!tx.archived) {
@@ -959,6 +966,7 @@ export class RunnerBackend {
     tx: { archived: boolean },
     extra: {
       readonly seat: string | undefined; readonly timeoutMs?: number; readonly credentialDir?: string; readonly credentialUnverified?: true;
+      readonly effort?: EffortAdjustment;
       readonly turn?: { readonly session: SessionArg; readonly dir: string; readonly cwd: string; readonly harnessSession: HarnessSession; readonly env: Readonly<Record<string, string>> };
     },
   ): Promise<RunnerAgentOutcome> {
@@ -1037,7 +1045,7 @@ export class RunnerBackend {
     const sessionFile = turn && sessionId !== undefined ? this.#sessionFile(harness, cred, turn.dir, sessionId, inv.env) : undefined;
     const archived = this.#archive(sel, harness, cred, shadow, txDest, res, sessionId, inv.env, turn !== undefined);
     tx.archived = true;
-    const session = turn ? { route: { runtime: sel.name, harness }, ...(sessionId !== undefined ? { agentId: sessionId } : {}), ...(sessionFile !== undefined ? { sessionFile } : {}) } : {};
+    const session = turn ? { route: { runtime: sel.name, harness, ...(extra.effort ? { effort: extra.effort } : {}) }, ...(sessionId !== undefined ? { agentId: sessionId } : {}), ...(sessionFile !== undefined ? { sessionFile } : {}) } : {};
     const context = mounts.filter((m) => m.purpose === "other" && m.mode === "ro").map((m) => m.source);
     // argv carries no prompt (it rides on stdin) and no credential (mounted by path).
     const clean = receipt({
