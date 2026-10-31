@@ -148,9 +148,12 @@ in
           # Zenbook Duo: logical 1440x900 panels, vertically stacked.
           output eDP-1 scale 2 position 0 0
           output eDP-2 scale 2 position 0 900
-          # Preserve the verified top-panel mapping until both device IDs are
-          # measured on this laptop. Do not turn inferred ELAN IDs into policy.
-          input type:touch map_to_output eDP-1
+          # Per-panel touch and pen mapping, recovered from the Scroll config;
+          # device identifiers confirmed on the client on 2026-10-19.
+          input "1267:16987:ELAN9008:00_04F3:425B" map_to_output eDP-1
+          input "1267:16986:ELAN9009:00_04F3:425A" map_to_output eDP-2
+          input "1267:16987:ELAN9008:00_04F3:425B_Stylus" map_to_output eDP-1
+          input "1267:16986:ELAN9009:00_04F3:425A_Stylus" map_to_output eDP-2
           bindswitch --reload --locked lid:on output eDP-1 disable
           bindswitch --reload --locked lid:off output eDP-1 enable
           bindsym --no-warn F10 exec ~/.local/bin/brightness toggle
