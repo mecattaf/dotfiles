@@ -47,9 +47,10 @@ EOF
 enable_auth=false
 xkb_layout=us
 EOF
-    # Only the existing Caddy LAN front door exposes this WebSocket.
+    # Loopback unless the host module sets BROWSER_DESKTOP_VNC_ADDRESS; the
+    # firewall admits only the NAS front door.
     wayvnc --config "$runtime/wayvnc.conf" --disable-resizing --render-cursor \
-      --output HEADLESS-1 --socket "$runtime/wayvncctl" ws:127.0.0.1:5901 &
+      --output HEADLESS-1 --socket "$runtime/wayvncctl" ws:"${BROWSER_DESKTOP_VNC_ADDRESS:-127.0.0.1}":5901 &
     vnc_pid=$!
     wait "$vnc_pid" || exit 1
     ;;

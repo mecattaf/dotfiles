@@ -214,10 +214,14 @@ bytes are listed in `/mnt/nas/models/weights/RETIRED-<date>.tsv`.
 
 **Shared browser desktop (2026-09-12).** Strix keeps `myDisplay.enable =
 false`: no physical Sway/greetd session. `modules/browser-desktop.nix` supplies a
-separate on-demand headless Sway seat with WayVNC on loopback and stock noVNC
-served by Caddy at `https://browser.internal` on BE550. The lightweight launcher
+separate on-demand headless Sway seat with WayVNC and the menu listening on the strix
+LAN (admitted only from the NAS, 10.42.0.1 on enp191s0). The NAS Caddy
+(`hosts/nas/browser-front-door.nix`) serves stock noVNC and fronts
+`https://browser.internal`. Tailnet clients routed through the NAS subnet
+router reach the strix as 10.42.0.1, the same population the old strix Caddy
+door admitted. The lightweight launcher
 starts at boot; Sway, WayVNC and Chrome do not. Sessions stop five minutes
-after the last viewer disconnects. This exception is Strix-only; NAS has no compositor/VNC. The sidebar opens ordinary installed
+after the last viewer disconnects. The desktop is Strix-only; the NAS has no compositor, VNC or Chrome. The sidebar opens ordinary installed
 Chrome profiles and unlocks the keyring. The FARA agent loop (`fara-browser`,
 its model unit and skill) was removed with FARA on 2026-09-16 (Tom).
 `chrome-stream` (same module) is the lighter path: headless Chrome's CDP

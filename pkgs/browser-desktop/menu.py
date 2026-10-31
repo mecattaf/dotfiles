@@ -185,8 +185,9 @@ def make_app(data_dir, origin):
 if __name__ == '__main__':
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=4784)
     parser.add_argument('--origin', default='https://browser.internal')
     parser.add_argument('--chrome-data-dir', type=Path, default=Path.home()/'.config/google-chrome')
     args = parser.parse_args()
-    web.run_app(make_app(args.chrome_data_dir, args.origin), host='127.0.0.1', port=args.port, access_log=None)
+    web.run_app(make_app(args.chrome_data_dir, args.origin), host=args.host, port=args.port, access_log=None)

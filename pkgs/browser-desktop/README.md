@@ -19,15 +19,21 @@ keyring instead offers **Unlock keyring** for the native desktop prompt. The
 listing does not enumerate website sessions: verify the intended website
 identity visually before acting.
 
-`browser-desktop-menu` is a small loopback service (port 4784, reached as
+`browser-desktop-menu` is a small service (port 4784, loopback unless `--host` is given; the strix passes `0.0.0.0`, reached as
 `/desktop/*`) behind that menu. It accepts changes only from the
 `https://browser.internal` origin with the `X-Desktop-Control` header, runs one
 desktop action at a time, and does not expose arbitrary commands, profile paths
 or URLs.
 
-The human entrance is `https://browser.internal` on BE550, using the existing
-Caddy and AdGuard conventions. `modules/browser-desktop.nix` declares the
-strix service. The physical Sway/greetd stack remains disabled on the strix.
+The human entrance is `https://browser.internal`, served by the NAS Caddy
+(`services.browser-desktop.frontDoor`, `hosts/nas/browser-front-door.nix`),
+which serves noVNC from `webRoot` and proxies `/vnc` and `/desktop/*` to
+strix-coordinator ports 5901 and 4784. WayVNC (`BROWSER_DESKTOP_VNC_ADDRESS`,
+default 127.0.0.1) and the menu (`--host`, default 127.0.0.1) bind all
+addresses on the strix, and the firewall admits those ports only from
+10.42.0.1 on enp191s0. WayVNC has no authentication, so
+`modules/browser-desktop.nix` asserts nftables and no trusted tailscale0 or
+microvm interface. `modules/browser-desktop.nix` declares the strix service. The physical Sway/greetd stack remains disabled on the strix.
 
 The lightweight menu service starts at boot. Sway and WayVNC start only when the
 human opens the viewer or uses the Chrome menu. The service waits for WayVNC

@@ -2157,19 +2157,26 @@
             '';
 
         # Native controls are exercised with fake CLI/desktop commands only.
-        inzone-audio = pkgs.runCommand "inzone-audio" {
-          nativeBuildInputs = [
-            pkgs.python3 pkgs.bash pkgs.coreutils pkgs.util-linux pkgs.gawk
-          ];
-        } ''
-          export HOME="$TMPDIR/home"
-          export PYTHONDONTWRITEBYTECODE=1
-          export INZONE_MENU_SCRIPT=${./home/dot_local/bin/inzone-menu}
-          export INZONE_VOLUME_SCRIPT=${./home/dot_local/bin/volume}
-          mkdir -p "$HOME"
-          python3 -m unittest discover -s ${./tests/inzone-audio} -p 'test_*.py' -v
-          touch "$out"
-        '';
+        inzone-audio =
+          pkgs.runCommand "inzone-audio"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.util-linux
+                pkgs.gawk
+              ];
+            }
+            ''
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export INZONE_MENU_SCRIPT=${./home/dot_local/bin/inzone-menu}
+              export INZONE_VOLUME_SCRIPT=${./home/dot_local/bin/volume}
+              mkdir -p "$HOME"
+              python3 -m unittest discover -s ${./tests/inzone-audio} -p 'test_*.py' -v
+              touch "$out"
+            '';
 
         # Model bytes are explicit transactions, never activation work. Drive
         # the evaluated worker borrow binary against tiny fixtures, then keep
@@ -2567,8 +2574,7 @@
               "qwen3-tts-tokenizer-f32"
             ];
           assert
-            strixWorker.services.local-models.artifacts
-            == strix.services.local-models.artifacts
+            strixWorker.services.local-models.artifacts == strix.services.local-models.artifacts
             ++ [
               "deepseek-v41-flash-1017-q2-gguf"
               "qwen38-flash-next-q8-gguf"
@@ -2724,6 +2730,7 @@
         browser-session-runtime =
           let
             coord = self.nixosConfigurations.strix-coordinator.config;
+            nasCfg = self.nixosConfigurations.nas.config;
             portal = name: coord.systemd.user.services.${name} or { };
           in
           assert builtins.all
@@ -2745,6 +2752,18 @@
             ]);
           assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.partOf;
           assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.wantedBy;
+          # The NAS fronts browser.internal; the strix runs the desktop only.
+          assert nasCfg.services.caddy.virtualHosts ? "https://browser.internal";
+          assert nasCfg.services.caddy.virtualHosts ? "http://browser.internal";
+          assert !(coord.services.caddy.virtualHosts ? "https://browser.internal");
+          assert !(coord.services.caddy.virtualHosts ? "http://browser.internal");
+          assert nixpkgs.lib.hasInfix
+            ''iifname "enp191s0" ip saddr 10.42.0.1 tcp dport { 4784, 5901 } accept''
+            coord.networking.firewall.extraInputRules;
+          assert !(nasCfg.systemd.user.services ? browser-desktop);
+          assert !(nasCfg.systemd.user.services ? browser-desktop-menu);
+          assert coord.systemd.user.services ? browser-desktop;
+          assert coord.systemd.user.services ? browser-desktop-menu;
           pkgs.browser-desktop.tests.contract;
 
         herdr-launchers =
