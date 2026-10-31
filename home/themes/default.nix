@@ -70,8 +70,8 @@ let
     inactive_border_color ${t.ground.base}
   '';
 
-  # Ghostty (libghostty inside cmux Browser's terminal panes): the kitty
-  # fragment, key for key, in Ghostty's `key = value` grammar.
+  # Ghostty (the terminal; cmux is not used): the kitty fragment, key for
+  # key, in Ghostty's `key = value` grammar.
   ghostty = t: ''
     ${header t "#"}
     # Joined by ghostty/config.ghostty's `config-file = ?/home/tom/.config/theme/ghostty`.

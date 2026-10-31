@@ -28,8 +28,8 @@
 # MOVED wholesale from the strix (rsync with atticd stopped), never
 # recreated: a fresh database means a fresh key, every signature in the cache
 # invalidated, and the whole fleet silently building from source. If this box
-# is ever reprovisioned, restore /var/lib/atticd from the strix's
-# retained copy or a backup — do not let a fresh atticd start empty.
+# is ever reprovisioned, restore /var/lib/atticd from the NAS
+# backups (the strix copy is removed) — do not let a fresh atticd start empty.
 #
 # ── The RS256 token secret: a runbook-placed file, not agenix ──────────────
 # The cache is `--public`: pulls need no token at all. The RS256 secret only

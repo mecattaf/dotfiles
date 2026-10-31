@@ -1,10 +1,8 @@
 # ghostty — kitty.conf's twin (2026-09-17).
 #
-# The only Ghostty on the fleet today is libghostty inside cmux Browser's
-# terminal panes (cmux-tui; ~/.local/opt/cmux-browser-nightly, not packaged yet).
-# Its settings page's "Use Ghostty config" reads THIS file,
+# Ghostty is the terminal; cmux is not used. It reads THIS file,
 # $XDG_CONFIG_HOME/ghostty/config.ghostty. Every value below mirrors kitty.conf
-# key for key, so a cmux pane looks like a kitty window — a kitty change
+# key for key, so a Ghostty window looks like a kitty window — a kitty change
 # belongs here too. Where Ghostty has no equivalent, the kitty key is named
 # and the gap stated. The colours are NOT here: they join through the theme
 # fragment at the bottom, like kitty's `include ${HOME}/.config/theme/kitty.conf`.
@@ -45,7 +43,7 @@ confirm-close-surface = false
 # scrollback_lines 100000 — Ghostty caps scrollback in BYTES per surface
 # (lazily allocated, compressed when idle): 100 MB ≈ 100k lines of 1 KB.
 scrollback-limit = 100000000
-# enable_audio_bell no — Ghostty's default rings the system bell; cmux may
+# enable_audio_bell no — Ghostty's default rings the system bell; Ghostty may
 # still flag the surface (attention/title), never sound.
 bell-features = no-system,no-audio
 # copy_on_select clipboard
@@ -63,11 +61,11 @@ clipboard-read = ask
 keybind = ctrl+equal=increase_font_size:2
 keybind = ctrl+minus=decrease_font_size:2
 # kitty_mod+h / kitty_mod+g (kitty-scrollback.nvim) and enabled_layouts splits
-# have no Ghostty side: cmux owns splits, tabs and the scrollback viewer.
+# have no Ghostty side: splits, tabs and the scrollback viewer are not configured here.
 
 # Frosted terminal (2026-09-16): background_opacity 0.96. The compositor blur
 # rode on niri's kitty app-id rule (niri retired 2026-10-13); Sway has no
-# blur, so cmux panes are simply translucent.
+# blur, so Ghostty windows are simply translucent.
 background-opacity = 0.96
 # kitty does not dim inactive splits; Ghostty's default is 0.7.
 unfocused-split-opacity = 1
@@ -79,5 +77,5 @@ unfocused-split-opacity = 1
 # checkout — so the path is absolute; $HOME is /home/tom on every host
 # (home.homeDirectory). `?` = no error while the fragment is not rendered yet.
 # A config-file loads AFTER the file that names it, so the fragment wins.
-# No live reload: cmux reads the config when it opens a surface.
+# No live reload: Ghostty reads the config when it opens a surface.
 config-file = ?/home/tom/.config/theme/ghostty
