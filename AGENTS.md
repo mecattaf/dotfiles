@@ -238,7 +238,7 @@ Nix store, so it has no checkout, no guard and no bootstrap clone, and a
 
 **Handwriting intake (2026-09-14).** `handwriting.internal` is the private
 annotation menu, declared by `modules/handwriting-annotation.nix`: NAS DNS,
-strix Caddy and a CPU-only service. Preserve `/var/lib/handwriting-annotation`
+NAS Caddy and a CPU-only service on the NAS. Preserve `/var/lib/handwriting-annotation`
 and its append-only writer/model-review history across updates. Model-assisted
 resolutions are not writer labels. Huion sources arrive in `~/Paper/inbox`;
 `~/Paper/intake` is the printing route. Use the resident Gufo Flash-Next model for serial

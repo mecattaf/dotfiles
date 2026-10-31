@@ -17,9 +17,8 @@ in
       intakePackage
     ];
     systemd.tmpfiles.rules = [ "d /var/lib/handwriting-intake 0700 tom users -" ];
-    networking.hosts."127.0.0.1" = [ "handwriting.internal" ];
-    networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 443 ];
-    networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 443 ];
+    # The NAS front door (hosts/nas/front-door.nix) owns ingress and DNS.
+    services.caddy.enable = true;
     systemd.services.handwriting-annotation = {
       description = "Writer-confirmed handwriting annotation";
       wantedBy = [ "multi-user.target" ];
@@ -79,9 +78,14 @@ in
         ];
         ExecStart = pkgs.writeShellScript "handwriting-annotation-backup" ''
           set -eu
-          # Trigger the automount, then refuse an unmounted local lookalike.
+          # Trigger the automount, then refuse an unmounted lookalike: the target must be
+          # /mnt/nas or below (NFS on a client, the local btrfs data disk on the NAS).
           cd /mnt/nas/documents
-          ${pkgs.util-linux}/bin/findmnt -n -t nfs,nfs4 --target "$PWD" >/dev/null
+          target=$(${pkgs.util-linux}/bin/findmnt -n -o TARGET -t nfs,nfs4,btrfs --target "$PWD")
+          case "$target" in
+            /mnt/nas | /mnt/nas/*) ;;
+            *) echo "refusing: $PWD is not on the NAS data tier" >&2; exit 1 ;;
+          esac
           destination="$PWD/handwriting-annotation-backups"
           ${pkgs.coreutils}/bin/mkdir -p "$destination"
           stamp=$(${pkgs.coreutils}/bin/date -u +%Y%m%dT%H%M%S.%NZ)
@@ -116,7 +120,11 @@ in
         ExecStart = pkgs.writeShellScript "handwriting-intake-backup" ''
           set -eu
           cd /mnt/nas/documents
-          ${pkgs.util-linux}/bin/findmnt -n -t nfs,nfs4 --target "$PWD" >/dev/null
+          target=$(${pkgs.util-linux}/bin/findmnt -n -o TARGET -t nfs,nfs4,btrfs --target "$PWD")
+          case "$target" in
+            /mnt/nas | /mnt/nas/*) ;;
+            *) echo "refusing: $PWD is not on the NAS data tier" >&2; exit 1 ;;
+          esac
           destination="$PWD/handwriting-intake-backups"
           ${pkgs.coreutils}/bin/mkdir -p "$destination"
           stamp=$(${pkgs.coreutils}/bin/date -u +%Y%m%dT%H%M%S.%NZ)

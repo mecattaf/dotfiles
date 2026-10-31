@@ -1,12 +1,14 @@
 # Handwriting annotation
 
 The private front door is **https://handwriting.internal**. NAS AdGuard resolves
-it to coordinator `10.42.0.2`; coordinator Caddy issues the same internally
+it to the NAS; NAS Caddy issues the same internally
 trusted TLS certificate type used by `browser.internal` and forwards to
-`127.0.0.1:8766`. The application is CPU-only. It starts no inference server.
+`127.0.0.1:8766`. The application is CPU-only and runs on the NAS (state in
+`/var/lib/handwriting-annotation`). It starts no inference server;
+transcription inference reaches strix-coordinator only through Gufo.
 
 `pkgs/handwriting-annotation` packages the Python application, Pillow and its
-HTML interface. Its build runs the backend unit tests. The coordinator-only
+HTML interface. Its build runs the backend unit tests. The NAS-hosted
 `modules/handwriting-annotation.nix` declares the service and proxy. Sources are
 copied from the reviewed prototype into the package before a deployment; the
 running application never executes code from the prototype directory.
@@ -51,7 +53,7 @@ directory with a fresh prototype state during a code update. Do not copy an
 open SQLite database file alone; use the application's snapshot command.
 
 NixOS updates use the canonical `~/mecattaf/dotfiles` checkout, as required by
-the raw-dotfiles guard. A deployment updates the coordinator application/proxy
+the raw-dotfiles guard. A deployment updates the NAS application/proxy
 and, when names change, the NAS DNS configuration. No client-specific hosts
 file entry or public DNS record is needed. Clients already trusting the Caddy
 CA for `browser.internal` use the new HTTPS site without certificate bypasses.

@@ -35,6 +35,7 @@
     # ever again") — the adb camera-roll pull was superseded by the Immich
     # mobile app's own background backup. See git history for the tooling.
     ./lacie-mirror.nix
+    ./handwriting.nix
     # #130 expansion workstreams. All four land with their gates OFF; each has
     # a runbook in its own header and flips on its own, later, after that
     # runbook has been walked on the real hardware. ./wake-helpers.nix is

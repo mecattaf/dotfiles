@@ -16,7 +16,6 @@
     ../../modules/strix-compute.nix
     ../../modules/browser-desktop.nix
     ../../modules/keyring-autounlock.nix
-    ../../modules/handwriting-annotation.nix
   ];
 
   networking.hostName = "strix-coordinator";
@@ -32,7 +31,6 @@
   # Agent services stay independent of any compositor.
   myDisplay.enable = false;
   services.browser-desktop.enable = true;
-  services.handwriting-annotation.enable = true;
   myStrixCompute.immichMl.enable = true;
 
   # The NAS hosts Immich, Navidrome and every .internal front door (Caddy,

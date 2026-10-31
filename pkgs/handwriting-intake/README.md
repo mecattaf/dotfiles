@@ -1,6 +1,6 @@
 # Handwriting intake: manual Huion pilot
 
-This strix CLI receives **one explicitly selected Huion JSON/SVG group**, submits one page to the fleet's local model server (lib/local-model.nix), and prepares a writer-review packet. It has no scanner, inference timer, device-clear operation, automatic annotation acceptance, or new model service. Received originals remain untouched.
+This NAS-hosted CLI receives **one explicitly selected Huion JSON/SVG group**, submits one page to the fleet's local model server, Gufo on strix-coordinator (lib/local-model.nix), and prepares a writer-review packet. It has no scanner, inference timer, device-clear operation, automatic annotation acceptance, or new model service. Received originals remain untouched.
 
 The packaged command defaults to `/var/lib/handwriting-intake`; an explicit `--state PATH` before the subcommand overrides it. Direct Python execution defaults to `~/Paper/ocr`.
 
