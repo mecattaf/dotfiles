@@ -1,7 +1,7 @@
-import datetime, importlib.util, json, tempfile, unittest
+import datetime, importlib.util, json, os, tempfile, unittest
 from pathlib import Path
 from unittest.mock import patch
-p=Path(__file__).parents[2]/'pkgs/speech-session/queue.py'
+p=Path(os.environ.get('SPEECH_QUEUE_SCRIPT', Path(__file__).parents[2]/'pkgs/speech-session/queue.py'))
 spec=importlib.util.spec_from_file_location('queue_impl',p);q=importlib.util.module_from_spec(spec);spec.loader.exec_module(q)
 class QueueTests(unittest.TestCase):
     def test_print_hours(self):
@@ -37,4 +37,23 @@ class QueueTests(unittest.TestCase):
     def test_invalid_default_seat_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             with self.assertRaises(ValueError):q.sweep(Path(temp),'qwen','play','unknown')
+    def test_nas_queue_renders_on_compute_and_receipts_client_playback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);(root/'intake').mkdir();(root/'intake/client--turn.md').write_text('Hello')
+            commands=[]
+            def run(command, **kwargs):
+                commands.append(command)
+                if command[0] == '/packaged/qwen-speech':
+                    Path(command[command.index('--output')+1]).write_bytes(b'rendered audio')
+                else:
+                    self.assertEqual(kwargs['stdin'].read(), b'rendered audio')
+                return type('P', (), {'returncode': 0})()
+            with patch.object(q, 'quiet', return_value=False), patch.object(q, 'plain', return_value='Hello'), \
+                 patch.object(q.socket, 'gethostname', return_value='nas'), patch.object(q.subprocess, 'run', side_effect=run):
+                q.sweep(root, '/packaged/qwen-speech', 'speech-play')
+            self.assertEqual(commands[0][:4], ['/packaged/qwen-speech', 'speak', '--remote-command', 'qwen-speech'])
+            self.assertEqual(commands[1], ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', 'client', 'speech-play'])
+            self.assertFalse((root/'intake/client--turn.md').exists())
+            receipt=json.loads((root/'spoken/client--turn/receipt.json').read_text())
+            self.assertEqual(receipt['status'], 'played');self.assertEqual(receipt['client'], 'client')
 if __name__=='__main__':unittest.main()

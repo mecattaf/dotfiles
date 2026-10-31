@@ -5,13 +5,13 @@
   ...
 }:
 # The paper loop (dotfiles#384). "/print" is one file write: an agent drops
-# ~/Paper/intake/<slug>.md (or an existing <slug>.pdf, printed as it is,
+# configured paper intake/<slug>.md (or an existing <slug>.pdf, printed as it is,
 # dotfiles#501) and paper-daemon owns everything after it —
 # render, target_pages validation, quiet hours, the pinned-queue guard, and a
 # receipt only when the PRINTER reports every impression. The layout under
-# ~/Paper is the daemon's: intake/ (drops), outbox/ (held for 06:05),
+# configured paper storage is the daemon's: intake/ (drops), outbox/ (held for 06:05),
 # printed/<id>/receipt.json, rejected/<id>/, failed/<id>/, work/ (in flight).
-# ~/Paper/inbox/ is NOT this loop's: it is the Huion's (DECISIONS 2026-09-13).
+# configured handwriting inbox is NOT this loop's: it is the Huion's (DECISIONS 2026-09-13).
 #
 # Brain-only: NAS owns the source, queue and receipt; compute renders PDFs.
 let
@@ -27,9 +27,9 @@ lib.mkIf isBrain {
   # sweep timer is gone (no clocks for agent work, Tom 2026-09-30); a missed
   # event is recovered by hand: `systemctl --user start paper-daemon`.
   systemd.user.paths.paper-daemon = {
-    Unit.Description = "Watch ~/Paper/intake for print drops";
+    Unit.Description = "Watch configured paper intake for print drops";
     Path = {
-      PathChanged = "%h/Paper/intake";
+      PathChanged = "%h/.local/share/utility-data/paper/intake";
       MakeDirectory = true;
       Unit = "paper-daemon.service";
     };
@@ -38,7 +38,7 @@ lib.mkIf isBrain {
 
   systemd.user.services.paper-daemon = {
     Unit = {
-      Description = "Print loop: render, validate and submit ~/Paper/intake drops";
+      Description = "Print loop: render, validate and submit configured paper intake drops";
       # A switch must never kill a job the daemon is watching over IPP: the
       # sheets are already moving, and a restart would leave work/<id>/
       # stranded with no receipt. The next path event runs the new

@@ -62,7 +62,7 @@
 #      and JSON are on local disk and never an incomplete one; it cannot wait
 #      for the push, so the spool is the durability buffer, not the device.
 #   2. on exit (success or failure) starts huion-push.service, which pushes
-#      every spooled batch, oldest first, to strix:~/Paper/inbox/<ts>/
+#      every spooled batch, oldest first, to the configured NAS handwriting inbox
 #      and removes the local copy only after rsync succeeded.
 #
 # The push is reactive: it follows each capture (Tom, 2026-09-30: a Huion scan
@@ -110,13 +110,19 @@ let
         local d rc=0
         for d in "$spool"/*/; do
           [[ -d $d ]] || continue
-          local batch
+          local batch inbox
+          inbox=$(ssh -o BatchMode=yes -o ConnectTimeout=10 nas utility-path paper) || { rc=1; continue; }
+          [[ "$inbox" == /* && "$inbox" != *$'\n'* ]] || { rc=1; continue; }
+          inbox="$inbox/inbox"
+          local quoted
+          printf -v quoted '%q' "$inbox"
+          ssh -o BatchMode=yes nas "mkdir -p -- $quoted" || { rc=1; continue; }
           batch=$(basename "$d")
-          if rsync -a --remove-source-files --timeout=60 \
+          if rsync -a --protect-args --remove-source-files --timeout=60 \
             -e 'ssh -o BatchMode=yes -o ConnectTimeout=10' \
-            "$d" "strix:Paper/inbox/$batch/"; then
+            "$d" "nas:$inbox/$batch/"; then
             rmdir "$d"
-            echo "pushed $batch -> strix:~/Paper/inbox/$batch/"
+            echo "pushed $batch to configured NAS handwriting inbox"
           else
             echo "push of $batch failed; kept in $spool for the next capture" >&2
             rc=1
@@ -199,11 +205,11 @@ in
   # start a system unit; --no-block so the push runs after this unit's lock is
   # released.
   systemd.services.huion-sync = lib.recursiveUpdate (unit "dump") {
-    description = "Pull pages off the Huion Note X10 into strix:~/Paper/inbox";
+    description = "Pull pages off the Huion Note X10 into the configured NAS handwriting inbox";
     serviceConfig.ExecStopPost = "+${pkgs.systemd}/bin/systemctl start --no-block huion-push.service";
   };
 
   systemd.services.huion-push = unit "push" // {
-    description = "Push spooled Huion pages to strix:~/Paper/inbox";
+    description = "Push spooled Huion pages to the configured NAS handwriting inbox";
   };
 }

@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Stage one closed recording on compute and return its outputs to NAS."""
+import os
+from pathlib import Path
+import subprocess
+import sys
+import uuid
+
+def dispatch(source, extra, run=subprocess.run):
+    host = 'strix-coordinator'
+    remote = '/tmp/call-diarize-' + uuid.uuid4().hex
+
+    def checked(argv):
+        run(argv, check=True)
+
+    checked(['ssh', '-o', 'BatchMode=yes', host, 'mkdir', '-m', '700', remote])
+    # Copy through rsync's verified transfer, leaving durable inputs on NAS.
+    # Scratch is retained whenever processing or returning results fails.
+    try:
+        checked(['rsync', '-a', '--checksum', '--safe-links', '--protect-args',
+                 '--exclude', 'diarize.log', '--exclude', '.diarize-start.err',
+                 str(source) + '/', host + ':' + remote + '/'])
+        checked(['fleet-exec', host, '--cwd', remote, '--', 'call-diarize', remote, *extra])
+        checked(['rsync', '-a', '--checksum', '--safe-links', '--protect-args',
+                 '--exclude', 'mix.wav', '--exclude', 'far.wav', '--exclude', 'near.wav',
+                 host + ':' + remote + '/', str(source) + '/'])
+    except (OSError, subprocess.CalledProcessError):
+        print('Compute scratch retained at ' + host + ':' + remote, file=sys.stderr)
+        raise
+    checked(['ssh', '-o', 'BatchMode=yes', host, 'rm', '-rf', '--', remote])
+
+
+def main():
+    if os.uname().nodename != 'nas':
+        raise SystemExit('compute dispatch runs on the storage owner')
+    if len(sys.argv) < 2:
+        raise SystemExit('usage: call-diarize-remote CALL_DIRECTORY [DIARIZER_ARGS...]')
+    source = Path(sys.argv[1]).resolve(strict=True)
+    if not (source / 'mix.wav').is_file():
+        raise SystemExit('closed recording has no mix.wav')
+    dispatch(source, sys.argv[2:])
+
+
+if __name__ == '__main__':
+    main()

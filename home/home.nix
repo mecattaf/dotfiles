@@ -103,6 +103,7 @@ in
     ./herdr.nix
     ./nvim.nix
     ./paper.nix
+    ./utility-storage.nix
     ./raw-dotfiles-guard.nix
     ./ssh.nix
   ]
@@ -308,14 +309,9 @@ in
   # graphical-session.target: a path that isn't there when the session starts is
   # silently dropped, which is #139.
   #
-  # The client (2026-10-11): Tom wants its home CLEAN, Downloads (Chrome's) and
-  # hidden dirs only. Nothing creates the user dirs (createDirectories off, no
-  # xdg-user-dirs package, so no xdg-user-dirs-update either), Downloads stays
-  # where Chrome expects it, and every other XDG user dir points under the
-  # hidden ~/.local/share/user-dirs/: an app that saves into "Pictures" or
-  # "Videos" by the XDG default no longer makes ~/Pictures or ~/Videos.
-  # Screenshots and call recordings do not use these at all on the client;
-  # they leave for the strix (bin/screenshot, bin/call-record).
+  # The client keeps its browser downloads, saved screenshots and video work.
+  # Other XDG application defaults stay under its data directory. Nothing here
+  # eagerly creates a user directory during activation.
   # ---------------------------------------------------------------------------
   xdg.userDirs = lib.mkMerge [
     (lib.mkIf (osConfig.myFleet.has "brain") {
@@ -336,11 +332,11 @@ in
         desktop = hidden "Desktop";
         documents = hidden "Documents";
         music = hidden "Music";
-        pictures = hidden "Pictures";
+        pictures = "${config.home.homeDirectory}/Pictures";
         projects = hidden "Projects";
         publicShare = hidden "Public";
         templates = hidden "Templates";
-        videos = hidden "Videos";
+        videos = "${config.home.homeDirectory}/Videos";
       }
     ))
   ];

@@ -4,29 +4,8 @@
 #
 #   call-diarize-start [--force] [--dry-run] <call_dir> [call-diarize args...]
 #
-# WHY THIS EXISTS (handoff 2026-10-10). `call-record stop` used to hand the
-# closed recording dir to `call-diarize-backfill --enqueue`, which wrote a Tally
-# event and relied on the tally daemon to pick it up. Tally was removed on
-# 2026-09-30 (AGENTS.md, dotfiles #480), so those events only pile up in
-# ~/.local/state/tally/events and nothing ever transcribes. By rule there is no
-# timer or scheduled sweep for this (AGENTS.md "Scheduled work", 2026-09-30):
-# the Shift+F9 stop of a call is the ONLY trigger for its diarization. So the
-# stop itself must start the work, directly, on the host that owns the GPU.
-#
-# `call-diarize <dir>` (pkgs/call-diarize, installed by home/harness-records.nix
-# on the strix only) is the real worker: VibeVoice-ASR on the GPU plus a cleanup
-# pass on the local model. It runs for minutes, so it must not run in the Shift+F9 popup
-# or inside an ssh session that the thin client will close. systemd-run with
-# --no-block gives it a life of its own under the user manager; --collect
-# removes the unit on exit even when it failed, so a second call on a fixed-up
-# dir is never blocked by a dead unit of the same name. Output goes to
-# <dir>/diarize.log beside the evidence files, which is where a human looks
-# first when transcript.md never showed up.
-#
-# This script is on PATH on every host (~/.local/bin is the dotfiles bin dir),
-# but the diarizer is not: on a host without call-diarize it refuses and says
-# so, which is the thin client's cue to hand the dir to the strix (call-record
-# does that over ssh and calls this script on the far side).
+# The NAS owns durable recordings. It dispatches GPU work to compute;
+# compute can run its local worker directly. No periodic sweep is involved.
 set -euo pipefail
 
 usage() {
@@ -59,9 +38,14 @@ if [[ -e "$dir/transcript.md" && "$force" != 1 ]]; then
     echo "$dir already has transcript.md; pass --force to diarize again" >&2
     exit 1
 fi
-if ! command -v call-diarize >/dev/null 2>&1; then
-    echo "this host has no diarizer; hand the dir to the strix" >&2
-    exit 1
+worker=call-diarize
+if ! command -v "$worker" >/dev/null 2>&1; then
+    if [[ "$(hostname)" == nas ]]; then
+        worker=call-diarize-remote
+    else
+        echo "this host has no diarizer; hand the dir to the NAS for compute dispatch" >&2
+        exit 1
+    fi
 fi
 
 # One unit per recording dir. The basename is already slug-shaped from
@@ -78,10 +62,13 @@ argv=(
     -p "WorkingDirectory=$dir"
     -p "StandardOutput=append:$log"
     -p "StandardError=append:$log"
-    -- call-diarize "$dir"
+    -- "$worker" "$dir"
 )
 if [[ ${#extra[@]} -gt 0 ]]; then
     argv+=("${extra[@]}")
+fi
+if [[ "$force" == 1 ]]; then
+    argv+=(--force)
 fi
 
 if [[ "$dry_run" == 1 ]]; then

@@ -1596,6 +1596,30 @@
             touch "$out"
           '';
 
+        utility-storage =
+          let
+            owner = self.nixosConfigurations.nas.config.home-manager.users.tom;
+            compute = self.nixosConfigurations.strix-coordinator.config;
+          in
+          assert owner.systemd.user.paths ? speech-queue;
+          assert owner.systemd.user.services ? speech-queue;
+          assert owner.systemd.user.timers.speech-queue.Timer.OnCalendar == "*-*-* 06:05:00";
+          assert !(compute.systemd.user.services ? speech-queue);
+          assert !(compute.systemd.user.paths ? speech-queue);
+          assert !(compute.systemd.user.timers ? speech-queue);
+          assert !(compute.home-manager.users.tom.systemd.user.services ? speech-queue);
+          pkgs.runCommand "utility-storage" {
+            nativeBuildInputs = [ pkgs.python3 pkgs.systemd ];
+          } ''
+            export PYTHONDONTWRITEBYTECODE=1
+            export PYTHONPATH=${./lib/python}
+            export CALL_DIARIZE_REMOTE_SCRIPT=${./home/dot_local/bin/call-diarize-remote}
+            export SPEECH_QUEUE_SCRIPT=${./pkgs/speech-session/queue.py}
+            python3 -m unittest discover -s ${./tests/utility-storage} -v
+            python3 -m unittest discover -s ${./tests/speech-session} -v
+            touch "$out"
+          '';
+
         print-paper =
           pkgs.runCommand "print-paper"
             {
@@ -1612,6 +1636,7 @@
               export PRINT_PAPER_SKILL=${./home/dot_claude/skills/print/SKILL.md}
               export PRINT_SCRIPTS_README=${./home/dot_claude/skills/print/scripts/README.md}
               # paper-daemon (#384) against stub lp/lpstat/ipptool/sudo: no paper.
+              export PYTHONPATH=${./lib/python}
               export PAPER_DAEMON_SCRIPT=${./pkgs/paper-daemon/paper-daemon.py}
               export PAPER_JOBS_TEST_FILE=${./pkgs/paper-daemon/get-jobs.test}
               export PAPER_PRINTER_TEST_FILE=${./pkgs/paper-daemon/printer-state.test}
@@ -2917,7 +2942,7 @@
           assert nixpkgs.lib.hasInfix "implicitclass:" postStart;
           assert nas.services.printing.enable;
           assert brainHome.systemd.user.paths ? paper-daemon;
-          assert brainHome.systemd.user.paths.paper-daemon.Path.PathChanged == "%h/Paper/intake";
+          assert brainHome.systemd.user.paths.paper-daemon.Path.PathChanged == "%h/.local/share/utility-data/paper/intake";
           assert !(brainHome.systemd.user.timers ? paper-daemon-sweep);
           assert brainHome.systemd.user.timers ? paper-daemon-flush;
           assert brainHome.systemd.user.timers.paper-daemon-flush.Timer.Persistent;

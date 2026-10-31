@@ -11,6 +11,12 @@ import json
 import math
 import os
 from pathlib import Path
+try:
+    from utility_storage import storage_root
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]/"lib/python"))
+    from utility_storage import storage_root
 import re
 import shutil
 import sqlite3
@@ -314,7 +320,7 @@ CREATE TABLE IF NOT EXISTS exports(capture_id TEXT,attempt_id TEXT,revision INTE
         with self.connect() as db:db.execute('INSERT INTO exports VALUES(?,?,?,?,?,?)',(capture_id,aid,revision,task_id,str(target),json.dumps(manifest)))
     def export(self,capture_id,review_state,output_dir):
         review_state=Path(review_state).expanduser().resolve();output_dir=Path(output_dir).expanduser().resolve()
-        print_intake=(Path.home()/'Paper/intake').resolve()
+        print_intake=(storage_root("paper")/"intake").resolve()
         if output_dir==print_intake or print_intake in output_dir.parents:raise ValueError('OCR exports must not enter the automatic print intake')
         with self.locked():
             receipt,receipt_path=self.receipt(capture_id)
@@ -395,7 +401,7 @@ CREATE TABLE IF NOT EXISTS exports(capture_id TEXT,attempt_id TEXT,revision INTE
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--state',type=Path,default=Path.home()/'Paper/ocr')
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--state',type=Path,default=storage_root("paper")/"ocr")
     sub=p.add_subparsers(dest='command',required=True)
     receive=sub.add_parser('receive');receive.add_argument('source',type=Path);receive.add_argument('--settle-seconds',type=float,default=.25)
     run=sub.add_parser('run');run.add_argument('capture_id');run.add_argument('--allow-unknown',action='store_true');run.add_argument('--retry',action='store_true')

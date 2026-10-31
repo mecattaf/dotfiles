@@ -1,6 +1,6 @@
 ---
 name: print
-description: Put a Markdown document or an existing PDF on paper by dropping it into ~/Paper/intake/ on nas; paper-daemon renders Markdown on compute (a PDF is printed as it is), validates, prints during working hours and writes a receipt from the printer itself. Use when the user asks to print, make a paper copy, print a PDF such as an invoice or a form, or turn Markdown into a document for physical reading.
+description: Put a Markdown document or an existing PDF on paper by dropping it into ${paper_root}/intake/ on nas; paper-daemon renders Markdown on compute (a PDF is printed as it is), validates, prints during working hours and writes a receipt from the printer itself. Use when the user asks to print, make a paper copy, print a PDF such as an invoice or a form, or turn Markdown into a document for physical reading.
 ---
 
 # Print
@@ -11,15 +11,19 @@ decide when printing happens: paper-daemon on **nas** owns all of it
 
 ## The whole contract
 
+Resolve `paper_root=$(utility-path paper)` on **nas**. From another host,
+resolve it with `ssh nas utility-path paper`. Use that returned root below;
+the concrete storage location is a private host setting.
+
 Write the Markdown to a hidden temporary name, then rename it into place,
 on **nas**, the canonical home and queue owner:
 
-    ~/Paper/intake/.<slug>.md.tmp   →   ~/Paper/intake/<slug>.md
+    ${paper_root}/intake/.<slug>.md.tmp   →   ${paper_root}/intake/<slug>.md
 
 `<slug>` is a short kebab-case name for the document. The rename is what
 starts the job, so never write straight to `<slug>.md`. From another host,
-copy it over first (`scp FILE nas:~/Paper/intake/.<slug>.md.tmp`,
-then `ssh nas mv ~/Paper/intake/.<slug>.md.tmp ~/Paper/intake/<slug>.md`).
+copy it over first (`scp FILE nas:${paper_root}/intake/.<slug>.md.tmp`,
+then `ssh nas mv ${paper_root}/intake/.<slug>.md.tmp ${paper_root}/intake/<slug>.md`).
 When already on nas, write and rename locally. Never drop on compute.
 Markdown drops contain their own text. Local image files are not copied to
 compute and network images are not fetched: embed image data or drop an
@@ -51,7 +55,7 @@ body type at least 10 pt, and rejects a remaining page-count miss.
 An invoice, a receipt or a form that already exists as a PDF is dropped the
 same way and printed as it is:
 
-    ~/Paper/intake/.<slug>.pdf.tmp   →   ~/Paper/intake/<slug>.pdf
+    ${paper_root}/intake/.<slug>.pdf.tmp   →   ${paper_root}/intake/<slug>.pdf
 
 Never rasterize a PDF, embed it as an image, or transcribe it into Markdown
 to get it printed: the user wants the original document. The daemon reads
@@ -61,7 +65,7 @@ scaled to fit A4, and the receipt says `fit_to_page: true`.
 
 By default a 1 or 2 page PDF prints one-sided and a longer one duplex. Only
 when the user asked for something else, write a sidecar **before** the
-rename, `~/Paper/intake/<slug>.pdf.json`:
+rename, `${paper_root}/intake/<slug>.pdf.json`:
 
     {"sides": "duplex", "force": true}
 
@@ -70,7 +74,7 @@ Nothing else is accepted there.
 
 ## Where the outcome appears
 
-Everything lands in `~/Paper/<state>/<slug>/` (a repeated slug gets a
+Everything lands in `${paper_root}/<state>/<slug>/` (a repeated slug gets a
 timestamp suffix):
 
 | directory | meaning |
@@ -86,6 +90,6 @@ not claim paper without `receipt.json`.
 
 ## Not this skill
 
-`~/Paper/inbox/` is the Huion notepad's, not a print drop. Rendering a PDF
+`${paper_root}/inbox/` is the Huion notepad's, not a print drop. Rendering a PDF
 without printing, or comparing typefaces, uses the renderer by hand:
 `~/.claude/skills/print/scripts/README.md`.

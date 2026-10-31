@@ -1,4 +1,4 @@
 interface:
   display_name: "Print Paper"
-  short_description: "Drop Markdown into ~/Paper/intake; the paper daemon prints it"
-  default_prompt: "Use $print to drop this Markdown into ~/Paper/intake so the paper daemon prints it."
+  short_description: "Drop Markdown into $(utility-path paper)/intake; the paper daemon prints it"
+  default_prompt: "Use $print to drop this Markdown into $(utility-path paper)/intake so the paper daemon prints it."

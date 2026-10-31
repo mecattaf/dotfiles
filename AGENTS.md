@@ -35,7 +35,7 @@ hand-run service, a path/udev/session trigger, or a factory schedule:
 | D50 | smartd (`-n standby,q`; a daemon, not a timer) | NAS | `hosts/nas/storage.nix` |
 
 Besides these, the silent-hours releases are `paper-daemon-flush.timer` and the
-06:05 entry of `speech-queue.timer` on the strix. Adding any other timer or
+06:05 entry of `speech-queue.timer` on NAS. Adding any other timer or
 `OnCalendar` to this repository needs Tom.
 
 One reactive loop is not a clock: `wifi-ladder-return` on the client
@@ -233,8 +233,8 @@ the others. Do not clone the repo on them.
 annotation menu, declared by `modules/handwriting-annotation.nix`: NAS DNS,
 NAS Caddy and a CPU-only service on the NAS. Preserve `/var/lib/handwriting-annotation`
 and its append-only writer/model-review history across updates. Model-assisted
-resolutions are not writer labels. Huion sources arrive in `~/Paper/inbox`;
-`~/Paper/intake` is the printing route. Use the resident Gufo Flash-Next model for serial
+resolutions are not writer labels. Huion sources arrive in `$(utility-path paper)/inbox`;
+`$(utility-path paper)/intake` is the printing route. Use the resident Gufo Flash-Next model for serial
 OCR with thinking explicitly off. `docs/handwriting-intake.md` records the
 recipe, correction-evidence rules and real-Huion commissioning boundary. Do not
 reseed live review state or treat stable legacy capture files as proof of device
@@ -246,7 +246,7 @@ ASR are retired (2026-09-16). No service startup downloads models. Use the NAS
 manifests and explicit `local-models-borrow` transactions documented in
 `docs/speech-operations.md`.
 
-The shared `/speak` skill publishes visible Markdown files in `~/Speech/intake`;
+The shared `/speak` skill publishes visible Markdown files in `$(utility-path speech)/intake`;
 the daemon synthesizes and plays through a seat during 06:00–24:00, matching
 paper working hours, with a 06:05 release for anything held overnight.
 Publishing a queue file is not evidence it was heard: consult playback receipts.

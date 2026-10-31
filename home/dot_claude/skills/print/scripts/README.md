@@ -1,7 +1,7 @@
 # Print renderer (manual use)
 
 Physical printing is not done from here. It is one drop into
-`~/Paper/intake/` on **nas** (see `../SKILL.md`), and paper-daemon (`pkgs/paper-daemon`)
+`${paper_root}/intake/` on **nas** (see `../SKILL.md`), and paper-daemon (`pkgs/paper-daemon`)
 is the only submitter: it sends Markdown to `paper-render` on compute, checks the queue,
 submits, and writes the receipt from the printer. These scripts are the
 renderer it uses, documented for the two things an agent may still do by
@@ -17,7 +17,7 @@ forwards to the local model server on the strix) picks profile, one-page
 enforcement, duplex, filename and title; `--profile`/`--sides` override it.
 Classification failure is non-fatal: one stderr line, the deterministic
 default (source-serif, duplex, no one-page enforcement), provenance
-`"fallback"`. The job directory (default `~/Paper/jobs/<date>-print-<slug>-<time>`)
+`"fallback"`. The job directory (default `${paper_root}/jobs/<date>-print-<slug>-<time>`)
 gets `source.md`, the PDF and `decision.json` (`pages_rendered`,
 `target_pages`, `page_slack`, `length_check`, `render_attempts`, `layout`). A render more than
 `--page-slack` pages (default 2) from `--target-pages` exits 3. It has

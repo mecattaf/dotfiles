@@ -2,11 +2,11 @@
 
 This NAS-hosted CLI receives **one explicitly selected Huion JSON/SVG group**, submits one page to the fleet's local model server, Gufo on strix-coordinator (lib/local-model.nix), and prepares a writer-review packet. It has no scanner, inference timer, device-clear operation, automatic annotation acceptance, or new model service. Received originals remain untouched.
 
-The packaged command defaults to `/var/lib/handwriting-intake`; an explicit `--state PATH` before the subcommand overrides it. Direct Python execution defaults to `~/Paper/ocr`.
+The packaged command defaults to `/var/lib/handwriting-intake`; an explicit `--state PATH` before the subcommand overrides it. Direct Python execution defaults to `$(utility-path paper)/ocr`.
 
 ```bash
 # Offline: snapshot one selected real capture. SVG is required; PNG is optional.
-handwriting-intake receive ~/Paper/inbox/BATCH/page1-DD-MM.json
+handwriting-intake receive $(utility-path paper)/inbox/BATCH/page1-DD-MM.json
 
 # Use the returned capture_id. This makes one serial model request.
 # Legacy exports have no completion receipt, so acknowledge unknown completeness.
@@ -18,7 +18,7 @@ handwriting-annotation --state /var/lib/handwriting-annotation import-items --it
 # After the writer resolves the entire capture on handwriting.internal:
 handwriting-intake export CAPTURE_ID \
   --review-state /var/lib/handwriting-annotation \
-  --output-dir ~/Paper/transcribed
+  --output-dir $(utility-path paper)/transcribed
 
 handwriting-intake status
 handwriting-intake snapshot --output /path/to/NEW_VERSIONED_DIRECTORY

@@ -32,7 +32,7 @@ Usage:
 
 Render only (dotfiles#384). This script never reaches CUPS. Physical
 printing belongs to paper-daemon (pkgs/paper-daemon), which calls this
-script on every file dropped into ~/Paper/intake/, reads decision.json, and
+script on every file dropped into the configured paper intake, reads decision.json, and
 alone decides whether, when and how the PDF is submitted — so there is one
 submitter and one receipt. --profile and --sides are the daemon's front-
 matter overrides: they beat the classifier's answer, and decision.json
@@ -201,7 +201,7 @@ def default_decision(source: Path) -> dict:
 def decide(text: str, intent: str | None, source: Path) -> tuple[dict, str]:
     """Returns (decision, provenance) where provenance is gpu|gpu-retry|fallback.
 
-    Receipts already on disk under ~/Paper/jobs may carry the provenance
+    Receipts already on disk under the configured paper jobs directory may carry the provenance
     values of earlier engines (npu / npu-retry / retired); leave those values
     alone when reading old job directories.
 
@@ -266,7 +266,7 @@ def main() -> int:
             overridden.append(key)
 
     # Every render is a job directory. paper-daemon passes its own work
-    # directory; a hand run without --output-dir lands under ~/Paper/jobs as
+    # directory; a hand run without --output-dir lands under the configured paper jobs directory as
     # it always has. The markdown is archived there as source.md so working
     # trees stay unpolluted.
     if args.output_dir:
@@ -275,7 +275,7 @@ def main() -> int:
         import datetime
         now = datetime.datetime.now()
         slug = re.sub(r"[^a-z0-9]+", "-", args.input.stem.lower()).strip("-")
-        jobdir = (Path.home() / "Paper" / "jobs" /
+        jobdir = (Path(subprocess.check_output(["utility-path", "paper"], text=True).strip()) / "jobs" /
                   f"{now:%Y-%m-%d}-print-{slug}-{now:%H%M%S}")
     jobdir.mkdir(parents=True, exist_ok=True)
     source = jobdir / "source.md"

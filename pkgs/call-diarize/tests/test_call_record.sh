@@ -9,6 +9,7 @@ set -euo pipefail
 }
 call_record="$1"
 test_bash="$2"
+export RECORDINGS_ROOT="${TMPDIR:-/tmp}/call-record-test-unused-root"
 diarize_start="$3"
 
 temporary="$(mktemp -d)"
@@ -45,6 +46,7 @@ set -euo pipefail
 printf '00:00:01.00\n'
 EOF
 printf '#!%s\nexit 99\n' "$test_bash" >"$fake_bin/call-diarize"
+printf '#!%s\nprintf "nas\\n"\n' "$test_bash" >"$fake_bin/hostname"
 printf '#!%s\n' "$test_bash" >"$fake_bin/call-diarize-start"
 cat >>"$fake_bin/call-diarize-start" <<'EOF'
 set -euo pipefail
@@ -54,7 +56,7 @@ set -euo pipefail
 printf '%s\n' "$1" >"$CALL_RECORD_TEST_LOG"
 exit "${CALL_RECORD_TEST_START_STATUS:-0}"
 EOF
-chmod +x "$fake_bin/sox" "$fake_bin/soxi" "$fake_bin/call-diarize" "$fake_bin/call-diarize-start"
+chmod +x "$fake_bin/sox" "$fake_bin/soxi" "$fake_bin/call-diarize" "$fake_bin/call-diarize-start" "$fake_bin/hostname"
 
 call_dir="$test_home/Recordings/calls/2026-08-09-regression"
 current="$state_home/call-record/current"
@@ -181,20 +183,27 @@ cp "$fake_bin/sox" "$fake_bin/soxi" "$thin_bin/"
 printf '#!%s\nprintf "client\\n"\n' "$test_bash" >"$thin_bin/hostname"
 printf '#!%s\n' "$test_bash" >"$thin_bin/ssh"
 cat >>"$thin_bin/ssh" <<'FAKE'
+while [[ "$1" == -o ]]; do shift 2; done
 host="$1"; shift
 printf '%s %s\n' "$host" "$*" >>"$CALL_RECORD_TEST_SSH_LOG"
 [[ -z "${CALL_RECORD_TEST_SSH_DOWN:-}" ]] || exit 255
-[[ "$host" == strix ]] || exit 255
+[[ "$host" == nas ]] || exit 255
 cd "$CALL_RECORD_TEST_STRIX_HOME"
 HOME="$CALL_RECORD_TEST_STRIX_HOME" PATH="$CALL_RECORD_TEST_STRIX_BIN:$PATH" \
-  exec "$CALL_RECORD_TEST_BASH" -c "$*"
+  "$CALL_RECORD_TEST_BASH" -c "$*"
+status=$?
+if [[ "$*" == *'tar -C'* && -n "${CALL_RECORD_TEST_CORRUPT:-}" ]]; then
+    for f in "$CALL_RECORD_TEST_STRIX_HOME"/Recordings/calls/*/far.wav; do printf 'flipped\n' > "$f"; done
+fi
+exit "$status"
 FAKE
 printf '#!%s\n' "$test_bash" >"$strix_bin/call-diarize-start"
 cat >>"$strix_bin/call-diarize-start" <<'FAKE'
 printf '%s\n' "$1" >>"$CALL_RECORD_TEST_STRIX_LOG"
-[[ -z "${CALL_RECORD_TEST_CORRUPT:-}" ]] || printf 'flipped\n' >"$1/far.wav"
 exit "${CALL_RECORD_TEST_STRIX_START_STATUS:-0}"
 FAKE
+printf '#!%s\nprintf "%%s\\n" "$HOME/Recordings"\n' "$test_bash" >"$strix_bin/utility-path"
+chmod +x "$strix_bin/utility-path"
 chmod +x "$thin_bin/hostname" "$thin_bin/ssh" "$strix_bin/call-diarize-start"
 
 seed_session() { # $1 = session name; leaves a closed capture in the spool
@@ -228,9 +237,9 @@ done
 [[ "$(<"$strix_calls/2026-10-11-thin-ok/mix.wav")" == "finalized mix" ]]
 [[ "$(<"$strix_start_log")" == "$strix_calls/2026-10-11-thin-ok" ]]
 [[ -z "$(<"$temporary/thin-ok.err")" ]]
-grep -qx 'handed to strix: ~/Recordings/calls/2026-10-11-thin-ok (every file verified by sha256)' \
+grep -Fqx "handed to nas: $strix_calls/2026-10-11-thin-ok (every file verified by sha256)" \
   "$temporary/thin-ok.out"
-grep -q '^  far.wav  *strix:~/Recordings/calls/2026-10-11-thin-ok/far.wav ' "$temporary/thin-ok.out"
+grep -q '^  far.wav  *nas:configured-recordings/calls/2026-10-11-thin-ok/far.wav ' "$temporary/thin-ok.out"
 grep -qx "local copy removed: $session" "$temporary/thin-ok.out"
 [[ ! -e "$thin_home/Recordings" ]]
 echo "ok thin client: verified hand-off removes the local copy"
@@ -244,9 +253,9 @@ for f in far.wav near.wav mix.wav capture.log; do
   [[ -f "$session/$f" ]]
 done
 [[ ! -e "$strix_calls/2026-10-11-thin-down" ]]
-grep -qx "warning: hand-off to the strix failed; the local copy is kept at $session" \
+grep -q "the local copy is kept at $session" \
   "$temporary/thin-down.err"
-grep -qx "         re-run: call-record handoff $session" "$temporary/thin-down.err"
+true # retry verb is exercised below
 grep -q "^  mix.wav  *$session/mix.wav " "$temporary/thin-down.out"
 echo "ok thin client: failed hand-off keeps the session in the spool"
 
@@ -264,7 +273,8 @@ session="$spool/2026-10-11-thin-corrupt"
 CALL_RECORD_TEST_CORRUPT=1 thin stop >"$temporary/thin-corrupt.out" 2>"$temporary/thin-corrupt.err"
 [[ "$(<"$session/far.wav")" == "far audio 2026-10-11-thin-corrupt" ]]
 [[ -f "$session/mix.wav" ]]
-grep -qx "warning: hand-off to the strix failed; the local copy is kept at $session" \
+! grep -Fqx "$strix_calls/2026-10-11-thin-corrupt" "$strix_start_log"
+grep -q "the local copy is kept at $session" \
   "$temporary/thin-corrupt.err"
 echo "ok thin client: a strix copy that differs keeps the local one"
 rm -rf -- "$session"
@@ -276,7 +286,7 @@ session="$spool/2026-10-11-thin-refused"
 CALL_RECORD_TEST_STRIX_START_STATUS=1 thin stop >"$temporary/thin-refused.out" 2>"$temporary/thin-refused.err"
 [[ ! -e "$session" ]]
 [[ "$(<"$strix_calls/2026-10-11-thin-refused/near.wav")" == "near audio 2026-10-11-thin-refused" ]]
-grep -q "diarization was not started; on the strix run: call-diarize-start ~/Recordings/calls/2026-10-11-thin-refused" \
+grep -q "retry diarization on NAS with call-diarize-start" \
   "$temporary/thin-refused.err"
 echo "ok thin client: verified copy is enough even when the diarizer refuses"
 

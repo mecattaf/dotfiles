@@ -238,16 +238,17 @@ class SkillDocumentationTests(unittest.TestCase):
 
     def test_skill_is_the_drop_contract_only(self) -> None:
         text = SKILL.read_text(encoding="utf-8")
-        self.assertIn("~/Paper/intake/", text)
+        self.assertIn("utility-path paper", text)
+        self.assertIn("${paper_root}/intake/", text)
         self.assertIn("target_pages", text)
         self.assertIn("receipt.json", text)
         for agent_side_cups in ("--print", "--submit-only", "print-auto.py ", "lp -d", "lpstat"):
             self.assertNotIn(agent_side_cups, text)
         # inbox/ is the Huion's (DECISIONS 2026-09-13), never a print drop:
         # it may be named only as the thing this skill is not.
-        self.assertNotIn("~/Paper/inbox/.<slug>", text)
-        self.assertNotIn("~/Paper/inbox/<slug>", text)
-        self.assertIn("`~/Paper/inbox/` is the Huion notepad's, not a print drop", text)
+        self.assertNotIn("${paper_root}/inbox/.<slug>", text)
+        self.assertNotIn("${paper_root}/inbox/<slug>", text)
+        self.assertIn("`${paper_root}/inbox/` is the Huion notepad's, not a print drop", text)
 
     def test_manual_renderer_documents_the_duplex_default(self) -> None:
         text = README.read_text(encoding="utf-8")
