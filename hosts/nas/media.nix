@@ -32,7 +32,11 @@ let
   # takes no backup at all (see its settings block): the music library is
   # rebuildable from the files themselves by rescanning.
   fastRoot = "/mnt/fast";
-  generatedRoot = "${fastRoot}/immich-generated";
+  # Immich's database and generated media live on the 256GB secondary SSD
+  # (./immich-disk.nix) when it is enabled; the shared fast tier otherwise.
+  immichRoot =
+    if config.myNas.immichDisk.enable then config.myNas.immichDisk.mountPoint else fastRoot;
+  generatedRoot = "${immichRoot}/immich-generated";
   navidromeRoot = "${fastRoot}/navidrome";
   plexRoot = "${fastRoot}/plex";
   # Shared helpers (#130); the definitions moved verbatim, so the
@@ -90,8 +94,8 @@ in
     # search) are random-I/O and the HDD serviced them at rotating-disk IOPS.
     # Safety net: Immich's nightly pg_dump lands on the HDD (photos/backups,
     # see the BindPaths note below), so NVMe loss costs at most a day.
-    services.postgresql.dataDir = "${fastRoot}/postgresql/${config.services.postgresql.package.psqlSchema}";
-    systemd.services.postgresql.unitConfig.RequiresMountsFor = [ fastRoot ];
+    services.postgresql.dataDir = "${immichRoot}/postgresql/${config.services.postgresql.package.psqlSchema}";
+    systemd.services.postgresql.unitConfig.RequiresMountsFor = [ immichRoot ];
 
     systemd.tmpfiles.rules = [
       "d ${storageRoot}/photos/thumbs 0700 tom users -"
@@ -110,7 +114,7 @@ in
       # Both levels must pre-exist: the unit mount-namespaces the versioned
       # dataDir before ExecStartPre can initdb it, and fails NAMESPACE if the
       # directory is absent.
-      "d ${fastRoot}/postgresql 0700 postgres postgres -"
+      "d ${immichRoot}/postgresql 0700 postgres postgres -"
       "d ${config.services.postgresql.dataDir} 0700 postgres postgres -"
       "d ${navidromeRoot} 0700 tom users -"
       "d ${navidromeRoot}/cache 0700 tom users -"
@@ -126,7 +130,7 @@ in
         StopWhenUnneeded = true;
         RequiresMountsFor = [
           storageRoot
-          fastRoot
+          immichRoot
         ];
       };
       # Rebuildable generated media overlays onto the photos tree from the
@@ -294,7 +298,7 @@ in
     ];
 
     networking.firewall.extraInputRules = ''
-      ip saddr 10.42.0.2 tcp dport { 2283, 4533, 32400 } accept comment "media from strix (LAN; /30 retired 2026-08-21)"
+      iifname "enp1s0" ip saddr 10.42.0.0/24 tcp dport { 2283, 4533, 32400 } accept comment "media port URLs from the LAN"
     '';
   };
 }

@@ -26,7 +26,7 @@ no `--print`: nothing here reaches CUPS.
 An overlong render gets at most two further measured attempts (`compact`, then
 `dense`). The original Markdown stays unchanged. Type never goes below 10 pt;
 the narrowest margins are 23 mm at the sides and 17/18 mm top/bottom. Short
-sources are rejected without padding. `paper-render` packages Chromium, the
+sources are rejected without padding. `paper-render` packages WeasyPrint, the
 four font families, pdfinfo and the Gufo `utility-model` wrapper, so rendering
 does not depend on an interactive desktop or inherited PATH. The NAS checks
 the returned PDF itself before it reaches CUPS; compute returns no receipt.
@@ -37,7 +37,7 @@ the returned PDF itself before it reaches CUPS; compute returns no receipt.
       [--compare] [--label] [--require-one-page] [--keep-html] [--force] \
       [--layout standard|compact|dense]
 
-Markdown or HTML → print CSS → headless Chrome → A4 PDF. The script checks
+Markdown or HTML → print CSS → WeasyPrint → A4 PDF. The script checks
 that the requested font resolves instead of silently accepting a fallback,
 and checks A4 geometry when pdfinfo is available. `--require-one-page` fails
 loudly if any output is not exactly one page. `--keep-html` keeps the
@@ -59,7 +59,8 @@ retired for agents; an agent uses the drop.
 Profiles use optical size and leading adjustments rather than forcing unlike
 faces into one nominal metric. Default page geometry is A4 portrait,
 30 mm side margins, restrained black-on-white styling, widow/orphan control,
-and no browser headers or footers.
+and no browser dependency. External network assets are never fetched; queue
+drops need embedded image data or an existing PDF.
 
 Every page carries a bare 7 pt page number at the bottom right, set in the
 reserved bottom margin through a CSS `@page` margin box. `--label` and

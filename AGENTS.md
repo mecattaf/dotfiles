@@ -29,8 +29,8 @@ hand-run service, a path/udev/session trigger, or a factory schedule:
 | D42 | tripwire-coredump, tripwire-user-unit-failure (all); tripwire-nas-reachability, tripwire-attic-cache-health (strix); tripwire-strix-reachability (client, #514) | all | `modules/tripwire.nix` |
 | D43 | nix-gc (weekly), gc-root-reaper (daily) | all | `modules/gc-retention.nix`, `modules/gc-root-reaper.nix` |
 | D44 | atticd GC every 12 h | NAS | `hosts/nas/attic.nix` |
-| D45 | btrbk-nas (first Saturday 08:00), btrfs-scrub-mnt-nas (monthly) | NAS | `hosts/nas/snapshots.nix`, `hosts/nas/storage.nix` |
-| D48 | artifact-reaper (daily) | strix | `modules/caddy-artifacts.nix` |
+| D45 | btrfs-scrub-mnt-nas (monthly); btrbk-nas off since 2026-10-28 | NAS | `hosts/nas/storage.nix`, `hosts/nas/snapshots.nix` (gate off) |
+| D48 | artifact-reaper (daily) | NAS | `modules/caddy-artifacts.nix` |
 | D49 | fstrim, logrotate, fwupd-refresh, systemd-tmpfiles-clean (system and user) | all | NixOS defaults |
 | D50 | smartd (`-n standby,q`; a daemon, not a timer) | NAS | `hosts/nas/storage.nix` |
 
@@ -212,17 +212,9 @@ loaned copy, and only when the set it computed has not changed underneath it.
 `docs/nas/model-archive.md` is the retire/restore runbook; retired Library
 bytes are listed in `/mnt/nas/models/weights/RETIRED-<date>.tsv`.
 
-**Shared browser desktop (2026-09-12).** Strix keeps `myDisplay.enable =
-false`: no physical Sway/greetd session. `modules/browser-desktop.nix` supplies a
-separate on-demand headless Sway seat with WayVNC on loopback and stock noVNC
-served by Caddy at `https://browser.internal` on BE550. The lightweight launcher
-starts at boot; Sway, WayVNC and Chrome do not. Sessions stop five minutes
-after the last viewer disconnects. This exception is Strix-only; NAS has no compositor/VNC. The sidebar opens ordinary installed
-Chrome profiles and unlocks the keyring. The FARA agent loop (`fara-browser`,
-its model unit and skill) was removed with FARA on 2026-09-16 (Tom).
-`chrome-stream` (same module) is the lighter path: headless Chrome's CDP
-screencast in a viewer page, bound to loopback and tunnelled to the client
-over `ssh -L`.
+**Browser desktop retired (2026-10-31, #651).** The strix runs no Google Chrome,
+shared browser desktop or `chrome-stream`; the client keeps Chrome. A flake
+check asserts that no host declares a `browser-desktop` user service.
 
 **Raw dotfiles come from `~/mecattaf/dotfiles`, not from the flake you switch
 from (#313).** Every out-of-store link (`home/home.nix` `link`, herdr, nvim)
@@ -230,15 +222,16 @@ points into that checkout. Bring the branch there (ff-merge or `pull
 --ff-only`) before `nixos-rebuild switch`, even when switching from a worktree.
 `raw-dotfiles-guard` (`home/raw-dotfiles-guard.nix`) fails the Home Manager
 activation, before any file is written, when a user unit's
-`%h/.local/bin/<program>` is missing from that checkout. The client is the
-exception (2026-10-11): `rawDotfiles.inStore` copies the same files into the
-Nix store, so it has no checkout, no guard and no bootstrap clone, and a
-`deploy` from the strix is its only update path. Do not clone the repo there.
+`%h/.local/bin/<program>` is missing from that checkout. The client and both
+strix hosts are the exception: `rawDotfiles.inStore` copies the same files into
+the Nix store, so they have no checkout, no guard and no bootstrap clone. Only
+the NAS keeps the checkout, and a deploy from the NAS is the update path for
+the others. Do not clone the repo on them.
 
 
 **Handwriting intake (2026-09-14).** `handwriting.internal` is the private
 annotation menu, declared by `modules/handwriting-annotation.nix`: NAS DNS,
-strix Caddy and a CPU-only service. Preserve `/var/lib/handwriting-annotation`
+NAS Caddy and a CPU-only service on the NAS. Preserve `/var/lib/handwriting-annotation`
 and its append-only writer/model-review history across updates. Model-assisted
 resolutions are not writer labels. Huion sources arrive in `~/Paper/inbox`;
 `~/Paper/intake` is the printing route. Use the resident Gufo Flash-Next model for serial

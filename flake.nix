@@ -538,8 +538,6 @@
             paper-daemon
             paper-render
             call-diarize
-            browser-desktop
-            chrome-stream
             fleet-status
             # `nix build .#dsh -o .demo/dsh` is how a PR worktree runs dsh; its
             # passthru carries `.runner`, `.smoke` and `.unwrapped` for the gate.
@@ -689,31 +687,6 @@
           in
           pkgs.runCommand "zenbook-duo-daemon-lock-check" { } ''
             cmp ${daemon.src}/Cargo.lock ${./pkgs/zenbook-duo-daemon.Cargo.lock}
-            touch "$out"
-          '';
-
-        gvisor-module =
-          let
-            hasGvisor = c: builtins.any (p: (p.pname or "") == "gvisor") c.environment.systemPackages;
-            # Enabling runsc must not introduce configuration assertion failures.
-            failing = c: map (a: a.message) (builtins.filter (a: !a.assertion) c.assertions);
-            strix = self.nixosConfigurations.strix-coordinator.config;
-
-            gvisorOn =
-              (self.nixosConfigurations.strix-coordinator.extendModules {
-                modules = [ { myGvisor.enable = nixpkgs.lib.mkForce true; } ];
-              }).config;
-          in
-          assert !strix.myGvisor.enable;
-
-          assert !(hasGvisor strix);
-
-          assert hasGvisor gvisorOn;
-          assert failing gvisorOn == failing strix;
-
-          pkgs.runCommand "gvisor-module-check" { } ''
-            test -x ${gvisorOn.myGvisor.package}/bin/runsc
-            test -x ${gvisorOn.myGvisor.package}/bin/containerd-shim-runsc-v1
             touch "$out"
           '';
 
@@ -953,15 +926,18 @@
           # invariant rather than an implicit local one. hosts/worker/immich-ml.nix
           # takes its package from this same option for exactly this assert.
 
-          assert !strix.myCoordinatorMedia.enable;
+          # The NAS fronts every .internal site; the strix runs no Caddy and
+          # no media relays. The relayMedia option is gone, so test the attr.
           assert strix.myNasClient.useRemoteStorage;
-          assert strix.myNasClient.relayMedia;
           assert !strix.services.immich.enable;
           assert !strix.services.navidrome.enable;
           assert strix.fileSystems."/mnt/nas".fsType == "nfs4";
-          assert strix.systemd.sockets ? immich-relay;
-          assert strix.systemd.sockets ? navidrome-relay;
-          assert strix.systemd.sockets ? plex-relay;
+          assert !strix.services.caddy.enable;
+          assert nas.services.caddy.enable;
+          assert !(strix.systemd.sockets ? immich-relay);
+          assert !(strix.systemd.sockets ? navidrome-relay);
+          assert !(strix.systemd.sockets ? plex-relay);
+          assert !(strix.myNasClient ? relayMedia);
           # ML is the one endpoint that is NOT a strix relay any more: the
           # socket must exist on the worker and must be GONE from the
           # strix. Asserting both directions is deliberate — a half-move
@@ -985,14 +961,14 @@
 
           # Coordinator LAN doors: the .internal front doors and the LLM
           # endpoint. :3003 is deliberately ABSENT — it left with Immich ML.
-          assert builtins.elem 80 strix.networking.firewall.interfaces.enp191s0.allowedTCPPorts;
+          assert !(builtins.elem 80 (strix.networking.firewall.interfaces.enp191s0.allowedTCPPorts or [ ]));
           # The strix serves no model: no inference door on its LAN leg.
           assert !(builtins.elem 9292 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
           assert !(builtins.elem 8731 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
           assert !(builtins.elem 3003 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
           # Worker LAN doors: Immich ML (dialled by nas.services.immich above),
           # the Gufo API (modules/gufo.nix) and the academic drain that
-          # the strix's Caddy fronts as drain.internal
+          # drain site (dropped 2026-10-31 with the strix Caddy)
           # (hosts/worker/default.nix). Nothing else — and no
           # tailnet to hide behind, which is exactly why these stay
           # interface-scoped rather than global. On enp191s0: the worker is
@@ -1056,9 +1032,9 @@
           # /etc/hosts, so they are filtered out of the second test; the first
           # still holds every rewrite, wildcard included, to the NAS address.
           assert builtins.all (
-            r: r.answer == "10.42.0.2"
+            r: r.answer == "10.42.0.1"
           ) nas.services.adguardhome.settings.filtering.rewrites;
-          assert builtins.all (n: builtins.elem n nas.networking.hosts."10.42.0.2") (
+          assert builtins.all (n: builtins.elem n nas.networking.hosts."10.42.0.1") (
             map (r: r.domain) (
               builtins.filter (
                 r: !(nixpkgs.lib.hasPrefix "*." r.domain)
@@ -1079,7 +1055,10 @@
           # but this assertion did not, against this block's own standing
           # instruction to invert it in the same commit — so it had been failing.
           # Inverted here with the #229 work; the gate discipline is intact again.
-          assert nas.myNas.snapshots.enable; # ws2a hosts/nas/snapshots.nix
+          # FLIPPED OFF 2026-10-28 on Tom's word ("no time machine for file etc"):
+          # the nine btrbk snapshots were deleted by hand with the .snapshots
+          # subvolume; files are backed up as files, not as snapshots.
+          assert !nas.myNas.snapshots.enable; # ws2a hosts/nas/snapshots.nix
           # ws4 flipped ON 2026-08-20 (the Library's cold store): subvolume
           # created live with compression=none, gate + export + receipt
           # discipline landed together, per this block's own instructions.
@@ -1090,7 +1069,12 @@
           # Paperless was removed on 2026-10-13 (Tom 2026-09-29: "i m removing
           # paperless fully"); nothing on the NAS or the strix may bring it back.
           assert !nas.services.paperless.enable;
-          assert !(strix.services.caddy.virtualHosts ? "http://paperless.internal");
+          assert nas.services.caddy.virtualHosts ? "http://photos.internal";
+          assert nas.services.caddy.virtualHosts ? "http://music.internal";
+          assert nas.services.caddy.virtualHosts ? "http://videos.internal";
+          assert !(nas.services.caddy.virtualHosts ? "http://drain.internal");
+          assert !(nas.services.caddy.virtualHosts ? "http://paperless.internal");
+          assert nixpkgs.lib.hasInfix "default_bind 10.42.0.1 127.0.0.1" nas.services.caddy.globalConfig;
           assert !(builtins.elem "tailscale0" nas.networking.firewall.trustedInterfaces);
           assert !strix.myNasClient.relayAttic;
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
@@ -1121,9 +1105,6 @@
 
             clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
             cfgOf = h: self.nixosConfigurations.${h}.config;
-            hasChromeStream =
-              h:
-              builtins.any (p: (p.pname or p.name or "") == "chrome-stream") (cfgOf h).environment.systemPackages;
             # Every host whose seat this block adjudicates — named, not
             # discovered, so a fifth host added tomorrow (a seat by default,
             # modules/display.nix) is either listed here on purpose or its
@@ -1215,24 +1196,24 @@
           # reach a server at all (`herdr --remote strix`). One server
           # (ruling B5, #309 settled), clients elsewhere, unchanged.
 
-          # No wayvnc on the worker since 2026-09-11: with no display there
-          # (hosts/worker/default.nix) home/remote.nix rendered nothing, and
-          # since the headless flip later that day the module is gone from
-          # the tree. The browser-only Sway service added on 2026-09-12 is
-          # separate from that retired physical-session integration.
-          #
-          # The physical seat and the optional browser Sway are independent.
-          # Restoring a strix seat must not resurrect physical-session VNC.
-          # The separate browser-only Sway desktop is a strix user service.
-          assert (cfgOf "strix-coordinator").systemd.user.services ? browser-desktop;
-          assert (cfgOf "strix-coordinator").systemd.user.services.browser-desktop.wantedBy == [ ];
-          # FARA is retired (Tom, 2026-09-16): no model unit beside the desktop.
-          assert !((cfgOf "strix-coordinator").systemd.user.services ? fara-browser-model);
-
-          # chrome-stream is installed with that desktop and nowhere else: the
-          # client reaches it over ssh with its own Chrome (R-16 keeps the
-          # client closure near-static).
-          assert hasChromeStream "strix-coordinator";
+          # The shared browser desktop and chrome-stream left strix-coordinator
+          # on 2026-10-31 (#651): no host declares the browser-desktop user
+          # service, and Google Chrome lives on the seat (client) only.
+          assert builtins.all (h: !((cfgOf h).systemd.user.services ? browser-desktop)) displayHosts;
+          assert builtins.all
+            (
+              h:
+              let
+                names = p: p.pname or p.name or "";
+                isChrome = p: nixpkgs.lib.hasPrefix "google-chrome" (names p);
+                homePkgs = (cfgOf h).home-manager.users.tom.home.packages;
+              in
+              !(builtins.any isChrome (cfgOf h).environment.systemPackages) && !(builtins.any isChrome homePkgs)
+            )
+            [
+              "strix-coordinator"
+              "strix-worker"
+            ];
 
           assert !(strixHome.systemd.user.services ? wayvnc);
           # The seat EQUALITIES: greetd == Sway == myDisplay, greetd starts the
@@ -1327,6 +1308,34 @@
             [
               "client"
               "strix-coordinator"
+            ];
+          # No Brave, cmux or Claude Desktop on client, strix-coordinator or
+          # the NAS, whichever way they arrive (Tom, 2026-10-31). Name-based,
+          # so a renamed attribute or a wrapper still trips it.
+          assert builtins.all
+            (
+              h:
+              let
+                cfg = self.nixosConfigurations.${h}.config;
+                names = map nixpkgs.lib.getName (
+                  builtins.filter nixpkgs.lib.isDerivation (
+                    cfg.home-manager.users.tom.home.packages ++ cfg.environment.systemPackages
+                  )
+                );
+              in
+              !(builtins.any (
+                n:
+                builtins.any (p: nixpkgs.lib.hasPrefix p n) [
+                  "brave"
+                  "claude-desktop"
+                  "cmux"
+                ]
+              ) names)
+            )
+            [
+              "client"
+              "strix-coordinator"
+              "nas"
             ];
 
           assert !(cfgOf "nas").myDisplay.enable;
@@ -1617,6 +1626,17 @@
               touch "$out"
             '';
 
+        print-render = pkgs.runCommand "print-render" {
+          nativeBuildInputs = [ pkgs.python3 pkgs.python3Packages.weasyprint pkgs.fontconfig pkgs.poppler-utils ];
+          FONTCONFIG_FILE = pkgs.paper-render.fonts;
+          PRINT_PAPER_SCRIPT = ./home/dot_claude/skills/print/scripts/print-paper.py;
+        } ''
+          export HOME="$TMPDIR/home"
+          mkdir -p "$HOME"
+          python3 ${./tests/print/render_integration.py} -v
+          touch "$out"
+        '';
+
         # nightly-record (dotfiles#298): five lanes, five rows, every night,
         # from the harness transcripts and nothing else. Same shape as
         # print-paper — the real program, driven against fixtures.
@@ -1656,15 +1676,15 @@
             lib = nixpkgs.lib;
             guard = pkgs.callPackage ./pkgs/raw-dotfiles-guard.nix { };
             homeOf = h: self.nixosConfigurations.${h}.config.home-manager.users.tom;
-            entry = (homeOf "strix-coordinator").home.activation.rawDotfilesGuard;
+            entry = (homeOf "nas").home.activation.rawDotfilesGuard;
           in
           assert (homeOf "strix-coordinator").rawDotfiles.programs == [ ];
 
           assert (homeOf "client").rawDotfiles.programs == [ ];
-          # The client carries no checkout (2026-10-11): its raw dotfiles come
-          # from the store, so it has no guard to run, no bootstrap clone and
-          # not one home file linked into ~/mecattaf. The strix keeps the
-          # out-of-store links and the guard.
+          # The client and strix-coordinator carry no checkout: their raw
+          # dotfiles come from the store, so they have no guard to run, no
+          # bootstrap clone and not one home file linked into ~/mecattaf. The
+          # NAS keeps the out-of-store links and the guard.
           assert (homeOf "client").rawDotfiles.inStore;
           assert !((homeOf "client").home.activation ? rawDotfilesGuard);
           assert !(self.nixosConfigurations.client.config.systemd.services ? dotfiles-bootstrap);
@@ -1672,8 +1692,14 @@
             !(builtins.any (
               f: builtins.isAttrs f.source && lib.hasInfix "/mecattaf/" (f.source.buildCommand or "")
             ) (builtins.attrValues (homeOf "client").home.file));
-          assert !(homeOf "strix-coordinator").rawDotfiles.inStore;
-          assert self.nixosConfigurations.strix-coordinator.config.systemd.services ? dotfiles-bootstrap;
+          assert (homeOf "strix-coordinator").rawDotfiles.inStore;
+          assert !((homeOf "strix-coordinator").home.activation ? rawDotfilesGuard);
+          assert !(self.nixosConfigurations.strix-coordinator.config.systemd.services ? dotfiles-bootstrap);
+          assert
+            !(builtins.any (
+              f: builtins.isAttrs f.source && lib.hasInfix "/mecattaf/" (f.source.buildCommand or "")
+            ) (builtins.attrValues (homeOf "strix-coordinator").home.file));
+          assert !(homeOf "nas").rawDotfiles.inStore;
           assert
             entry.before == [
               "checkLinkTargets"
@@ -2470,8 +2496,8 @@
           assert !nas.programs.niri.enable;
           assert !nas.services.greetd.enable;
           assert !nas.services.pipewire.enable;
-          # The canonical brain owns the lightweight print scheduler. Browser
-          # rendering and local inference remain on the Strix compute pair.
+          # NAS owns the print scheduler; document rendering and inference
+          # remain on the active compute host.
           assert nas.services.printing.enable;
           assert !nas.services.printing.browsed.enable;
           # Discovery remains restricted to the wired LAN.
@@ -2482,6 +2508,7 @@
             == [
               22
               53
+              80
               443
               2283
               4533
@@ -2493,9 +2520,8 @@
           assert nas.myNas.media.enable;
           assert nas.services.immich.enable;
           assert nas.services.navidrome.enable;
-          assert !strix.myCoordinatorMedia.enable;
           assert strix.myNasClient.useRemoteStorage;
-          assert strix.myNasClient.relayMedia;
+          assert !(strix.myNasClient ? relayMedia);
           # ML is the one endpoint that is NOT a strix relay any more: the
           # socket must exist on the worker and must be GONE from the
           # strix. Asserting both directions is deliberate — a half-move
@@ -2585,8 +2611,6 @@
           # v0.22.0 plus Q8 and the separately pinned ds4 V4.1 model.
           assert
             builtins.attrNames localModelCatalog.artifacts == [
-              "deepseek-v4-flash-dspark-gguf"
-              "deepseek-v4-flash-gguf"
               "deepseek-v41-flash-1017-q2-gguf"
               "deepseek-v41-flash-dspark-gguf"
               "deepseek-v41-flash-vision-gguf"
@@ -2726,31 +2750,15 @@
             || (cat $out; exit 1)
         '';
 
-        browser-session-runtime =
+        keyring-boot-runtime =
           let
             coord = self.nixosConfigurations.strix-coordinator.config;
-            portal = name: coord.systemd.user.services.${name} or { };
           in
-          assert builtins.all
-            (
-              name:
-              if coord.myDisplay.enable then
-                !(builtins.elem "browser-desktop.service" ((portal name).partOf or [ ]))
-                && !(((portal name).unitConfig or { }) ? ConditionPathExists)
-                && !(((portal name).serviceConfig or { }) ? EnvironmentFile)
-              else
-                builtins.elem "browser-desktop.service" (portal name).partOf
-                && builtins.elem "browser-desktop.service" (portal name).after
-                && (portal name).serviceConfig.EnvironmentFile == "%t/browser-desktop/portal-environment"
-                && (portal name).unitConfig.ConditionPathExists == "%t/browser-desktop/portal-environment"
-            )
-            ([
-              "xdg-desktop-portal"
-              "xdg-desktop-portal-gtk"
-            ]);
           assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.partOf;
           assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.wantedBy;
-          pkgs.browser-desktop.tests.contract;
+          pkgs.runCommand "keyring-boot-runtime" { } ''
+            touch "$out"
+          '';
 
         herdr-launchers =
           pkgs.runCommand "herdr-launchers"
@@ -2813,9 +2821,13 @@
 
         printing =
           let
-            strix = self.nixosConfigurations.strix-coordinator.config;
+            nasCfg = self.nixosConfigurations.nas.config;
+            computeHosts = [
+              self.nixosConfigurations.strix-coordinator.config
+              self.nixosConfigurations.strix-worker.config
+            ];
             activeHosts = [
-              strix
+              nasCfg
             ];
             expectedPrinter = {
               name = "Brother_HL_L2445DW";
@@ -2834,9 +2846,14 @@
             };
           in
           assert nixpkgs.lib.all (host: host.services.printing.enable) activeHosts;
-          assert nixpkgs.lib.all (host: host.services.avahi.enable) activeHosts;
-          assert nixpkgs.lib.all (host: host.services.avahi.nssmdns4) activeHosts;
-          assert nixpkgs.lib.all (host: host.services.avahi.openFirewall) activeHosts;
+          assert nixpkgs.lib.all (
+            host: !host.services.printing.enable && !host.services.avahi.enable
+          ) computeHosts;
+          assert nasCfg.services.avahi.enable;
+          assert nasCfg.services.avahi.allowInterfaces == [ "enp1s0" ];
+          assert !nasCfg.services.avahi.openFirewall;
+          assert !nasCfg.services.printing.openFirewall;
+          assert nasCfg.services.printing.listenAddresses == [ "localhost:631" ];
           assert nixpkgs.lib.all (
             host: host.services.resolved.settings.Resolve.MulticastDNS == false
           ) activeHosts;
@@ -2847,7 +2864,9 @@
             host: host.hardware.printers.ensurePrinters == [ expectedPrinter ]
           ) activeHosts;
           assert nixpkgs.lib.all (
-            host: builtins.elem pkgs.brother-print-text host.environment.systemPackages
+            # The NAS follows its own nixpkgs pin, so match by name, not store path.
+            host:
+            builtins.any (p: (p.name or "") == pkgs.brother-print-text.name) host.environment.systemPackages
           ) activeHosts;
           pkgs.runCommand "printing"
             {
@@ -2880,7 +2899,7 @@
             compute = self.nixosConfigurations.strix-coordinator.config;
             daemonService = brainHome.systemd.user.services.paper-daemon;
             postStart =
-              self.nixosConfigurations.strix-coordinator.config.systemd.services.ensure-printers.postStart;
+              self.nixosConfigurations.nas.config.systemd.services.ensure-printers.postStart;
           in
           assert printingHosts != [ ];
           assert nixpkgs.lib.all (host: !host.services.printing.browsed.enable) printingHosts;

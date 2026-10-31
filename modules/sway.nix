@@ -4,7 +4,7 @@
   pkgs,
   ...
 }:
-# The physical Sway seat is distinct from browser-desktop's headless compositor.
+# The physical Sway seat is the client's; no host runs a headless browser compositor.
 # Stock Sway supplies tiling and IPC; this module only owns session lifetime.
 let
   cfg = config.programs.swayPhysical;

@@ -13,6 +13,7 @@
     ./disko.nix
     ./tailscale.nix
     ./network.nix
+    ./initrd-ssh.nix # stage-1 SSH on 10.42.0.1:2222 for headless boot failures
     ./router.nix # Gateway, DHCP and DNS; Ethernet upstream through BE550
     # printer-keepalive.nix DELETED same-day it was born (Tom: "there has to
     # be a smarter way"): with the CUPS queue dialing the printer's pinned IP
@@ -26,13 +27,15 @@
     ./journal.nix
     ./storage.nix
     ./home-disk.nix # #599, bench-prepared home; stage before the fleet power-off
-    ./memory-disk.nix # 256GB recording/memory reservation, gated until fast-tier move
+    ./immich-disk.nix # 256GB secondary SSD: Immich fast tier (PostgreSQL + generated media)
     ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)
     ./media.nix
+    ./front-door.nix
     # ./phone-ingest.nix DELETED 2026-08-21 (Tom: "DEAD and no longer needed
     # ever again") — the adb camera-roll pull was superseded by the Immich
     # mobile app's own background backup. See git history for the tooling.
     ./lacie-mirror.nix
+    ./handwriting.nix
     # #130 expansion workstreams. All four land with their gates OFF; each has
     # a runbook in its own header and flips on its own, later, after that
     # runbook has been walked on the real hardware. ./wake-helpers.nix is
@@ -88,13 +91,15 @@
   # disk; deployment order (NAS restore first, then the strix cutover)
   # is sequenced manually in #131.
   myNas.media.enable = true;
+  # Tom, 2026-10-28: the 256GB secondary SSD holds Immich's database and cache.
+  myNas.immichDisk.enable = true;
   myNas.models.enable = true;
-  # ws2a snapshots — flipped 2026-08-21 per the runbook in ./snapshots.nix:
-  # subvolume layout verified live (photos/music/documents/videos/services/
-  # .snapshots all real subvolumes), dry-run + strix containment check
-  # done at deploy time. Cadence: MONTHLY, first Saturday 08:00 (see the COST
-  # paragraph in snapshots.nix for the ruling trail).
-  myNas.snapshots.enable = true;
+  # ws2a snapshots — flipped on 2026-08-21, OFF since 2026-10-28 on Tom's word:
+  # "dleete the nine snapshots and turn off job YES. no time machine for file
+  # etc". The snapshots and the .snapshots subvolume were deleted by hand the
+  # same day; the 4TB holds music, photos, videos, Documents and the model
+  # Library only.
+  myNas.snapshots.enable = false;
   # ws5 — flipped 2026-08-21 per the runbook in ./attic.nix: state rsynced
   # from the strix with atticd stopped, signing key verified intact,
   # env file placed on the root NVMe.

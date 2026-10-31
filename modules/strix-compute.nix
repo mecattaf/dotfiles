@@ -16,7 +16,6 @@ in
     ./strix.nix
     ./rdma-profile.nix
     ./ds4.nix
-    ./gvisor.nix
     ./microvm-host.nix
     ./cli-anything.nix
     ./fleet-hosts.nix
@@ -37,12 +36,13 @@ in
   myDisplay.enable = false;
   hardware.bluetooth.enable = lib.mkForce false;
   mySecrets.enable = lib.mkDefault false;
-  myGvisor.enable = lib.mkDefault false;
   services.qwen-tts.enable = true;
   services.utilityModel.enable = true;
   # A request-scoped renderer, not a daemon or a print queue. The NAS sends
   # Markdown over its pinned SSH channel and keeps submission/receipt ownership.
-  environment.systemPackages = [ pkgs.paper-render ];
+  environment.systemPackages = lib.optionals coordinator [ pkgs.paper-render ];
+  # No mDNS on compute: the printer queue lives on the NAS (modules/printing.nix).
+  services.avahi.enable = lib.mkForce false;
 
   # Each NHI has two payload ring pairs. Donnerkeule's four-rail mode owns
   # both on each cable: the old tbnet + tbstream consumers cannot share that

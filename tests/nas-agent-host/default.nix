@@ -111,6 +111,7 @@ assert
   lib.sort builtins.lessThan c.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [
     22
     53
+    80
     443
     2283
     4533

@@ -10,15 +10,11 @@
     ./disko.nix
     ./uplink-nas.nix
 
-    ./nas-client.nix # temporary media relays and historical /mnt/nas view
-    ./services.nix
+    ./nas-client.nix # /mnt/nas NFS view and the NAS reachability tripwire
     ./atuin.nix # retained import; its brain role gate now disables the server
     ../client/audio.nix
-    ../../modules/caddy-artifacts.nix
     ../../modules/strix-compute.nix
-    ../../modules/browser-desktop.nix
     ../../modules/keyring-autounlock.nix
-    ../../modules/handwriting-annotation.nix
   ];
 
   networking.hostName = "strix-coordinator";
@@ -27,32 +23,19 @@
   ];
   hardware.bluetooth.enable = lib.mkForce false;
 
-  # Heartbeat remains paused across the NAS handover (DECISIONS 8).
-  myGvisor.enable = false;
+  # No dotfiles checkout on the strix: raw dotfiles come from the Nix store.
+  home-manager.users.tom.rawDotfiles.inStore = true;
 
   # No physical seat (headless in the closet); the Zenbook is the seat.
   # Agent services stay independent of any compositor.
   myDisplay.enable = false;
-  services.browser-desktop.enable = true;
-  services.handwriting-annotation.enable = true;
   myStrixCompute.immichMl.enable = true;
 
-  # Both stay on their proven pre-migration side until the real HDD and service
-  # state have passed the associated issue's cutover checklist.
-  # The 2026-08-02 atomic cutover (#131): media core and its PostgreSQL now
-  # live on the NAS; the strix keeps only the tailnet identity, the
-  # socket relays (2283/4533/32400), the on-demand ML backend, and the NFS
-  # client mount at the immutable /mnt/nas path. The coordinator keeps its own
-  # enrolled Tailscale identity as the independent recovery box: no exit node,
-  # no accepted routes, internet straight through the BE550
-  # (modules/fleet-transport.nix). The worker is not on the tailnet.
-  myCoordinatorMedia.enable = false;
+  # The NAS hosts Immich, Navidrome and every .internal front door (Caddy,
+  # hosts/nas/front-door.nix). This host keeps its own enrolled Tailscale
+  # identity as the independent recovery box (modules/fleet-transport.nix) and
+  # the NFS client mount at the immutable /mnt/nas path.
   myNasClient.useRemoteStorage = true;
-  myNasClient.relayMedia = true;
-
-  services.caddy.virtualHosts."http://drain.internal".extraConfig = ''
-    reverse_proxy 127.0.0.1:8740
-  '';
 
   services.utilityModel.enable = true;
   # The TP2 rank shape stays, but each rank needs the full 340.6 GiB Q2 and

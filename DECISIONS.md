@@ -1,5 +1,57 @@
 # DECISIONS
 
+2026-10-31 Chrome and the browser desktop leave strix-coordinator (dotfiles
+#651). `modules/browser-desktop.nix`, `pkgs/browser-desktop` and
+`pkgs/chrome-stream` are deleted, `browser.internal` is dropped from AdGuard,
+and flake checks assert no host declares a `browser-desktop` user service and
+that neither strix host carries google-chrome. The client keeps Chrome.
+`certs/browser-root.crt` stays as the local CA for every `.internal` name.
+
+2026-10-31 The NAS fronts every `.internal` site and the artifact drop-dir
+(dotfiles #645). `hosts/nas/front-door.nix` runs Caddy bound to 10.42.0.1 and
+loopback only, because Tailscale Serve owns :443 on the NAS tailnet address.
+It serves photos, music and videos from the NAS's own sockets and imports the
+`/var/lib/artifacts/*.caddy` drop-dir; the artifact-reaper service and timer
+(D48) move with it to the NAS. strix-coordinator runs no Caddy and no media
+relays (the immich, navidrome and plex relay sockets and the relayMedia option
+are gone, and `hosts/strix-coordinator/services.nix` is deleted). AdGuard
+answers 10.42.0.1 for every `.internal` name and the artifact wildcard.
+`drain.internal` and `paperless.internal` are dropped. #551 remains open.
+
+2026-10-28 The NAS's 256GB secondary SSD (the Fanxiang, the pre-cutover
+/mnt/fast) is Immich's fast tier (dotfiles T-89): reformatted ext4, label
+`immich`, mounted at `/mnt/immich` by `hosts/nas/immich-disk.nix` after a
+serial-and-label check. The PostgreSQL cluster (Immich's `tom` database, with
+atuin and paperless) and Immich's generated media (thumbs, encoded-video,
+profile) live there. Navidrome, Plex, Attic, the remote journal and `/nix` stay
+on the 1TB pool's `@fast`. This replaces the never-enabled Screenpipe/CUA
+reservation `myNas.memoryDisk` at `/mnt/agent-memory`.
+
+Tom, 2026-10-28: "immich db (that needs "fast" storage, so the 256gb ssd
+secondary becomes the place where the immich cache or whatever lives)."
+
+2026-10-28 The NAS 4TB holds only music, photos (Immich), videos, Documents
+and the model Library (dotfiles T-89). btrbk is off (`myNas.snapshots.enable =
+false`, the flake gate inverted); its nine snapshots and the `.snapshots`
+subvolume were deleted by hand, as were `backups/strix-home-2026-10-23`, the
+August `*.pre-nvme-20260802` service copies, the old remote-journal archive,
+the fleet-move capture tree (its write-ups moved to `~/friday-oct23/`) and
+Otto's `documents/build-cache`. Generation retention is keep-last-3 plus the
+booted, current and last-known-good generations (`modules/gc-retention.nix`),
+and every host's boot menu is capped at 3 (`modules/common.nix`; the client's
+own limit of 5 is gone). DeepSeek V4 Flash 0731 and its DSpark draft leave the
+catalogue; with the retired `halogen-*` rows, their Library bytes are deleted
+under `RETIRED-2026-10-28.tsv`.
+
+Tom, 2026-10-28: "the 4tb drive should only hold music, images (immich),
+videos, and Documents (what was previously my R2 on cloudflare)" and "and the
+models as a "model library" that the local ai devices - mainlyt he
+strix-coordinator now - can 'lease' models from it."
+
+Tom, 2026-10-28: "dleete the nine snapshots and turn off job YES. no time
+machine for file etc", "9) indeed: retire halogen weights and deepseek v4." and
+"11) yes indeed. cap nbr of saved versions on every machine to 3."
+
 2026-10-25 Tailscale is vanilla (D-55, T-58, T-54). The NAS is the only exit
 node and keeps advertising `10.42.0.0/24`; no host selects the exit node.
 The Zenbook (client) has its own login, accepts the NAS subnet route and

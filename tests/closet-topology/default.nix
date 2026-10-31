@@ -9,6 +9,8 @@ let
   n = self.nixosConfigurations.nas.config;
   c = self.nixosConfigurations.client.config;
   registry = import ../../modules/mesh-registry.nix;
+  # The NAS admits the worker only while its registry row is in service.
+  workerActive = n.myFleet.active "strix-worker";
   names = [
     "client"
     "nas"
@@ -24,6 +26,13 @@ in
 assert builtins.attrNames self.nixosConfigurations == names;
 assert builtins.attrNames self.deploy.nodes == names;
 assert builtins.attrNames registry == names;
+# Keep at most 3 NixOS generations on every host (common.nix mkDefault, #639).
+assert builtins.all (h: h.boot.loader.systemd-boot.configurationLimit == 3) [
+  s
+  w
+  n
+  c
+];
 assert
   s.myFleet.roles == [
     "compute"
@@ -109,13 +118,23 @@ assert s.systemd.services.immich-machine-learning.wantedBy == [ ];
 assert s.systemd.services.immich-machine-learning.unitConfig.StopWhenUnneeded;
 assert s.systemd.sockets ? immich-ml-access;
 assert s.services.immich.package.version == n.services.immich.package.version;
-assert s.hardware.printers.ensureDefaultPrinter == "Brother_HL_L2445DW";
+assert n.hardware.printers.ensureDefaultPrinter == "Brother_HL_L2445DW";
 assert
-  (builtins.head s.hardware.printers.ensurePrinters).deviceUri == "ipp://10.42.0.4:631/ipp/print";
+  (builtins.head n.hardware.printers.ensurePrinters).deviceUri == "ipp://10.42.0.4:631/ipp/print";
+assert builtins.all
+  (
+    h:
+    !h.services.printing.enable && !h.services.avahi.enable && !(h.systemd.services ? ensure-printers)
+  )
+  [
+    s
+    w
+  ];
 assert !(s.home-manager.users.tom.systemd.user.paths ? paper-daemon);
 assert !(s.home-manager.users.tom.systemd.user.services ? herdr);
 assert !(settings ? model) && !(settings ? effortLevel) && !(settings ? modelSettings);
-assert builtins.all (host: lib.hasInfix "10.42.0.5" host.services.nfs.server.exports) [ n ];
+assert lib.hasInfix "10.42.0.5" n.services.nfs.server.exports == workerActive;
+assert registry.strix-worker.dormant -> !workerActive;
 assert !n.services.k3s.enable && !s.services.k3s.enable;
 assert !n.services.dockerRegistry.enable;
 assert builtins.elem "user@1000.service" s.systemd.services.keyring-unlock-boot.wantedBy;
@@ -173,6 +192,8 @@ assert w.fileSystems."/".device == "/dev/disk/by-partuuid/e4869fbf-f6c5-4bf5-960
 assert !w.boot.loader.efi.canTouchEfiVariables;
 assert w.home-manager.users.tom.rawDotfiles.inStore;
 assert !(w.systemd.services ? dotfiles-bootstrap);
+assert s.home-manager.users.tom.rawDotfiles.inStore;
+assert !(s.systemd.services ? dotfiles-bootstrap);
 assert
   w.disko.devices.disk.w1t.content.partitions.ESP.uuid
   != s.disko.devices.disk.main.content.partitions.ESP.uuid;
@@ -193,14 +214,18 @@ assert builtins.all
   ];
 assert w.fileSystems."/mnt/nas/documents".device == "nas:/documents";
 assert builtins.elem "ro" w.fileSystems."/mnt/nas/documents".options;
-assert lib.hasInfix "10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)"
-  n.services.nfs.server.exports;
-assert lib.hasInfix "10.42.0.5(ro,sync,fsid=3,no_subtree_check,root_squash)"
-  n.services.nfs.server.exports;
-assert lib.hasInfix "ip saddr 10.42.0.5 tcp dport 2049 accept"
-  n.networking.firewall.extraInputRules;
-assert lib.hasInfix "ip saddr 10.42.0.5 tcp dport 19532 accept"
-  n.networking.firewall.extraInputRules;
+assert
+  lib.hasInfix "10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)" n.services.nfs.server.exports
+  == workerActive;
+assert
+  lib.hasInfix "10.42.0.5(ro,sync,fsid=3,no_subtree_check,root_squash)" n.services.nfs.server.exports
+  == workerActive;
+assert
+  lib.hasInfix "ip saddr 10.42.0.5 tcp dport 2049 accept" n.networking.firewall.extraInputRules
+  == workerActive;
+assert
+  lib.hasInfix "ip saddr 10.42.0.5 tcp dport 19532 accept" n.networking.firewall.extraInputRules
+  == workerActive;
 assert builtins.elem "10.42.0.5" n.services.adguardhome.settings.dns.ratelimit_whitelist;
 assert builtins.all
   (
@@ -213,6 +238,9 @@ assert builtins.all
       builtins.removeAttrs (import ../../secrets.nix) [ "secrets/gufo-tp2-control-token.age" ]
     )
   );
+assert n.systemd.services ? handwriting-annotation;
+assert !(s.systemd.services ? handwriting-annotation);
+assert n.services.caddy.virtualHosts ? "https://handwriting.internal";
 assert builtins.any (p: (p.name or "") == "wifi-ladder") c.environment.systemPackages;
 pkgs.runCommand "closet-topology"
   {

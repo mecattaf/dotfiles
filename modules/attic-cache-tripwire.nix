@@ -7,9 +7,9 @@
 # atticd here; what remains on the strix is:
 #
 #   1. NOTHING server-shaped. atticd is off; the RS256 secret is no longer
-#      delivered here (the NAS holds it as a runbook-placed file). The old
-#      /var/lib/atticd stays on disk as the ROLLBACK COPY until the first
-#      healthy week after the move, then gets deleted by hand.
+#      delivered here (the NAS holds it as a runbook-placed file). The NAS
+#      state and its backups are the only source; the strix copy of
+#      /var/lib/atticd is removed.
 #   2. The cache-health tripwire, retained and repointed at the NAS: the
 #      2026-07-26 silent-loss incident (schema-only DB, a week of 401s
 #      nobody saw) is exactly as possible on the new host, and this box is

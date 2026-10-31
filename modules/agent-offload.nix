@@ -11,7 +11,9 @@ let
   coordinator = registry.strix-coordinator or registry.strix;
   worker = registry.strix-worker or { hostKey = ""; };
   key = config.age.secrets.ssh-user-key.path;
-  builders = {
+  # A dormant builder (modules/mesh-registry.nix) is left out entirely, so nix
+  # never waits on a connect timeout to a box that is not there.
+  builders = lib.filterAttrs (name: _: config.myFleet.active name) {
     strix-coordinator = {
       address = "10.42.0.2";
       inherit (coordinator) hostKey;

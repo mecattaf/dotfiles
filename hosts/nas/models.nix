@@ -216,8 +216,9 @@ in
     # the worker read-only on the storage root (its fsid=0) and on documents,
     # for the academic-drain corpus, so this line is fsid=6 for both clients
     # and the worker mounts `nas:/models` (hosts/worker/default.nix).
+    # The worker's half follows its registry row: none while it is dormant.
     services.nfs.server.exports = ''
-      ${modelsRoot} 10.42.0.2(ro,sync,fsid=6,no_subtree_check,root_squash) 10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)
+      ${modelsRoot} 10.42.0.2(ro,sync,fsid=6,no_subtree_check,root_squash)${lib.optionalString (config.myFleet.active "strix-worker") " 10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)"}
     '';
     networking.firewall.extraInputRules = "";
 

@@ -22,10 +22,20 @@ let
   );
 in
 {
-  programs.ssh.knownHosts = lib.mapAttrs (_: h: {
-    hostNames = h.aliases;
-    publicKey = h.hostKey;
-  }) (lib.filterAttrs (_: h: nonEmpty h.hostKey) registry);
+  programs.ssh.knownHosts =
+    lib.mapAttrs (_: h: {
+      hostNames = h.aliases;
+      publicKey = h.hostKey;
+    }) (lib.filterAttrs (_: h: nonEmpty h.hostKey) registry)
+    # A host's stage-1 sshd answers on its own port with its own key, so
+    # `ssh -p 2222 root@nas` works without TOFU while the box is stuck in boot.
+    // lib.mapAttrs' (
+      name: h:
+      lib.nameValuePair "${name}-initrd" {
+        hostNames = map (a: "[${a}]:${toString h.initrd.port}") h.aliases;
+        publicKey = h.initrd.hostKey;
+      }
+    ) (lib.filterAttrs (_: h: h ? initrd) registry);
 
   users.users.tom.openssh.authorizedKeys.keys = meshKeys;
 

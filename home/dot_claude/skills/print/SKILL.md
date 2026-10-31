@@ -22,7 +22,8 @@ copy it over first (`scp FILE nas:~/Paper/intake/.<slug>.md.tmp`,
 then `ssh nas mv ~/Paper/intake/.<slug>.md.tmp ~/Paper/intake/<slug>.md`).
 When already on nas, write and rename locally. Never drop on compute.
 Markdown drops contain their own text. Local image files are not copied to
-compute: for a document with local assets, drop its existing PDF instead.
+compute and network images are not fetched: embed image data or drop an
+existing PDF instead.
 
 Optional front matter, only when the user asked for it:
 
@@ -40,7 +41,8 @@ Set `page_slack: 0` only for a one-pager or when the user said "exactly".
 
 Leave typography to the daemon unless the user named a face or layout.
 Never set `force` for convenience.
-The daemon asks Gufo for typesetting choices, then tries up to three measured
+The local tool asks Gufo's Qwen Flash model for typesetting choices. WeasyPrint
+produces the PDF on strix-coordinator. The daemon tries up to three measured
 layouts when the PDF is too long. It preserves the Markdown exactly, keeps
 body type at least 10 pt, and rejects a remaining page-count miss.
 

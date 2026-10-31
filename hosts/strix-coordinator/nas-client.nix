@@ -6,7 +6,6 @@
 }:
 let
   cfg = config.myNasClient;
-  socketProxyd = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd";
 
   # #139. One poke below the mountpoint is the whole fix; everything else here
   # is the bound on how long that poke may cost a login. Budget: each attempt
@@ -31,9 +30,6 @@ in
 {
   options.myNasClient = {
     useRemoteStorage = lib.mkEnableOption "mounting the NAS NFS export at the historical /mnt/nas path";
-    relayMedia = lib.mkEnableOption "relaying tailnet Immich and Navidrome traffic to the Ethernet-only NAS";
-    # Separate gates, not additions to relayMedia: relayMedia is LIVE, and each
-    # of these turns on with its own NAS-side gate in its own commit.
     # relayAttic stays declared solely so the flake's topology check can
     # assert it is FALSE forever (the 2026-08-21 direct-serve move made a
     # relay architecturally wrong, not merely unused).
@@ -186,133 +182,6 @@ in
           ExecStart = "-${warmNasAutomount}";
           TimeoutStartSec = "20s";
         };
-      };
-    })
-
-    (lib.mkIf cfg.relayMedia {
-      assertions = [
-        {
-          assertion = !config.myCoordinatorMedia.enable;
-          message = "strix media core and NAS relay cannot own ports 2283/4533 together";
-        }
-      ];
-
-      systemd.sockets.immich-relay = {
-        description = "Coordinator front door for Ethernet-only NAS Immich";
-        wantedBy = [ "sockets.target" ];
-        socketConfig = {
-          ListenStream = "0.0.0.0:2283";
-          NoDelay = true;
-        };
-      };
-      systemd.services.immich-relay = {
-        description = "Relay Immich to nas:2283 over the private link";
-        after = [ "network-online.target" ];
-        wants = [ "network-online.target" ];
-        serviceConfig = {
-          ExecStart = "${socketProxyd} nas:2283";
-          DynamicUser = true;
-          NoNewPrivileges = true;
-          PrivateDevices = true;
-          PrivateTmp = true;
-          ProtectHome = true;
-          ProtectSystem = "strict";
-          RestrictAddressFamilies = [
-            "AF_INET"
-            "AF_INET6"
-          ];
-        };
-      };
-
-      systemd.sockets.navidrome-relay = {
-        description = "Coordinator front door for Ethernet-only NAS Navidrome";
-        wantedBy = [ "sockets.target" ];
-        socketConfig = {
-          ListenStream = "0.0.0.0:4533";
-          NoDelay = true;
-        };
-      };
-      systemd.services.navidrome-relay = {
-        description = "Relay Navidrome to nas:4533 over the private link";
-        after = [ "network-online.target" ];
-        wants = [ "network-online.target" ];
-        serviceConfig = {
-          ExecStart = "${socketProxyd} nas:4533";
-          DynamicUser = true;
-          NoNewPrivileges = true;
-          PrivateDevices = true;
-          PrivateTmp = true;
-          ProtectHome = true;
-          ProtectSystem = "strict";
-          RestrictAddressFamilies = [
-            "AF_INET"
-            "AF_INET6"
-          ];
-        };
-      };
-
-      systemd.sockets.plex-relay = {
-        description = "Coordinator front door for Ethernet-only NAS Plex";
-        wantedBy = [ "sockets.target" ];
-        socketConfig = {
-          ListenStream = "0.0.0.0:32400";
-          NoDelay = true;
-        };
-      };
-      systemd.services.plex-relay = {
-        description = "Relay Plex to nas:32400 over the private link";
-        after = [ "network-online.target" ];
-        wants = [ "network-online.target" ];
-        serviceConfig = {
-          ExecStart = "${socketProxyd} nas:32400";
-          DynamicUser = true;
-          NoNewPrivileges = true;
-          PrivateDevices = true;
-          PrivateTmp = true;
-          ProtectHome = true;
-          ProtectSystem = "strict";
-          RestrictAddressFamilies = [
-            "AF_INET"
-            "AF_INET6"
-          ];
-        };
-      };
-
-      # LAN-only front doors (port URLs on 10.42.0.2 and the .internal names
-      # below). Roaming clients no longer come through here: the old `strix`
-      # tailnet name went with the strix -> strix-coordinator rename, and the
-      # NAS serves Immich, Navidrome and Plex on its own
-      # tailnet address (nas.tail8dd1.ts.net:2283/4533/32400, opened on
-      # tailscale0 in hosts/nas/tailscale.nix). This box is pure compute and
-      # the independent Tailscale recovery node (Tom, 2026-10-25).
-      networking.firewall.interfaces.enp191s0.allowedTCPPorts = [
-        2283
-        4533
-        32400
-      ];
-
-      # Memorable intranet front doors ADDED on top of the port URLs, never
-      # replacing them: photos/music/videos.internal resolve fleet-wide via
-      # the per-box AdGuard rewrites (modules/adguardhome.nix) to whichever
-      # strix address is closest to the asking host — loopback here, the
-      # strix's LAN lease 10.42.0.2 on the NAS, the tailnet only from a
-      # roaming host — and
-      # Caddy (:80, see caddy-artifacts.nix for the matching firewall zones)
-      # hands them to the same socket relays the port URLs use. Plain HTTP by
-      # the same v1 posture as the artifact plane: WireGuard is the transport
-      # security and `.internal` never resolves publicly.
-      services.caddy.virtualHosts = {
-        "http://photos.internal".extraConfig = ''
-          reverse_proxy 127.0.0.1:2283
-        '';
-        "http://music.internal".extraConfig = ''
-          reverse_proxy 127.0.0.1:4533
-        '';
-        "http://videos.internal".extraConfig = ''
-          # Plex answers 401 on its bare API root; the human entrance is /web.
-          redir / /web/ 302
-          reverse_proxy 127.0.0.1:32400
-        '';
       };
     })
 

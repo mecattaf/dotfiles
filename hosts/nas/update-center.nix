@@ -54,7 +54,8 @@
 # closures built here are slim system closures and fit the eMMC comfortably.
 let
   cfg = config.myNas.updateCenter;
-  hosts = [
+  # A dormant host (modules/mesh-registry.nix) gets no monthly build.
+  hosts = lib.filter config.myFleet.active [
     "strix-coordinator"
     "strix-worker"
 

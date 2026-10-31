@@ -4,9 +4,9 @@
   pkgs,
   ...
 }:
-# Artifact serving plane — COORDINATOR only. Static snapshots live in the
-# drop-dir and optional live origins bind to strix loopback, so Caddy
-# never depends on a remote origin. Realizes the publish-artifact skill's
+# Artifact serving plane — NAS only (D48 moved here 2026-10-31). Static
+# snapshots live in the drop-dir and optional live origins bind to NAS
+# loopback or LAN, so Caddy never depends on a remote origin. Realizes the publish-artifact skill's
 # tailnet rung:
 #
 #   /var/lib/artifacts/<slug>.until-YYYYMMDD.caddy   TTL in the FILENAME
@@ -14,7 +14,7 @@
 #
 # Ephemerality lives ONLY here + CF metadata; everything else is declarative.
 # v1 posture:
-#   - auto_https disable_redirects, plain HTTP :80 on the tailnet (WireGuard already encrypts
+#   - auto_https disable_redirects, plain HTTP :80 on the LAN and tailnet (WireGuard already encrypts
 #     transport; off-tailnet resolvers get an unroutable 100.x). TLS via a
 #     caddy-dns/cloudflare DNS-01 wildcard is the documented follow-up.
 #   - PUBLIC live artifacts need the cloudflared tunnel back — re-minting that
@@ -74,16 +74,8 @@ in
     "f ${cfg.stateDir}/00-placeholder.caddy 0644 tom users -"
   ];
 
-  # Trusted-transport ingress only; nothing opens on LAN/WAN interfaces.
-  networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 80 ];
-  # LAN clients — the NAS included — reach the .internal front doors over the
-  # BE550 segment (enp191s0) rather than hairpinning through this box's tailnet
-  # address (split horizon, see modules/adguardhome.nix). Until 2026-08-21 the
-  # NAS used the private /30 cable instead, resolving photos.internal to
-  # 10.77.0.1; that tether is retired (#264). Without this rule a LAN client
-  # gets a closed port. Opened since the 2026-08-20 rewire; inert on hosts
-  # without that interface name.
-  networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 80 ];
+  # Ingress belongs to the host front door (hosts/nas/front-door.nix); this
+  # module opens no port.
 
   systemd.services.artifact-reaper = {
     description = "Reap expired artifacts (drop-dir TTL sweep)";

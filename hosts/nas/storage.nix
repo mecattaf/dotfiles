@@ -10,6 +10,10 @@ let
   # Their databases contain media paths, so preserving /mnt/nas makes the
   # restore a data move rather than an in-database path rewrite.
   storageRoot = "/mnt/nas";
+  # The worker's read-only admission, absent while it is dormant
+  # (modules/mesh-registry.nix): nothing else may borrow 10.42.0.5.
+  workerActive = config.myFleet.active "strix-worker";
+  worker = opts: lib.optionalString workerActive " 10.42.0.5(${opts})";
 in
 {
   options.myNas.storage = {
@@ -172,17 +176,20 @@ in
         # the same client (fsid=6, no longer fsid=0). Every other subvolume
         # stays invisible to it: no entry, no crossing (#131).
         ''
-          ${storageRoot} ${clients "ro,sync,fsid=0,no_subtree_check,root_squash"} 10.42.0.5(ro,sync,fsid=0,no_subtree_check,root_squash)
+          ${storageRoot} ${clients "ro,sync,fsid=0,no_subtree_check,root_squash"}${worker "ro,sync,fsid=0,no_subtree_check,root_squash"}
           ${storageRoot}/photos ${clients "ro,sync,fsid=1,no_subtree_check,root_squash"}
           ${storageRoot}/music ${clients "ro,sync,fsid=2,no_subtree_check,root_squash"}
-          ${storageRoot}/documents ${clients "rw,sync,fsid=3,no_subtree_check,root_squash"} 10.42.0.5(ro,sync,fsid=3,no_subtree_check,root_squash)
+          ${storageRoot}/documents ${clients "rw,sync,fsid=3,no_subtree_check,root_squash"}${worker "ro,sync,fsid=3,no_subtree_check,root_squash"}
           ${storageRoot}/videos ${clients "ro,sync,fsid=5,no_subtree_check,root_squash"}
         '';
     };
-    networking.firewall.extraInputRules = ''
-      ip saddr 10.42.0.5 tcp dport 2049 accept comment "NFSv4 from strix-worker"
-      ip saddr 10.42.0.2 tcp dport 2049 accept comment "NFSv4 from strix (LAN; /30 retired 2026-08-21)"
-    '';
+    networking.firewall.extraInputRules =
+      lib.optionalString workerActive ''
+        ip saddr 10.42.0.5 tcp dport 2049 accept comment "NFSv4 from strix-worker"
+      ''
+      + ''
+        ip saddr 10.42.0.2 tcp dport 2049 accept comment "NFSv4 from strix (LAN; /30 retired 2026-08-21)"
+      '';
 
     # With the wildcard bind the address race is gone, but nfsd must still not
     # start before the exported tree is mounted — exporting the bare mountpoint
@@ -209,7 +216,6 @@ in
       "z ${storageRoot}/documents 0750 tom users -"
       "z ${storageRoot}/videos 0750 tom users -"
       "z ${storageRoot}/services 0711 root root -"
-      "z ${storageRoot}/.snapshots 0700 root root -"
     ];
   };
 }

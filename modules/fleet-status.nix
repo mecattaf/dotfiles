@@ -39,7 +39,8 @@ let
 
   # The fan-out order is the reading order of the view: the desk first, then
   # the inference box, the appliance and the laptop, which may be asleep.
-  order = [
+  # A dormant host (modules/mesh-registry.nix) is left out of the view.
+  order = lib.filter config.myFleet.active [
     "strix-coordinator"
     "strix-worker"
 

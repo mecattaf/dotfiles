@@ -34,13 +34,13 @@ in
     device = lib.mkOption {
       type = lib.types.str;
       # VERIFY on the installer bench before the simultaneous fleet power-off.
-      default = "/dev/disk/by-id/nvme-WD_BLACK_SN7100_500GB_260538801482";
+      default = "/dev/disk/by-id/nvme-WD_BLACK_SN7100_1TB_26051Y809195";
       description = "Whole-disk by-id identity; shared pool uses p1, legacy home-only layout uses p2";
     };
     serial = lib.mkOption {
       type = lib.types.str;
       # VERIFY on arrival; this is the expected serial from the survey.
-      default = "260538801482";
+      default = "26051Y809195";
       description = "Expected hardware serial of the incoming home SSD";
     };
   };
@@ -85,10 +85,14 @@ in
     fileSystems."/mnt/fast" = lib.mkIf shared {
       device = lib.mkForce "${cfg.device}-part1";
       fsType = lib.mkForce "btrfs";
+      # mkForce also drops the x-initrd.mount that neededForBoot adds. Without it the
+      # systemd initrd never mounts @fast, the /nix bind from /sysroot/mnt/fast/nix
+      # fails and stage 1 stops in emergency mode (the 2026-10-25 19:10 cutover hang).
       options = lib.mkForce [
         "subvol=@fast"
         "compress=zstd:1"
         "noatime"
+        "x-initrd.mount"
       ];
       neededForBoot = true;
     };
@@ -96,7 +100,13 @@ in
     # Refuse a second agent home on eMMC. In shared mode the same SSD is
     # additionally boot-critical through @fast/nix; retain the old generation
     # and untouched 256GB fast tier until that first shared-pool boot passes.
-    systemd.services."user@1000".unitConfig.RequiresMountsFor = [ "/home" ];
+    # user@1000 is an instance of systemd's user@.service: asDropinIfExists only
+    # matches exact upstream names, so it wrote a full user@1000.service with no
+    # ExecStart and the user manager never started (2026-10-25 gen 87 boot).
+    systemd.services."user@1000" = {
+      overrideStrategy = "asDropin";
+      unitConfig.RequiresMountsFor = [ "/home" ];
+    };
 
     # Export the SAME helper that is installed, including the server-matched
     # pg_dumpall. Copy its closure to the installer for bench preparation.

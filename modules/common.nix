@@ -23,7 +23,7 @@
     ./gc-retention.nix # nix.gc + keep-last-K-plus-booted generation retention (#133)
     ./gc-root-reaper.nix # daily reap of stale agent-session auto GC roots (#133)
     ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
-    ./artifacts.nix # myArtifacts options; serving plane is strix-only (caddy-artifacts.nix)
+    ./artifacts.nix # myArtifacts options; serving plane is NAS-only (caddy-artifacts.nix)
     ./printing.nix # CUPS + Brother IPP/raw-text path (active fleet + future hosts)
     ./failure-surfacing.nix # OnFailure + coredump surfacing, fleet-wide — refs #134
     ./fleet-revision.nix # every closure records its flake revision (was in update-adopt.nix)
@@ -65,8 +65,9 @@
   boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
   boot.loader.systemd-boot.enable = lib.mkDefault true;
   # #133 item 6: bound the boot menu to the same depth as the generation
-  # retention in modules/gc-retention.nix (keep-last-20 + booted).
-  boot.loader.systemd-boot.configurationLimit = lib.mkDefault 20;
+  # retention in modules/gc-retention.nix (keep-last-3 + booted; Tom,
+  # 2026-10-28: "cap nbr of saved versions on every machine to 3.").
+  boot.loader.systemd-boot.configurationLimit = lib.mkDefault 3;
   boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
   boot.plymouth.enable = true;
   # Many long-lived per-user watchers (persistent terminal sessions, file

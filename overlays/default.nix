@@ -77,9 +77,6 @@ final: _prev: {
     inherit (import ../modules/artifacts-defaults.nix) namespace;
   };
   artifact-deck = final.callPackage ../pkgs/artifact-deck { };
-  browser-desktop = final.callPackage ../pkgs/browser-desktop { };
-  # CDP screencast viewer; installed beside browser-desktop, coordinator only.
-  chrome-stream = final.callPackage ../pkgs/chrome-stream { };
   keyring-unlock = final.callPackage ../pkgs/keyring-unlock { };
 
   # Monthly local-AI update bot: deterministic Git/HF preparation, one Pi

@@ -47,6 +47,7 @@ without printing; an agent iterating by hand burns zero paper either way.
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -317,6 +318,7 @@ def main() -> int:
         length_check = "fail"
 
     receipt = {"decision": decision, "provenance": provenance,
+               "renderer": {"name": "weasyprint", "version": os.environ.get("PAPER_RENDERER_VERSION")},
                "overridden": overridden,
                "source": str(source), "original_input": str(args.input),
                "pdf": str(outpath),

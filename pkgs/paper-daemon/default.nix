@@ -21,9 +21,8 @@
 # deployed daemon renders with the generation it was built from, not with
 # whatever the live ~/.claude/skills checkout holds at 06:05.
 #
-# PATH is PREFIXED, not replaced: Chrome (google-chrome-stable, the user's
-# Home Manager profile), utility-model (system) and sudo (/run/wrappers) come
-# from the user manager's inherited PATH, exactly as they do for an agent.
+# NAS uses the packaged renderer on compute. Queue tools and sudo are explicit
+# dependencies, independent of the headless user manager's inherited PATH.
 stdenvNoCC.mkDerivation {
   pname = "paper-daemon";
   version = "1.0.0";
@@ -47,6 +46,7 @@ stdenvNoCC.mkDerivation {
       --set PAPER_JOBS_TEST $share/get-jobs.test \
       --set PAPER_PRINTER_TEST $share/printer-state.test \
       --set PYTHONDONTWRITEBYTECODE 1 \
+      --prefix PATH : /run/wrappers/bin \
       --prefix PATH : ${
         lib.makeBinPath [
           cups
