@@ -9,9 +9,9 @@ and the NAS research archive.
 
 ## Responsibilities
 
-The coordinator owns the Markdown speech queue (`speech-queue.{service,path,timer}`:
-a path unit on `~/Speech/intake` and a 06:05 silent-hours release) and on-demand
-Vulkan Qwen synthesis (`modules/qwen-tts.nix`). Either seat plays the returned
+The NAS owns the Markdown speech queue (`speech-queue.{service,path,timer}`:
+a path unit on `${speech_root}/intake` and a 06:05 silent-hours release) and dispatches synthesis to the coordinator
+(`modules/qwen-tts.nix`). Resolve `speech_root` using `utility-path speech` on NAS. Either seat plays the returned
 audio; the client performs no inference.
 
 Qwen uses the accepted single midway B K2SO reference: 44.02 seconds of identity
@@ -49,7 +49,7 @@ the mirror also copies deletions.
 ## Speech output
 
 The shared `/speak` skill asks the assistant to atomically publish Markdown in
-`~/Speech/intake`. The daemon owns synthesis and playback. Hidden temporary names
+`${speech_root}/intake`. The daemon owns synthesis and playback. Hidden temporary names
 must become visible `.md` names when finalized. Working hours are 06:00–24:00,
 matching the paper workflow. Outside those hours jobs wait for the 06:05 release.
 Receipts, rather than an assistant's queue-write claim, establish whether

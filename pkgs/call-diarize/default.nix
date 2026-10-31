@@ -14,6 +14,7 @@
   python313Packages,
   uv,
   util-linux,
+  utility-storage,
   torchRocm,
 }:
 let
@@ -134,6 +135,7 @@ stdenvNoCC.mkDerivation {
     jq
     python313
     util-linux
+    utility-storage
   ];
   doCheck = true;
 

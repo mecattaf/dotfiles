@@ -2,7 +2,6 @@
 import json
 import os
 from pathlib import Path
-import shutil
 import signal
 import subprocess
 import sys
@@ -27,7 +26,7 @@ class HoldLifecycle(unittest.TestCase):
         self.events = self.root / 'events.jsonl'
         self.env = dict(os.environ, HOME=str(self.home), XDG_STATE_HOME=str(self.state),
                         XDG_RUNTIME_DIR=str(self.runtime), PATH=str(self.bin)+':'+os.environ['PATH'],
-                        FAKE_EVENTS=str(self.events))
+                        FAKE_EVENTS=str(self.events), RECORDINGS_ROOT=str(self.home / "recording-store"))
         self.script = os.environ['CALL_RECORD_TEST_SCRIPT']
         self.bash = os.environ['CALL_RECORD_TEST_BASH']
         self.write_fake('pw-dump', '''import json
@@ -50,6 +49,7 @@ pathlib.Path(sys.argv[4]).write_bytes(b'mixed')
 with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'mix'})+'\\n')
 ''')
         self.write_fake('soxi', "print('00:00:01')\n")
+        self.write_fake('hostname', "print('nas')\n")
         # 2026-10-10: the stop hands the dir to call-diarize-start (Tally retired); the
         # local branch is taken only when call-diarize itself is on PATH.
         self.write_fake('call-diarize', "import sys;sys.exit(99)\n")
@@ -120,8 +120,6 @@ with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'enque
         # 2026-10-11: a host without call-diarize that is not the strix (the
         # client) records into ~/.local/state/call-record/spool, never
         # ~/Recordings; with the strix unreachable the closed session stays there.
-        if shutil.which('call-diarize', path=os.environ['PATH']):
-            self.skipTest('a real call-diarize is on PATH; this case needs a host without one')
         (self.bin / 'call-diarize').unlink()
         self.write_fake('hostname', "print('client')\n")
         self.write_fake('ssh', "import sys;sys.stdin.buffer.read();sys.exit(255)\n")

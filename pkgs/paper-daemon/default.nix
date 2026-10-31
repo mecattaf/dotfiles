@@ -10,7 +10,7 @@
 }:
 
 # paper-daemon (dotfiles#384): the print loop owned end to end. An agent drops
-# ~/Paper/intake/<slug>.md (or <slug>.pdf, printed as it is, #501); this
+# $(utility-path paper)/intake/<slug>.md (or <slug>.pdf, printed as it is, #501); this
 # renders the Markdown, validates, holds for quiet hours,
 # checks the queue is the pinned driverless one, submits, and writes a receipt
 # only when the PRINTER (not cupsd) reports the job completed with every
@@ -59,6 +59,7 @@ stdenvNoCC.mkDerivation {
       --add-flags $share/render-remote.py \
       --set PYTHONDONTWRITEBYTECODE 1 \
       --prefix PATH : ${lib.makeBinPath [ openssh ]}
+    install -Dm644 ${../../lib/python/utility_storage.py} $share/utility_storage.py
     runHook postInstall
   '';
 

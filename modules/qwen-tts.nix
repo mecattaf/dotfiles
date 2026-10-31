@@ -27,34 +27,6 @@ in
       pkgs.qwen-speech
       pkgs.qwentts
     ];
-    systemd.user.services.speech-queue = {
-      description = "Read queued Markdown through Qwen on the selected seat";
-      unitConfig.ConditionUser = "tom";
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = "${pkgs.speech-session}/bin/speech-queue --qwen ${pkgs.qwen-speech}/bin/qwen-speech --player ${pkgs.speech-session}/bin/speech-play";
-        TimeoutStartSec = "infinity";
-        UMask = "0077";
-      };
-    };
-    systemd.user.paths.speech-queue = {
-      wantedBy = [ "default.target" ];
-      pathConfig = {
-        PathChanged = "%h/Speech/intake";
-        MakeDirectory = true;
-        DirectoryMode = "0700";
-      };
-    };
-    # Silent-hours release only: the 06:05 run plays what was held overnight.
-    # New drops are the path unit's job; the old 30 s poll is gone (Tom,
-    # 2026-09-30: no clocks for agent work in dotfiles).
-    systemd.user.timers.speech-queue = {
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "*-*-* 06:05:00";
-        Persistent = true;
-      };
-    };
     # No WantedBy: requests start the unit. Boot/switch never loads weights.
     systemd.user.services.qwen-tts = {
       description = "Qwen speech synthesis for seat playback (on demand)";

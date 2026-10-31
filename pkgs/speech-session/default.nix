@@ -34,6 +34,7 @@ stdenvNoCC.mkDerivation {
         }
     done
     install -m755 projector.sh $out/bin/speech-projector
+    install -Dm644 ${../../lib/python/utility_storage.py} $out/lib/utility_storage.py
     patchShebangs $out/bin/speech-projector
   '';
   meta = {

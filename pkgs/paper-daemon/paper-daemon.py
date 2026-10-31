@@ -2,7 +2,7 @@
 """paper-daemon — the print loop, owned end to end (dotfiles#384).
 
 Tom's ruling (2026-09-12): "/print" is ONE file write. An agent puts a
-Markdown file in ~/Paper/intake/ and walks away; everything after that is
+Markdown file in the configured paper intake and walks away; everything after that is
 this program's, and nobody else's:
 
     intake/<slug>.md
@@ -84,6 +84,12 @@ import sys
 import time
 import traceback
 from pathlib import Path
+try:
+    from utility_storage import storage_root
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]/"lib/python"))
+    from utility_storage import storage_root
 
 QUEUE = os.environ.get("PAPER_QUEUE", "Brother_HL_L2445DW")
 DEVICE_URI = os.environ.get("PAPER_DEVICE_URI", "ipp://10.42.0.4:631/ipp/print")
@@ -131,7 +137,7 @@ def quiet_hours(at: dt.datetime) -> bool:
 
 
 def root() -> Path:
-    return Path(os.environ.get("PAPER_ROOT", Path.home() / "Paper"))
+    return storage_root("paper")
 
 
 def state_dir(name: str) -> Path:

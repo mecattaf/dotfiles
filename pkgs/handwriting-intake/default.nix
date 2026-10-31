@@ -17,7 +17,7 @@ stdenvNoCC.mkDerivation {
   checkPhase = ''
     export LOCAL_MODEL_ENDPOINT=${(import ../../lib/local-model.nix).endpoint}
     runHook preCheck
-    PYTHONPATH=${../handwriting-annotation}:$PWD ${python}/bin/python3 -m unittest -v test_intake test_review_integration
+    PYTHONPATH=${../../lib/python}:${../handwriting-annotation}:$PWD ${python}/bin/python3 -m unittest -v test_intake test_review_integration
     runHook postCheck
   '';
   installPhase = ''
@@ -27,6 +27,7 @@ stdenvNoCC.mkDerivation {
     makeWrapper ${python}/bin/python3 "$out/bin/handwriting-intake" \
       --add-flags "$out/share/handwriting-intake/intake.py --state /var/lib/handwriting-intake" \
       --set-default LOCAL_MODEL_ENDPOINT ${(import ../../lib/local-model.nix).endpoint}
+    install -Dm644 ${../../lib/python/utility_storage.py} $out/share/handwriting-intake/utility_storage.py
     runHook postInstall
   '';
   meta = {

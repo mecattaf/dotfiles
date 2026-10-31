@@ -69,7 +69,7 @@ class CallDiarizeStartTest(unittest.TestCase):
         self.call_dir.mkdir(parents=True)
         (self.call_dir / "mix.wav").touch()
 
-    def run_script(self, *args, with_diarizer=True):
+    def run_script(self, *args, with_diarizer=True, host='client'):
         env = dict(os.environ)
         if with_diarizer:
             # Real coreutils and bash stay reachable; the fakes come first.
@@ -81,10 +81,11 @@ class CallDiarizeStartTest(unittest.TestCase):
             alt = self.tmp / "bin-no-diarizer"
             alt.mkdir(exist_ok=True)
             shutil.copy(self.bin / "systemd-run", alt / "systemd-run")
-            for tool in ("bash", "realpath", "basename", "tr", "env"):
+            for tool in ("bash", "realpath", "basename", "tr", "env", "rm"):
                 real = shutil.which(tool)
                 self.assertTrue(real, f"{tool} must be on PATH for the test")
                 (alt / tool).symlink_to(real)
+            write_exec(alt / "hostname", '#!{bash}\nprintf "%s\\n" "' + host + '"\n')
             env["PATH"] = str(alt)
         env["FAKE_SYSTEMD_RUN_LOG"] = str(self.argv_log)
         return subprocess.run(["bash", SCRIPT, *args], env=env,
@@ -141,7 +142,7 @@ class CallDiarizeStartTest(unittest.TestCase):
         result = self.run_script("--force", str(self.call_dir))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(self.argv_log.exists())
-        self.assertEqual(self.recorded_argv()[-1], str(self.call_dir.resolve()))
+        self.assertEqual(self.recorded_argv()[-2:], [str(self.call_dir.resolve()), '--force'])
 
     def test_missing_mix_refuses(self):
         (self.call_dir / "mix.wav").unlink()
@@ -159,8 +160,13 @@ class CallDiarizeStartTest(unittest.TestCase):
         result = self.run_script(str(self.call_dir), with_diarizer=False)
         self.assertEqual(result.returncode, 1)
         self.assertIn("no diarizer", result.stderr)
-        self.assertIn("strix", result.stderr)
+        self.assertIn("NAS", result.stderr)
         self.assertFalse(self.argv_log.exists())
+
+    def test_storage_owner_dispatches_to_compute_without_local_gpu(self):
+        result = self.run_script(str(self.call_dir), with_diarizer=False, host='nas')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.recorded_argv()[-2:], ['call-diarize-remote', str(self.call_dir.resolve())])
 
     def test_dry_run_prints_argv_and_runs_nothing(self):
         result = self.run_script("--dry-run", str(self.call_dir), "--hotwords", "x")
@@ -193,8 +199,8 @@ class CallRecordHandsOffToStartTest(unittest.TestCase):
         self.assertNotIn("call-diarize-backfill", text)
         self.assertIn('call-diarize-start "$dir"', text)
         self.assertIn(
-            "tar -C ~/Recordings/calls -xf - && call-diarize-start $remote", text)
-        self.assertIn("command -v call-diarize >/dev/null", text)
+            "sha256sum --check --status -", text)
+        self.assertIn("ssh -o BatchMode=yes nas utility-path recordings", text)
 
 
 if __name__ == "__main__":

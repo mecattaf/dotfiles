@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
-"""One serial sweep of the strix's Markdown speech queue."""
+"""One serial sweep of the configured Markdown speech queue."""
 import argparse, datetime, fcntl, json, os, shutil, socket, subprocess, time
 from pathlib import Path
+try:
+    from utility_storage import storage_root
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]/"lib/python"))
+    from utility_storage import storage_root
 
 def quiet(now=None):
     return (now or datetime.datetime.now().astimezone()).hour < 6
@@ -42,7 +48,7 @@ def sweep(root, qwen, player, default_seat="client"):
                 if not txt.read_text().strip():raise ValueError('No spoken text')
                 started=time.monotonic()
                 if not audio.exists():
-                    subprocess.run([qwen,'speak','--remote-command',qwen,'--file',str(txt),'--output',str(audio)],check=True,timeout=1800)
+                    subprocess.run([qwen,'speak','--remote-command','qwen-speech','--file',str(txt),'--output',str(audio)],check=True,timeout=1800)
                 if quiet():job.rename(queued);break
                 seat = job.name.split('--', 1)[0] if job.name.startswith(('client--', 'strix--', 'coordinator--', 'strix-coordinator--')) else default_seat
                 if seat in ("coordinator", "strix"): seat = "strix-coordinator"
@@ -58,6 +64,5 @@ def sweep(root, qwen, player, default_seat="client"):
                 atomic(job/'failure.json',dict(error=str(exc)));job.rename(root/'failed'/job.name)
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--root',type=Path,default=Path.home()/'Speech');p.add_argument('--qwen',default='qwen-speech');p.add_argument('--player',default='speech-play');a=p.parse_args()
-    if socket.gethostname() not in ('strix-coordinator', 'strix-worker'):p.error('Speech queue requires a compute host')
+    p=argparse.ArgumentParser();p.add_argument('--root',type=Path,default=storage_root("speech"));p.add_argument('--qwen',default='qwen-speech');p.add_argument('--player',default='speech-play');a=p.parse_args()
     os.umask(0o077);sweep(a.root,a.qwen,a.player)
