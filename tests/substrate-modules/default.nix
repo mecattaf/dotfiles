@@ -3,24 +3,9 @@
   self,
   lib,
 }:
-# substrate-modules: the rendered shape of modules/substrate.nix, proven at evaluation time.
-#
-# `nix flake check --no-build` evaluates this derivation's inputs, which forces the strix's
-# services.substrate config twice: as declared (both gates ON since 2026-09-24, both units rendered, both
-# secrets declared from the two named age files) and armed through extendModules with fixtures (a stub puller,
-# files standing in for the age files), which renders both user units, the pusher.json, the runtimes.toml and the
-# puller's config.toml without a token on disk. `nix build .#checks.<system>.substrate-modules` then parses the
-# three files against the 2026-09-24 proven deployment plus the 2026-09-25 ssh runtime: runtimes
-# opus/gufo/codex/codex-rw and ssh:strix (type ssh, host worker, harness pi, seat gufo: lane B's pi runs on
-# the worker through the ssh runner, merged in from puller.sshRuntimes; still no herdr or gvisor), [credentials.seats]
-# with cc2 = ~/.claude-work, pusher.json with peerCacheDir and no tokenFile, the [puller] table with the two
-# credential placeholders, and no rendered file carrying a token-shaped key or a credential path. It also pins the
-# academic drain's standing submit (modules/academic-drain.nix; ON 2026-09-25, OFF on the strix since
-# 2026-09-30, so it is armed here): the user service with no timer (none since 2026-10-13, #484), the floor token as a credential, and a rendered script with no
-# token-shaped literal. Since 2026-10-10 it also pins the model catalog seam (Tom: model ids are not nix data):
-# runtimes.toml carries models_file = ~/.config/substrate/models.toml, the puller start script seeds that file from
-# the store copy only when absent, the seed parses as TOML with one default per harness (per provider for pi) and no
-# openrouter-free entry (the lane is parked), and the puller PATH carries nodejs 24 and pnpm 11.17.0 for the gates.
+# Parse rendered NAS execution configuration without accessing live credentials.
+# A separate SSH fixture verifies that explicit runtime additions still merge.
+
 let
   # Evaluation-only agent fixture; production compute imports no Substrate.
   coord = self.nixosConfigurations.strix-coordinator.extendModules {
@@ -55,7 +40,7 @@ let
             };
             sshRuntimes."ssh:strix" = {
               host = "strix-coordinator";
-              harness = "pi";
+              harness = "dsh";
               seat = "gufo";
             };
           };
@@ -121,8 +106,8 @@ assert
   ];
 assert hasInfix "--token-file %d/floor-token" pusherUnit.serviceConfig.ExecStart;
 assert pusherUnit.unitConfig.ConditionUser == "tom";
-assert pullerUnit.environment.CLAUDE_CONFIG_DIR == "/home/tom/.claude-work";
-assert pullerUnit.environment.TALLY_SEAT == "cc2";
+assert pullerUnit.environment.CLAUDE_CONFIG_DIR == "/home/tom/.claude";
+assert pullerUnit.environment.TALLY_SEAT == "cc";
 # Environment=PATH replaces the manager's PATH: both units must name the user's profile themselves, or the
 # runners' bare claude/pi/codex and seats' bare codex fail with ENOENT.
 assert hasInfix "/etc/profiles/per-user/tom/bin" pullerUnit.environment.PATH;
@@ -148,10 +133,7 @@ assert
     "codex"
     "codex-rw"
     "gufo"
-    "openrouter"
-    "openrouter-free"
     "opus"
-    "qwen"
     "ssh:strix"
   ];
 # The pidfile is in the RuntimeDirectory, so a hold is transient: 3 must be retried, not terminal.
@@ -168,6 +150,42 @@ assert lib.any (
 assert lib.any (
   p: lib.isDerivation p && lib.getName p == "pnpm" && p.version == "11.17.0"
 ) pullerUnit.path;
+assert self.nixosConfigurations.nas.config.services.substrate.puller.enable;
+assert self.nixosConfigurations.nas.config.services.substrate.pusher.enable;
+assert
+  self.nixosConfigurations.nas.config.services.substrate.puller.sessionScope == [
+    {
+      project = "dotfiles";
+      thread = "T-69";
+    }
+  ];
+assert
+  self.nixosConfigurations.nas.config.services.substrate.puller.runtimes.sessions.maintenance == [
+    {
+      project = "dotfiles";
+      thread = "T-69";
+      command = [
+        "/run/current-system/sw/bin/fleet-update-start"
+        "--json"
+      ];
+      status_command = [
+        "/run/current-system/sw/bin/fleet-update"
+        "--status"
+        "--json"
+      ];
+    }
+  ];
+assert self.nixosConfigurations.nas.config.services.substrate.puller.maxRuns == 1;
+assert self.nixosConfigurations.nas.config.services.substrate.puller.cap == 1;
+assert
+  self.nixosConfigurations.nas.config.systemd.user.services.substrate-puller.serviceConfig.MemoryMax
+  == "2G";
+assert
+  self.nixosConfigurations.nas.config.systemd.user.services.substrate-puller.restartIfChanged
+  == false;
+assert
+  !(self.nixosConfigurations.strix-coordinator.config.systemd.user.services ? substrate-puller);
+assert !(self.nixosConfigurations.strix-worker.config.systemd.user.services ? substrate-puller);
 pkgs.runCommand "substrate-modules"
   {
     nativeBuildInputs = [ pkgs.python3 ];
@@ -176,41 +194,44 @@ pkgs.runCommand "substrate-modules"
     clientToml = armed.services.substrate.puller.clientConfigFile;
     pullerStart = pullerUnit.serviceConfig.ExecStart;
     standingScript = standing.serviceConfig.ExecStart;
+    catalogScript = ../../pkgs/substrate-apps/migrate-dsh-catalog.py;
+    catalogTests = ./test_catalog_migration.py;
     modelsSeed = pkgs.writeText "substrate-models-seed-under-test.toml" armed.services.substrate.puller.modelsSeed;
   }
   ''
+    CATALOG_SCRIPT="$catalogScript" python3 "$catalogTests"
     python3 - "$pusherJson" "$runtimesToml" "$pullerStart" "$clientToml" "$standingScript" "$modelsSeed" <<'PY'
     import json, re, sys, tomllib
     pusher = json.load(open(sys.argv[1]))
     assert pusher["floorUrl"].startswith("https://"), pusher
     assert "tokenFile" not in pusher and not any("token" in k.lower() for k in pusher), list(pusher)
-    assert pusher["seats"] == ["cc", "cc2", "codex", "pi-qwencloud", "gufo", "openrouter", "openrouter-free"], pusher["seats"]
+    assert pusher["seats"] == ["cc", "cc2", "codex", "gufo"], pusher["seats"]
     assert pusher["seatIds"] == {"gpu-strix": "gufo"}
     assert pusher["seatsBin"] == "/home/tom/.local/bin/seats"
     rt = tomllib.load(open(sys.argv[2], "rb"))
     known = {"host", "runtime-test", "herdr", "gvisor", "microvm", "ssh", "workerd", "ax"}
     for name, table in rt["runtime"].items():
         assert table["type"] in known, (name, table)
-    assert rt["default"] == "opus", rt["default"]
-    assert rt["allow"] == ["opus", "gufo", "codex", "codex-rw", "qwen", "openrouter", "openrouter-free", "ssh:strix"], rt["allow"]
-    assert set(rt["runtime"]) == {"opus", "gufo", "codex", "codex-rw", "qwen", "openrouter", "openrouter-free", "ssh:strix"}, list(rt["runtime"])
+    assert rt["default"] == "gufo", rt["default"]
+    assert rt["allow"] == ["opus", "gufo", "codex", "codex-rw", "ssh:strix"], rt["allow"]
+    assert set(rt["runtime"]) == {"opus", "gufo", "codex", "codex-rw", "ssh:strix"}, list(rt["runtime"])
     assert not {"herdr", "gvisor"} & set(rt["runtime"]), list(rt["runtime"])
-    for name in ("opus", "gufo", "codex", "codex-rw", "qwen", "openrouter", "openrouter-free", "ssh:strix"):
+    for name in ("opus", "gufo", "codex", "codex-rw", "ssh:strix"):
         assert isinstance(rt["runtime"][name].get("timeoutMs"), int) and rt["runtime"][name]["timeoutMs"] >= 900000, (name, rt["runtime"][name])
     strip = lambda t: {k: v for k, v in t.items() if k != "timeoutMs"}
-    assert strip(rt["runtime"]["opus"]) == {"type": "host", "harness": "claude", "seat": "cc2"}
-    assert strip(rt["runtime"]["gufo"]) == {"type": "host", "harness": "pi", "seat": "gufo"}
+    assert strip(rt["runtime"]["opus"]) == {"type": "host", "harness": "claude", "seat": "cc"}
+    assert strip(rt["runtime"]["gufo"]) == {"type": "host", "harness": "dsh", "provider": "gufo", "seat": "gufo"}
     assert strip(rt["runtime"]["codex"]) == {"type": "host", "harness": "codex", "seat": "codex", "codexSandbox": "read-only"}
     assert strip(rt["runtime"]["codex-rw"]) == {"type": "host", "harness": "codex", "seat": "codex", "codexSandbox": "workspace-write"}
     # SshRuntime (packages/runners/src/config.ts:116-121): type, host, and the common harness, seat, timeoutMs.
-    assert rt["runtime"]["ssh:strix"] == {"type": "ssh", "host": "strix-coordinator", "harness": "pi", "seat": "gufo", "timeoutMs": 1800000}, rt["runtime"]["ssh:strix"]
+    assert rt["runtime"]["ssh:strix"] == {"type": "ssh", "host": "strix-coordinator", "harness": "dsh", "seat": "gufo", "timeoutMs": 1800000}, rt["runtime"]["ssh:strix"]
     # The loader's guardrail (packages/runners/src/config.ts): codexSandbox only on the codex harness.
     for name, table in rt["runtime"].items():
         assert "codexSandbox" not in table or table.get("harness") == "codex", name
-    assert rt["seats"] == {"claude": "cc2", "pi": "gufo", "codex": "codex"}
+    assert rt["seats"] == {"claude": "cc", "dsh": "gufo", "codex": "codex"}
     cred = rt["credentials"]
-    assert cred["claude"] == "/home/tom/.claude-work" and cred["mode"] == "rw" and cred["scope"] == "credential", cred
-    assert cred["seats"] == {"cc": "/home/tom/.claude", "cc2": "/home/tom/.claude-work"}, cred
+    assert cred["claude"] == "/home/tom/.claude" and cred["mode"] == "rw" and cred["scope"] == "credential", cred
+    assert cred["seats"] == {"cc": "/home/tom/.claude"}, cred
     assert all(d.startswith("/") for d in cred["seats"].values())
     assert len(set(cred["seats"].values())) == len(cred["seats"]), "one config dir is one seat"
     assert pusher["peerCacheDir"] == "inherit", pusher
@@ -224,36 +245,38 @@ pkgs.runCommand "substrate-modules"
     assert rt["models_file"] == "/home/tom/.config/substrate/models.toml", rt.get("models_file")
     assert 'models_file = "/home/tom/.config/substrate/models.toml"' in open(sys.argv[2]).read()
     # The project MCP for substrate sessions (projects build, EXCHANGE.md section 8): the CLI out-link's binary, a URL and a token path.
-    assert rt["sessions"] == {"project_bin": "/home/tom/.local/state/agency/project/cli/bin/project", "project_url": "https://project.mecattaf.dev", "project_token_file": "/home/tom/.config/project/token"}, rt.get("sessions")
+    assert rt["sessions"] == {"project_bin": "/home/tom/.local/state/agency/project/cli/bin/project", "project_url": "https://project.mecattaf.dev", "project_token_file": "/home/tom/.config/project/token", "maintenance": []}, rt.get("sessions")
     assert "substrate-models-seed" in start and "models.toml" in start, "the start script must seed the catalog"
     assert re.search(r'if \[ ! -e "\$models" \]', start), "seed only when absent"
     assert "install -m 600" in start, "the seeded catalog is private to the user"
     seed = tomllib.load(open(sys.argv[6], "rb"))
     ids = [m["id"] for m in seed["models"]]
     assert len(ids) == len(set(ids)), ids
-    assert "claude-opus-5-5" in ids and "qwen3.8-flash-next" in ids and "qwen3.8-max" in ids, ids
+    assert "claude-opus-5-5" in ids and "qwen3.8-flash-next" in ids, ids
     assert not any(m.get("provider") == "openrouter-free" for m in seed["models"]), "openrouter-free is parked (no entry)"
     assert not any("space-bunny" in m["id"] for m in seed["models"]), "the withdrawn stealth model is gone"
     for m in seed["models"]:
-        assert m["harness"] in {"claude", "pi", "codex"}, m
-        assert "provider" not in m or m["harness"] == "pi", m
+        assert m["harness"] in {"claude", "dsh", "codex"}, m
+        assert "provider" not in m or m["harness"] == "dsh", m
     lanes = {}
     for m in seed["models"]:
         if m.get("default"):
-            lane = (m["harness"], m.get("provider", "gufo") if m["harness"] == "pi" else None)
+            lane = (m["harness"], m.get("provider", "gufo") if m["harness"] == "dsh" else None)
             assert lane not in lanes, ("two defaults on one lane", lane, lanes[lane], m["id"])
             lanes[lane] = m["id"]
-    assert lanes[("claude", None)] == "claude-opus-5-5" and lanes[("pi", "gufo")] == "qwen3.8-flash-next", lanes
-    assert ("pi", "qwen-token-plan") in lanes and ("pi", "openrouter") in lanes, lanes
+    assert next(m for m in seed["models"] if m["id"] == "qwen3.8-flash-next")["reasoning"] is False
+    assert lanes[("claude", None)] == "claude-opus-5-5" and lanes[("dsh", "gufo")] == "qwen3.8-flash-next", lanes
+    assert set(lanes) == {("claude", None), ("dsh", "gufo")}, lanes
     client = tomllib.load(open(sys.argv[4], "rb"))
     assert client["floor_url"].startswith("https://") and client["token_file"] == "@FLOOR_TOKEN_FILE@", client
     p = client["puller"]
-    assert p["holder"] == "coordinator" and p["link_token_file"] == "@LINK_TOKEN_FILE@" and p["seat"] == "cc2", p
+    assert p["holder"] == "coordinator" and p["link_token_file"] == "@LINK_TOKEN_FILE@" and p["seat"] == "cc", p
+    assert "session_scope" not in p, p
     assert p["node_dispatch"] == "local" and p["runtimes"].endswith("substrate-runtimes.toml") and isinstance(p["max_runs"], int) and p["max_runs"] >= 1, p
     assert p["state_dir"] == "/home/tom/.local/state/substrate/puller"
     assert p["pidfile"] == "@RUNTIME_DIRECTORY@/puller.pid" and isinstance(p["cap"], int) and p["cap"] >= 1, p
     assert "s|@RUNTIME_DIRECTORY@|$RUNTIME_DIRECTORY|" in start, "the start script must fill the pidfile placeholder"
-    assert p["default_model"] == "claude-opus-5-5", p
+    assert p["default_model"] == "qwen3.8-flash-next", p
     assert p["demand_dir"] == "/home/tom/.local/state/substrate/demand", p
     assert p["drain_timeout_s"] == 60 and p["capacity_wait_s"] == 600, p
     assert "health_addr" not in p and "ax_server" not in p, p
