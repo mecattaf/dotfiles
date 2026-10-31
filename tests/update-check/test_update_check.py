@@ -412,7 +412,9 @@ class Run(unittest.TestCase):
 
         bin_ = t / "bin"
         bin_.mkdir()
-        for name, src in (("nix", FAKE_NIX), ("gh", FAKE_GH)):
+        for name, src in (("nix", FAKE_NIX), ("gh", FAKE_GH),
+                          ("hostname", 'import os; print(os.environ.get("FAKE_HOSTNAME", "strix-coordinator"))'),
+                          ("df", 'print("Filesystem 1024-blocks Used Available Capacity Mounted on\\nfixture 200000000 10000000 190000000 5% /")')):
             p = bin_ / name
             p.write_text(f"#!{sys.executable}\n{src}")
             p.chmod(0o755)

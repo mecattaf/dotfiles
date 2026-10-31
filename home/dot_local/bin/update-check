@@ -644,14 +644,21 @@ class Run:
     def gate(self, wt: Path, entry: dict[str, Any], flake_changed: bool) -> dict[str, Any]:
         self.logs.mkdir(parents=True, exist_ok=True)
         log_path = self.logs / f"{entry['name']}.log"
+        # The legacy PR checker is hand-run on compute. Scheduled installation
+        # uses fleet-update, which stages source and runs all work there. Never
+        # override NAS max-jobs=0, or build on the dormant worker.
+        if sh(["hostname"]).strip() != "strix-coordinator":
+            return {"ok": False, "steps": [], "log": str(log_path),
+                    "tail": "Run update-check on strix-coordinator; nightly NAS orchestration uses fleet-update."}
+        hosts = [host for host in entry["hosts"] if host != "strix-worker"]
         steps: list[tuple[str, list[str]]] = []
         if flake_changed:
             steps.append(("format", ["nix", "fmt", "--", "--check", "flake.nix"]))
         steps.append(("flake check", ["nix", "flake", "check", "--no-build", "--keep-going"]))
         steps.append((
-            "build " + ", ".join(entry["hosts"] + [b.rsplit(".", 1)[-1] for b in entry.get("build", [])]),
-            ["nix", "build", "--no-link", "--keep-going", "--max-jobs", "2", "--cores", "4"]
-            + [f".#nixosConfigurations.{h}.config.system.build.toplevel" for h in entry["hosts"]]
+            "build " + ", ".join(hosts + [b.rsplit(".", 1)[-1] for b in entry.get("build", [])]),
+            ["nix", "build", "--no-link", "--keep-going", "--builders", ""]
+            + [f".#nixosConfigurations.{h}.config.system.build.toplevel" for h in hosts]
             + entry.get("build", []),
         ))
         deadline = time.monotonic() + GATE_TIMEOUT
@@ -663,12 +670,20 @@ class Run:
                 start = time.monotonic()
                 left = int(deadline - start)
                 try:
+                    if cmd[:2] == ["nix", "build"]:
+                        log.write(sh(["df", "-h", "/"]))
+                        available = int(sh(["df", "-Pk", "/"]).splitlines()[-1].split()[3]) * 1024
+                        if available < 25 * 1024 ** 3:
+                            raise CheckError("compute root has less than 25 GiB free; stopping build")
                     if left <= 0:
                         raise subprocess.TimeoutExpired(cmd, GATE_TIMEOUT)
                     ok = subprocess.run(
                         cmd, cwd=wt, stdout=log, stderr=subprocess.STDOUT, timeout=left
                     ).returncode == 0
                 except OSError as e:
+                    log.write(f"update-check: {label}: {e}\n")
+                    ok = False
+                except CheckError as e:
                     log.write(f"update-check: {label}: {e}\n")
                     ok = False
                 except subprocess.TimeoutExpired:

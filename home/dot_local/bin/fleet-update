@@ -1,0 +1,1191 @@
+#!/usr/bin/env python3
+"""One deterministic, resumable nightly Nix transaction; the Floor owns the clock.
+
+Only Nix package inputs listed in lib/fleet-update.json move. Source credentials
+stay on NAS; every test and both system builds run on strix-coordinator. Exit
+75 means a durable pending job, 1 a failed stage, and 0 verified completion.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fcntl
+import json
+import math
+import os
+from pathlib import Path
+import re
+import shlex
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
+import xml.etree.ElementTree as ET
+from zoneinfo import ZoneInfo
+
+STATE = Path(os.environ.get("FLEET_UPDATE_STATE", Path.home() / ".local/state/fleet-update"))
+REPO = Path(os.environ.get("FLEET_UPDATE_REPO", Path.home() / "mecattaf/dotfiles"))
+COMPUTE = "strix-coordinator"
+TARGETS = ("nas", COMPUTE)
+PENDING = 75
+LOG = None
+CURRENT = Path("/run/current-system")
+TARGET_LOCK = Path("/run/lock/fleet-update.lock")
+ROOTS = Path("/nix/var/nix/gcroots/fleet-update")
+STORE = re.compile(r"/nix/store/[0-9a-z]{32}-[^/\s'\";:)]+")
+STORE_FILE = re.compile(r"/nix/store/[0-9a-z]{32}-[^\s'\";:)$`{}<>\\]+")
+REV = re.compile(r"[0-9a-f]{40}")
+SYSTEM = re.compile(r"/nix/store/[0-9a-z]{32}-nixos-system-(nas|strix-coordinator)-[^/]+")
+SSH_OPTIONS = ["-T", "-oBatchMode=yes", "-oStrictHostKeyChecking=yes", "-oForwardAgent=no",
+               "-oIdentitiesOnly=yes", "-oConnectTimeout=10", "-oServerAliveInterval=15",
+               "-oServerAliveCountMax=3", "-i", "/run/agenix/ssh-user-key"]
+PROTECTED = re.compile(r"^(?:user@|user-runtime-dir@|dbus|dbus-broker|herdr|sshd|tailscaled|"
+                       r"NetworkManager|systemd-networkd|systemd-resolved|dnsmasq|adguardhome|"
+                       r"network|firewall|nftables|nat\.|dhcpcd|wpa_supplicant|wireguard|openvpn|"
+                       r"gufo|qwen|substrate|fleet-update|nix-daemon|systemd-logind)")
+
+
+class Failure(Exception):
+    pass
+
+
+class Pending(Exception):
+    pass
+
+
+def run(argv, *, cwd=None, input=None, timeout=120, check=True):
+    try:
+        result = subprocess.run([str(a) for a in argv], cwd=cwd, input=input,
+                                text=True, capture_output=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise Failure(f"{argv[0]}: {error}") from error
+    if LOG:
+        with LOG.open("a") as log:
+            log.write(f"{now()} $ {shlex.join([str(a) for a in argv])}\n")
+            log.write(result.stdout + result.stderr + f"\nexit {result.returncode}\n")
+    if check and result.returncode:
+        raise Failure(f"{shlex.join([str(a) for a in argv[:3]])}: exit {result.returncode}: "
+                      + (result.stderr or result.stdout)[-2000:])
+    return result
+
+
+def git(*args, cwd=REPO):
+    return run(["git", *args], cwd=cwd).stdout.strip()
+
+
+def ssh(host, argv, **kw):
+    return run(["ssh", *SSH_OPTIONS, "--", f"tom@{host}", shlex.join([str(a) for a in argv])], **kw)
+
+
+def night_key():
+    return (dt.datetime.now(ZoneInfo("Europe/Paris")) - dt.timedelta(hours=12)).date().isoformat()
+
+
+def now():
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def atomic_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
+    with temporary.open("w") as out:
+        json.dump(value, out, indent=2)
+        out.write("\n")
+        out.flush()
+        os.fsync(out.fileno())
+    temporary.replace(path)
+
+
+def read_json(path):
+    return json.loads(path.read_text())
+
+
+def normal(text):
+    """Compare activation *code*, ignoring package store roots, not arguments."""
+    return STORE.sub("$STORE", text)
+
+
+def data_tree_equal(old, new, visited=None):
+    """Compare immutable generated data through store links, with a hard bound."""
+    visited = set() if visited is None else visited
+    if old == new:
+        return True
+    pair = (str(old), str(new))
+    if pair in visited or len(visited) >= 8192:
+        return False
+    visited.add(pair)
+    for path in (old, new):
+        if path.is_symlink() and not str(path.resolve()).startswith("/nix/store/"):
+            return False
+    if not old.exists() or not new.exists():
+        return not old.exists() and not new.exists() and not old.is_symlink() and not new.is_symlink()
+    if old.is_file() and new.is_file():
+        return old.read_bytes() == new.read_bytes()
+    if old.is_dir() and new.is_dir():
+        left, right = {p.name for p in old.iterdir()}, {p.name for p in new.iterdir()}
+        return left == right and all(data_tree_equal(old / name, new / name, visited) for name in sorted(left))
+    return False
+
+
+def dbus_config_equal(old, new):
+    """Only immutable search-path moves with identical contents are no-ops."""
+    try:
+        before, after = ET.fromstring(old.read_bytes()), ET.fromstring(new.read_bytes())
+        left, right = list(before.iter()), list(after.iter())
+        if len(left) != len(right):
+            return False
+        for a, b in zip(left, right):
+            if a.tag == b.tag and a.text != b.text and a.tag in {"servicedir", "includedir", "include"}:
+                if not all(value and STORE_FILE.fullmatch(value) for value in (a.text, b.text)):
+                    return False
+                if not data_tree_equal(Path(a.text), Path(b.text)):
+                    return False
+                a.text = b.text = "$UNCHANGED_IMMUTABLE_DATA"
+        return ET.tostring(before) == ET.tostring(after)
+    except (OSError, ET.ParseError, ValueError):
+        return False
+
+
+def dbus_trigger_override_equal(before, after, old_etc, new_etc):
+    """A trigger may only point at the separately verified generated bus config."""
+    pattern = re.compile(rb"^X-Restart-Triggers=(" + STORE_FILE.pattern.encode() + rb")\n", re.M)
+    left, right = pattern.findall(before), pattern.findall(after)
+    if len(left) != 1 or len(right) != 1 or pattern.sub(b"", before) != pattern.sub(b"", after):
+        return False
+    try:
+        return all(Path(value.decode()).read_text().strip() == str((etc / "dbus-1").resolve())
+                   for value, etc in ((left[0], old_etc), (right[0], new_etc)))
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+def dbus_reload_safe(old_etc, new_etc, extra_directories=None):
+    """Known broker notify-reload only; changed policy, code or overrides defer.
+
+    NixOS puts the entire system profile in D-Bus search paths, so even a
+    nixos-version revision creates new config/trigger paths. Prove the actual
+    policy and activation-service contents are identical before permitting its
+    native reload. Starting/restarting either bus is never covered by this.
+    """
+    try:
+        if not all(dbus_config_equal(old_etc / "dbus-1" / name, new_etc / "dbus-1" / name)
+                   for name in ("session.conf", "system.conf")):
+            return False
+        for scope in ("system", "user"):
+            relative = Path("systemd") / scope / "dbus-broker.service"
+            before, after = (old_etc / relative).read_bytes(), (new_etc / relative).read_bytes()
+            if before != after or b"\nType=notify-reload\n" not in before:
+                return False
+            if re.search(rb"^(?:Exec(?!Start=)[^=]*|ReloadSignal|PropagatesReloadTo|ReloadPropagatedFrom)=", before, re.M):
+                return False
+            command = re.search(rb"^ExecStart=(.+)$", before, re.M)
+            if not command or not re.fullmatch(rb"/nix/store/[0-9a-z]{32}-dbus-broker-[^/\s]+/bin/dbus-broker-launch --scope "
+                                                + scope.encode() + (rb" --audit" if scope == "system" else b""), command[1]):
+                return False
+            directories = [(old_etc / "systemd" / scope, new_etc / "systemd" / scope)]
+            directories += (extra_directories or {}).get(scope, [])
+            native_reload = False
+            # Includes both alias names, the service type, and dash prefix.
+            for left_root, right_root in directories:
+                for name in ("service.d", "dbus-.service.d", "dbus.service.d", "dbus-broker.service.d"):
+                    left, right = left_root / name, right_root / name
+                    a_names = {p.name for p in left.glob("*.conf")}
+                    b_names = {p.name for p in right.glob("*.conf")}
+                    if a_names != b_names or len(a_names) > 1024:
+                        return False
+                    for filename in a_names:
+                        a, b = (left / filename).read_bytes(), (right / filename).read_bytes()
+                        # Unknown, even unchanged, overrides cannot borrow the
+                        # native notify-reload proof (ExecReload, ReloadSignal,
+                        # Type and propagation overrides are all excluded).
+                        for line in a.splitlines():
+                            if not line.strip() or line.lstrip().startswith((b"#", b";")):
+                                continue
+                            if not re.fullmatch(rb"\[(?:Unit|Service)\]|X-Restart-Triggers=(?:" + STORE_FILE.pattern.encode() + rb")|"
+                                                rb"X-ReloadIfChanged=true|RequiresMountsFor=/tmp|Environment=.*|"
+                                                rb"OnFailure=failure-notify@%N\.service", line):
+                                return False
+                        native_reload |= b"\nX-ReloadIfChanged=true\n" in a
+                        if a != b and (left_root != old_etc / "systemd" / scope or
+                                       name != "dbus-broker.service.d" or filename != "overrides.conf" or
+                                       not dbus_trigger_override_equal(a, b, old_etc, new_etc)):
+                            return False
+            if not native_reload:
+                return False
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def etc_tree_reasons(old, new, seen=None):
+    """Only a managed profile pointer and its inspected HM unit may change.
+
+    /etc is generated data, not an executable helper directory. Compare its
+    effective contents through store symlinks; do not treat an arbitrary /etc
+    tree change as a harmless store-hash change. Unmanaged/runtime symlinks are
+    compared literally and never traversed.
+    """
+    seen = set() if seen is None else seen
+    reasons, visited = [], set()
+    bus_noop = dbus_reload_safe(old, new)
+
+    def compare(before, after, relative):
+        if len(visited) > 8192:
+            reasons.append("generated /etc tree exceeds inspection limit")
+            return
+        pair = (str(before), str(after))
+        if pair in visited:
+            return
+        visited.add(pair)
+        if before.is_symlink() and after.is_symlink() and os.readlink(before) == os.readlink(after):
+            return
+        if before.resolve() == after.resolve() and before.exists():
+            return
+        if relative == "profiles/per-user/tom" and before.is_dir() and after.is_dir():
+            return
+        if any(path.is_symlink() and not str(path.resolve()).startswith("/nix/store/") for path in (before, after)):
+            reasons.append(f"generated /etc runtime link changed: {relative}")
+            return
+        if not before.exists() or not after.exists():
+            reasons.append(f"generated /etc entry added, removed or unreadable: {relative}")
+            return
+        if before.is_dir() and after.is_dir():
+            names = {p.name for p in before.iterdir()} | {p.name for p in after.iterdir()}
+            for name in sorted(names):
+                compare(before / name, after / name, (relative + "/" + name).lstrip("/"))
+            return
+        if before.is_file() and after.is_file():
+            if before.read_bytes() == after.read_bytes():
+                return
+            if relative == "systemd/system/home-manager-tom.service":
+                reasons.extend(activation_code_reasons(before, after, seen))
+                return
+            if bus_noop and relative in {
+                "dbus-1/session.conf", "dbus-1/system.conf",
+                "systemd/system/dbus-broker.service.d/overrides.conf",
+                "systemd/user/dbus-broker.service.d/overrides.conf",
+            }:
+                return
+        reasons.append(f"generated /etc content changed: {relative}")
+
+    compare(old, new, "")
+    return reasons
+
+
+def activation_code_reasons(old, new, seen=None):
+    """Follow changed, literal activation helpers as well as their callers.
+
+    Store-root normalization is only an alignment tool. It never establishes
+    safety by itself: changed referenced files are read recursively, and an
+    unknown binary/helper or dynamic source directory defers installation.
+    Whole generations/profile directories are data inputs whose relevant unit
+    effects are checked separately. Ordinary PATH packages are only accepted
+    from this fixed interpreter/POSIX-tool list; all other directory changes
+    remain unknown rather than silently treating arbitrary code as a symlink.
+    """
+    seen = set() if seen is None else seen
+    pair = (str(old), str(new))
+    if pair in seen:
+        return []
+    seen.add(pair)
+    if len(seen) > 256:
+        return ["activation helper graph exceeds inspection limit"]
+    try:
+        before, after = old.read_bytes(), new.read_bytes()
+    except OSError:
+        return [f"activation helper unreadable: {new}"]
+    if before == after:
+        return []
+    try:
+        left, right = before.decode(), after.decode()
+    except UnicodeDecodeError:
+        return [f"activation binary helper changed: {new}"]
+    if "\0" in left or "\0" in right or len(left) + len(right) > 8 * 1024 * 1024:
+        return [f"activation helper is binary or too large: {new}"]
+    if normal(left) != normal(right):
+        return [f"activation code changed: {new}"]
+    left_refs, right_refs = STORE_FILE.findall(left), STORE_FILE.findall(right)
+    if len(left_refs) != len(right_refs):
+        return [f"activation reference graph changed: {new}"]
+    reasons = []
+    for left_ref, right_ref in zip(left_refs, right_refs):
+        if left_ref == right_ref:
+            continue
+        old_ref, new_ref = Path(left_ref), Path(right_ref)
+        if old_ref.is_file() and new_ref.is_file():
+            reasons += activation_code_reasons(old_ref, new_ref, seen)
+        elif old_ref.is_dir() and new_ref.is_dir():
+            # Data roots change on a package/profile update. The generation
+            # activation scripts and active user units have separate checks.
+            name = Path(STORE.match(right_ref).group()).name.split("-", 1)[1]
+            old_name = Path(STORE.match(left_ref).group()).name.split("-", 1)[1]
+            if name == old_name == "etc" and old_ref.name == new_ref.name == "etc":
+                reasons += etc_tree_reasons(old_ref, new_ref, seen)
+                continue
+            allowed = (name.startswith("nixos-system-") or name in {"home-path", "home-manager-generation", "home-manager-files"}
+                       or re.match(r"^(?:bash|coreutils|gnugrep|gnused|findutils|diffutils|gawk|glibc|shadow|util-linux|perl|python3)-[0-9]", name))
+            if not allowed:
+                reasons.append(f"activation directory helper changed: {right_ref}")
+        else:
+            reasons.append(f"activation reference unreadable or changed type: {right_ref}")
+    return reasons
+
+
+def process_identity():
+    return {"host": socket.gethostname(), "boot": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
+            "pid": os.getpid(), "start": Path("/proc/self/stat").read_text().split(") ", 1)[1].split()[19]}
+
+
+def owner_alive(owner):
+    try:
+        return (owner["host"] == socket.gethostname()
+                and owner["boot"] == Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+                and owner["start"] == Path(f"/proc/{int(owner['pid'])}/stat").read_text().split(") ", 1)[1].split()[19])
+    except (KeyError, ValueError, FileNotFoundError, PermissionError, ProcessLookupError):
+        return False
+
+
+def inference_busy(metrics):
+    """Gufo's two queue gauges, not just /health or low CPU utilization."""
+    for gauge in ("llamacpp:requests_processing", "llamacpp:requests_deferred"):
+        found = re.findall(r"^" + re.escape(gauge) + r"(?:\{[^\n]*\})?\s+(\S+)(?:\s+\d+)?$", metrics, re.M)
+        if not found:
+            return [f"Gufo metric absent: {gauge}"]
+        try:
+            values = [float(value) for value in found]
+        except ValueError:
+            return [f"Gufo metric unreadable: {gauge}"]
+        if any(not math.isfinite(value) or value < 0 for value in values):
+            return [f"Gufo metric invalid: {gauge}"]
+        if any(values):
+            return [f"Gufo has work: {gauge}"]
+    return []
+
+
+def resources_busy(*, agents):
+    reasons = []
+    load = os.getloadavg()[1]
+    limit = max(1, (os.cpu_count() or 1) / 2)
+    if load >= limit:
+        reasons.append(f"five-minute load {load:.1f} >= {limit:.1f}")
+    mine = {os.getpid(), os.getppid()}
+    for entry in Path("/proc").glob("[0-9]*"):
+        if int(entry.name) in mine:
+            continue
+        try:
+            args = entry.joinpath("cmdline").read_bytes().decode(errors="replace").split("\0")
+            uid = int(next(line for line in entry.joinpath("status").read_text().splitlines()
+                           if line.startswith("Uid:")).split()[1])
+        except (FileNotFoundError, PermissionError, ProcessLookupError, StopIteration):
+            continue
+        command = Path(args[0]).name
+        if (30000 <= uid < 31000 or command in {"nix-build", "nixos-rebuild", "nixos-rebuild-ng", "deploy-rs"}
+                or command == "nix" and any(a in {"build", "develop", "shell", "--realise"} for a in args[1:])):
+            reasons.append(f"Nix/build work running: {entry.name} {command}")
+    if agents:
+        # NAS owns all harnesses. This API is read-only; unknown is busy.
+        result = run(["herdr", "pane", "list"], timeout=15, check=False)
+        try:
+            panes = json.loads(result.stdout)["result"]["panes"]
+            if result.returncode or not isinstance(panes, list):
+                raise ValueError("Herdr did not return panes")
+            for pane in panes:
+                if pane.get("agent") and pane.get("agent_status") not in {"idle", "done", "blocked"}:
+                    reasons.append(f"Herdr {pane.get('pane_id', '?')}: {pane.get('agent_status', 'unknown')}")
+        except (ValueError, KeyError, TypeError):
+            reasons.append("cannot establish Herdr idleness")
+    return reasons
+
+
+def disk_gate():
+    # Printed in the stage log before *each* build, including a resumed build.
+    human = run(["df", "-h", "/"]).stdout
+    print(human, end="", file=sys.stderr, flush=True)
+    available = int(run(["df", "-B1", "--output=avail", "/"]).stdout.splitlines()[-1])
+    if available < 25 * 1024 ** 3:
+        raise Pending("compute root has less than 25 GiB free")
+
+
+def protected_pids():
+    """Service identities checked before/after, even for an idle open session."""
+    out = {}
+    units = run(["systemctl", "list-units", "--state=active", "--type=service", "--no-legend", "--plain"]).stdout
+    for line in units.splitlines():
+        unit = line.split()[0]
+        if PROTECTED.match(unit):
+            out[unit] = run(["systemctl", "show", unit, "--property=MainPID", "--value"]).stdout.strip()
+    # User services are inspected as tom, including Herdr; no root's user bus.
+    user_units = run(["runuser", "-u", "tom", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000",
+                      "systemctl", "--user", "list-units", "--state=active", "--type=service",
+                      "--no-legend", "--plain"], check=False)
+    if user_units.returncode:
+        raise Pending("cannot inspect Tom's active user services")
+    for line in user_units.stdout.splitlines():
+        unit = line.split()[0]
+        out["user:" + unit] = run(["runuser", "-u", "tom", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000",
+                                   "systemctl", "--user", "show", unit, "--property=MainPID", "--value"]).stdout.strip()
+    return out
+
+
+def user_generation(system):
+    unit = system / "etc/systemd/system/home-manager-tom.service"
+    match = re.search(r"^ExecStart=.* (/nix/store/[^\s]+-home-manager-generation)$", unit.read_text(), re.M)
+    if not match:
+        raise Pending("cannot identify Home Manager generation")
+    return Path(match.group(1))
+
+
+def user_unit_directories(system, home):
+    """The managed user-unit search order, including NixOS global units."""
+    return (
+        ("home-config", home / "home-files/.config/systemd/user"),
+        ("global-config", system / "etc/systemd/user"),
+        ("home-data", home / "home-files/.local/share/systemd/user"),
+        ("home-packages", home / "home-path/share/systemd/user"),
+        ("system-packages", system / "sw/lib/systemd/user"),
+        ("system-share", system / "sw/share/systemd/user"),
+    )
+
+
+def effective_user_unit(system, home, unit):
+    for origin, directory in user_unit_directories(system, home):
+        path = directory / unit
+        if path.exists() or path.is_symlink():
+            return origin, path
+    return None
+
+
+def user_drop_ins(system, home, unit):
+    """Inspect every applicable managed drop-in, including type/prefix ones.
+
+    Comparing each origin is conservative when a higher-priority file masks
+    one below it. It also prevents a new override from escaping the main-unit
+    comparison, even when Home Manager's main unit promises keep-old.
+    """
+    aliases = {unit}
+    main = effective_user_unit(system, home, unit)
+    if main and main[1].is_file():
+        for _, directory in user_unit_directories(system, home):
+            for alias in directory.glob("*.*"):
+                if alias.is_symlink() and alias.resolve() == main[1].resolve():
+                    aliases.add(alias.name)
+                if len(aliases) > 1024:
+                    raise Pending(f"active user unit alias set exceeds limit: {unit}")
+    names = set()
+    for alias in aliases:
+        stem, separator, kind = alias.rpartition(".")
+        if not separator or not stem or not kind:
+            raise Pending(f"cannot identify active user unit type: {alias}")
+        names.update((kind + ".d", alias + ".d"))
+        if "@" in stem:
+            names.add(stem.split("@", 1)[0] + "@." + kind + ".d")
+        prefix = stem.split("@", 1)[0]
+        names.update(prefix[:index + 1] + "." + kind + ".d"
+                     for index, character in enumerate(prefix) if character == "-")
+    files = {}
+    for origin, directory in user_unit_directories(system, home):
+        for name in sorted(names):
+            path = directory / name
+            if not path.exists() and not path.is_symlink():
+                continue
+            if not path.is_dir():
+                raise Pending(f"user unit drop-in directory is unreadable: {path}")
+            for fragment in path.iterdir():
+                if fragment.suffix != ".conf":
+                    continue
+                if len(files) >= 1024 or not fragment.is_file():
+                    raise Pending(f"user unit drop-in is unreadable or exceeds limit: {fragment}")
+                files[(origin, name, fragment.name)] = fragment.read_bytes()
+    return files
+
+
+def user_unit_origins(units):
+    origins = {}
+    for unit in units:
+        result = run(["runuser", "-u", "tom", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000",
+                      "systemctl", "--user", "show", unit, "--property=FragmentPath", "--value"])
+        path = result.stdout.strip()
+        if path:
+            origins[unit] = path
+    return origins
+
+
+def dbus_runtime_reload_reasons(system):
+    """Runtime-only overrides must not replace the audited native reload."""
+    home = user_generation(system)
+    for scope in ("system", "user"):
+        prefix = (["runuser", "-u", "tom", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000", "systemctl", "--user"]
+                  if scope == "user" else ["systemctl"])
+        directories = ([directory for _, directory in user_unit_directories(system, home)] if scope == "user"
+                       else [system / "etc/systemd/system", system / "sw/lib/systemd/system",
+                             system / "sw/share/systemd/system"])
+        known = {path.resolve() for directory in directories
+                 for name in ("service.d", "dbus-.service.d", "dbus.service.d", "dbus-broker.service.d")
+                 for path in (directory / name).glob("*.conf")}
+        for property, expected in (("Type", "notify-reload"), ("ExecReload", ""), ("ReloadSignal", "1")):
+            actual = run([*prefix, "show", "dbus-broker.service", f"--property={property}", "--value"]).stdout.strip()
+            if actual != expected:
+                return [f"{scope} D-Bus runtime {property} is not the audited native reload"]
+        fragment = run([*prefix, "show", "dbus-broker.service", "--property=FragmentPath", "--value"]).stdout.strip()
+        if Path(fragment).resolve() != (system / "etc/systemd" / scope / "dbus-broker.service").resolve():
+            return [f"{scope} D-Bus runtime unit origin differs from the generation"]
+        actual = run([*prefix, "show", "dbus-broker.service", "--property=DropInPaths", "--value"]).stdout.split()
+        if any(Path(path).resolve() not in known for path in actual):
+            return [f"{scope} D-Bus has an unmanaged runtime override"]
+    return []
+
+
+def effect_reasons(old, new, dry, active_user, origins=None):
+    reasons = []
+    # A source pin bump may alter module-generated activation code. Unknown code
+    # waits for a supervised deployment; dry-activate alone is not sufficient.
+    for filename in ("activate", "dry-activate", "bin/switch-to-configuration"):
+        reasons += activation_code_reasons(old / filename, new / filename)
+    old_home, new_home = user_generation(old), user_generation(new)
+    bus_noop = dbus_reload_safe(old / "etc", new / "etc", {
+        "system": [(old / "sw" / directory, new / "sw" / directory)
+                   for directory in ("lib/systemd/system", "share/systemd/system")],
+        "user": [(left, right) for (_, left), (_, right) in zip(
+            user_unit_directories(old, old_home), user_unit_directories(new, new_home))
+                 if left != old / "etc/systemd/user"],
+    })
+    for system, home in ((old, old_home), (new, new_home)):
+        origin = effective_user_unit(system, home, "dbus-broker.service")
+        if origin is None or origin[0] != "global-config":
+            bus_noop = False
+    reasons += activation_code_reasons(old_home / "activate", new_home / "activate")
+    old_units = old_home / "home-files/.config/systemd/user"
+    new_units = new_home / "home-files/.config/systemd/user"
+    for unit in new_units.glob("*"):
+        if unit.is_file() and not (old_units / unit.name).exists():
+            reasons.append(f"new user unit requires supervised admission: {unit.name}")
+    for unit in active_user:
+        try:
+            left = user_drop_ins(old, old_home, unit)
+            right = user_drop_ins(new, new_home, unit)
+            bus_trigger = ("global-config", "dbus-broker.service.d", "overrides.conf")
+            if (bus_noop and unit in {"dbus-broker.service", "dbus.service"}
+                    and bus_trigger in left and bus_trigger in right
+                    and dbus_trigger_override_equal(left[bus_trigger], right[bus_trigger], old / "etc", new / "etc")):
+                left.pop(bus_trigger)
+                right.pop(bus_trigger)
+            if left != right:
+                reasons.append(f"active user unit drop-ins would change: {unit}")
+        except (OSError, Pending) as error:
+            reasons.append(str(error))
+        before = effective_user_unit(old, old_home, unit)
+        after = effective_user_unit(new, new_home, unit)
+        if before is None and after is None:
+            # A loaded unit supplied outside either generation is untouched by
+            # this candidate. Require an actual readable origin; missing or
+            # transient-without-a-fragment remains unknown, not assumed safe.
+            origin = (origins or {}).get(unit)
+            if origin and Path(origin).is_file():
+                continue
+            reasons.append(f"active user unit origin is unknown: {unit}")
+            continue
+        if before is None or after is None or before[0] != after[0]:
+            reasons.append(f"active user unit origin changed or missing: {unit}")
+            continue
+        origin_kind = before[0]
+        before, after = before[1], after[1]
+        if not before.is_file() or not after.is_file():
+            reasons.append(f"active user unit origin is unreadable: {unit}")
+            continue
+        if before.read_bytes() == after.read_bytes():
+            continue
+        # sd-switch's native keep-old contract is used by Herdr. Do not invent
+        # an environment variable or skip Home Manager activation to bypass it.
+        if origin_kind == "home-config" and "X-SwitchMethod=keep-old" in after.read_text():
+            continue
+        reasons.append(f"active user unit would change: {unit}")
+    for line in dry.splitlines():
+        action = re.search(r"would (start|stop|restart|reload)(?: the following)? (?:user )?units:", line)
+        if action:
+            units = line.partition(":")[2].replace(",", " ").split()
+            for unit in units:
+                if bus_noop and action[1] == "reload" and unit in {"dbus.service", "dbus-broker.service"}:
+                    continue
+                if PROTECTED.match(unit):
+                    reasons.append(f"dry activation would affect protected unit: {unit}")
+        elif "would restart systemd" in line or "would stop swap" in line:
+            reasons.append(line.strip())
+    return reasons
+
+
+def validate_candidate(path, revision, host=None):
+    match = SYSTEM.fullmatch(str(path))
+    if not match or not REV.fullmatch(revision):
+        raise Failure("expected an exact NAS/coordinator NixOS store path and full Git revision")
+    if match.group(1) != (host or socket.gethostname()):
+        raise Failure("generation belongs to another host")
+    if path.is_symlink() or not path.is_dir() or path.stat().st_uid != 0:
+        raise Failure("candidate is not an immutable root-owned Nix generation")
+    recorded = read_json(path / "fleet-revision.json")
+    if recorded.get("rev") != revision or recorded.get("dirty", True):
+        raise Failure("candidate revision differs or was built from a dirty source")
+    return recorded
+
+
+def target_activate(path, revision, expected, assess_only=False):
+    """The only sudo entry point. No arbitrary shell commands or flake refs."""
+    if os.geteuid() != 0:
+        raise Failure("target activation requires the installed sudo helper")
+    validate_candidate(path, revision)
+    with TARGET_LOCK.open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Pending("another deployment owns the target lock")
+        old = CURRENT.resolve()
+        if str(old) == str(path):
+            return {"status": "installed", "path": str(path), "already_installed": True}
+        if str(old) != expected:
+            raise Pending("target generation changed after staging")
+        probe = run(["runuser", "-u", "tom", "--", "/run/current-system/sw/bin/fleet-update-probe"]).stdout
+        state = json.loads(probe)
+        if state["reasons"]:
+            raise Pending("; ".join(state["reasons"]))
+        # Dry activation is itself a real NixOS operation, never a sourced
+        # script fragment. It runs only on the target after conservative idle.
+        pids = protected_pids()
+        active_user = [unit[5:] for unit in pids if unit.startswith("user:")]
+        origins = user_unit_origins(active_user)
+        reasons = effect_reasons(old, path, "", active_user, origins)
+        if reasons:
+            raise Pending("; ".join(reasons))
+        dry = run([str(path / "bin/switch-to-configuration"), "dry-activate"], timeout=180)
+        reasons = effect_reasons(old, path, dry.stdout + dry.stderr,
+                                 active_user, origins)
+        if re.search(r"would reload[^\n]*\bdbus(?:-broker)?\.service\b", dry.stdout + dry.stderr):
+            try:
+                reasons += dbus_runtime_reload_reasons(old)
+            except Failure:
+                reasons.append("cannot inspect D-Bus runtime reload behavior")
+        if reasons:
+            raise Pending("; ".join(reasons))
+        if assess_only:
+            return {"status": "ready", "path": str(path), "generation": str(old), "protected_pids": pids}
+        # Source mutation happens only after an independent effect assessment
+        # passed. Root still requires the exact tested raw checkout at install.
+        source = Path("/home/tom/mecattaf/dotfiles")
+        source_head = run(["runuser", "-u", "tom", "--", "git", "-C", str(source), "rev-parse", "HEAD"]).stdout.strip()
+        source_dirty = run(["runuser", "-u", "tom", "--", "git", "-C", str(source),
+                            "status", "--porcelain", "--untracked-files=no"]).stdout
+        if source_head != revision or source_dirty:
+            raise Pending("raw dotfile checkout is dirty or differs from candidate")
+        # Retain both paths independently of profile GC before any side effect.
+        roots = ROOTS
+        roots.mkdir(exist_ok=True)
+        for label, generation in (("previous", old), ("candidate", path)):
+            temporary = roots / (label + ".new")
+            temporary.unlink(missing_ok=True)
+            temporary.symlink_to(generation)
+            temporary.replace(roots / label)
+        # Recheck after dry activation and before the first install side effect.
+        state = json.loads(run(["runuser", "-u", "tom", "--", "/run/current-system/sw/bin/fleet-update-probe"]).stdout)
+        if state["reasons"] or CURRENT.resolve() != old:
+            raise Pending("target became busy or changed during final admission")
+        run(["nix-env", "--profile", "/nix/var/nix/profiles/system", "--set", str(path)], timeout=180)
+        try:
+            run([str(path / "bin/switch-to-configuration"), "switch"], timeout=1200)
+        except Failure:
+            # No blind rollback: that could restart the same protected services.
+            raise Failure("activation failed; retained previous generation; supervised recovery required")
+        if protected_pids() != pids:
+            raise Failure("protected service identities changed; supervised inspection required")
+        if CURRENT.resolve() != path:
+            raise Failure("switch returned without installing the exact generation")
+        return {"status": "installed", "path": str(path), "previous": str(old), "protected_pids": pids}
+
+
+def target_probe():
+    host = socket.gethostname()
+    if host not in TARGETS:
+        raise Failure("only NAS and strix-coordinator are updater targets")
+    reasons = resources_busy(agents=host == "nas")
+    # Compute services may be idle despite low CPU load while using the GPU.
+    if host == COMPUTE:
+        for unit in ("gufo-image", "gufo-tp2", "gufo-tts", "gufo-asr", "call-diarize"):
+            if run(["systemctl", "is-active", unit + ".service"], check=False).returncode == 0:
+                reasons.append(f"on-demand inference active: {unit}")
+        runtime = f"/run/user/{os.getuid()}"
+        user_tts = run(["env", "XDG_RUNTIME_DIR=" + runtime, "DBUS_SESSION_BUS_ADDRESS=unix:path=" + runtime + "/bus",
+                        "systemctl", "--user", "is-active", "qwen-tts.service"], check=False)
+        if user_tts.returncode == 0:
+            reasons.append("on-demand user inference active: qwen-tts")
+        elif user_tts.returncode not in {3, 4}:
+            reasons.append("cannot establish user inference idleness")
+        # The live server exposes both processing and deferred gauges. Health
+        # only proves reachability, not absence of an in-flight request.
+        result = run(["systemctl", "list-units", "--state=active", "--type=service", "--no-legend", "--plain",
+                      "gufo-llm*.service"])
+        if result.stdout.strip():
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:8731/metrics", timeout=5) as response:
+                    reasons += inference_busy(response.read(1024 * 1024).decode())
+            except (OSError, ValueError) as error:
+                reasons.append(f"Gufo idleness unknown: {error}")
+    return {"host": host, "generation": str(Path("/run/current-system").resolve()),
+            "reasons": reasons, "checked_at": now()}
+
+
+class Transaction:
+    def __init__(self, state, args):
+        self.state, self.args = state, args
+        self.identifier = state["night"] + ("-programs" if state.get("lane") == "programs" else "")
+        self.path = STATE / "jobs" / (self.identifier + ".json")
+
+    def save(self):
+        self.state["updated_at"] = now()
+        atomic_json(self.path, self.state)
+        if self.state.get("lane") != "programs":
+            atomic_json(STATE / "active.json", {"night": self.state["night"], "job": str(self.path)})
+
+    def stage(self, name, function):
+        previous = self.state.setdefault("stages", {}).get(name, {})
+        if previous.get("status") == "complete":
+            return previous.get("result")
+        if previous.get("status") in {"failed", "running"} and not self.args.retry_failed:
+            # A disappeared worker after a non-idempotent side effect needs
+            # recovery, rather than repeating GitHub merges or a live switch.
+            raise Failure(f"stage {name} {previous['status']}; inspect log, then --retry-failed")
+        self.state["stages"][name] = {"status": "running", "started_at": now(), "owner": process_identity()}
+        self.save()
+        try:
+            result = function()
+        except Pending as error:
+            self.state["stages"][name].update(status="pending", reason=str(error))
+            self.save()
+            raise
+        except Exception as error:
+            self.state["stages"][name].update(status="failed", reason=str(error))
+            self.save()
+            raise
+        self.state["stages"][name].update(status="complete", completed_at=now(), result=result)
+        self.save()
+        return result
+
+    def compute(self, argv, timeout=120):
+        result = run(["fleet-exec", COMPUTE, "--cwd", self.state["remote"], "--", *argv], timeout=timeout, check=False)
+        if result.returncode == PENDING:
+            raise Pending(result.stderr.strip())
+        if result.returncode:
+            raise Failure(f"compute command failed: {(result.stderr or result.stdout)[-2000:]}")
+        return result
+
+    def prepare(self):
+        if self.state.get("candidate"):
+            if git("rev-parse", "HEAD", cwd=Path(self.state["source"])) != self.state["candidate"]:
+                raise Failure("recorded candidate checkout changed during recovery")
+            return {"base": self.state["base"], "candidate": self.state["candidate"], "recovered": True}
+        git("fetch", "origin", "main")
+        base = git("rev-parse", "origin/main")
+        directory = STATE / "sources" / self.identifier
+        if directory.exists():
+            if not self.args.retry_failed or self.state.get("source") != str(directory):
+                raise Failure("unrecorded candidate checkout exists; inspect before retrying")
+            base = self.state["base"]
+        else:
+            directory.parent.mkdir(parents=True, exist_ok=True)
+            git("worktree", "add", "--detach", str(directory), base)
+        config = read_json(directory / "lib/fleet-update.json")
+        if config["hosts"] != list(TARGETS):
+            raise Failure("nightly targets must be NAS and coordinator; worker is dormant")
+        if self.state.get("lane") == "programs":
+            config["inputs"] = ["agent-tools"]
+        self.state.update(base=base, source=str(directory), branch="update/fleet-" + self.identifier,
+                          remote="/home/tom/.cache/fleet-update/" + self.identifier, config=config)
+        self.save()
+        run(["nix", "flake", "update", *config["inputs"]], cwd=directory, timeout=1800)
+        changed = git("diff", "--name-only", cwd=directory).splitlines()
+        if any(name != "flake.lock" for name in changed):
+            raise Failure("mechanical update changed more than flake.lock")
+        if changed:
+            git("add", "flake.lock", cwd=directory)
+            git("commit", "-m", "update: nightly Nix fleet " + self.state["night"], cwd=directory)
+        candidate = git("rev-parse", "HEAD", cwd=directory)
+        git("push", "origin", f"{candidate}:refs/heads/{self.state['branch']}", cwd=directory)
+        self.state["candidate"] = candidate
+        self.save()
+        return {"base": base, "candidate": candidate, "changed": bool(changed)}
+
+    def seed(self):
+        remote = self.state["remote"]
+        # No SSH agent forwarding, credentials, HOME archive or mutable source
+        # rsync. GitHub is public. Private flake *source trees* are seeded from
+        # NAS's authenticated Nix store by archive, never their credentials.
+        ssh(COMPUTE, ["mkdir", "-p", remote])
+        ssh(COMPUTE, ["git", "-C", remote, "init"])
+        ssh(COMPUTE, ["git", "-C", remote, "fetch", "--depth", "1",
+                      "https://github.com/mecattaf/dotfiles.git", self.state["branch"]], timeout=180)
+        ssh(COMPUTE, ["git", "-C", remote, "checkout", "--detach", self.state["candidate"]])
+        actual = ssh(COMPUTE, ["git", "-C", remote, "rev-parse", "HEAD"]).stdout.strip()
+        if actual != self.state["candidate"]:
+            raise Failure("staged compute revision mismatch")
+        run(["nix", "flake", "archive", "--json", "--to", "ssh-ng://tom@" + COMPUTE,
+             "git+file://" + self.state["source"] + "?rev=" + actual], timeout=1800)
+        return {"remote": remote, "candidate": actual}
+
+    def build(self):
+        # Probe resource capacity, not global agent idleness: an open NAS
+        # conversation must not starve preparation on the compute host.
+        self.compute(["python3", "home/dot_local/bin/fleet-update", "--build-preflight"])
+        # Every actual nix build has its own disk check on the actual host.
+        self.compute(["nix", "flake", "check", "--no-build", "--keep-going"], timeout=1800)
+        outputs = [f".#nixosConfigurations.{host}.config.system.build.toplevel" for host in TARGETS]
+        outputs += self.state["config"]["checks"]
+        roots = "/home/tom/.local/state/fleet-update/builds/" + self.identifier
+        self.compute(["mkdir", "-p", roots])
+        self.compute(["python3", "home/dot_local/bin/fleet-update", "--disk-preflight"])
+        result = self.compute(["nix", "build", "--out-link", roots + "/result", "--json", "--keep-going", "--builders", "", *outputs],
+                              timeout=6 * 3600)
+        built = json.loads(result.stdout)
+        paths = {}
+        for entry in built:
+            path = entry["outputs"]["out"]
+            match = SYSTEM.fullmatch(path)
+            if match:
+                paths[match.group(1)] = path
+        if len(built) != len(outputs):
+            raise Failure("build result does not name every requested output")
+        if set(paths) != set(TARGETS):
+            raise Failure("build result does not contain exactly both target generations")
+        self.state["paths"] = paths
+        self.save()
+        for path in paths.values():
+            self.compute(["python3", "home/dot_local/bin/fleet-update", "--candidate-verify", path,
+                          self.state["candidate"]], timeout=120)
+        # nix build writes its roots before dropping the build's temporary GC
+        # roots; there is no no-link -> add-root race. Roots live outside source
+        # staging and survive cleanup of disposable checkouts.
+        self.prune_resolved_roots()
+        return {"paths": paths, "checks": self.state["config"]["checks"], "compute_roots": roots}
+
+    def prune_resolved_roots(self):
+        resolved = []
+        for receipt in (STATE / "jobs").glob("*.json"):
+            job = read_json(receipt)
+            if (job.get("lane") != "programs" and job.get("status") in {"complete", "superseded"}
+                    and re.fullmatch(r"\d{4}-\d{2}-\d{2}", job["night"])):
+                resolved.append(job["night"])
+        for night in sorted(set(resolved), reverse=True)[3:]:
+            # Only direct result symlinks of old resolved jobs are unrooted.
+            # Pending jobs and previous/live system profiles remain protected.
+            self.compute(["python3", "-c",
+                          "from pathlib import Path; import sys; "
+                          "[(p.unlink()) for suffix in ('','-programs') "
+                          "for p in (Path('/home/tom/.local/state/fleet-update/builds')/(sys.argv[1]+suffix)).glob('result*') "
+                          "if p.is_symlink()]", night])
+
+    def adopt(self):
+        if self.args.prepare_only:
+            raise Pending("candidate built; --prepare-only leaves activation pending")
+        git("fetch", "origin", "main")
+        main = git("rev-parse", "origin/main")
+        candidate = self.state["candidate"]
+        if main == candidate or run(["git", "merge-base", "--is-ancestor", candidate, main], cwd=REPO,
+                                     check=False).returncode == 0:
+            return {"revision": candidate, "main": main, "already_adopted": True}
+        if main != self.state["base"]:
+            raise Pending("main moved since candidate build; rebase and regate required")
+        # Fast-forward a lock-only tested candidate. --force-with-lease is CAS,
+        # not permission to discard intervening work. No carried review commits.
+        git("push", f"--force-with-lease=refs/heads/main:{main}", "origin", f"{candidate}:refs/heads/main")
+        return {"revision": candidate, "main": candidate}
+
+    def assess(self, host):
+        path = self.state["paths"][host]
+        # Staging is independent per host. Busy/offline never loses the path.
+        try:
+            run(["nix", "copy", "--from", "ssh-ng://tom@" + COMPUTE,
+                 "--to", "ssh-ng://tom@" + host, path], timeout=1800)
+        except Failure as error:
+            raise Pending(f"{host} closure copy unavailable: {error}") from error
+        probe_result = ssh(host, ["fleet-update-probe"], check=False)
+        if probe_result.returncode:
+            raise Pending(f"{host} offline or probe unavailable: {probe_result.stderr[-500:]}")
+        probe = json.loads(probe_result.stdout)
+        if probe["reasons"]:
+            raise Pending("; ".join(probe["reasons"]))
+        result = ssh(host, ["sudo", "-n", "fleet-update-assess", path, self.state["candidate"], probe["generation"]],
+                     timeout=240, check=False)
+        if result.returncode == PENDING:
+            raise Pending(result.stderr.strip()[-2000:])
+        if result.returncode:
+            raise Failure(f"{host} assessment failed: {result.stderr[-2000:]}")
+        return probe
+
+    def install(self, host):
+        path = self.state["paths"][host]
+        probe = self.assess(host)
+        revision = self.state["candidate"]
+        # User-owned raw source transaction: no checkout switch/reset/stash,
+        # ignored local credentials copied, or overwrite of modified files.
+        source = "/home/tom/mecattaf/dotfiles"
+        dirty = ssh(host, ["git", "-C", source, "status", "--porcelain", "--untracked-files=no"]).stdout
+        if dirty:
+            raise Pending(f"{host} canonical raw dotfiles checkout is dirty")
+        if ssh(host, ["git", "-C", source, "branch", "--show-current"]).stdout.strip() != "main":
+            raise Pending(f"{host} canonical raw checkout is not on main")
+        ssh(host, ["git", "-C", source, "fetch", "origin", "main"])
+        ancestor = ssh(host, ["git", "-C", source, "merge-base", "--is-ancestor", "HEAD", revision], check=False)
+        if ancestor.returncode:
+            raise Pending(f"{host} raw checkout cannot fast-forward to tested revision")
+        changed = ssh(host, ["git", "-C", source, "diff", "--name-only", "HEAD", revision]).stdout.splitlines()
+        if any(filename != "flake.lock" for filename in changed):
+            raise Pending(f"{host} would also adopt unrelated raw source changes; supervised source update required")
+        ssh(host, ["git", "-C", source, "merge", "--ff-only", revision])
+        result = ssh(host, ["sudo", "-n", "fleet-update-target", path, revision, probe["generation"]],
+                     timeout=1500, check=False)
+        if result.returncode == PENDING:
+            raise Pending(result.stderr.strip()[-2000:])
+        if result.returncode:
+            raise Failure(f"{host} activation failed: {result.stderr[-2000:]}")
+        receipt = json.loads(result.stdout)
+        verified = ssh(host, ["fleet-update-verify", path, revision], timeout=120, check=False)
+        if verified.returncode:
+            raise Failure(f"{host} post-activation verification: {verified.stderr[-2000:]}")
+        return {**receipt, "verification": json.loads(verified.stdout)}
+
+    def execute(self):
+        if self.state.get("programs_first"):
+            # Two fixed transactions, using the exact same gates and receipts.
+            # First advance new-launch agent programs on the existing base;
+            # then stage/install the full base. A transport/systemd change in
+            # the latter cannot starve ordinary Claude/Codex/dsh freshness.
+            programs = self.state.setdefault("programs_job", {
+                "schema": 1, "night": self.state["night"], "lane": "programs", "stages": {}, "created_at": now()})
+            if programs.get("status") != "complete":
+                program_tx = Transaction(programs, self.args)
+                try:
+                    program_tx.execute_pipeline()
+                    programs.update(status="complete", completed_at=now())
+                finally:
+                    program_tx.save()
+                    self.save()
+        self.execute_pipeline()
+
+    def execute_pipeline(self):
+        self.stage("prepare", self.prepare)
+        self.stage("seed", self.seed)
+        self.stage("build", self.build)
+        if self.state.get("programs_first"):
+            # Keep unsafe base pins off main so the next night's program-only
+            # update inherits the last safe base. These are live assessments,
+            # not memoized permission to install later. Root rechecks again.
+            reasons = []
+            for host in TARGETS:
+                try:
+                    self.state.setdefault("assessments", {})[host] = self.assess(host)
+                except Pending as error:
+                    reasons.append(host + ": " + str(error))
+            self.save()
+            if reasons:
+                raise Pending("; ".join(reasons))
+        self.stage("adopt", self.adopt)
+        pending = []
+        for host in TARGETS:
+            try:
+                self.stage("install:" + host, lambda host=host: self.install(host))
+            except Pending as error:
+                pending.append(host + ": " + str(error))
+        if pending:
+            raise Pending("; ".join(pending))
+
+
+def verify(path, revision, candidate_only=False):
+    match = SYSTEM.fullmatch(str(path))
+    validate_candidate(path, revision, host=match.group(1) if candidate_only and match else None)
+    if not candidate_only and Path("/run/current-system").resolve() != path:
+        raise Failure("installed system differs from candidate")
+    result = {"host": socket.gethostname(), "path": str(path), "revision": revision, "versions": {}}
+    expected = read_json(path / "fleet-update-versions.json")
+    for command, version in expected.items():
+        prefix = path if candidate_only else Path("/")
+        executable = prefix / "etc/profiles/per-user/tom/bin" / command
+        if not executable.exists():
+            executable = (path / "sw/bin" if candidate_only else Path("/run/current-system/sw/bin")) / command
+        actual = run([str(executable), "--version"], timeout=30).stdout.strip()
+        if not re.search(r"(?<![0-9A-Za-z.])" + re.escape(version) + r"(?![0-9A-Za-z.])", actual):
+            raise Failure(f"{command}: expected {version}, got {actual}")
+        result["versions"][command] = {"expected": version, "reported": actual,
+                                       "executable": str(executable.resolve())}
+    return result
+
+
+def background(args, state, lock):
+    """Transfer the held open-file-description lock; do not race a second run."""
+    logfile = STATE / "jobs" / (state["night"] + ".log")
+    logfile.parent.mkdir(parents=True, exist_ok=True)
+    command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--resume", state["night"], "--json"]
+    if args.prepare_only:
+        command.append("--prepare-only")
+    if args.retry_failed:
+        command.append("--retry-failed")
+    state.update(status="launching", ok=False)
+    transaction = Transaction(state, args)
+    transaction.save()
+    with logfile.open("a") as log:
+        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                                   start_new_session=True, pass_fds=(lock.fileno(),),
+                                   env={**os.environ, "FLEET_UPDATE_LOCK_FD": str(lock.fileno())})
+    identity = process_identity()
+    identity.update(pid=process.pid, start=Path(f"/proc/{process.pid}/stat").read_text().split(") ", 1)[1].split()[19])
+    # A separate launch record cannot overwrite the worker's stage progress.
+    launch = {"status": "launched", "night": state["night"], "owner": identity,
+              "job": str(transaction.path), "log": str(logfile), "launched_at": now(), "ok": False}
+    atomic_json(STATE / "last-launch.json", launch)
+    return launch
+
+
+def execute_transaction(transaction, worker=False):
+    global LOG
+    state = transaction.state
+    while True:
+        request = STATE / "requested.json"
+        if worker and request.exists() and state.get("status") == "pending":
+            requested = read_json(request)["night"]
+            if requested > state["night"]:
+                # A new CF firing coalesces pending work into the newest
+                # candidate; an adopted full baseline was already assessed
+                # safe on both targets. Pending intent is preserved by the
+                # newer composed pins and the supersession receipt. No clock:
+                # only the fixed trusted launcher writes this request.
+                state.update(status="superseded", superseded_by=requested, superseded_at=now())
+                transaction.save()
+                state.clear()
+                state.update(schema=1, night=requested, created_at=now(), stages={}, programs_first=True)
+                transaction = Transaction(state, transaction.args)
+                LOG = STATE / "jobs" / (requested + ".log")
+        state.update(status="running", owner=process_identity())
+        transaction.save()
+        code = 0
+        try:
+            transaction.execute()
+            state.update(status="complete", completed_at=now(), ok=True)
+            state.pop("reason", None)
+        except Pending as error:
+            state.update(status="pending", reason=str(error), ok=False)
+            code = PENDING
+        except Exception as error:
+            state.update(status="failed", reason=str(error), ok=False)
+            code = 1
+        transaction.save()
+        if code != PENDING or not worker or transaction.args.prepare_only:
+            # A durable completion exists even when no model turn remains to
+            # read it. Failure is terminal, with an explicitly inspectable log.
+            if code != PENDING:
+                atomic_json(STATE / "completions" / (state["night"] + ".json"), state)
+            return code
+        # This is one already-admitted job waiting for capacity/availability,
+        # not another nightly timer. Every completed stage stays memoized.
+        time.sleep(60)
+
+
+def main(argv=None):
+    global LOG
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json", action="store_true", help="machine-readable durable receipt")
+    parser.add_argument("--status", action="store_true")
+    parser.add_argument("--resume", help="resume the exact YYYY-MM-DD job")
+    parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--retry-failed", action="store_true", help="explicitly retry an inspected failed/interrupted stage")
+    parser.add_argument("--background", action="store_true", help="detach one durable worker that resumes pending stages")
+    parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--request", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--target-probe", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--target-activate", nargs=3, metavar=("PATH", "REV", "EXPECTED"), help=argparse.SUPPRESS)
+    parser.add_argument("--target-assess", nargs=3, metavar=("PATH", "REV", "EXPECTED"), help=argparse.SUPPRESS)
+    parser.add_argument("--target-verify", nargs=2, metavar=("PATH", "REV"), help=argparse.SUPPRESS)
+    parser.add_argument("--candidate-verify", nargs=2, metavar=("PATH", "REV"), help=argparse.SUPPRESS)
+    parser.add_argument("--disk-preflight", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--build-preflight", action="store_true", help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+    try:
+        if args.resume and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.resume):
+            raise Failure("--resume expects YYYY-MM-DD")
+        if args.target_probe:
+            print(json.dumps(target_probe()))
+            return 0
+        if args.target_activate:
+            print(json.dumps(target_activate(Path(args.target_activate[0]), *args.target_activate[1:])))
+            return 0
+        if args.target_assess:
+            print(json.dumps(target_activate(Path(args.target_assess[0]), *args.target_assess[1:], assess_only=True)))
+            return 0
+        if args.target_verify:
+            print(json.dumps(verify(Path(args.target_verify[0]), args.target_verify[1])))
+            return 0
+        if args.candidate_verify:
+            print(json.dumps(verify(Path(args.candidate_verify[0]), args.candidate_verify[1], candidate_only=True)))
+            return 0
+        if args.disk_preflight or args.build_preflight:
+            if socket.gethostname() != COMPUTE:
+                raise Failure("build preflight must run on strix-coordinator; never fall back locally")
+            if args.disk_preflight:
+                disk_gate()
+            else:
+                reasons = target_probe()["reasons"]
+                if reasons:
+                    raise Pending("; ".join(reasons))
+            return 0
+        if args.status:
+            if args.resume:
+                print(json.dumps(read_json(STATE / "jobs" / (args.resume + ".json")), indent=2))
+            elif (STATE / "active.json").exists():
+                state = read_json(Path(read_json(STATE / "active.json")["job"]))
+                if state.get("status") in {"running", "pending"} and not owner_alive(state.get("owner", {})):
+                    state = {**state, "worker_status": "interrupted"}
+                print(json.dumps(state, indent=2))
+            else:
+                print(json.dumps({"status": "absent"}))
+            return 0
+        if socket.gethostname() != "nas":
+            raise Failure("fleet-update orchestration and credentials belong on NAS")
+        STATE.mkdir(parents=True, exist_ok=True)
+        if args.request:
+            atomic_json(STATE / "requested.json", {"night": night_key(), "requested_at": now()})
+            print(json.dumps({"status": "requested", "night": night_key(), "ok": False}))
+            return 0
+        inherited = os.environ.pop("FLEET_UPDATE_LOCK_FD", None)
+        if inherited is not None and not args.worker:
+            raise Failure("inherited lock is only valid for the detached worker")
+        with (os.fdopen(int(inherited), "a") if inherited else (STATE / "lock").open("w")) as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise Pending("another worker holds the transaction lock")
+            night = args.resume or night_key()
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", night):
+                raise Failure("--resume expects YYYY-MM-DD")
+            # Never replace an unfinished logical night with a fresh candidate.
+            if not args.resume and (STATE / "active.json").exists():
+                active = read_json(Path(read_json(STATE / "active.json")["job"]))
+                if active.get("status") != "complete":
+                    night = active["night"]
+            path = STATE / "jobs" / (night + ".json")
+            state = read_json(path) if path.exists() else {"schema": 1, "night": night, "created_at": now(),
+                                                         "stages": {}, "programs_first": True}
+            if state.get("status") == "complete":
+                print(json.dumps(state, indent=2))
+                return 0
+            transaction = Transaction(state, args)
+            LOG = STATE / "jobs" / (night + ".log")
+            if args.background:
+                print(json.dumps(background(args, state, lock), indent=2))
+                return 0
+            code = execute_transaction(transaction, worker=args.worker)
+            print(json.dumps(state, indent=2))
+            return code
+    except Pending as error:
+        print(str(error), file=sys.stderr)
+        return PENDING
+    except (Failure, OSError, ValueError, KeyError) as error:
+        print("fleet-update: " + str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -6,7 +6,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # nixpkgs-fresh — a second nixpkgs used ONLY to keep a handful of
-    # fast-moving user packages (currently google-chrome and uv, see overlays
+    # fast-moving packages (google-chrome, tailscale and uv, see overlays
     # list below) and the fleet's linuxPackages_7_3 kernel series current
     # independent of the `nixpkgs` pin above. That pin is deliberately
     # lagging — the exact-candidate fleet deploy keeps it as the only door
@@ -130,15 +130,18 @@
     # and tooling (claude-code, codex, gemini-cli, opencode, crush, goose, amp,
     # ...). Its `overlays.default` exposes the whole set, prebuilt against its OWN
     # fresh nixpkgs-unstable, under the namespaced `pkgs.llm-agents.*` — so it
-    # neither re-evaluates our nixpkgs nor collides with it. This is how we get
-    # newest claude-code DECOUPLED from our (deliberately lagging) nixpkgs pin.
-    # Nightly fleet builds re-resolve this input at HEAD via
-    # `rollingInputOverrides`; `nix flake update llm-agents` updates the local and
-    # failure-fallback lock without touching kernel/Mesa.
+    # neither re-evaluates our nixpkgs nor collides with it. Catalog helpers
+    # stay on this pin; the three harnesses use agent-tools below. Updating
+    # either catalog does not touch the fleet's kernel/Mesa source.
     # Deliberately NO inputs.nixpkgs.follows — following our pin would rebuild
     # against stale deps and miss the numtide cache (substituter added in
-    # modules/common.nix). home/home.nix installs the entire set via buildEnv.
+    # modules/common.nix). home/agent-tools.nix installs an explicit allowlist.
     llm-agents.url = "github:numtide/llm-agents.nix";
+
+    # The three interactive harnesses advance independently of catalog helpers
+    # such as QMD. Keep a separate lock, including upstream's own dependency
+    # graph, so a programs-only update cannot rebuild those other consumers.
+    agent-tools.url = "github:numtide/llm-agents.nix";
 
     # flake-utils — shared by git-ai and deploy-rs through `follows`. It used to
     # be reached as "tally/flake-utils"; the Tally inputs (tally, tally-b,
@@ -261,6 +264,10 @@
           url = "github:numtide/llm-agents.nix";
         }
         {
+          name = "agent-tools";
+          url = "github:numtide/llm-agents.nix";
+        }
+        {
           name = "nix-amd-ai";
           url = "github:noamsto/nix-amd-ai";
         }
@@ -312,10 +319,16 @@
       overlays = [
         self.overlays.default
         (final: _prev: {
-          # Whole llm-agents catalog under `pkgs.llm-agents.*` (prebuilt from its
-          # own nixpkgs — no second eval of ours). home/home.nix pulls an
-          # allowlisted set out of this namespace. See the input comment above.
-          llm-agents = inputs.llm-agents.packages.${system};
+          # Preserve the catalog API used by home/agent-tools.nix and pkgs/dsh.
+          # Only the three harnesses use the independent freshness input; QMD
+          # and all other catalog helpers retain their original source graph.
+          llm-agents =
+            inputs.llm-agents.packages.${system}
+            // builtins.intersectAttrs {
+              claude-code = null;
+              codex = null;
+              dsh = null;
+            } inputs.agent-tools.packages.${system};
           sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { };
           sf-pro = final.callPackage ./pkgs/sf-pro.nix { };
           anthropic-mono-nerd = final.callPackage ./pkgs/anthropic-mono-nerd.nix { };
@@ -336,6 +349,9 @@
           in
           {
             google-chrome = fresh.google-chrome;
+            # Fleet update stages daemon changes while live transport is in use.
+            # The CLI and daemon package share the same Nix freshness source.
+            tailscale = fresh.tailscale;
             # uv — Astral's Python package/project manager. Point releases land
             # weekly; riding nixpkgs-fresh HEAD keeps it current without waiting on
             # the deliberately-lagging main pin (which exists only to gate kernel/
@@ -621,6 +637,36 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        agent-tools-source =
+          let
+            agentNames = [
+              "claude-code"
+              "codex"
+              "dsh"
+            ];
+            helperNames = [
+              "ccusage"
+              "ck"
+              "claude-agent-acp"
+              "claude-code-router"
+              "qmd"
+              "spec-kit"
+              "cc-switch-cli"
+            ];
+            brain = self.nixosConfigurations.nas.pkgs;
+          in
+          assert nixpkgs.lib.all (
+            name:
+            pkgs.llm-agents.${name}.drvPath == inputs.agent-tools.packages.${system}.${name}.drvPath
+            && brain.llm-agents.${name}.drvPath == inputs.agent-tools.packages.${system}.${name}.drvPath
+          ) agentNames;
+          assert nixpkgs.lib.all (
+            name:
+            pkgs.llm-agents.${name}.drvPath == inputs.llm-agents.packages.${system}.${name}.drvPath
+            && brain.llm-agents.${name}.drvPath == inputs.llm-agents.packages.${system}.${name}.drvPath
+          ) helperNames;
+          assert brain.dsh.unwrapped.drvPath == inputs.agent-tools.packages.${system}.dsh.drvPath;
+          pkgs.runCommand "agent-tools-source" { } ''touch "$out"'';
         fleet-agent-transport = import ./tests/fleet-agent-transport {
           inherit pkgs self;
           inherit (nixpkgs) lib;
@@ -1760,6 +1806,41 @@
         # closed when main catches up; and lib/update-watch.json is read
         # against this flake.lock, so a watched input that stops being bumpable
         # turns the check red.
+        fleet-update =
+          let
+            nasHome = self.nixosConfigurations.nas.config.home-manager.users.tom;
+            helpers = nixpkgs.lib.filter (
+              p:
+              builtins.elem (nixpkgs.lib.getName p) [
+                "fleet-update"
+                "fleet-update-start"
+                "fleet-update-target"
+                "fleet-update-assess"
+                "fleet-update-probe"
+                "fleet-update-verify"
+              ]
+            ) self.nixosConfigurations.nas.config.environment.systemPackages;
+          in
+          assert nasHome.systemd.user.services.fleet-update.Service.NoNewPrivileges == false;
+          assert nasHome.systemd.user.services.fleet-update.Unit.X-SwitchMethod == "keep-old";
+          assert !(builtins.hasAttr "fleet-update" nasHome.systemd.user.timers);
+          pkgs.runCommand "fleet-update"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.coreutils
+                pkgs.git
+              ]
+              ++ helpers;
+              PYTHONTZPATH = "${pkgs.tzdata}/share/zoneinfo";
+            }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              export FLEET_UPDATE_SCRIPT=${./home/dot_local/bin/fleet-update}
+              python3 -m unittest discover -s ${./tests/fleet-update} -v
+              touch "$out"
+            '';
+
         update-check =
           pkgs.runCommand "update-check"
             {
@@ -2169,19 +2250,26 @@
             '';
 
         # Native controls are exercised with fake CLI/desktop commands only.
-        inzone-audio = pkgs.runCommand "inzone-audio" {
-          nativeBuildInputs = [
-            pkgs.python3 pkgs.bash pkgs.coreutils pkgs.util-linux pkgs.gawk
-          ];
-        } ''
-          export HOME="$TMPDIR/home"
-          export PYTHONDONTWRITEBYTECODE=1
-          export INZONE_MENU_SCRIPT=${./home/dot_local/bin/inzone-menu}
-          export INZONE_VOLUME_SCRIPT=${./home/dot_local/bin/volume}
-          mkdir -p "$HOME"
-          python3 -m unittest discover -s ${./tests/inzone-audio} -p 'test_*.py' -v
-          touch "$out"
-        '';
+        inzone-audio =
+          pkgs.runCommand "inzone-audio"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.util-linux
+                pkgs.gawk
+              ];
+            }
+            ''
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export INZONE_MENU_SCRIPT=${./home/dot_local/bin/inzone-menu}
+              export INZONE_VOLUME_SCRIPT=${./home/dot_local/bin/volume}
+              mkdir -p "$HOME"
+              python3 -m unittest discover -s ${./tests/inzone-audio} -p 'test_*.py' -v
+              touch "$out"
+            '';
 
         # Model bytes are explicit transactions, never activation work. Drive
         # the evaluated worker borrow binary against tiny fixtures, then keep
@@ -2579,8 +2667,7 @@
               "qwen3-tts-tokenizer-f32"
             ];
           assert
-            strixWorker.services.local-models.artifacts
-            == strix.services.local-models.artifacts
+            strixWorker.services.local-models.artifacts == strix.services.local-models.artifacts
             ++ [
               "deepseek-v41-flash-1017-q2-gguf"
               "qwen38-flash-next-q8-gguf"
