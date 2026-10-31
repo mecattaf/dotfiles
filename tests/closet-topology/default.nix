@@ -27,7 +27,12 @@ assert builtins.attrNames self.nixosConfigurations == names;
 assert builtins.attrNames self.deploy.nodes == names;
 assert builtins.attrNames registry == names;
 # Keep at most 3 NixOS generations on every host (common.nix mkDefault, #639).
-assert builtins.all (h: h.boot.loader.systemd-boot.configurationLimit == 3) [ s w n c ];
+assert builtins.all (h: h.boot.loader.systemd-boot.configurationLimit == 3) [
+  s
+  w
+  n
+  c
+];
 assert
   s.myFleet.roles == [
     "compute"
