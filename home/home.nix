@@ -99,6 +99,7 @@ in
     ./agent-helpers.nix
     ./ai-memory.nix
     ./dsh.nix
+    ./downloads-mirror.nix
     ./harness-records.nix
     ./herdr.nix
     ./nvim.nix
