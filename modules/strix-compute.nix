@@ -16,7 +16,6 @@ in
     ./strix.nix
     ./rdma-profile.nix
     ./ds4.nix
-    ./gvisor.nix
     ./microvm-host.nix
     ./cli-anything.nix
     ./fleet-hosts.nix
@@ -37,7 +36,6 @@ in
   myDisplay.enable = false;
   hardware.bluetooth.enable = lib.mkForce false;
   mySecrets.enable = lib.mkDefault false;
-  myGvisor.enable = lib.mkDefault false;
   services.qwen-tts.enable = true;
   services.utilityModel.enable = true;
   # No mDNS on compute: the printer queue lives on the NAS (modules/printing.nix).

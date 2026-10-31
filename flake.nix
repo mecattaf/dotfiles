@@ -690,31 +690,6 @@
             touch "$out"
           '';
 
-        gvisor-module =
-          let
-            hasGvisor = c: builtins.any (p: (p.pname or "") == "gvisor") c.environment.systemPackages;
-            # Enabling runsc must not introduce configuration assertion failures.
-            failing = c: map (a: a.message) (builtins.filter (a: !a.assertion) c.assertions);
-            strix = self.nixosConfigurations.strix-coordinator.config;
-
-            gvisorOn =
-              (self.nixosConfigurations.strix-coordinator.extendModules {
-                modules = [ { myGvisor.enable = nixpkgs.lib.mkForce true; } ];
-              }).config;
-          in
-          assert !strix.myGvisor.enable;
-
-          assert !(hasGvisor strix);
-
-          assert hasGvisor gvisorOn;
-          assert failing gvisorOn == failing strix;
-
-          pkgs.runCommand "gvisor-module-check" { } ''
-            test -x ${gvisorOn.myGvisor.package}/bin/runsc
-            test -x ${gvisorOn.myGvisor.package}/bin/containerd-shim-runsc-v1
-            touch "$out"
-          '';
-
         qwen-speech =
           pkgs.runCommand "qwen-speech-tests"
             {
@@ -1336,6 +1311,34 @@
             [
               "client"
               "strix-coordinator"
+            ];
+          # No Brave, cmux or Claude Desktop on client, strix-coordinator or
+          # the NAS, whichever way they arrive (Tom, 2026-10-31). Name-based,
+          # so a renamed attribute or a wrapper still trips it.
+          assert builtins.all
+            (
+              h:
+              let
+                cfg = self.nixosConfigurations.${h}.config;
+                names = map nixpkgs.lib.getName (
+                  builtins.filter nixpkgs.lib.isDerivation (
+                    cfg.home-manager.users.tom.home.packages ++ cfg.environment.systemPackages
+                  )
+                );
+              in
+              !(builtins.any (
+                n:
+                builtins.any (p: nixpkgs.lib.hasPrefix p n) [
+                  "brave"
+                  "claude-desktop"
+                  "cmux"
+                ]
+              ) names)
+            )
+            [
+              "client"
+              "strix-coordinator"
+              "nas"
             ];
 
           assert !(cfgOf "nas").myDisplay.enable;

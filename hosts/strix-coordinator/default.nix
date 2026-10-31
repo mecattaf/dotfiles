@@ -24,9 +24,6 @@
   ];
   hardware.bluetooth.enable = lib.mkForce false;
 
-  # Heartbeat remains paused across the NAS handover (DECISIONS 8).
-  myGvisor.enable = false;
-
   # No physical seat (headless in the closet); the Zenbook is the seat.
   # Agent services stay independent of any compositor.
   myDisplay.enable = false;
