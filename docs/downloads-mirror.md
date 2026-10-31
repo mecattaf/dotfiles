@@ -67,6 +67,10 @@ completed or deferred transfer receipt. A registered trigger or a merged PR
 alone is insufficient when the executor or capacity publisher is unavailable.
 
 Both hosts need the helper from the same generation before the first run.
+The Nix package pins Python, SSH and rsync; activation and the notification unit
+invoke the packaged executable directly. Peer commands use the stable NixOS
+per-user profile, so they do not depend on the remote shell's PATH. Detached
+workers retain the same pinned interpreter and transport paths.
 The receiver and source use the existing fleet SSH keys; no key is copied or
 embedded in the Nix store.
 

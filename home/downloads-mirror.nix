@@ -1,9 +1,9 @@
-{ config, lib, osConfig, pkgs, ... }:
+{ lib, osConfig, pkgs, ... }:
 {
-  # The small helper is available on both ends through the raw-dotfiles bin
-  # link. Substrate invokes it on the brain; no timer or background loop lives
-  # here. The source's SSH server provides its ordinary rsync binary.
+  # Pin the interpreter and both transport executables. Activation and user
+  # services do not inherit an interactive shell's PATH.
   home.packages = lib.optionals (osConfig.myFleet.has "brain" || osConfig.myFleet.has "seat") [
+    pkgs.downloads-mirror
     pkgs.rsync
   ];
 
@@ -11,7 +11,7 @@
   # a second clock. Concrete paths come from the host's XDG file at activation.
   home.activation.downloadsMirrorWatch = lib.mkIf (osConfig.myFleet.has "seat") (
     lib.hm.dag.entryBetween [ "reloadSystemd" ] [ "linkGeneration" ] ''
-      run ${config.home.homeDirectory}/.local/bin/downloads-mirror --prepare-watch
+      run ${lib.getExe pkgs.downloads-mirror} --prepare-watch
     ''
   );
   systemd.user.paths.downloads-mirror-watch = lib.mkIf (osConfig.myFleet.has "seat") {
@@ -26,7 +26,7 @@
     };
     Service = {
       Type = "oneshot";
-      ExecStart = "%h/.local/bin/downloads-mirror --notify";
+      ExecStart = "${lib.getExe pkgs.downloads-mirror} --notify";
       TimeoutStartSec = 40;
       UMask = "0077";
     };

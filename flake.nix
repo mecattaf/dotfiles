@@ -1800,11 +1800,19 @@
         # against this flake.lock, so a watched input that stops being bumpable
         # turns the check red.
         downloads-mirror =
+          let
+            fixtureSsh = pkgs.writeShellScriptBin "ssh" ''
+              exec ${pkgs.python3}/bin/python3 "$DOWNLOADS_MIRROR_FIXTURE_SSH" "$@"
+            '';
+            fixtureMirror = pkgs.downloads-mirror.override { openssh = fixtureSsh; };
+          in
           pkgs.runCommand "downloads-mirror"
             { nativeBuildInputs = [ pkgs.python3 pkgs.rsync ]; }
             ''
               export PYTHONDONTWRITEBYTECODE=1
-              export DOWNLOADS_MIRROR_SCRIPT=${./home/dot_local/bin/downloads-mirror}
+              export DOWNLOADS_MIRROR_SCRIPT=${./pkgs/downloads-mirror/downloads-mirror.py}
+              export DOWNLOADS_MIRROR_BINARY=${pkgs.lib.getExe pkgs.downloads-mirror}
+              export DOWNLOADS_MIRROR_FIXTURE_BINARY=${pkgs.lib.getExe fixtureMirror}
               python3 -m unittest discover -s ${./tests/downloads-mirror} -p 'test_*.py' -v
               touch "$out"
             '';
