@@ -1799,6 +1799,16 @@
         # closed when main catches up; and lib/update-watch.json is read
         # against this flake.lock, so a watched input that stops being bumpable
         # turns the check red.
+        downloads-mirror =
+          pkgs.runCommand "downloads-mirror"
+            { nativeBuildInputs = [ pkgs.python3 pkgs.rsync ]; }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              export DOWNLOADS_MIRROR_SCRIPT=${./home/dot_local/bin/downloads-mirror}
+              python3 -m unittest discover -s ${./tests/downloads-mirror} -p 'test_*.py' -v
+              touch "$out"
+            '';
+
         update-check =
           pkgs.runCommand "update-check"
             {
