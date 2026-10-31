@@ -298,7 +298,7 @@ in
     ];
 
     networking.firewall.extraInputRules = ''
-      ip saddr 10.42.0.2 tcp dport { 2283, 4533, 32400 } accept comment "media from strix (LAN; /30 retired 2026-08-21)"
+      iifname "enp1s0" ip saddr 10.42.0.0/24 tcp dport { 2283, 4533, 32400 } accept comment "media port URLs from the LAN"
     '';
   };
 }

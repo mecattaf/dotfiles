@@ -9,17 +9,13 @@
 # AdGuard from starting. Filter history and the retired workaround live in Git.
 let
   isLanResolver = config.networking.hostName == "nas";
-  strixAddr = if isLanResolver then "10.42.0.2" else "127.0.0.1";
+  frontDoorAddr = if isLanResolver then "10.42.0.1" else "127.0.0.1";
   internalNames = [
     "photos.internal"
     "music.internal"
     "videos.internal"
-    # Paperless left on 2026-10-13; the name stays until the next DNS change,
-    # because editing this list restarts AdGuard and dnsmasq on the router.
-    "paperless.internal"
     "browser.internal"
     "handwriting.internal"
-    "drain.internal"
   ];
 
   # The artifact namespace, read from the one edit point rather than spelled
@@ -31,15 +27,15 @@ let
   # SPLIT HORIZON FOR ARTIFACTS (2026-09-11, R-15). Exactly the same trick the
   # `.internal` names above use, applied to a namespace that also exists in
   # public DNS. The tailnet rung publishes <slug>.<namespace> as an
-  # unproxied record pointing at the strix's tailscale.com address — an
+  # unproxied record pointing at the NAS front door's tailnet address — an
   # address the client cannot route to, because the client's tailnet is the
   # NAS's headscale and the two control planes share no netmap. On the LAN,
-  # though, Caddy is already listening for these names on the strix's own
-  # LAN interface (modules/caddy-artifacts.nix:86 opens :80 on wlp192s0), so
+  # though, Caddy is already listening for these names on the NAS's own
+  # LAN address (hosts/nas/front-door.nix binds 10.42.0.1), so
   # the only thing missing was a resolver willing to say so. This is that.
   #
   # AdGuard Home's `*.example` matches SUBDOMAINS only, never the apex, which is
-  # what is wanted: every artifact slug resolves to 10.42.0.2 for anything
+  # what is wanted: every artifact slug resolves to 10.42.0.1 for anything
   # asking this resolver, and the apex itself is left to public DNS.
   #
   # Known and accepted: off-LAN the public record still answers an address the
@@ -56,7 +52,7 @@ let
   artifactRewrite = {
     enabled = true;
     domain = "*.${artifacts.namespace}";
-    answer = strixAddr;
+    answer = frontDoorAddr;
   };
 in
 {
@@ -115,13 +111,13 @@ in
         filtering_enabled = true;
 
         # The `.internal` front doors, then the artifact wildcard. Both point at
-        # the strix; only the second one shadows a name that also exists
+        # the NAS; only the second one shadows a name that also exists
         # in public DNS (see artifactRewrite above).
         rewrites =
           (map (domain: {
             enabled = true;
             inherit domain;
-            answer = strixAddr;
+            answer = frontDoorAddr;
           }) internalNames)
           ++ [ artifactRewrite ];
       };
@@ -173,7 +169,7 @@ in
   };
 
   networking.hosts = lib.optionalAttrs isLanResolver {
-    ${strixAddr} = internalNames;
+    ${frontDoorAddr} = internalNames;
   };
 
   systemd.services.adguardhome = lib.mkIf isLanResolver {

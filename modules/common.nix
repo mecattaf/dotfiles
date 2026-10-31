@@ -23,7 +23,7 @@
     ./gc-retention.nix # nix.gc + keep-last-K-plus-booted generation retention (#133)
     ./gc-root-reaper.nix # daily reap of stale agent-session auto GC roots (#133)
     ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
-    ./artifacts.nix # myArtifacts options; serving plane is strix-only (caddy-artifacts.nix)
+    ./artifacts.nix # myArtifacts options; serving plane is NAS-only (caddy-artifacts.nix)
     ./printing.nix # CUPS + Brother IPP/raw-text path (active fleet + future hosts)
     ./failure-surfacing.nix # OnFailure + coredump surfacing, fleet-wide — refs #134
     ./fleet-revision.nix # every closure records its flake revision (was in update-adopt.nix)
