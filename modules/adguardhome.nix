@@ -14,7 +14,6 @@ let
     "photos.internal"
     "music.internal"
     "videos.internal"
-    "browser.internal"
     "handwriting.internal"
   ];
 

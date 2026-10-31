@@ -212,17 +212,9 @@ loaned copy, and only when the set it computed has not changed underneath it.
 `docs/nas/model-archive.md` is the retire/restore runbook; retired Library
 bytes are listed in `/mnt/nas/models/weights/RETIRED-<date>.tsv`.
 
-**Shared browser desktop (2026-09-12).** Strix keeps `myDisplay.enable =
-false`: no physical Sway/greetd session. `modules/browser-desktop.nix` supplies a
-separate on-demand headless Sway seat with WayVNC on loopback and stock noVNC
-served by Caddy at `https://browser.internal` on BE550. The lightweight launcher
-starts at boot; Sway, WayVNC and Chrome do not. Sessions stop five minutes
-after the last viewer disconnects. This exception is Strix-only; NAS has no compositor/VNC. The sidebar opens ordinary installed
-Chrome profiles and unlocks the keyring. The FARA agent loop (`fara-browser`,
-its model unit and skill) was removed with FARA on 2026-09-16 (Tom).
-`chrome-stream` (same module) is the lighter path: headless Chrome's CDP
-screencast in a viewer page, bound to loopback and tunnelled to the client
-over `ssh -L`.
+**Browser desktop retired (2026-10-31, #651).** The strix runs no Google Chrome,
+shared browser desktop or `chrome-stream`; the client keeps Chrome. A flake
+check asserts that no host declares a `browser-desktop` user service.
 
 **Raw dotfiles come from `~/mecattaf/dotfiles`, not from the flake you switch
 from (#313).** Every out-of-store link (`home/home.nix` `link`, herdr, nvim)

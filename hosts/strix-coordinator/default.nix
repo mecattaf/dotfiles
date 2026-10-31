@@ -14,7 +14,6 @@
     ./atuin.nix # retained import; its brain role gate now disables the server
     ../client/audio.nix
     ../../modules/strix-compute.nix
-    ../../modules/browser-desktop.nix
     ../../modules/keyring-autounlock.nix
   ];
 
@@ -30,7 +29,6 @@
   # No physical seat (headless in the closet); the Zenbook is the seat.
   # Agent services stay independent of any compositor.
   myDisplay.enable = false;
-  services.browser-desktop.enable = true;
   myStrixCompute.immichMl.enable = true;
 
   # The NAS hosts Immich, Navidrome and every .internal front door (Caddy,
