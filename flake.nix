@@ -2478,7 +2478,7 @@
           assert !nas.programs.niri.enable;
           assert !nas.services.greetd.enable;
           assert !nas.services.pipewire.enable;
-          assert !nas.services.printing.enable;
+          assert nas.services.printing.enable;
           # Discovery remains restricted to the wired LAN.
           assert nas.services.avahi.enable;
           assert nas.services.avahi.allowInterfaces == [ "enp1s0" ];
@@ -2816,9 +2816,13 @@
 
         printing =
           let
-            strix = self.nixosConfigurations.strix-coordinator.config;
+            nasCfg = self.nixosConfigurations.nas.config;
+            computeHosts = [
+              self.nixosConfigurations.strix-coordinator.config
+              self.nixosConfigurations.strix-worker.config
+            ];
             activeHosts = [
-              strix
+              nasCfg
             ];
             expectedPrinter = {
               name = "Brother_HL_L2445DW";
@@ -2837,9 +2841,14 @@
             };
           in
           assert nixpkgs.lib.all (host: host.services.printing.enable) activeHosts;
-          assert nixpkgs.lib.all (host: host.services.avahi.enable) activeHosts;
-          assert nixpkgs.lib.all (host: host.services.avahi.nssmdns4) activeHosts;
-          assert nixpkgs.lib.all (host: host.services.avahi.openFirewall) activeHosts;
+          assert nixpkgs.lib.all (
+            host: !host.services.printing.enable && !host.services.avahi.enable
+          ) computeHosts;
+          assert nasCfg.services.avahi.enable;
+          assert nasCfg.services.avahi.allowInterfaces == [ "enp1s0" ];
+          assert !nasCfg.services.avahi.openFirewall;
+          assert !nasCfg.services.printing.openFirewall;
+          assert nasCfg.services.printing.listenAddresses == [ "localhost:631" ];
           assert nixpkgs.lib.all (
             host: host.services.resolved.settings.Resolve.MulticastDNS == false
           ) activeHosts;
@@ -2880,8 +2889,7 @@
             printingHosts = builtins.filter (host: host.services.printing.enable) hosts;
             strixHome = agentProbe.home-manager.users.tom;
             daemonService = strixHome.systemd.user.services.paper-daemon;
-            postStart =
-              self.nixosConfigurations.strix-coordinator.config.systemd.services.ensure-printers.postStart;
+            postStart = self.nixosConfigurations.nas.config.systemd.services.ensure-printers.postStart;
           in
           assert printingHosts != [ ];
           assert nixpkgs.lib.all (host: !host.services.printing.browsed.enable) printingHosts;

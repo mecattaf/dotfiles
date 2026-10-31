@@ -40,6 +40,8 @@ in
   myGvisor.enable = lib.mkDefault false;
   services.qwen-tts.enable = true;
   services.utilityModel.enable = true;
+  # No mDNS on compute: the printer queue lives on the NAS (modules/printing.nix).
+  services.avahi.enable = lib.mkForce false;
 
   # Each NHI has two payload ring pairs. Donnerkeule's four-rail mode owns
   # both on each cable: the old tbnet + tbstream consumers cannot share that
