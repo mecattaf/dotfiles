@@ -1667,15 +1667,15 @@
             lib = nixpkgs.lib;
             guard = pkgs.callPackage ./pkgs/raw-dotfiles-guard.nix { };
             homeOf = h: self.nixosConfigurations.${h}.config.home-manager.users.tom;
-            entry = (homeOf "strix-coordinator").home.activation.rawDotfilesGuard;
+            entry = (homeOf "nas").home.activation.rawDotfilesGuard;
           in
           assert (homeOf "strix-coordinator").rawDotfiles.programs == [ ];
 
           assert (homeOf "client").rawDotfiles.programs == [ ];
-          # The client carries no checkout (2026-10-11): its raw dotfiles come
-          # from the store, so it has no guard to run, no bootstrap clone and
-          # not one home file linked into ~/mecattaf. The strix keeps the
-          # out-of-store links and the guard.
+          # The client and strix-coordinator carry no checkout: their raw
+          # dotfiles come from the store, so they have no guard to run, no
+          # bootstrap clone and not one home file linked into ~/mecattaf. The
+          # NAS keeps the out-of-store links and the guard.
           assert (homeOf "client").rawDotfiles.inStore;
           assert !((homeOf "client").home.activation ? rawDotfilesGuard);
           assert !(self.nixosConfigurations.client.config.systemd.services ? dotfiles-bootstrap);
@@ -1683,8 +1683,14 @@
             !(builtins.any (
               f: builtins.isAttrs f.source && lib.hasInfix "/mecattaf/" (f.source.buildCommand or "")
             ) (builtins.attrValues (homeOf "client").home.file));
-          assert !(homeOf "strix-coordinator").rawDotfiles.inStore;
-          assert self.nixosConfigurations.strix-coordinator.config.systemd.services ? dotfiles-bootstrap;
+          assert (homeOf "strix-coordinator").rawDotfiles.inStore;
+          assert !((homeOf "strix-coordinator").home.activation ? rawDotfilesGuard);
+          assert !(self.nixosConfigurations.strix-coordinator.config.systemd.services ? dotfiles-bootstrap);
+          assert
+            !(builtins.any (
+              f: builtins.isAttrs f.source && lib.hasInfix "/mecattaf/" (f.source.buildCommand or "")
+            ) (builtins.attrValues (homeOf "strix-coordinator").home.file));
+          assert !(homeOf "nas").rawDotfiles.inStore;
           assert
             entry.before == [
               "checkLinkTargets"
