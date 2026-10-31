@@ -5,9 +5,11 @@
   ...
 }:
 
-# Shared home-printer plane. common.nix imports it fleet-wide; headless.nix
-# force-disables it on appliances such as `nas`.
-lib.mkIf (!config.myHeadless.enable) {
+# Home-printer plane. common.nix imports it fleet-wide, but the CUPS queue
+# lives only on the brain (the NAS), next to paper-daemon; the strix hosts and
+# the client run no CUPS and no Avahi printing stanza. Avahi on the NAS is
+# declared by hosts/nas/discovery.nix (enp1s0 only, firewall closed).
+lib.mkIf (config.myFleet.has "brain") {
   # CUPS supplies Chrome's system print dialog and the lp/lpr CLI. The Brother
   # HL-L2445DW speaks IPP Everywhere, so the permanent queue is driverless;
   # brlaser remains installed only as the already-proven fallback.
@@ -22,21 +24,14 @@ lib.mkIf (!config.myHeadless.enable) {
     # implicitclass backend, cupsd logged "Job completed" with 10 pages, the
     # printer (idle, reachable at 10.42.0.4 the whole time) received nothing,
     # and cups-browsed's journal has no entry at all. The queue is permanent
-    # and driverless, so there is nothing for discovery to add; avahi stays
-    # for .local resolution elsewhere. Repaired live with
+    # and driverless, so there is nothing for discovery to add; Repaired live with
     # `lpadmin -p Brother_HL_L2445DW -v ipp://10.42.0.4:631/ipp/print`.
     browsed.enable = false;
+    # The queue is local: paper-daemon and lp on the NAS use the loopback
+    # socket, and 631 is admitted in no firewall.
+    listenAddresses = [ "localhost:631" ];
+    openFirewall = false;
   };
-
-  # AirPrint/IPP discovery and .local resolution. systemd-resolved also wants
-  # port 5353, so let Avahi own multicast DNS while resolved continues to
-  # handle ordinary unicast DNS.
-  services.avahi = {
-    enable = true;
-    nssmdns4 = true;
-    openFirewall = true;
-  };
-  services.resolved.settings.Resolve.MulticastDNS = false;
 
   # Discovery alone creates an on-demand temporary queue, which Chrome does
   # not reliably enumerate. Keep one persistent A4 queue with the name already

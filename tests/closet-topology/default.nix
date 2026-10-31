@@ -111,9 +111,18 @@ assert s.systemd.services.immich-machine-learning.wantedBy == [ ];
 assert s.systemd.services.immich-machine-learning.unitConfig.StopWhenUnneeded;
 assert s.systemd.sockets ? immich-ml-access;
 assert s.services.immich.package.version == n.services.immich.package.version;
-assert s.hardware.printers.ensureDefaultPrinter == "Brother_HL_L2445DW";
+assert n.hardware.printers.ensureDefaultPrinter == "Brother_HL_L2445DW";
 assert
-  (builtins.head s.hardware.printers.ensurePrinters).deviceUri == "ipp://10.42.0.4:631/ipp/print";
+  (builtins.head n.hardware.printers.ensurePrinters).deviceUri == "ipp://10.42.0.4:631/ipp/print";
+assert builtins.all
+  (
+    h:
+    !h.services.printing.enable && !h.services.avahi.enable && !(h.systemd.services ? ensure-printers)
+  )
+  [
+    s
+    w
+  ];
 assert !(s.home-manager.users.tom.systemd.user.paths ? paper-daemon);
 assert !(s.home-manager.users.tom.systemd.user.services ? herdr);
 assert !(settings ? model) && !(settings ? effortLevel) && !(settings ? modelSettings);
