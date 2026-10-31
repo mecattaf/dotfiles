@@ -56,9 +56,34 @@ indentation at all, which CommonMark still folds into this item.
 
 
 class ListParsingTests(unittest.TestCase):
+    def test_underscores_inside_identifiers_are_literal(self) -> None:
+        body = self.render("SOURCE_LAST_TOKEN foo__bar__baz _italic_ __bold__\n")
+        self.assertIn("SOURCE_LAST_TOKEN", body)
+        self.assertIn("foo__bar__baz", body)
+        self.assertIn("<em>italic</em>", body)
+        self.assertIn("<strong>bold</strong>", body)
+
     def render(self, source: str) -> str:
         body, _ = print_paper.markdown_to_html(source)
         return body
+
+    def test_local_image_examples_in_code_do_not_require_assets(self) -> None:
+        source = "Inline `![example](../private/example.png)`.\n\n```markdown\n![example](../private/example.png)\n```\n"
+        self.assertEqual(print_paper.external_image_sources(self.render(source)), [])
+
+    def test_local_and_network_images_require_assets_but_embedded_images_do_not(self) -> None:
+        source = "![local](../private/photo.png)\n\n![remote](https://example.com/photo.png)\n\n![embedded](data:image/png;base64,abcd)\n"
+        self.assertEqual(print_paper.external_image_sources(self.render(source)),
+                         ["../private/photo.png", "https://example.com/photo.png"])
+
+    def test_asset_preflight_needs_no_browser_or_printer(self) -> None:
+        with (mock.patch.object(sys, "argv", ["print-paper.py", "-", "--check-assets"]),
+              mock.patch.object(sys, "stdin", io.StringIO("`![example](local.png)`\n")),
+              mock.patch.object(print_paper, "find_renderer") as renderer,
+              mock.patch.object(print_paper, "submit_print") as submit):
+            print_paper.main()
+            renderer.assert_not_called()
+            submit.assert_not_called()
 
     def test_wrapped_ordered_list_keeps_one_item_per_marker(self) -> None:
         body = self.render(WRAPPED_LISTS)

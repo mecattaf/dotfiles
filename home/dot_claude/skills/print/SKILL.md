@@ -1,25 +1,29 @@
 ---
 name: print
-description: Put a Markdown document or an existing PDF on paper by dropping it into ~/Paper/intake/ on the strix; paper-daemon renders the Markdown (a PDF is printed as it is), validates, prints during working hours and writes a receipt from the printer itself. Use when the user asks to print, make a paper copy, print a PDF such as an invoice or a form, or turn Markdown into a document for physical reading.
+description: Put a Markdown document or an existing PDF on paper by dropping it into ~/Paper/intake/ on nas; paper-daemon renders Markdown on compute (a PDF is printed as it is), validates, prints during working hours and writes a receipt from the printer itself. Use when the user asks to print, make a paper copy, print a PDF such as an invoice or a form, or turn Markdown into a document for physical reading.
 ---
 
 # Print
 
 `/print` is one file write. You do not render, submit, read queues, or
-decide when printing happens: paper-daemon on the strix owns all of it
+decide when printing happens: paper-daemon on **nas** owns all of it
 (dotfiles#384).
 
 ## The whole contract
 
 Write the Markdown to a hidden temporary name, then rename it into place,
-on the **strix**:
+on **nas**, the canonical home and queue owner:
 
     ~/Paper/intake/.<slug>.md.tmp   →   ~/Paper/intake/<slug>.md
 
 `<slug>` is a short kebab-case name for the document. The rename is what
 starts the job, so never write straight to `<slug>.md`. From another host,
-copy it over first (`scp FILE strix:~/Paper/intake/.<slug>.md.tmp`,
-then `ssh strix mv ~/Paper/intake/.<slug>.md.tmp ~/Paper/intake/<slug>.md`).
+copy it over first (`scp FILE nas:~/Paper/intake/.<slug>.md.tmp`,
+then `ssh nas mv ~/Paper/intake/.<slug>.md.tmp ~/Paper/intake/<slug>.md`).
+When already on nas, write and rename locally. Never drop on compute.
+Markdown drops contain their own text. Local image files are not copied to
+compute and network images are not fetched: embed image data or drop an
+existing PDF instead.
 
 Optional front matter, only when the user asked for it:
 
@@ -37,6 +41,10 @@ Set `page_slack: 0` only for a one-pager or when the user said "exactly".
 
 Leave typography to the daemon unless the user named a face or layout.
 Never set `force` for convenience.
+The local tool asks Gufo's Qwen Flash model for typesetting choices. WeasyPrint
+produces the PDF on strix-coordinator. The daemon tries up to three measured
+layouts when the PDF is too long. It preserves the Markdown exactly, keeps
+body type at least 10 pt, and rejects a remaining page-count miss.
 
 ## An existing PDF
 

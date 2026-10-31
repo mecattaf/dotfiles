@@ -10,6 +10,8 @@ asserts both the outcome directory and what was — or was not — sent.
 from __future__ import annotations
 
 import hashlib
+import datetime as dt
+import importlib.util
 import json
 import os
 import subprocess
@@ -18,12 +20,14 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DAEMON = Path(os.environ.get("PAPER_DAEMON_SCRIPT", REPO_ROOT / "pkgs/paper-daemon/paper-daemon.py"))
 JOBS_TEST = Path(os.environ.get("PAPER_JOBS_TEST_FILE", REPO_ROOT / "pkgs/paper-daemon/get-jobs.test"))
 PRINTER_TEST = Path(os.environ.get("PAPER_PRINTER_TEST_FILE", REPO_ROOT / "pkgs/paper-daemon/printer-state.test"))
+PRINT_PAPER = Path(os.environ.get("PRINT_PAPER_SCRIPT", REPO_ROOT / "home/dot_claude/skills/print/scripts/print-paper.py"))
 PINNED = "ipp://10.42.0.4:631/ipp/print"
 QUEUE = "Brother_HL_L2445DW"
 URF_PPD = '*PPD-Adobe: "4.3"\n*cupsFilter2: "image/urf image/urf 100 -"\n'
@@ -226,9 +230,12 @@ decision = {"profile": args.profile or "source-serif", "require_one_page": False
 (args.output_dir / "doc.pdf").write_text(f"%PDF fake PAGES={pages}\n")
 check = ("not_applicable" if args.target_pages is None
          else "pass" if abs(args.target_pages - pages) <= args.page_slack else "fail")
+if "<!-- render: dishonest-length -->" in text:
+    check = "pass"
 (args.output_dir / "decision.json").write_text(json.dumps({
     "decision": decision, "provenance": "fallback", "overridden": [],
-    "pages_rendered": pages, "target_pages": args.target_pages,
+    "pdf": str(args.output_dir / "doc.pdf"),
+    "pages_rendered": pages + (1 if "<!-- render: wrong-pages -->" in text else 0), "target_pages": args.target_pages,
     "page_slack": args.page_slack,
     "length_check": check}))
 sys.exit(3 if check == "fail" else 0)
@@ -275,6 +282,7 @@ class DaemonHarness(unittest.TestCase):
             "FAKE_RENDER_LOG": str(self.render_log),
             "PAPER_ROOT": str(self.paper),
             "PAPER_PRINT_AUTO": str(self.print_auto),
+            "PAPER_PRINT_PAPER": str(PRINT_PAPER),
             "PAPER_JOBS_TEST": str(JOBS_TEST),
             "PAPER_PRINTER_TEST": str(PRINTER_TEST),
             "PAPER_PPD": str(self.ppd),
@@ -332,6 +340,43 @@ class DaemonHarness(unittest.TestCase):
 
     def receipt(self, job: str) -> dict:
         return json.loads((self.paper / "printed" / job / "receipt.json").read_text())
+
+
+class SubmissionClockTests(unittest.TestCase):
+    def setUp(self) -> None:
+        spec = importlib.util.spec_from_file_location("paper_clock_test", DAEMON)
+        self.daemon_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.daemon_module)
+
+    def test_queue_check_crossing_midnight_holds_before_lp(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            job = root / "work/late"
+            job.mkdir(parents=True)
+            (job / "job.json").write_text(json.dumps({"options": {}}))
+            (job / "decision.json").write_text(json.dumps({
+                "decision": {"filename": "brief.pdf", "sides": "duplex"},
+                "pdf": str(job / "brief.pdf"), "pages_rendered": 1}))
+            with (mock.patch.object(self.daemon_module, "root", return_value=root),
+                  mock.patch.object(self.daemon_module, "now", side_effect=[
+                      dt.datetime(2026, 10, 26, 23, 59, 59), dt.datetime(2026, 10, 27, 0, 0, 1)]),
+                  mock.patch.object(self.daemon_module, "ensure_queue", return_value=[]),
+                  mock.patch.object(self.daemon_module, "run") as command):
+                self.assertTrue(self.daemon_module.submit(job))
+                command.assert_not_called()
+            self.assertTrue((root / "outbox/late/job.json").exists())
+            self.assertFalse((root / "printed/late/receipt.json").exists())
+
+    def test_outbox_hold_is_idempotent_and_explicit_force_bypasses_it(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            job = root / "outbox/held"
+            job.mkdir(parents=True)
+            with (mock.patch.object(self.daemon_module, "root", return_value=root),
+                  mock.patch.object(self.daemon_module, "now", return_value=dt.datetime(2026, 10, 27, 0, 1))):
+                self.assertTrue(self.daemon_module.hold_for_quiet_hours(job, {"options": {}}))
+                self.assertTrue(job.exists())
+                self.assertFalse(self.daemon_module.hold_for_quiet_hours(job, {"options": {"force": True}}))
 
 
 class WorkingHoursTests(DaemonHarness):
@@ -477,6 +522,30 @@ class QuietHoursTests(DaemonHarness):
 
 
 class RejectionTests(DaemonHarness):
+    def test_caller_length_gate_is_recomputed_from_the_pdf(self) -> None:
+        self.drop("dishonest", "<!-- pages: 3 -->\n<!-- render: dishonest-length -->\n",
+                  "target_pages: 1\npage_slack: 0")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.paper / "rejected/dishonest/reason.json").exists())
+        self.assertEqual(self.calls("lp"), [])
+
+    def test_declared_page_count_cannot_override_the_actual_pdf(self) -> None:
+        self.drop("mismatch", "<!-- render: wrong-pages -->\n")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue((self.paper / "failed/mismatch/failure.json").exists())
+        self.assertEqual(self.calls("lp"), [])
+
+    def test_remote_markdown_with_local_images_is_rejected_before_transfer(self) -> None:
+        self.env["PAPER_RENDER_HOST"] = "strix-coordinator"
+        self.drop("assets", "![photo](../private/photo.png)\n")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.paper / "rejected/assets/reason.json").exists())
+        self.assertEqual(self.calls("ssh"), [])
+        self.assertEqual(self.calls("lp"), [])
+
     def test_target_mismatch_is_rejected_and_nothing_is_sent(self) -> None:
         self.drop("long", "# Long\n<!-- pages: 2 -->\n", "target_pages: 1\npage_slack: 0")
         result = self.daemon("run")
@@ -807,7 +876,7 @@ class PrinterTruthTests(DaemonHarness):
         self.assertEqual(result.returncode, 1)
         failure = json.loads((self.paper / "failed/a-malformed/failure.json").read_text())
         self.assertIn("crashed", failure["reason"])
-        self.assertIn("KeyError", failure["traceback"])
+        self.assertIn("invalid PDF filename", failure["traceback"])
         self.assertEqual(list((self.paper / "work").iterdir()), [])
         self.assertTrue((self.paper / "printed/b-fine/receipt.json").exists())
         self.assertEqual(self.calls("ssh"), [])

@@ -11,7 +11,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import NoReturn
 
@@ -56,12 +57,11 @@ def run(command: list[str], *, check: bool = True,
     return result
 
 
-def find_chrome() -> str:
-    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser"):
-        path = shutil.which(name)
-        if path:
-            return path
-    fail("Chrome/Chromium is not available on PATH")
+def find_renderer() -> str:
+    path = shutil.which("weasyprint")
+    if path:
+        return path
+    fail("WeasyPrint is not available on PATH; use the Nix-managed paper-render package")
 
 
 def normalize_profile(name: str) -> str:
@@ -122,13 +122,32 @@ def inline_markup(value: str) -> str:
         escaped,
     )
     escaped = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
-    escaped = re.sub(r"__(.+?)__", r"<strong>\1</strong>", escaped)
+    escaped = re.sub(r"(?<![\w_])__(.+?)__(?![\w_])", r"<strong>\1</strong>", escaped)
     escaped = re.sub(r"~~(.+?)~~", r"<del>\1</del>", escaped)
     escaped = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<em>\1</em>", escaped)
-    escaped = re.sub(r"(?<!_)_([^_\n]+)_(?!_)", r"<em>\1</em>", escaped)
+    escaped = re.sub(r"(?<![\w_])_([^_\n]+)_(?![\w_])", r"<em>\1</em>", escaped)
     for index, fragment in enumerate(stash):
         escaped = escaped.replace(f"\x00{index}\x01", fragment)
     return escaped
+
+
+def external_image_sources(body: str) -> list[str]:
+    """Inspect the renderer's HTML, so Markdown examples in code stay text."""
+    class Images(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.local: list[str] = []
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            if tag != "img":
+                return
+            source = dict(attrs).get("src") or ""
+            if not source.startswith("data:"):
+                self.local.append(source)
+
+    images = Images()
+    images.feed(body)
+    return images.local
 
 
 HR_PATTERN = re.compile(r"^\s*([-*_])(?:\s*\1){2,}\s*$")
@@ -357,7 +376,9 @@ def css_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def print_css(profile: Profile, *, label: bool = False) -> str:
+def print_css(profile: Profile, *, label: bool = False, layout: str = "standard") -> str:
+    margin = {"standard": "20mm 30mm 21mm", "compact": "18mm 25mm 19mm",
+              "dense": "17mm 23mm 18mm"}[layout]
     caption = (
         f"{profile.label} · {profile.size_pt:g} pt · {profile.line_height:g} line height"
     )
@@ -366,7 +387,7 @@ def print_css(profile: Profile, *, label: bool = False) -> str:
   @bottom-center {{
     content: {css_string(caption)};
     color: #555;
-    font-family: "SF Pro Text", sans-serif;
+    font-family: sans-serif;
     font-size: 7.5pt;
     letter-spacing: 0.025em;
     line-height: 1;
@@ -377,15 +398,14 @@ def print_css(profile: Profile, *, label: bool = False) -> str:
     return f"""
 @page {{
   size: A4 portrait;
-  margin: 20mm 30mm 21mm;
-  /* Chrome runs with --no-pdf-header-footer, so these margin boxes are the
-     only page furniture. Both sit in the reserved bottom margin, outside the
+  margin: {margin};
+  /* These margin boxes are the only page furniture. Both sit in the reserved bottom margin, outside the
      content box: the bare folio at the right, the optional profile caption
      centered well clear of it. */
   @bottom-right {{
     content: counter(page);
     color: #666;
-    font-family: "SF Pro Text", sans-serif;
+    font-family: sans-serif;
     font-size: 7pt;
     font-weight: 400;
     letter-spacing: 0.02em;
@@ -477,7 +497,7 @@ pre {{
   white-space: pre-wrap;
 }}
 code {{
-  font-family: "Liga SFMono Nerd Font", "JetBrainsMono Nerd Font", monospace;
+  font-family: "DejaVu Sans Mono", monospace;
   font-size: 0.82em;
 }}
 img {{
@@ -498,6 +518,7 @@ def document_html(
     base_uri: str,
     profile: Profile,
     label: bool,
+    layout: str = "standard",
 ) -> str:
     return f"""<!doctype html>
 <html lang="en">
@@ -506,7 +527,7 @@ def document_html(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <base href="{html.escape(base_uri, quote=True)}">
 <title>{html.escape(title)}</title>
-<style>{print_css(profile, label=label)}</style>
+<style>{print_css(profile, label=label, layout=layout)}</style>
 </head>
 <body>
 <main>
@@ -524,6 +545,7 @@ def html_input_document(
     base_uri: str,
     profile: Profile,
     label: bool,
+    layout: str = "standard",
 ) -> str:
     if not re.search(r"<html[\s>]", source, flags=re.I):
         return document_html(
@@ -532,10 +554,11 @@ def html_input_document(
             base_uri=base_uri,
             profile=profile,
             label=label,
+            layout=layout,
         )
     additions = (
         f'<base href="{html.escape(base_uri, quote=True)}">\n'
-        f"<style>{print_css(profile, label=label)}</style>\n"
+        f"<style>{print_css(profile, label=label, layout=layout)}</style>\n"
     )
     if re.search(r"</head\s*>", source, flags=re.I):
         source = re.sub(r"</head\s*>", additions + "</head>", source, count=1, flags=re.I)
@@ -584,7 +607,7 @@ def pdf_info(path: Path) -> tuple[int | None, tuple[float, float] | None]:
     return pages, (x2 - x1, y2 - y1)
 
 
-def render_pdf(chrome: str, page: str, output: Path, *, keep_html: bool) -> Path:
+def render_pdf(renderer: str, page: str, output: Path, *, keep_html: bool) -> Path:
     output.parent.mkdir(parents=True, exist_ok=True)
     html_path = output.with_suffix(".html")
     temporary_html = not keep_html
@@ -603,31 +626,15 @@ def render_pdf(chrome: str, page: str, output: Path, *, keep_html: bool) -> Path
         html_path.write_text(page, encoding="utf-8")
 
     try:
-        with tempfile.TemporaryDirectory(prefix="print-paper-chrome-") as profile_dir:
-            result = run(
-                [
-                    chrome,
-                    "--headless=new",
-                    "--disable-gpu",
-                    "--disable-extensions",
-                    "--no-first-run",
-                    "--no-pdf-header-footer",
-                    "--allow-file-access-from-files",
-                    f"--user-data-dir={profile_dir}",
-                    f"--print-to-pdf={output.resolve()}",
-                    html_path.resolve().as_uri(),
-                ],
-                check=False,
-                # No session bus. On the headless strix Chrome's portal
-                # lookup D-Bus-activates xdg-desktop-portal-gtk, which exits
-                # with "cannot open display" and raises a failure episode on
-                # every render (2026-09-15). MEASURED: with the bus disabled
-                # the PDF still renders and the portal is never started.
-                env={**os.environ, "DBUS_SESSION_BUS_ADDRESS": "disabled:"},
-            )
-            if result.returncode or not output.exists() or not output.stat().st_size:
-                detail = (result.stderr or result.stdout).strip()
-                fail(f"Chrome PDF export failed for {output.name}: {detail}")
+        result = run(
+            [renderer, "--allowed-protocols", "file,data", str(html_path), str(output.resolve())],
+            check=False,
+        )
+        if result.returncode or not output.exists() or not output.stat().st_size:
+            detail = (result.stderr or result.stdout).strip()
+            fail(f"WeasyPrint PDF export failed for {output.name}: {detail}")
+        if result.stderr:
+            print(result.stderr.strip(), file=sys.stderr)
     finally:
         if temporary_html:
             html_path.unlink(missing_ok=True)
@@ -691,6 +698,8 @@ def parse_args() -> argparse.Namespace:
         help="render garamond, baskerville, source-serif, and times variants",
     )
     parser.add_argument("--list-profiles", action="store_true", help="list profiles and exit")
+    parser.add_argument("--check-assets", action="store_true",
+                        help="check compute portability without starting a browser or printing")
     parser.add_argument("-o", "--output", type=Path, help="output path for one profile")
     parser.add_argument(
         "--output-dir",
@@ -698,6 +707,8 @@ def parse_args() -> argparse.Namespace:
         help="directory for generated PDFs (default: beside input)",
     )
     parser.add_argument("--title", help="document title metadata override")
+    parser.add_argument("--layout", choices=("standard", "compact", "dense"), default="standard",
+                        help="bounded page fitting; source text is unchanged and type stays at least 10 pt")
     parser.add_argument(
         "--label",
         action="store_true",
@@ -797,6 +808,11 @@ def main() -> None:
         detected_title = None
     else:
         body, detected_title = markdown_to_html(source)
+    if args.check_assets:
+        if external_image_sources(body):
+            fail("a compute-rendered Markdown drop cannot fetch external images; "
+                 "drop an existing PDF or use self-contained image data")
+        return
     title = args.title or detected_title or stem.replace("-", " ").replace("_", " ").title()
 
     output_dir = (
@@ -805,12 +821,16 @@ def main() -> None:
         else (input_path.parent if input_path else Path.cwd())
     )
     outputs: list[Path] = []
-    chrome = find_chrome()
+    renderer = find_renderer()
     use_label = args.label or args.compare
 
     for profile_name in profile_names:
         profile = PROFILES[profile_name]
         require_font(profile)
+        if args.layout != "standard":
+            scale, leading = ((0.96, 1.34) if args.layout == "compact" else (0.91, 1.28))
+            profile = replace(profile, size_pt=max(10.0, profile.size_pt * scale),
+                              line_height=leading)
         output = (
             args.output.expanduser().resolve()
             if args.output
@@ -825,6 +845,7 @@ def main() -> None:
                 base_uri=base_uri,
                 profile=profile,
                 label=use_label,
+                layout=args.layout,
             )
             if suffix in (".html", ".htm")
             else document_html(
@@ -833,9 +854,10 @@ def main() -> None:
                 base_uri=base_uri,
                 profile=profile,
                 label=use_label,
+                layout=args.layout,
             )
         )
-        outputs.append(render_pdf(chrome, page, output, keep_html=args.keep_html))
+        outputs.append(render_pdf(renderer, page, output, keep_html=args.keep_html))
 
     if args.require_one_page:
         bad: list[str] = []

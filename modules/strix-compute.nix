@@ -38,6 +38,9 @@ in
   mySecrets.enable = lib.mkDefault false;
   services.qwen-tts.enable = true;
   services.utilityModel.enable = true;
+  # A request-scoped renderer, not a daemon or a print queue. The NAS sends
+  # Markdown over its pinned SSH channel and keeps submission/receipt ownership.
+  environment.systemPackages = lib.optionals coordinator [ pkgs.paper-render ];
   # No mDNS on compute: the printer queue lives on the NAS (modules/printing.nix).
   services.avahi.enable = lib.mkForce false;
 

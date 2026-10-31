@@ -47,6 +47,7 @@ without printing; an agent iterating by hand burns zero paper either way.
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -136,7 +137,10 @@ def ask_utility(user_content: str) -> str:
             f"utility-model failed: {out.stderr.decode()[:400].strip()}")
     try:
         resp = json.loads(out.stdout)
-        return resp["choices"][0]["message"]["content"]
+        content = resp["choices"][0]["message"]["content"]
+        if not isinstance(content, str):
+            raise TypeError("message content is not text")
+        return content
     except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
         raise ClassifierUnavailable(
             f"utility-model returned a malformed response: {exc}") from exc
@@ -148,17 +152,21 @@ def validate(raw: str) -> dict | str:
         d = json.loads(raw.strip())
     except json.JSONDecodeError as e:
         return f"not valid JSON: {e}"
+    if not isinstance(d, dict):
+        return "decision must be a JSON object"
     missing = {"profile", "require_one_page", "sides", "filename", "title"} - set(d)
     if missing:
         return f"missing keys: {sorted(missing)}"
-    if d["profile"] not in PROFILES:
+    if not isinstance(d["profile"], str) or d["profile"] not in PROFILES:
         return f"profile must be one of {sorted(PROFILES)}"
-    if d["sides"] not in SIDES:
+    if not isinstance(d["sides"], str) or d["sides"] not in SIDES:
         return f"sides must be one of {sorted(SIDES)}"
     if not isinstance(d["require_one_page"], bool):
         return "require_one_page must be a boolean"
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*\.pdf", str(d["filename"])):
+    if not isinstance(d["filename"], str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,119}\.pdf", d["filename"]):
         return "filename must be kebab-case ending in .pdf"
+    if not isinstance(d["title"], str) or len(d["title"]) > 500:
+        return "title must be a string of at most 500 characters"
     return d
 
 
@@ -185,7 +193,7 @@ def default_decision(source: Path) -> dict:
         "profile": "source-serif",
         "require_one_page": False,
         "sides": "duplex",
-        "filename": re.sub(r"[^a-z0-9]+", "-", source.stem.lower()).strip("-") + ".pdf",
+        "filename": (re.sub(r"[^a-z0-9]+", "-", source.stem.lower()).strip("-")[:120] or "document") + ".pdf",
         "title": source.stem,
     }
 
@@ -243,6 +251,10 @@ def main() -> int:
     ap.add_argument("--sides", choices=sorted(SIDES),
                     help="override the classifier's sides (front matter)")
     args = ap.parse_args()
+    if args.target_pages is not None and args.target_pages < 1:
+        ap.error("--target-pages must be positive")
+    if args.page_slack < 0:
+        ap.error("--page-slack must be non-negative")
 
     text = args.input.read_text()
     decision, provenance = decide(text, args.intent, args.input)
@@ -273,30 +285,48 @@ def main() -> int:
 
     render_cmd = [sys.executable, str(PRINT_PAPER), str(source),
                   "--profile", decision["profile"], "-o", str(outpath)]
-    if decision["require_one_page"]:
-        render_cmd.append("--require-one-page")
     if decision["sides"] == "one-sided":
         render_cmd += ["--sides", "one-sided"]
-    rc = subprocess.run(render_cmd).returncode
-    if rc != 0:
-        return rc
+    # Classify once, then measure bounded layouts. The document bytes never
+    # change: no model rewriting, omitted paragraphs or padding to hit a count.
+    target = args.target_pages
+    slack = args.page_slack
+    if target is None and decision["require_one_page"]:
+        target, slack = 1, 0
+    attempts = []
+    pages_rendered = None
+    for layout in ("standard", "compact", "dense"):
+        command = list(render_cmd)
+        if layout != "standard":
+            command += ["--layout", layout, "--force"]
+        rc = subprocess.run(command).returncode
+        if rc != 0:
+            return rc
+        pages_rendered = pdf_page_count(outpath)
+        attempts.append({"layout": layout, "pages": pages_rendered})
+        # Compact only when over the upper bound. A short source is not padded
+        # or blown up into an arbitrary number of pages.
+        if target is None or pages_rendered is None or pages_rendered <= target + slack:
+            break
 
-    pages_rendered = pdf_page_count(outpath)
-    if args.target_pages is None:
+    if target is None:
         length_check = "not_applicable"
     elif (pages_rendered is not None
-          and abs(pages_rendered - args.target_pages) <= args.page_slack):
+          and abs(pages_rendered - target) <= slack):
         length_check = "pass"
     else:
         length_check = "fail"
 
     receipt = {"decision": decision, "provenance": provenance,
+               "renderer": {"name": "weasyprint", "version": os.environ.get("PAPER_RENDERER_VERSION")},
                "overridden": overridden,
                "source": str(source), "original_input": str(args.input),
                "pdf": str(outpath),
                "pages_rendered": pages_rendered,
-               "target_pages": args.target_pages,
-               "page_slack": args.page_slack,
+               "target_pages": target,
+               "page_slack": slack,
+               "render_attempts": attempts,
+               "layout": attempts[-1]["layout"],
                "length_check": length_check}
     (jobdir / "decision.json").write_text(
         json.dumps(receipt, indent=2) + "\n")
@@ -306,7 +336,7 @@ def main() -> int:
           f"length_check={length_check})")
     if length_check == "fail":
         print(f"print-auto: rendered {pages_rendered} page(s), target was "
-              f"{args.target_pages} ±{args.page_slack}. Revise the document.", file=sys.stderr)
+              f"{target} ±{slack} after {len(attempts)} layout(s). Revise the document.", file=sys.stderr)
         return 3
     return 0
 

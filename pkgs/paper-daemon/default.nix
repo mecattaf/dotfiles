@@ -6,6 +6,7 @@
   cups,
   poppler-utils,
   coreutils,
+  openssh,
 }:
 
 # paper-daemon (dotfiles#384): the print loop owned end to end. An agent drops
@@ -20,9 +21,8 @@
 # deployed daemon renders with the generation it was built from, not with
 # whatever the live ~/.claude/skills checkout holds at 06:05.
 #
-# PATH is PREFIXED, not replaced: Chrome (google-chrome-stable, the user's
-# Home Manager profile), utility-model (system) and sudo (/run/wrappers) come
-# from the user manager's inherited PATH, exactly as they do for an agent.
+# NAS uses the packaged renderer on compute. Queue tools and sudo are explicit
+# dependencies, independent of the headless user manager's inherited PATH.
 stdenvNoCC.mkDerivation {
   pname = "paper-daemon";
   version = "1.0.0";
@@ -34,6 +34,7 @@ stdenvNoCC.mkDerivation {
     runHook preInstall
     share=$out/share/paper-daemon
     install -Dm644 ${./paper-daemon.py} $share/paper-daemon.py
+    install -Dm644 ${./render-remote.py} $share/render-remote.py
     install -Dm644 ${./get-jobs.test} $share/get-jobs.test
     install -Dm644 ${./printer-state.test} $share/printer-state.test
     install -Dm644 ${../../home/dot_claude/skills/print/scripts/print-auto.py} $share/scripts/print-auto.py
@@ -45,13 +46,19 @@ stdenvNoCC.mkDerivation {
       --set PAPER_JOBS_TEST $share/get-jobs.test \
       --set PAPER_PRINTER_TEST $share/printer-state.test \
       --set PYTHONDONTWRITEBYTECODE 1 \
+      --prefix PATH : /run/wrappers/bin \
       --prefix PATH : ${
         lib.makeBinPath [
           cups
           poppler-utils
           coreutils
+          openssh
         ]
       }
+    makeWrapper ${lib.getExe python3} $out/bin/paper-render-remote \
+      --add-flags $share/render-remote.py \
+      --set PYTHONDONTWRITEBYTECODE 1 \
+      --prefix PATH : ${lib.makeBinPath [ openssh ]}
     runHook postInstall
   '';
 
