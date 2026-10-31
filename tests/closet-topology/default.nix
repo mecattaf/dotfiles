@@ -220,6 +220,9 @@ assert builtins.all
       builtins.removeAttrs (import ../../secrets.nix) [ "secrets/gufo-tp2-control-token.age" ]
     )
   );
+assert n.systemd.services ? handwriting-annotation;
+assert !(s.systemd.services ? handwriting-annotation);
+assert n.services.caddy.virtualHosts ? "https://handwriting.internal";
 assert builtins.any (p: (p.name or "") == "wifi-ladder") c.environment.systemPackages;
 pkgs.runCommand "closet-topology"
   {
