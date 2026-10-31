@@ -536,8 +536,6 @@
             academic-ocr
             brother-print-text
             call-diarize
-            browser-desktop
-            chrome-stream
             fleet-status
             # `nix build .#dsh -o .demo/dsh` is how a PR worktree runs dsh; its
             # passthru carries `.runner`, `.smoke` and `.unwrapped` for the gate.
@@ -1105,9 +1103,6 @@
 
             clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
             cfgOf = h: self.nixosConfigurations.${h}.config;
-            hasChromeStream =
-              h:
-              builtins.any (p: (p.pname or p.name or "") == "chrome-stream") (cfgOf h).environment.systemPackages;
             # Every host whose seat this block adjudicates — named, not
             # discovered, so a fifth host added tomorrow (a seat by default,
             # modules/display.nix) is either listed here on purpose or its
@@ -1199,24 +1194,24 @@
           # reach a server at all (`herdr --remote strix`). One server
           # (ruling B5, #309 settled), clients elsewhere, unchanged.
 
-          # No wayvnc on the worker since 2026-09-11: with no display there
-          # (hosts/worker/default.nix) home/remote.nix rendered nothing, and
-          # since the headless flip later that day the module is gone from
-          # the tree. The browser-only Sway service added on 2026-09-12 is
-          # separate from that retired physical-session integration.
-          #
-          # The physical seat and the optional browser Sway are independent.
-          # Restoring a strix seat must not resurrect physical-session VNC.
-          # The separate browser-only Sway desktop is a strix user service.
-          assert (cfgOf "strix-coordinator").systemd.user.services ? browser-desktop;
-          assert (cfgOf "strix-coordinator").systemd.user.services.browser-desktop.wantedBy == [ ];
-          # FARA is retired (Tom, 2026-09-16): no model unit beside the desktop.
-          assert !((cfgOf "strix-coordinator").systemd.user.services ? fara-browser-model);
-
-          # chrome-stream is installed with that desktop and nowhere else: the
-          # client reaches it over ssh with its own Chrome (R-16 keeps the
-          # client closure near-static).
-          assert hasChromeStream "strix-coordinator";
+          # The shared browser desktop and chrome-stream left strix-coordinator
+          # on 2026-10-31 (#651): no host declares the browser-desktop user
+          # service, and Google Chrome lives on the seat (client) only.
+          assert builtins.all (h: !((cfgOf h).systemd.user.services ? browser-desktop)) displayHosts;
+          assert builtins.all
+            (
+              h:
+              let
+                names = p: p.pname or p.name or "";
+                isChrome = p: nixpkgs.lib.hasPrefix "google-chrome" (names p);
+                homePkgs = (cfgOf h).home-manager.users.tom.home.packages;
+              in
+              !(builtins.any isChrome (cfgOf h).environment.systemPackages) && !(builtins.any isChrome homePkgs)
+            )
+            [
+              "strix-coordinator"
+              "strix-worker"
+            ];
 
           assert !(strixHome.systemd.user.services ? wayvnc);
           # The seat EQUALITIES: greetd == Sway == myDisplay, greetd starts the
@@ -2738,31 +2733,15 @@
             || (cat $out; exit 1)
         '';
 
-        browser-session-runtime =
+        keyring-boot-runtime =
           let
             coord = self.nixosConfigurations.strix-coordinator.config;
-            portal = name: coord.systemd.user.services.${name} or { };
           in
-          assert builtins.all
-            (
-              name:
-              if coord.myDisplay.enable then
-                !(builtins.elem "browser-desktop.service" ((portal name).partOf or [ ]))
-                && !(((portal name).unitConfig or { }) ? ConditionPathExists)
-                && !(((portal name).serviceConfig or { }) ? EnvironmentFile)
-              else
-                builtins.elem "browser-desktop.service" (portal name).partOf
-                && builtins.elem "browser-desktop.service" (portal name).after
-                && (portal name).serviceConfig.EnvironmentFile == "%t/browser-desktop/portal-environment"
-                && (portal name).unitConfig.ConditionPathExists == "%t/browser-desktop/portal-environment"
-            )
-            ([
-              "xdg-desktop-portal"
-              "xdg-desktop-portal-gtk"
-            ]);
           assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.partOf;
           assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.wantedBy;
-          pkgs.browser-desktop.tests.contract;
+          pkgs.runCommand "keyring-boot-runtime" { } ''
+            touch "$out"
+          '';
 
         herdr-launchers =
           pkgs.runCommand "herdr-launchers"

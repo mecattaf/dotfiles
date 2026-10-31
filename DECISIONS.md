@@ -1,5 +1,12 @@
 # DECISIONS
 
+2026-10-31 Chrome and the browser desktop leave strix-coordinator (dotfiles
+#651). `modules/browser-desktop.nix`, `pkgs/browser-desktop` and
+`pkgs/chrome-stream` are deleted, `browser.internal` is dropped from AdGuard,
+and flake checks assert no host declares a `browser-desktop` user service and
+that neither strix host carries google-chrome. The client keeps Chrome.
+`certs/browser-root.crt` stays as the local CA for every `.internal` name.
+
 2026-10-31 The NAS fronts every `.internal` site and the artifact drop-dir
 (dotfiles #645). `hosts/nas/front-door.nix` runs Caddy bound to 10.42.0.1 and
 loopback only, because Tailscale Serve owns :443 on the NAS tailnet address.
