@@ -30,6 +30,7 @@
     ./immich-disk.nix # 256GB secondary SSD: Immich fast tier (PostgreSQL + generated media)
     ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)
     ./media.nix
+    ./front-door.nix
     # ./phone-ingest.nix DELETED 2026-08-21 (Tom: "DEAD and no longer needed
     # ever again") — the adb camera-roll pull was superseded by the Immich
     # mobile app's own background backup. See git history for the tooling.

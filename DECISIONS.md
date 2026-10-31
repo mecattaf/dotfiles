@@ -1,5 +1,16 @@
 # DECISIONS
 
+2026-10-31 The NAS fronts every `.internal` site and the artifact drop-dir
+(dotfiles #645). `hosts/nas/front-door.nix` runs Caddy bound to 10.42.0.1 and
+loopback only, because Tailscale Serve owns :443 on the NAS tailnet address.
+It serves photos, music and videos from the NAS's own sockets and imports the
+`/var/lib/artifacts/*.caddy` drop-dir; the artifact-reaper service and timer
+(D48) move with it to the NAS. strix-coordinator runs no Caddy and no media
+relays (the immich, navidrome and plex relay sockets and the relayMedia option
+are gone, and `hosts/strix-coordinator/services.nix` is deleted). AdGuard
+answers 10.42.0.1 for every `.internal` name and the artifact wildcard.
+`drain.internal` and `paperless.internal` are dropped. #551 remains open.
+
 2026-10-28 The NAS's 256GB secondary SSD (the Fanxiang, the pre-cutover
 /mnt/fast) is Immich's fast tier (dotfiles T-89): reformatted ext4, label
 `immich`, mounted at `/mnt/immich` by `hosts/nas/immich-disk.nix` after a

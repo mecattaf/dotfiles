@@ -951,15 +951,18 @@
           # invariant rather than an implicit local one. hosts/worker/immich-ml.nix
           # takes its package from this same option for exactly this assert.
 
-          assert !strix.myCoordinatorMedia.enable;
+          # The NAS fronts every .internal site; the strix runs no Caddy and
+          # no media relays. The relayMedia option is gone, so test the attr.
           assert strix.myNasClient.useRemoteStorage;
-          assert strix.myNasClient.relayMedia;
           assert !strix.services.immich.enable;
           assert !strix.services.navidrome.enable;
           assert strix.fileSystems."/mnt/nas".fsType == "nfs4";
-          assert strix.systemd.sockets ? immich-relay;
-          assert strix.systemd.sockets ? navidrome-relay;
-          assert strix.systemd.sockets ? plex-relay;
+          assert !strix.services.caddy.enable;
+          assert nas.services.caddy.enable;
+          assert !(strix.systemd.sockets ? immich-relay);
+          assert !(strix.systemd.sockets ? navidrome-relay);
+          assert !(strix.systemd.sockets ? plex-relay);
+          assert !(strix.myNasClient ? relayMedia);
           # ML is the one endpoint that is NOT a strix relay any more: the
           # socket must exist on the worker and must be GONE from the
           # strix. Asserting both directions is deliberate — a half-move
@@ -983,14 +986,14 @@
 
           # Coordinator LAN doors: the .internal front doors and the LLM
           # endpoint. :3003 is deliberately ABSENT — it left with Immich ML.
-          assert builtins.elem 80 strix.networking.firewall.interfaces.enp191s0.allowedTCPPorts;
+          assert !(builtins.elem 80 (strix.networking.firewall.interfaces.enp191s0.allowedTCPPorts or [ ]));
           # The strix serves no model: no inference door on its LAN leg.
           assert !(builtins.elem 9292 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
           assert !(builtins.elem 8731 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
           assert !(builtins.elem 3003 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
           # Worker LAN doors: Immich ML (dialled by nas.services.immich above),
           # the Gufo API (modules/gufo.nix) and the academic drain that
-          # the strix's Caddy fronts as drain.internal
+          # drain site (dropped 2026-10-31 with the strix Caddy)
           # (hosts/worker/default.nix). Nothing else — and no
           # tailnet to hide behind, which is exactly why these stay
           # interface-scoped rather than global. On enp191s0: the worker is
@@ -1054,9 +1057,9 @@
           # /etc/hosts, so they are filtered out of the second test; the first
           # still holds every rewrite, wildcard included, to the NAS address.
           assert builtins.all (
-            r: r.answer == "10.42.0.2"
+            r: r.answer == "10.42.0.1"
           ) nas.services.adguardhome.settings.filtering.rewrites;
-          assert builtins.all (n: builtins.elem n nas.networking.hosts."10.42.0.2") (
+          assert builtins.all (n: builtins.elem n nas.networking.hosts."10.42.0.1") (
             map (r: r.domain) (
               builtins.filter (
                 r: !(nixpkgs.lib.hasPrefix "*." r.domain)
@@ -1091,7 +1094,12 @@
           # Paperless was removed on 2026-10-13 (Tom 2026-09-29: "i m removing
           # paperless fully"); nothing on the NAS or the strix may bring it back.
           assert !nas.services.paperless.enable;
-          assert !(strix.services.caddy.virtualHosts ? "http://paperless.internal");
+          assert nas.services.caddy.virtualHosts ? "http://photos.internal";
+          assert nas.services.caddy.virtualHosts ? "http://music.internal";
+          assert nas.services.caddy.virtualHosts ? "http://videos.internal";
+          assert !(nas.services.caddy.virtualHosts ? "http://drain.internal");
+          assert !(nas.services.caddy.virtualHosts ? "http://paperless.internal");
+          assert nixpkgs.lib.hasInfix "default_bind 10.42.0.1 127.0.0.1" nas.services.caddy.globalConfig;
           assert !(builtins.elem "tailscale0" nas.networking.firewall.trustedInterfaces);
           assert !strix.myNasClient.relayAttic;
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
@@ -2479,6 +2487,7 @@
             == [
               22
               53
+              80
               443
               2283
               4533
@@ -2490,9 +2499,8 @@
           assert nas.myNas.media.enable;
           assert nas.services.immich.enable;
           assert nas.services.navidrome.enable;
-          assert !strix.myCoordinatorMedia.enable;
           assert strix.myNasClient.useRemoteStorage;
-          assert strix.myNasClient.relayMedia;
+          assert !(strix.myNasClient ? relayMedia);
           # ML is the one endpoint that is NOT a strix relay any more: the
           # socket must exist on the worker and must be GONE from the
           # strix. Asserting both directions is deliberate — a half-move
