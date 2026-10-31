@@ -1,0 +1,34 @@
+{
+ "out": [
+  {
+   "label": "bogus song id",
+   "ms": 679,
+   "event": "end-file",
+   "reason": "error",
+   "file_error": "unrecognized file format"
+  },
+  {
+   "label": "wrong credentials",
+   "ms": 486,
+   "event": "end-file",
+   "reason": "error",
+   "file_error": "unrecognized file format"
+  },
+  {
+   "label": "unreachable host",
+   "ms": 505,
+   "event": "end-file",
+   "reason": "error",
+   "file_error": "loading failed"
+  }
+ ],
+ "stderrLeaksAuthToken": true,
+ "stderrRedacted": [
+  "Failed to recognize file format.",
+  "Failed to recognize file format.",
+  "[ffmpeg] tcp: Connection to tcp://127.0.0.1:9 failed: Connection refused",
+  "Failed to open http://127.0.0.1:9/rest/stream?u=REDACTED&t=REDACTED&s=REDACTED&v=1.16.1&c=gpuix-shell&f=json&id=knQBFakYGknBpS93V0Ceh5.",
+  "[ytdl_hook] ERROR: [generic] stream?u=REDACTED&t=REDACTED&s=REDACTED&v=1.16: Unable to download webpage: HTTPConnection(host='127.0.0.1', port=9): Failed to establish a new connection: [Errno 111] Connection refused (caused by TransportError(\"HTTPConnection(host='127.0.0.1', port=9): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+  "[ytdl_hook] youtube-dl failed: unexpected error occurred"
+ ]
+}

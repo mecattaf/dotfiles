@@ -1,0 +1,18 @@
+players: gpuixshell 
+status: Paused
+metadata:
+gpuixshell mpris:trackid             '/run/gpuix/shell/music/track/knQBFakYGknBpS93V0Ceh5'
+gpuixshell mpris:length              218000000
+gpuixshell mpris:artUrl              file:///home/tom/.cache/gpuix-shell/music/covers/mf-knQBFakYGknBpS93V0Ceh5_663d9232-600.jpg
+gpuixshell xesam:title               Civilization
+gpuixshell xesam:album               Audio, Video, Disco
+gpuixshell xesam:artist              Justice
+gpuixshell xesam:albumArtist         Justice
+gpuixshell xesam:trackNumber         2
+gpuixshell xesam:url                 http://music.internal/app/#/album/27IOgjzYxZjO5ZuTJaNv8a/show
+fmt: Justice — Civilization [3:38] vol=0.80000000000000004
+status after play-pause: Playing
+position now: 35.000006
+shuffle: On loop: Playlist volume: 0.500000
+server log: mpris-probe: name acquired on unix:path=/tmp/dbus-peSoKr9NnT,guid=…
+calls: {"calls":["PlayPause","Next","Previous","SetPosition(/run/gpuix/shell/music/track/knQBFakYGknBpS93V0Ceh5,30000000)","Seek(5000000)","Volume=0.5","Shuffle=true","LoopStatus=Playlist"],"final":{"status":"Playing","volume":0.5,"position":35000000,"loop":"Playlist","shuffle":true}}

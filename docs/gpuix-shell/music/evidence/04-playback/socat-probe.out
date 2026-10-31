@@ -1,0 +1,14 @@
+> {"command":["get_property","mpv-version"],"request_id":1}
+{"data":"mpv v0.41.0","request_id":1,"error":"success"}
+roundtrip_ms=4 (includes socat startup)
+> {"command":["get_property","idle-active"]}
+{"data":true,"request_id":0,"error":"success"}
+> {"command":["get_property","current-ao"]}
+{"request_id":0,"error":"property unavailable"}
+> {"command":["set_property","user-data/gpuix/owner","gpuix-shell-music"]}
+{"request_id":0,"error":"success"}
+> {"command":["get_property","user-data/gpuix/owner"]}
+{"data":"gpuix-shell-music","request_id":0,"error":"success"}
+after timeout(SIGTERM): socket file exists=yes
+connect after exit:
+E connect(, AF=1 "/tmp/claude-1000/gpuix-music-04-engine/mpv.sock", 49): Connection refused

@@ -1,0 +1,90 @@
+{
+ "prefetch": "yes",
+ "song1": "Justice — Ohio (mp3 320k 241s)",
+ "song2": "On'n'On (mp3)",
+ "openToFirstAudioMs": 87,
+ "duration": 241.24,
+ "seekable": true,
+ "metadataKeys": [
+  "album",
+  "artist",
+  "album_artist",
+  "comment",
+  "composer",
+  "genre",
+  "TSRC",
+  "title",
+  "track",
+  "replaygain_track_peak",
+  "ENCODER",
+  "MCN",
+  "TRACKTOTAL",
+  "replaygain_album_gain",
+  "replaygain_album_peak",
+  "replaygain_track_gain",
+  "date"
+ ],
+ "mediaTitle": "Ohio",
+ "pathLeaksAuth": true,
+ "audioParams": {
+  "samplerate": 44100,
+  "channel-count": 2,
+  "channels": "stereo",
+  "hr-channels": "stereo",
+  "format": "floatp"
+ },
+ "audioCodec": "mp3",
+ "seekTo150Ms": 4,
+ "cacheAfterSeek": {
+  "cacheEnd": 241.21576,
+  "fwBytes": 5472048,
+  "eofCached": true,
+  "seekableRanges": [
+   {
+    "start": 149.996168,
+    "end": 241.21576
+   },
+   {
+    "start": -0.025056,
+    "end": 13.010046
+   }
+  ]
+ },
+ "timePos": 151.495908,
+ "transitionEndFileToAudioMs": 2,
+ "bogusId": {
+  "endFileMs": 0,
+  "reason": "stop"
+ },
+ "stderrLeaksAuthToken": true,
+ "stderrMentionsUrl": true,
+ "stderrRedactedTail": [
+  " Composer: Gaspard Augé, Xavier de Rosnay",
+  " Date: 2011",
+  " Genre: Indie Rock",
+  " Title: On'n'On",
+  " Track: 6",
+  "Exiting... (Quit)"
+ ],
+ "events": [
+  "38 start-file 1",
+  "86 audio-reconfig",
+  "86 audio-reconfig",
+  "86 file-loaded",
+  "86 audio-reconfig",
+  "87 playback-restart",
+  "87 seek",
+  "91 playback-restart",
+  "1593 seek",
+  "1594 playback-restart",
+  "5237 audio-reconfig",
+  "5237 end-file eof 1",
+  "5237 start-file 2",
+  "5238 audio-reconfig",
+  "5238 audio-reconfig",
+  "5238 file-loaded",
+  "5239 playback-restart",
+  "5239 audio-reconfig",
+  "5239 end-file stop 2"
+ ]
+}
