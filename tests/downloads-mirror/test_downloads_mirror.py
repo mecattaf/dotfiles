@@ -14,7 +14,9 @@ import unittest
 from unittest.mock import patch
 
 
-SCRIPT = Path(os.environ.get("DOWNLOADS_MIRROR_SCRIPT", Path(__file__).resolve().parents[2] / "home/dot_local/bin/downloads-mirror"))
+SCRIPT = Path(os.environ.get("DOWNLOADS_MIRROR_SCRIPT", Path(__file__).resolve().parents[2] / "pkgs/downloads-mirror/downloads-mirror.py"))
+BINARY = os.environ.get("DOWNLOADS_MIRROR_BINARY")
+FIXTURE_BINARY = os.environ.get("DOWNLOADS_MIRROR_FIXTURE_BINARY")
 loader = importlib.machinery.SourceFileLoader("downloads_mirror", str(SCRIPT))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 mirror = importlib.util.module_from_spec(spec)
@@ -70,16 +72,20 @@ class Transfers(unittest.TestCase):
         (self.config / "user-dirs.dirs").write_text(f'XDG_DOWNLOAD_DIR="{self.destination}"\n')
         self.rsync = shutil.which("rsync")
         ssh = self.bin / "ssh"
-        ssh.write_text(f"#!{sys.executable}\n" + '''
+        ssh.write_text(f"#!{sys.executable}\n" + r'''
 import json,os,sys
 args=sys.argv[1:]
 if os.environ.get("FIXTURE_OFFLINE"): sys.exit(255)
 assert "StrictHostKeyChecking=yes" in args
 assert "ForwardAgent=no" in args
+if "nas" in args:
+ assert args[-1]=='"/etc/profiles/per-user/$USER/bin/downloads-mirror" --background',args
+ print(json.dumps({"status":"launched","pid":123})); sys.exit(0)
 tail=args[args.index("client")+1:]
-if tail==["downloads-mirror --print-directory"]:
+if len(tail)==1 and tail[0].endswith("/bin/downloads-mirror\" --print-directory"):
  print(json.dumps({"directory":os.environ["FIXTURE_SOURCE"]})); sys.exit(0)
-assert tail[0]=="rsync",tail
+assert tail[0].endswith("/bin/rsync"),tail
+tail[0]="rsync"
 if os.environ.get("FIXTURE_SLOW"): tail.insert(1,"--bwlimit=512")
 os.execv(os.environ["FIXTURE_RSYNC"],tail)
 ''')
@@ -178,6 +184,49 @@ os.execv(os.environ["FIXTURE_RSYNC"],tail)
             if process.poll() is None:
                 process.kill()
                 process.wait()
+
+
+@unittest.skipUnless(BINARY and FIXTURE_BINARY, "Nix-built production and transport-fixture wrappers are required")
+class MinimalPath(unittest.TestCase):
+    setUp = Transfers.setUp
+
+    def invoke(self, binary, *args):
+        environment = {**self.env, "PATH": "/nonexistent-path", "DOWNLOADS_MIRROR_FIXTURE_SSH": str(self.bin / "ssh")}
+        result = subprocess.run([binary, *args], env=environment, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        return json.loads(result.stdout) if result.stdout else None
+
+    def test_production_activation_with_no_python_on_path(self):
+        self.invoke(BINARY, "--prepare-watch")
+        dropin = self.config / "systemd/user/downloads-mirror-watch.path.d/xdg-directory.conf"
+        self.assertIn(str(self.destination), dropin.read_text())
+        self.assertEqual(self.invoke(BINARY, "--print-directory")["directory"], str(self.destination))
+        self.assertEqual(self.invoke(BINARY, "--status")["status"], "never-run")
+
+    def test_pinned_ssh_and_rsync_with_empty_path(self):
+        (self.source / "quoted ' [x] café.txt").write_text("complete")
+        (self.destination / "NAS-only.txt").write_text("keep")
+        report = self.invoke(FIXTURE_BINARY)
+        self.assertEqual(report["status"], "completed")
+        self.assertEqual((self.destination / "quoted ' [x] café.txt").read_text(), "complete")
+        self.assertEqual((self.destination / "NAS-only.txt").read_text(), "keep")
+
+    def test_notify_and_detached_child_with_empty_path(self):
+        self.assertEqual(self.invoke(FIXTURE_BINARY, "--notify")["status"], "launched")
+        (self.source / "event.txt").write_text("ready")
+        launch = self.invoke(FIXTURE_BINARY, "--background")
+        self.assertEqual(launch["status"], "launched")
+        deadline = time.monotonic() + 10
+        status = None
+        while time.monotonic() < deadline:
+            path = Path(launch["receipt"])
+            if path.exists():
+                status = json.loads(path.read_text())
+                if status["status"] != "running":
+                    break
+            time.sleep(0.02)
+        self.assertEqual(status["status"], "completed")
+        self.assertEqual((self.destination / "event.txt").read_text(), "ready")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 final: _prev: {
   qwentts = final.callPackage ../pkgs/qwentts.nix { };
   utility-storage = final.callPackage ../pkgs/utility-storage { };
+  downloads-mirror = final.callPackage ../pkgs/downloads-mirror { };
   speech-session = final.callPackage ../pkgs/speech-session { };
   qwen-speech = final.callPackage ../pkgs/qwen-speech { };
   # Add-only overlay. Everything else is already in nixpkgs and referenced

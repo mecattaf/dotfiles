@@ -17,6 +17,12 @@ import tempfile
 import uuid
 
 
+SSH = "ssh"
+RSYNC = "rsync"
+# Both peers use the stable NixOS per-user profile. The remote login shell
+# expands its own USER, so neither its PATH nor a personal home path is needed.
+REMOTE_HELPER = '"/etc/profiles/per-user/$USER/bin/downloads-mirror"'
+REMOTE_RSYNC = "/etc/profiles/per-user/$USER/bin/rsync"
 SSH_OPTIONS = [
     "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
     "-o", "ForwardAgent=no", "-o", "ConnectTimeout=10",
@@ -114,7 +120,7 @@ def notify_receiver():
     # for the pull; no credentials or agent sockets cross hosts.
     try:
         result = subprocess.run(
-            ["ssh", *SSH_OPTIONS, "nas", "downloads-mirror --background"],
+            [SSH, *SSH_OPTIONS, "nas", REMOTE_HELPER + " --background"],
             capture_output=True, text=True, timeout=30,
         )
     except subprocess.TimeoutExpired:
@@ -134,13 +140,14 @@ def copy_command(source, source_directory, destination, state, run_id, dry_run=F
     # --protect-args keeps spaces, quotes, glob characters and shell syntax in
     # filenames out of the remote shell. No --delete or --inplace is permitted.
     command = [
-        "rsync", "--archive", "--no-owner", "--no-group", "--protect-args",
+        RSYNC, "--archive", "--no-owner", "--no-group", "--protect-args",
+        "--rsync-path=" + REMOTE_RSYNC,
         "--safe-links", "--partial", f"--partial-dir={state / 'partials'}",
         "--backup", f"--backup-dir={state / 'overwritten' / run_id}",
         "--timeout=45", "--stats", "--human-readable",
         "--exclude=*.crdownload", "--exclude=*.part", "--exclude=*.partial",
         "--exclude=*.tmp", "--exclude=.org.chromium.*",
-        "--rsh=" + shlex.join(["ssh", *SSH_OPTIONS]),
+        "--rsh=" + shlex.join([SSH, *SSH_OPTIONS]),
     ]
     if dry_run:
         command.append("--dry-run")
@@ -178,7 +185,7 @@ def sync_once(source, dry_run=False):
         # The remote helper resolves its own XDG config after fleet adoption.
         # Its JSON framing keeps banners and malformed output from becoming paths.
         remote = subprocess.run(
-            ["ssh", *SSH_OPTIONS, source, "downloads-mirror --print-directory"],
+            [SSH, *SSH_OPTIONS, source, REMOTE_HELPER + " --print-directory"],
             capture_output=True, text=True, timeout=30,
         )
         if remote.returncode == 255:
