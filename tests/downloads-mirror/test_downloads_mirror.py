@@ -154,7 +154,7 @@ os.execv(os.environ["FIXTURE_RSYNC"],tail)
         result = subprocess.run([sys.executable, str(SCRIPT), "--prepare-watch"], env=self.env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         dropin = self.config / "systemd/user/downloads-mirror-watch.path.d/xdg-directory.conf"
-        self.assertEqual(dropin.read_text(), '[Path]\nPathChanged=\nPathChanged="' + str(self.destination) + '"\n')
+        self.assertEqual(dropin.read_text(), '[Path]\nPathChanged=\nPathChanged=' + str(self.destination) + '\n')
 
     def test_interrupted_copy_retains_partial_and_a_later_copy_finishes(self):
         payload = os.urandom(4 * 1024 * 1024)
@@ -202,6 +202,33 @@ class MinimalPath(unittest.TestCase):
         self.assertIn(str(self.destination), dropin.read_text())
         self.assertEqual(self.invoke(BINARY, "--print-directory")["directory"], str(self.destination))
         self.assertEqual(self.invoke(BINARY, "--status")["status"], "never-run")
+
+    @unittest.skipUnless(os.environ.get("DOWNLOADS_SYSTEMD_ANALYZE"), "real systemd parser required")
+    def test_real_systemd_accepts_generated_units_and_private_dropin(self):
+        special = self.home / 'configured "quoted" %named location'
+        (self.config / "user-dirs.dirs").write_text('XDG_DOWNLOAD_DIR="' + str(special).replace('"', '\\"') + '"\n')
+        self.invoke(BINARY, "--prepare-watch")
+        units = self.config / "systemd/user"
+        watcher = units / "downloads-mirror-watch.path"
+        shutil.copyfile(os.environ["DOWNLOADS_MIRROR_PATH_UNIT"], watcher)
+        service = units / "downloads-mirror-notify.service"
+        shutil.copyfile(os.environ["DOWNLOADS_MIRROR_SERVICE_UNIT"], service)
+        runtime = self.root / "runtime"
+        runtime.mkdir(mode=0o700)
+        environment = {**self.env, "PATH": "/nonexistent-path", "XDG_RUNTIME_DIR": str(runtime),
+                       "SYSTEMD_UNIT_PATH": str(units) + ":" + os.environ["DOWNLOADS_SYSTEMD_USER_UNITS"]}
+        result = subprocess.run([os.environ["DOWNLOADS_SYSTEMD_ANALYZE"], "--user", "verify", "--man=no",
+                                 "--generators=no", str(watcher), str(service)],
+                                capture_output=True, text=True, env=environment)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Prove the real parser reads this drop-in and catches the original
+        # failure, rather than silently checking only the packaged unit.
+        dropin = units / "downloads-mirror-watch.path.d/xdg-directory.conf"
+        dropin.write_text('[Path]\nPathChanged=\nPathChanged="' + str(special) + '"\n')
+        rejected = subprocess.run([os.environ["DOWNLOADS_SYSTEMD_ANALYZE"], "--user", "verify", "--man=no",
+                                   "--generators=no", str(watcher), str(service)],
+                                  capture_output=True, text=True, env=environment)
+        self.assertNotEqual(rejected.returncode, 0)
 
     def test_pinned_ssh_and_rsync_with_empty_path(self):
         (self.source / "quoted ' [x] café.txt").write_text("complete")
