@@ -154,6 +154,13 @@ in
           bindswitch --reload --locked lid:on output eDP-1 disable
           bindswitch --reload --locked lid:off output eDP-1 enable
           bindsym --no-warn F10 exec ~/.local/bin/brightness toggle
+          # Plain F-keys (external keyboard or Fn): brightness aliases.
+          # Keep the theme/accent pickers available under Super instead.
+          bindsym --locked F1 exec ~/.local/bin/brightness down
+          bindsym --locked --no-warn F2 exec ~/.local/bin/brightness up
+          bindsym --locked --no-warn Shift+F2 exec ~/.local/bin/brightness up 100%
+          bindsym --no-repeat Mod4+F2 exec kitty --class theme-prompt -e ~/.local/bin/theme-prompt theme
+          bindsym --no-repeat Mod4+Shift+F2 exec kitty --class theme-prompt -e ~/.local/bin/theme-prompt accent
           bindsym --locked XF86MonBrightnessDown exec ~/.local/bin/brightness down
           bindsym --locked XF86MonBrightnessUp exec ~/.local/bin/brightness up
           # Shift+F5/F6: 2% fine steps (Tom, 2026-10-10). The XF86 keysym comes
@@ -170,6 +177,37 @@ in
   # store symlink of MacTahoe-Dark-grey's gtk-4.0 — moved to home/theme.nix,
   # where they point through the ~/.config/theme pointer at whichever theme's
   # MacTahoe variant is selected. 2026-09-17.)
+
+  # Standard desktop entries are searchable by Vicinae and its replacement.
+  xdg.desktopEntries = lib.mkIf (hostName == "client") {
+    brightness-down = {
+      name = "Brightness down";
+      comment = "Dim both laptop screens by 10%";
+      exec = "${config.home.homeDirectory}/.local/bin/brightness down";
+      icon = "display-brightness-symbolic";
+      terminal = false;
+      categories = [ "Settings" ];
+      settings.Keywords = "brightness;screen;display;dim;";
+    };
+    brightness-up = {
+      name = "Brightness up";
+      comment = "Brighten both laptop screens by 10%";
+      exec = "${config.home.homeDirectory}/.local/bin/brightness up";
+      icon = "display-brightness-symbolic";
+      terminal = false;
+      categories = [ "Settings" ];
+      settings.Keywords = "brightness;screen;display;brighten;";
+    };
+    brightness-max = {
+      name = "Maximum brightness";
+      comment = "Set both laptop screens to 100%";
+      exec = "${config.home.homeDirectory}/.local/bin/brightness up 100";
+      icon = "display-brightness-symbolic";
+      terminal = false;
+      categories = [ "Settings" ];
+      settings.Keywords = "brightness;screen;display;maximum;100;";
+    };
+  };
 
   # gtk-theme / icon-theme / color-scheme are deliberately NOT pinned here any
   # more (2026-09-17): the theme switcher owns them at runtime (`theme apply`
