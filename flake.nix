@@ -2859,7 +2859,9 @@
             host: host.hardware.printers.ensurePrinters == [ expectedPrinter ]
           ) activeHosts;
           assert nixpkgs.lib.all (
-            host: builtins.elem pkgs.brother-print-text host.environment.systemPackages
+            # The NAS follows its own nixpkgs pin, so match by name, not store path.
+            host:
+            builtins.any (p: (p.name or "") == pkgs.brother-print-text.name) host.environment.systemPackages
           ) activeHosts;
           pkgs.runCommand "printing"
             {
