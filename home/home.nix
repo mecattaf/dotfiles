@@ -15,8 +15,8 @@
 # switch: ./raw-dotfiles-guard.nix fails the activation, before writeBoundary,
 # when a user unit's %h/.local/bin/<program> is missing from it (#313), and
 # AGENTS.md carries the ordering rule. Exception: a host with
-# rawDotfiles.inStore (the client) gets the same files from the Nix store and
-# has no checkout (./raw-dotfiles-guard.nix).
+# rawDotfiles.inStore (the client and the strix hosts) gets the same files from
+# the Nix store and has no checkout (./raw-dotfiles-guard.nix).
 let
   link = config.lib.rawDotfiles.link;
 

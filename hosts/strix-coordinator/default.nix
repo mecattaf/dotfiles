@@ -24,6 +24,9 @@
   ];
   hardware.bluetooth.enable = lib.mkForce false;
 
+  # No dotfiles checkout on the strix: raw dotfiles come from the Nix store.
+  home-manager.users.tom.rawDotfiles.inStore = true;
+
   # No physical seat (headless in the closet); the Zenbook is the seat.
   # Agent services stay independent of any compositor.
   myDisplay.enable = false;

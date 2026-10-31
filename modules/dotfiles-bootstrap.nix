@@ -24,7 +24,7 @@
 # greetd-wrapper had).
 #
 # Not on a host whose raw dotfiles come from the Nix store
-# (home-manager.users.tom.rawDotfiles.inStore, the client since 2026-10-11): it
+# (home-manager.users.tom.rawDotfiles.inStore: the client and the strix hosts): it
 # links nothing into a checkout, and a clone there would put ~/mecattaf back
 # into a home that is meant to stay clean.
 let
