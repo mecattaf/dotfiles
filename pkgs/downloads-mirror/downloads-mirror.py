@@ -106,9 +106,10 @@ def prepare_watch():
     config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     dropin = config / "systemd/user/downloads-mirror-watch.path.d/xdg-directory.conf"
     dropin.parent.mkdir(parents=True, exist_ok=True)
-    # systemd expands percent specifiers; the configured path is literal data.
-    quoted = str(directory).replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%")
-    content = '[Path]\nPathChanged=\nPathChanged="' + quoted + '"\n'
+    # PathChanged takes the absolute path verbatim, including spaces; it does
+    # not strip shell quotes. Only systemd's percent specifiers need escaping.
+    value = str(directory).replace("%", "%%")
+    content = '[Path]\nPathChanged=\nPathChanged=' + value + '\n'
     with tempfile.NamedTemporaryFile(mode="w", dir=dropin.parent, delete=False) as stream:
         temporary = Path(stream.name)
         stream.write(content)

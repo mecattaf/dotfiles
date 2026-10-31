@@ -1813,6 +1813,10 @@
               export DOWNLOADS_MIRROR_SCRIPT=${./pkgs/downloads-mirror/downloads-mirror.py}
               export DOWNLOADS_MIRROR_BINARY=${pkgs.lib.getExe pkgs.downloads-mirror}
               export DOWNLOADS_MIRROR_FIXTURE_BINARY=${pkgs.lib.getExe fixtureMirror}
+              export DOWNLOADS_SYSTEMD_ANALYZE=${pkgs.systemd}/bin/systemd-analyze
+              export DOWNLOADS_SYSTEMD_USER_UNITS=${pkgs.systemd}/example/systemd/user
+              export DOWNLOADS_MIRROR_PATH_UNIT=${self.nixosConfigurations.client.config.home-manager.users.tom.xdg.configFile."systemd/user/downloads-mirror-watch.path".source}
+              export DOWNLOADS_MIRROR_SERVICE_UNIT=${self.nixosConfigurations.client.config.home-manager.users.tom.xdg.configFile."systemd/user/downloads-mirror-notify.service".source}
               python3 -m unittest discover -s ${./tests/downloads-mirror} -p 'test_*.py' -v
               touch "$out"
             '';
