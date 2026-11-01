@@ -58,26 +58,32 @@ let
     '';
     dontFixup = true;
   };
-  rootfs = runCommand "d3-vllm-strix-rootfs-2026-10-31" {
-    nativeBuildInputs = [ python3 ];
-    requiredSystemFeatures = [ "big-parallel" ];
-    preferLocalBuild = false;
-    # No binary rewriting: these binaries execute inside their own immutable
-    # userspace, with exactly the Torch/ROCm ABI the publisher compiled them for.
-    dontFixup = true;
-  } ''
-    ${python3.interpreter} ${./unpack_image.py} ${imageArchive} "$TMPDIR/rootfs"
-    test "$(cat "$TMPDIR/rootfs/opt/strix/strix-vllm.ref")" = ${lib.escapeShellArg provenance.vllmRevision}
-    test "$(cat "$TMPDIR/rootfs/opt/strix/libstrix.ref")" = ${lib.escapeShellArg provenance.libstrixRevision}
-    ${lib.concatMapStringsSep "\n" (file: ''
-      cmp ${source}/${file} "$TMPDIR/rootfs/opt/venv/lib/python3.14/site-packages/${file}"
-    '') provenance.overlayFiles}
-    mkdir -p "$TMPDIR/rootfs"/{nix/store,models/d3-ultra,cache,proc,sys,run,tmp,dev/dri}
-    mv "$TMPDIR/rootfs" "$out"
-  '';
+  rootfs =
+    runCommand "d3-vllm-strix-rootfs-2026-10-31"
+      {
+        nativeBuildInputs = [ python3 ];
+        requiredSystemFeatures = [ "big-parallel" ];
+        preferLocalBuild = false;
+        # No binary rewriting: these binaries execute inside their own immutable
+        # userspace, with exactly the Torch/ROCm ABI the publisher compiled them for.
+        dontFixup = true;
+      }
+      ''
+        ${python3.interpreter} ${./unpack_image.py} ${imageArchive} "$TMPDIR/rootfs"
+        test "$(cat "$TMPDIR/rootfs/opt/strix/strix-vllm.ref")" = ${lib.escapeShellArg provenance.vllmRevision}
+        test "$(cat "$TMPDIR/rootfs/opt/strix/libstrix.ref")" = ${lib.escapeShellArg provenance.libstrixRevision}
+        ${lib.concatMapStringsSep "\n" (file: ''
+          cmp ${source}/${file} "$TMPDIR/rootfs/opt/venv/lib/python3.14/site-packages/${file}"
+        '') provenance.overlayFiles}
+        mkdir -p "$TMPDIR/rootfs"/{nix/store,models/d3-ultra,cache,proc,sys,run,tmp,dev/dri}
+        mv "$TMPDIR/rootfs" "$out"
+      '';
   package = writeShellApplication {
     name = "d3-vllm";
-    runtimeInputs = [ bubblewrap coreutils ];
+    runtimeInputs = [
+      bubblewrap
+      coreutils
+    ];
     text = ''
       if [ "''${1:-}" != serve ] || [ "$#" -lt 2 ]; then
         echo "usage: d3-vllm serve /absolute/loan/directory [vllm serve options]" >&2
@@ -104,7 +110,11 @@ let
         --unshare-user --unshare-pid --unshare-ipc --unshare-uts \
         --ro-bind ${rootfs} / \
         --ro-bind /nix/store /nix/store \
-        ${lib.concatMapStringsSep " " (file: "--ro-bind ${patchedSource}/${file} /opt/venv/lib/python3.14/site-packages/${file}") provenance.overlayFiles} \
+        ${
+          lib.concatMapStringsSep " " (
+            file: "--ro-bind ${patchedSource}/${file} /opt/venv/lib/python3.14/site-packages/${file}"
+          ) provenance.overlayFiles
+        } \
         --proc /proc --dev /dev --ro-bind /sys /sys \
         --dev-bind /dev/kfd /dev/kfd --dev-bind /dev/dri /dev/dri \
         --tmpfs /tmp --tmpfs /run \
@@ -135,14 +145,22 @@ let
         --attention-backend TRITON_ATTN
     '';
     passthru = {
-      inherit imageArchive patchedSource rootfs provenance;
+      inherit
+        imageArchive
+        patchedSource
+        rootfs
+        provenance
+        ;
       tests.contract = patchedSource;
     };
     meta = {
       description = "Pinned gfx1151 vLLM/libstrix appliance with D3-Ultra contract patches";
       platforms = [ "x86_64-linux" ];
       mainProgram = "d3-vllm";
-      license = [ lib.licenses.asl20 lib.licenses.mit ];
+      license = [
+        lib.licenses.asl20
+        lib.licenses.mit
+      ];
     };
   };
 in
