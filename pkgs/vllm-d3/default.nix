@@ -139,6 +139,8 @@ let
         --setenv LANG C.UTF-8 --setenv USER d3-decision \
         --setenv HF_HOME /cache/huggingface \
         --setenv HF_HUB_OFFLINE 1 --setenv TRANSFORMERS_OFFLINE 1 \
+        --setenv HF_HUB_DISABLE_TELEMETRY 1 \
+        --setenv VLLM_NO_USAGE_STATS 1 --setenv DO_NOT_TRACK 1 \
         --setenv VLLM_CACHE_ROOT /cache/vllm \
         --setenv TRITON_CACHE_DIR /cache/triton \
         --setenv TORCHINDUCTOR_CACHE_DIR /cache/torchinductor \
