@@ -537,6 +537,7 @@
             brother-print-text
             paper-daemon
             paper-render
+            utility-model
             call-diarize
             fleet-status
             # `nix build .#dsh -o .demo/dsh` is how a PR worktree runs dsh; its
@@ -2753,7 +2754,7 @@
           assert !(strix.systemd.services ? podman-halogen);
 
           assert nixpkgs.lib.elem "amdgpu.gttsize=126976" strix.boot.kernelParams;
-          # The utility-model wrapper lives on the strix only.
+          # The utility-model client also lives on the NAS agent host.
           assert
             builtins.length (
               nixpkgs.lib.filter (
@@ -2783,7 +2784,7 @@
           assert monthlySources.inference.provider == "gufo";
           assert monthlySources.inference.url == "http://strix-coordinator:8731";
           assert monthlySources.inference.compute_host == "strix-coordinator";
-          assert monthlySources.inference.tally_pool == "strix-gpu";
+          assert !(monthlySources.inference ? tally_pool);
           # ── NPU decommission, 2026-08-29 (fleet-7.2) ──────────────────────
           # These used to assert the NPU stack was PRESENT. The house style for
           # a removal is to flip them negative rather than delete them, so the

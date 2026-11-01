@@ -58,7 +58,7 @@ prepare() {
   canonical_copy "$models" "$out/inference-models.json"
 
   # The fleet is mono-model: the registry names the served model and the
-  # live server must advertise it before any Tally slot is spent on Pi.
+  # live server must advertise it before the utility review.
   local model_id
   model_id="$(jq -r '.inference.model' "$registry")"
   if ! jq -e --arg model "$model_id" '[.data[]?.id | strings] | index($model) != null' \
@@ -417,15 +417,15 @@ finalize() {
   mkdir -p "$out"
   bytes="$(wc -c < "$commentary")"
   if ((bytes < 40 || bytes > 50000)); then
-    printf 'local-ai-monthly: Pi commentary has invalid size: %s bytes\n' "$bytes" >&2
+    printf 'local-ai-monthly: utility commentary has invalid size: %s bytes\n' "$bytes" >&2
     exit 1
   fi
   if grep -q '<!-- local-ai-monthly-state' "$commentary"; then
-    printf 'local-ai-monthly: Pi commentary attempted to write workflow state\n' >&2
+    printf 'local-ai-monthly: utility commentary attempted to write workflow state\n' >&2
     exit 1
   fi
   if ! grep -q '^## Local-model review' "$commentary"; then
-    printf 'local-ai-monthly: Pi commentary is missing its required heading\n' >&2
+    printf 'local-ai-monthly: utility commentary is missing its required heading\n' >&2
     exit 1
   fi
 

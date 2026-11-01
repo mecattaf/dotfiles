@@ -1,5 +1,15 @@
 # Gufo provider cutover
 
+Current utility contract (1 November): NAS keeps agent sessions and the
+`utility-model` client; Gufo on `http://strix-coordinator:8731` serves
+`qwen3.8-flash-next`. Print rendering runs on that coordinator with its own
+renderer/fonts closure, while NAS owns the print queue and receipts. The monthly
+evidence judge also calls `utility-model` directly and has no agent tools.
+DSH is the agent harness; these utility calls do not invoke it. The worker is
+dormant and receives no compute or inference work. The migration table below
+records the earlier provider cutover, including retired Pi/Tally interfaces;
+it is historical context, not the current harness configuration.
+
 Tom, 2026-10-23: "just read in previous output of yours also: halogen is OUT fullly as inference provider (moving to gufo-rdma) and as models (we use the gufo-specific ones)"
 
 PR #605 retires the provider and model formats as well as the service. The
