@@ -192,30 +192,7 @@ in
         };
       })
 
-      # qwencloud-token: Qwen Token Plan API key. Same shape as
-      # huggingface-token — delivered read-only under /run and never copied into a
-      # mutable dotfile, because nothing ever rewrites it (unlike the OAuth creds
-      # above, which refresh in place). Its one consumer is dsh (pkgs/dsh,
-      # home/dsh.nix; pi, the other, was retired 2026-10-25). dsh gets it as
-      # QWEN_TOKEN_PLAN_API_KEY, set by its wrapper at exec time for the dsh
-      # process only. dsh drops every *KEY*/*TOKEN* name (and every DSH_* name)
-      # from the children it spawns, so the model's bash does not inherit it,
-      # and its headless profile has no credential store, so the environment is
-      # the only delivery that reaches it. Its bwrap runner also masks
-      # /run/agenix from the model's commands. Not masked: dsh's in-process
-      # `read` tool and any same-uid /proc/<pid>/environ read.
-      # NAS recipient changes are listed in REKEY.md.
-      (lib.mkIf (config.myFleet.has "brain") {
-        age.secrets.qwencloud-token = {
-          file = ../secrets/qwencloud-token.age;
-          owner = "tom";
-          group = "users";
-          mode = "400";
-        };
-      })
-
-      # openrouter-token: OpenRouter API key, same shape as qwencloud-token
-      # above. No harness routes to it since pi was retired (2026-10-25); seats
+      # openrouter-token: OpenRouter API key, delivered read-only under /run. No harness routes to it since pi was retired (2026-10-25); seats
       # reads it at call time for the OpenRouter credit row. Whether to give dsh
       # a route or retire the key is Tom's call.
       (lib.mkIf (config.myFleet.has "brain") {

@@ -44,7 +44,6 @@ let
     "soundcloud-cookies"
     "youtube-music-cookies"
     "huggingface-token"
-    "qwencloud-token"
     "openrouter-token"
     "printer-admin"
     "atticd-server-token"
@@ -67,9 +66,11 @@ assert h.home.enableNixpkgsReleaseCheck;
 assert h.home.version.release == "26.05";
 assert !h.rawDotfiles.inStore;
 assert h.rawDotfiles.repoDir == "/home/tom/mecattaf/dotfiles";
-# dsh, including all Nix-pinned plugins, follows the NAS brain and its key.
+# dsh follows the NAS brain; the retired QwenCloud key is absent everywhere.
 assert h.programs.dsh.enable;
-assert map (p: p.qwenKeyFile or null) (dshPackages h) == [ c.age.secrets.qwencloud-token.path ];
+assert map (p: p.qwenKeyFile or null) (dshPackages h) == [ null ];
+assert !(c.age.secrets ? qwencloud-token);
+assert !(recipients ? "secrets/qwencloud-token.age");
 assert h.home.file ? ".agents/AGENTS.md";
 assert builtins.all (
   cfg:
