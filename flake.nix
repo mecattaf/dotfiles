@@ -542,6 +542,7 @@
             # `nix build .#dsh -o .demo/dsh` is how a PR worktree runs dsh; its
             # passthru carries `.runner`, `.smoke` and `.unwrapped` for the gate.
             dsh
+            mnemon
             # `nix run .#fontbuilder -- <capture-dir> <out-dir>` — the press for
             # the Anthropic suite. Exported because that IS the invocation. The
             # three anthropic-* font packages stay UNEXPORTED (matching sf-pro):
@@ -657,6 +658,10 @@
         d3-decision = import ./tests/d3-decision {
           inherit pkgs self;
           inherit (nixpkgs) lib;
+        };
+        dsh-mnemon = import ./tests/dsh-mnemon {
+          inherit pkgs;
+          dsh = self.nixosConfigurations.nas.pkgs.dsh;
         };
         strix-reachability =
           pkgs.runCommand "strix-reachability"
