@@ -44,14 +44,20 @@ concurrent requests. JSON instructions and option descriptions keep JSON
 serialization instead of Python's `str(dict)`. Media requests follow the
 checkpoint's header-free path.
 
-`0003-d3-systemone-answer.patch` preserves D3's entropy-based Choice/Score
-confidence, canonical Score legends, and scalar Noul answer. The generic vLLM
-label-confidence convention would otherwise change the API even with identical
-model probabilities.
+`0003-d3-systemone-answer.patch` matches the pinned native fleet System One API:
+Choice confidence measures normalized top-1 concentration; Score confidence
+measures spread around the first most likely level against an even spread.
+It preserves canonical Score legends, scalar Noul answers and host-side
+probability normalization. The checkpoint's `d3_runtime.py` instead uses
+entropy confidence for Choice/Score. These are different public conventions;
+this experiment deliberately compares against the native appliance.
 
 The reference is the official
 [Ultra release](https://huggingface.co/vllm-sr/d3-ultra/tree/52ba9e7a00402f9560c7fba8c039608e7ddee7fb).
-The CPU checks compare the patched class with its pinned `d3_format.py`;
+The CPU checks compare prompts against its pinned `d3_format.py` and complete
+answer objects against the native runtime's actual pinned `product_answer`,
+`choice_confidence` and `score_confidence` functions (including asymmetric
+four-level and edge-mode Score cases);
 they do not establish GPU numerical parity or multimodal correctness.
 
 libstrix A/B

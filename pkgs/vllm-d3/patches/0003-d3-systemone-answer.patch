@@ -1,32 +1,46 @@
 From: dotfiles D3 investigation
 Subject: [PATCH] Preserve D3 System One answer confidence and Noul contract
 
-Reference: vllm-sr/d3-ultra 52ba9e7a00402f9560c7fba8c039608e7ddee7fb
-Reference-files: d3_runtime.py product_answer, d3_format.py to_answer
+Reference: vllm-project/semantic-router 62c4f39e35aa2dfe929eb18223a7509ebeff6563
+Reference-files: vllm_srun/systemone.py, families/decision3/family.py product_answer
 
 Generic vLLM label answers expose maximum-label-probability confidence and
-additional Noul probability keys. D3 uses normalized entropy confidence for
-Choice/Score, canonical Score legends, and a scalar-only Noul answer.
-Keep this specific to D3 on its native-compatible /v1/systemone surface.
+additional Noul probability keys. Match the pinned native System One API:
+normalized top-1 concentration for Choice, mode-spread confidence for Score,
+canonical Score legends, and a scalar-only Noul answer. The checkpoint's
+d3_runtime.py uses a different entropy confidence convention; this endpoint
+deliberately matches the native fleet appliance instead.
 
 --- a/vllm/entrypoints/openai/decisions/strategies.py
 +++ b/vllm/entrypoints/openai/decisions/strategies.py
-@@ -1309,6 +1309,25 @@
+@@ -1309,6 +1309,37 @@
              raise StructuredDecisionError(f"not representable as JSON: {error}") from error
          return spec.model_copy(update={"instructions": instructions, "criteria": criteria})
  
 +    @staticmethod
 +    def systemone_answer(question, probabilities, original_criteria):
-+        """The released D3 answer object, rather than generic label confidence."""
++        """The pinned native System One answer, not generic label confidence."""
++        probabilities = [float(p) for p in probabilities]
++        if (len(probabilities) != len(question.options)
++                or any(not math.isfinite(p) or p < 0 for p in probabilities)
++                or sum(probabilities) <= 0):
++            raise ValueError("need one finite non-negative probability per option")
++        total = sum(probabilities)
++        probabilities = [p / total for p in probabilities]
 +        if question.type.name == "noul":
 +            return {"type": "noul", "noul": probabilities[0]}
 +        answer = question.type.answer(question, probabilities, 1.0)
 +        count = len(probabilities)
-+        answer["confidence"] = (
-+            1.0 if count < 2 else max(0.0, min(1.0,
-+                1.0 + sum(p * math.log(p) for p in probabilities if p > 0) / math.log(count)
-+            ))
-+        )
++        if count < 2:
++            confidence = 1.0
++        elif question.type.name == "score":
++            mode = probabilities.index(max(probabilities))
++            spread = sum(p * abs(i - mode) for i, p in enumerate(probabilities))
++            even = sum(abs(i - (count - 1) / 2) for i in range(count)) / count
++            confidence = 1.0 - spread / even
++        else:
++            confidence = (max(probabilities) - 1 / count) / (1 - 1 / count)
++        answer["confidence"] = max(0.0, min(1.0, confidence))
 +        if question.type.name == "score":
 +            answer["legend"] = {
 +                str(i): value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

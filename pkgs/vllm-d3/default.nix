@@ -22,6 +22,12 @@ let
     url = "https://huggingface.co/vllm-sr/d3-ultra/raw/52ba9e7a00402f9560c7fba8c039608e7ddee7fb/d3_format.py";
     hash = "sha256-Xz2nQwbmYiT+QUEo+oMH1z9Yr5T/Hu66y5gl9yjVByA=";
   };
+  nativeReference = fetchFromGitHub {
+    owner = "vllm-project";
+    repo = "semantic-router";
+    rev = "62c4f39e35aa2dfe929eb18223a7509ebeff6563";
+    hash = "sha256-rgbPde4ilD9lglQnqVpjvt+chWnqwUYoZwwLbFASAGM=";
+  };
   imageArchive = dockerTools.pullImage {
     imageName = provenance.imageName;
     imageDigest = provenance.imageDigest;
@@ -45,7 +51,7 @@ let
     doCheck = true;
     checkPhase = ''
       runHook preCheck
-      ${python3.interpreter} ${./test_contract.py} "$PWD" ${referenceFormat}
+      ${python3.interpreter} ${./test_contract.py} "$PWD" ${referenceFormat} ${nativeReference}/src/model-runtime/vllm_srun
       ${python3.interpreter} ${./test_unpack.py} ${./unpack_image.py}
       runHook postCheck
     '';

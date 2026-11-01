@@ -20,7 +20,7 @@ from types import SimpleNamespace as NS
 import unittest
 
 
-SOURCE, FORMAT = map(Path, sys.argv[1:3])
+SOURCE, FORMAT, NATIVE = map(Path, sys.argv[1:4])
 sys.argv[1:] = []
 
 
@@ -37,6 +37,28 @@ types = module(
     "d3_question_types",
     SOURCE / "vllm/entrypoints/openai/decisions/question_types.py",
 )
+
+
+def native_answer_function():
+    """Compile only the audited pure postprocessors from the actual runtime."""
+    namespace = {"math": math, "canonical": lambda value: json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))}
+    paths = {
+        NATIVE / "systemone.py": {"choice_confidence", "score_confidence"},
+        NATIVE / "families/decision3/family.py": {"product_answer"},
+    }
+    for path, names in paths.items():
+        tree = ast.parse(path.read_text())
+        selected = [node for node in tree.body
+                    if isinstance(node, ast.FunctionDef) and node.name in names]
+        assert {node.name for node in selected} == names
+        unit = ast.Module(body=[ast.ImportFrom(module="__future__", names=[
+            ast.alias(name="annotations")], level=0), *selected], type_ignores=[])
+        exec(compile(ast.fix_missing_locations(unit), str(path), "exec"), namespace)
+    return namespace["product_answer"]
+
+
+native_answer = native_answer_function()
 
 
 class Tokenizer:
@@ -205,18 +227,22 @@ class Contract(unittest.TestCase):
 
     def test_answers_follow_d3_contract(self):
         runtime, _ = strategy()
-        choice = question(criteria={"a": None, "b": None})
-        answer = runtime.systemone_answer(choice, [0.25, 0.75], None)
-        expected = reference.to_answer(rendered(choice), [0.25, 0.75])
-        expected["confidence"] = 1 + (0.25 * math.log(0.25) + 0.75 * math.log(0.75)) / math.log(2)
-        self.assertEqual(answer, expected)
+        for values in ([0.25, 0.75], [1, 3], [0.5, 0.5], [0.03, 0.07, 0.9]):
+            keys = list(string.ascii_lowercase[:len(values)])
+            choice = question(criteria=dict.fromkeys(keys))
+            expected = native_answer(NS(task_type="choice", keys=keys), values)
+            self.assertEqual(runtime.systemone_answer(choice, values, None), expected)
         noul = question("noul")
-        self.assertEqual(runtime.systemone_answer(noul, [0.75, 0.25], None), {"type": "noul", "noul": 0.75})
-        score = question("score", [{"z": 2, "a": 1}, "high"])
-        answer = runtime.systemone_answer(score, [0.25, 0.75], [{"z": 2, "a": 1}, "high"])
-        self.assertEqual(answer["legend"], {"0": '{"a":1,"z":2}', "1": "high"})
-        self.assertEqual(answer["score"], 0.75)
-        self.assertAlmostEqual(answer["confidence"], expected["confidence"])
+        # vLLM's Noul prompt slots are [true,false], native's [false,true].
+        expected = native_answer(NS(task_type="noul", keys=["false", "true"]), [0.25, 0.75])
+        self.assertEqual(runtime.systemone_answer(noul, [0.75, 0.25], None), expected)
+        for values in ([0.25, 0.75], [0.7, 0.2, 0.1], [0.1, 0.2, 0.3, 0.4],
+                       [0.6, 0.2, 0.1, 0.1], [0.4, 0.4, 0.1, 0.1], [1, 2, 3, 4]):
+            criteria = [{"z": 2, "a": 1}, "high", "higher", "highest"][:len(values)]
+            score = question("score", criteria)
+            expected = native_answer(NS(task_type="score", keys=[str(i) for i in range(len(values))],
+                                        descriptions=criteria), values)
+            self.assertEqual(runtime.systemone_answer(score, values, criteria), expected)
 
     def test_concurrent_request_temperatures(self):
         runtime, calls = strategy()
