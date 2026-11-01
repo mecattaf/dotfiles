@@ -76,7 +76,7 @@ class AllowKvm(unittest.TestCase):
         self.assertEqual(run('--allow-kvm', '--').returncode, 2)
 
     def test_no_general_device_passthrough(self):
-        # Only the one named flag is parsed; anything else is the command.
+        # Neither explicit device flag provides arbitrary device binds.
         p = run('--dev-bind', '/dev/null', '/dev/kvm', '--', 'true')
         self.assertNotEqual(p.returncode, 0)
 

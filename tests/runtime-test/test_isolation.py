@@ -31,10 +31,12 @@ with open('/dev/null', 'wb') as null:
 (runtime / 'test-socket-directory' / 'file').write_text('disposable')
 for child in runtime.iterdir():
     shutil.rmtree(child) if child.is_dir() else child.unlink()
-assert not pathlib.Path('/proc/' + sys.argv[2]).exists(), 'host PID is visible'
+assert os.readlink('/proc/self/ns/pid') != sys.argv[2], 'parent PID namespace is shared'
+assert os.readlink('/proc/self/ns/ipc') != sys.argv[3], 'parent IPC namespace is shared'
 sys.exit(23)
 '''
-            p = subprocess.run([str(RUNNER), '--', os.sys.executable, '-c', probe, str(sentinel), str(os.getpid())],
+            p = subprocess.run([str(RUNNER), '--', os.sys.executable, '-c', probe, str(sentinel),
+                                os.readlink('/proc/self/ns/pid'), os.readlink('/proc/self/ns/ipc')],
                                env=dict(os.environ, XDG_RUNTIME_DIR=str(runtime), NOTIFY_SOCKET='live-notify', DBUS_SESSION_BUS_ADDRESS='live-bus'),
                                capture_output=True, text=True, timeout=15)
             self.assertEqual(p.returncode, 23, p.stderr)

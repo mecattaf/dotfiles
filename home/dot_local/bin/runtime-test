@@ -2,31 +2,64 @@
 # Run tests with private user-runtime sockets. This is runtime isolation, not
 # a filesystem sandbox: the checkout, home, /tmp and network remain available.
 #
-# --allow-kvm (#453) adds exactly one device node, /dev/kvm, to the otherwise
-# minimal /dev, so a KVM guest (a microvm.nix declaredRunner) can start. It
-# widens nothing else: /run/user stays private, the PID and IPC namespaces and
-# every --unsetenv below are unchanged, and the checkout, $HOME, /tmp and the
-# network stay as accessible as they already are. It is one flag for one
-# device on purpose; there is no general --dev-bind passthrough.
+# --allow-kvm adds only /dev/kvm for KVM guests. --allow-gpu adds only /dev/kfd
+# and one explicitly selected /dev/dri/renderD<number> character device. Both
+# require read-write access and leave the rest of /dev private. /run/user,
+# PID/IPC namespaces and every --unsetenv below stay unchanged. There is no
+# general device passthrough.
 set -euo pipefail
-if [ "${1:-}" = --help ] || [ "$#" -eq 0 ]; then
-  echo 'usage: runtime-test [--allow-kvm] [--] command [args...]'
+usage() {
+  echo 'usage: runtime-test [--allow-kvm] [--allow-gpu /dev/dri/renderD<number>] [--] command [args...]'
   echo 'Private /run/user and PID/IPC namespaces; source files remain writable.'
-  echo '--allow-kvm also binds /dev/kvm (and nothing else) for KVM guests.'
+  echo '--allow-kvm binds only /dev/kvm for KVM guests.'
+  echo '--allow-gpu binds only /dev/kfd and the selected render node for GPU tests.'
+}
+if [ "$#" -eq 0 ]; then
+  usage
   exit 0
 fi
+allow_kvm=0
+gpu_node=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --help) usage; exit 0 ;;
+    --allow-kvm) allow_kvm=1; shift ;;
+    --allow-gpu)
+      if [ "$#" -lt 2 ] || [[ ! "$2" =~ ^/dev/dri/renderD[0-9]+$ ]]; then
+        echo 'runtime-test: --allow-gpu requires /dev/dri/renderD<number>' >&2
+        exit 2
+      fi
+      if [ -n "$gpu_node" ]; then
+        echo 'runtime-test: --allow-gpu may select only one render node' >&2
+        exit 2
+      fi
+      gpu_node="$2"
+      shift 2
+      ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
+[ "$#" -gt 0 ] || { echo 'runtime-test: missing command' >&2; exit 2; }
 devices=()
-if [ "${1:-}" = --allow-kvm ]; then
-  shift
+if [ "$allow_kvm" -eq 1 ]; then
   # Fail loudly rather than run the guest without the device it asked for.
   if [ ! -c /dev/kvm ] || [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
     echo 'runtime-test: --allow-kvm given but /dev/kvm is absent or not read-write for this user' >&2
     exit 1
   fi
-  devices=(--dev-bind /dev/kvm /dev/kvm)
+  devices+=(--dev-bind /dev/kvm /dev/kvm)
 fi
-[ "${1:-}" != -- ] || shift
-[ "$#" -gt 0 ] || { echo 'runtime-test: missing command' >&2; exit 2; }
+if [ -n "$gpu_node" ]; then
+  for device in /dev/kfd "$gpu_node"; do
+    if [ ! -c "$device" ] || [ ! -r "$device" ] || [ ! -w "$device" ] \
+      || [ "$(readlink -f -- "$device")" != "$device" ]; then
+      echo "runtime-test: --allow-gpu requires a read-write character device at $device (no symlinks)" >&2
+      exit 1
+    fi
+  done
+  devices+=(--dev-bind /dev/kfd /dev/kfd --dir /dev/dri --dev-bind "$gpu_node" "$gpu_node")
+fi
 command -v bwrap >/dev/null || { echo 'runtime-test: bubblewrap is required' >&2; exit 1; }
 
 # Mask the real PATH as well as changing the environment: tests sometimes
