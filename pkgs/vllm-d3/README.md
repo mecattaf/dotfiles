@@ -141,4 +141,68 @@ device mounts: Torch 2.14, all patched D3 classes, and libstrix's 48 registered
 kernels loaded successfully. This checks the extension ABI and service setup;
 it does not establish GPU answer parity or speed.
 
+Local qualification, 2026-11-01
+-------------------------------
+
+The full official Ultra BF16 loan ran successfully on strix-coordinator's
+gfx1151, both with stock kernels and the selected libstrix kernels. Each used
+the same pinned image, patches, model, 4,096-token limit, eager mode, one
+sequence, 0.65 GPU allocation fraction and three typed questions per request.
+Both workers ran through `runtime-test --allow-gpu /dev/dri/renderD128`, inside
+a separate DynamicUser systemd unit with the experimental namespace and cache
+exceptions above, a 96 GiB cgroup limit, no swap and the 12 GiB host reserve.
+Gufo was stopped only for the coordinated experiment and restored ready after
+both workers exited. The production native route remains the default.
+
+| Fixture (three questions) | Native median | Stock median | libstrix median |
+|---|---:|---:|---:|
+| Code | 0.979 s | 1.593 s | 1.476 s |
+| Billing JSON | 1.009 s | 1.627 s | 1.486 s |
+| Longer summary | 4.964 s | 8.854 s | 7.734 s |
+
+All three runs had zero probability drift across their three repeats. Neither
+stock variant changed an argmax versus native on these synthetic fixtures.
+Maximum absolute probability differences were 0.006314 native-to-stock,
+0.008617 stock-to-libstrix and 0.003214 native-to-libstrix. This is numerical
+closeness on a small fixture, not bit-exact parity or a quality benchmark.
+libstrix reduced the stock median latency by 7.4–12.6%; native remained faster
+in every fixture. Native shares the state across questions; stock repeats its
+prefills. Native also uses a different Torch/ROCm and attention implementation,
+so this comparison does not isolate one kernel's contribution.
+
+The libstrix log confirmed dispatch into its causal convolution, post-conv
+preparation and row-sliced GEMM. The causal full-attention substitutions and
+the unqualified dense-W8 path stayed off. Initial readiness took approximately
+173 s for stock and 127 s for libstrix, including imports, 50.04 GiB model
+allocation and multimodal profiling. First code requests took 2.882/2.539 s;
+the table gives medians of three requests, including those first requests.
+This stock qualification covers text Choice/Noul/Score with three questions;
+it makes no GPU single-question, Box, Track or media-parity claim.
+
+The first startup attempt failed before loading weights because the private
+cache was `noexec`, despite `MemoryDenyWriteExecute=false`. Its error was
+`hip_utils...so: failed to map segment from shared object`. The isolated CPU
+probe and scoped `ExecPaths` correction above resolved it; the next complete
+baseline and libstrix runs stopped with `Result=success`. A redundant stop of
+an already unloaded transient unit made the external controller return 1
+after its successful comparison; both model workers were reaped and Gufo's
+restored `/ready` was independently verified. The receipt retains these
+distinct outcomes without copying large journals.
+
+Raw synthetic responses, timing samples, request SHA256 values and the compact
+receipt live in
+[`tests/d3-vllm-experiment/results/2026-11-01`](../../tests/d3-vllm-experiment/results/2026-11-01).
+Regenerate the comparison from the repository root:
+
+```sh
+python3 tests/d3-vllm-experiment/compare.py \
+  --native tests/d3-vllm-experiment/results/2026-11-01/native.json \
+  --baseline tests/d3-vllm-experiment/results/2026-11-01/baseline.json \
+  --libstrix tests/d3-vllm-experiment/results/2026-11-01/libstrix.json \
+  --output /tmp/d3-vllm-comparison.json
+```
+
+The helper refuses mismatched workload/repeat/request SHA tuples and reports
+probability, confidence, expected Score, decision and latency differences.
+
 No NPU or FastFlowLM path is part of this package.

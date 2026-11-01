@@ -1,0 +1,190 @@
+{
+  "provenance": {
+    "native": "Root source 79e92cdf; model52ba9e7a00402f9560c7fba8c039608e7ddee7fb; native semantic-router62c4f39; Torch2.11.0+ROCm7.15; lifecycle launcher bg8gss; hardened isolated systemd/llama-swap; no deployment",
+    "baseline": "Patched stock vLLM source9daf294c; Ultra52ba9e7; image6ac2fe8b; Torch2.14.0+rocm10.1.0 hip7.16.26385; baseline; causal libstrix attention swaps disabled; 4096 tokens; BF16 eager; isolated systemd and GPU runtime wrapper",
+    "libstrix": "Patched stock vLLM source9daf294c; Ultra52ba9e7; image6ac2fe8b; Torch2.14.0+rocm10.1.0 hip7.16.26385; libstrix; causal libstrix attention swaps disabled; 4096 tokens; BF16 eager; isolated systemd and GPU runtime wrapper"
+  },
+  "native_to_stock": {
+    "matched_requests": 9,
+    "argmax_changes": [],
+    "maximum_absolute_probability_delta": 0.0063139939907680825,
+    "median_absolute_probability_delta": 4.038509772702259e-05,
+    "maximum_absolute_confidence_delta": 0.008316867775292391,
+    "maximum_absolute_expected_score_delta": 0.005457653182364242,
+    "latency": {
+      "code": {
+        "reference_median_seconds": 0.978732594056055,
+        "candidate_median_seconds": 1.5930198590504006,
+        "candidate_over_reference": 1.627635442739903
+      },
+      "billing": {
+        "reference_median_seconds": 1.008792466018349,
+        "candidate_median_seconds": 1.627231282996945,
+        "candidate_over_reference": 1.6130486079258124
+      },
+      "long-summary": {
+        "reference_median_seconds": 4.964314676006325,
+        "candidate_median_seconds": 8.85396141698584,
+        "candidate_over_reference": 1.7835213911356331
+      }
+    },
+    "reference_repeat_summary": {
+      "code": {
+        "latency_median_seconds": 0.978732594056055,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      },
+      "billing": {
+        "latency_median_seconds": 1.008792466018349,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      },
+      "long-summary": {
+        "latency_median_seconds": 4.964314676006325,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      }
+    },
+    "candidate_repeat_summary": {
+      "code": {
+        "latency_median_seconds": 1.5930198590504006,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      },
+      "billing": {
+        "latency_median_seconds": 1.627231282996945,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      },
+      "long-summary": {
+        "latency_median_seconds": 8.85396141698584,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      }
+    }
+  },
+  "stock_to_libstrix": {
+    "matched_requests": 9,
+    "argmax_changes": [],
+    "maximum_absolute_probability_delta": 0.008616913084068256,
+    "median_absolute_probability_delta": 8.501109434703443e-05,
+    "maximum_absolute_confidence_delta": 0.012513995936701994,
+    "maximum_absolute_expected_score_delta": 0.008891162210335257,
+    "latency": {
+      "code": {
+        "reference_median_seconds": 1.5930198590504006,
+        "candidate_median_seconds": 1.4759066849946976,
+        "candidate_over_reference": 0.9264835442004382
+      },
+      "billing": {
+        "reference_median_seconds": 1.627231282996945,
+        "candidate_median_seconds": 1.4861016140785068,
+        "candidate_over_reference": 0.913270061611332
+      },
+      "long-summary": {
+        "reference_median_seconds": 8.85396141698584,
+        "candidate_median_seconds": 7.734044336015359,
+        "candidate_over_reference": 0.8735123151969036
+      }
+    },
+    "reference_repeat_summary": {
+      "code": {
+        "latency_median_seconds": 1.5930198590504006,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      },
+      "billing": {
+        "latency_median_seconds": 1.627231282996945,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      },
+      "long-summary": {
+        "latency_median_seconds": 8.85396141698584,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      }
+    },
+    "candidate_repeat_summary": {
+      "code": {
+        "latency_median_seconds": 1.4759066849946976,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      },
+      "billing": {
+        "latency_median_seconds": 1.4861016140785068,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      },
+      "long-summary": {
+        "latency_median_seconds": 7.734044336015359,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      }
+    }
+  },
+  "native_to_libstrix": {
+    "matched_requests": 9,
+    "argmax_changes": [],
+    "maximum_absolute_probability_delta": 0.003214335372462407,
+    "median_absolute_probability_delta": 0.00031703291650239337,
+    "maximum_absolute_confidence_delta": 0.004197128161409602,
+    "maximum_absolute_expected_score_delta": 0.0034335090279710156,
+    "latency": {
+      "code": {
+        "reference_median_seconds": 0.978732594056055,
+        "candidate_median_seconds": 1.4759066849946976,
+        "candidate_over_reference": 1.5079774536559145
+      },
+      "billing": {
+        "reference_median_seconds": 1.008792466018349,
+        "candidate_median_seconds": 1.4861016140785068,
+        "candidate_over_reference": 1.47314900154248
+      },
+      "long-summary": {
+        "reference_median_seconds": 4.964314676006325,
+        "candidate_median_seconds": 7.734044336015359,
+        "candidate_over_reference": 1.5579278995740893
+      }
+    },
+    "reference_repeat_summary": {
+      "code": {
+        "latency_median_seconds": 0.978732594056055,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      },
+      "billing": {
+        "latency_median_seconds": 1.008792466018349,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      },
+      "long-summary": {
+        "latency_median_seconds": 4.964314676006325,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      }
+    },
+    "candidate_repeat_summary": {
+      "code": {
+        "latency_median_seconds": 1.4759066849946976,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      },
+      "billing": {
+        "latency_median_seconds": 1.4861016140785068,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      },
+      "long-summary": {
+        "latency_median_seconds": 7.734044336015359,
+        "max_probability_drift": 0.0,
+        "argmax_stable": true
+      }
+    }
+  },
+  "limits": [
+    "Three typed text questions per request; no multimodal or single-question calibration claim.",
+    "Native shares state across questions; stock repeats its prefills.",
+    "The two runtimes use different Torch/ROCm and attention implementations.",
+    "This is a small appliance qualification, not a model-quality benchmark."
+  ]
+}

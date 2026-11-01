@@ -1,0 +1,161 @@
+{
+  "schema": "d3-vllm-hardware-qualification/1",
+  "date": "2026-11-01",
+  "host": "strix-coordinator",
+  "gpu": "gfx1151",
+  "render_node": "/dev/dri/renderD128",
+  "model": "vllm-sr/d3-ultra",
+  "revision": "52ba9e7a00402f9560c7fba8c039608e7ddee7fb",
+  "dtype": "bfloat16",
+  "model_loan": "/var/lib/local-models/d3-ultra-bf16",
+  "image_digest": "sha256:6ac2fe8bcf1eeed25bd8ed2d7129890f74e7a3066954d51e83ce99f0c4c6514a",
+  "patched_source_commit": "9daf294c",
+  "scoped_cache_fix_commit": "7c451e55",
+  "launcher": "/nix/store/fnw33qnppxd11jc1vigpnpdpkq62bmar-d3-vllm-experiment/bin/d3-vllm-experiment",
+  "versions": {
+    "vllm": "0.32.1rc0+strix.gefdfdf954b",
+    "torch": "2.14.0+rocm10.1.0",
+    "torch_version_hip": "7.16.26385",
+    "python": "3.14",
+    "native_reference_torch": "2.11.0+rocm7.15.0a20260719"
+  },
+  "common": {
+    "max_model_len": 4096,
+    "max_num_seqs": 1,
+    "max_num_batched_tokens": 4096,
+    "gpu_memory_utilization": 0.65,
+    "eager": true,
+    "prefix_caching": false,
+    "chunked_prefill": false,
+    "attention_backend": "TRITON_ATTN",
+    "VLLM_USE_V2_MODEL_RUNNER": 1,
+    "model_gpu_allocation_gib": 50.04,
+    "questions_per_request": 3,
+    "requests_per_variant": 9,
+    "unique_states": 3
+  },
+  "unit": {
+    "DynamicUser": true,
+    "ProtectSystem": "strict",
+    "ProtectHome": true,
+    "PrivateTmp": true,
+    "NoNewPrivileges": true,
+    "RestrictNamespaces": [
+      "user",
+      "pid",
+      "ipc",
+      "uts",
+      "mnt"
+    ],
+    "MemoryDenyWriteExecute": false,
+    "ExecPaths": [
+      "/var/cache/d3-stock-qualification-20261101"
+    ],
+    "MemoryMax": "96G",
+    "MemoryHigh": "92G",
+    "MemorySwapMax": 0,
+    "OOMPolicy": "stop",
+    "KillMode": "control-group",
+    "TimeoutStopSec": 30,
+    "RuntimeMaxSec": "20min",
+    "Restart": "no",
+    "host_memory_reserve_gib": 12,
+    "actual_worker_inside_runtime_test": true,
+    "selected_devices_only": [
+      "/dev/kfd",
+      "/dev/dri/renderD128"
+    ]
+  },
+  "baseline": {
+    "STRIX_DISABLE": "all",
+    "readiness_seconds_approximate": 173,
+    "before_stop": {
+      "ActiveState": "active",
+      "MainPID": "3852885",
+      "Result": "success",
+      "MemoryCurrent": "18972229632",
+      "MemoryPeak": "46346260480",
+      "CPUUsageNSec": "249829646000",
+      "IOReadBytes": "39804424192",
+      "IOWriteBytes": "106041344"
+    },
+    "stopped": {
+      "ActiveState": "inactive",
+      "MainPID": "0",
+      "Result": "success",
+      "MemoryCurrent": "[not set]",
+      "MemoryPeak": "[not set]",
+      "CPUUsageNSec": "[not set]",
+      "IOReadBytes": "[not set]",
+      "IOWriteBytes": "[not set]"
+    }
+  },
+  "libstrix": {
+    "STRIX_DISABLE": "attn_prefill,attn_decode",
+    "STRIX_ENABLE": "",
+    "readiness_seconds_approximate": 127,
+    "observed_dispatch": [
+      "causal_conv1d_fn -> strix",
+      "fused_post_conv_prep -> strix",
+      "row-sliced GEMM K=17408"
+    ],
+    "dense_w8": "off (architecture gate)",
+    "before_stop": {
+      "ActiveState": "active",
+      "MainPID": "3870126",
+      "Result": "success",
+      "MemoryCurrent": "18257424384",
+      "MemoryPeak": "48095686656",
+      "CPUUsageNSec": "195866321000",
+      "IOReadBytes": "40799223808",
+      "IOWriteBytes": "39178240"
+    },
+    "stopped": {
+      "ActiveState": "inactive",
+      "MainPID": "0",
+      "Result": "success",
+      "MemoryCurrent": "[not set]",
+      "MemoryPeak": "[not set]",
+      "CPUUsageNSec": "[not set]",
+      "IOReadBytes": "[not set]",
+      "IOWriteBytes": "[not set]"
+    }
+  },
+  "first_attempt": {
+    "result": "exit-code",
+    "exit_status": 1,
+    "before_model_weights": true,
+    "peak_memory_bytes": 3857858560,
+    "reason": "Triton hip_utils .so failed to map segment from shared object; systemd DynamicUser CacheDirectory noexec",
+    "gpu_fault_observed": false,
+    "cache_cpu_probe": {
+      "noexec_cache_cdll": "failed",
+      "tmp_cdll": "passed",
+      "scoped_ExecPaths_cache_cdll": "passed"
+    }
+  },
+  "controller": {
+    "exit_status": 1,
+    "reason": "redundant stop of successfully stopped/unloaded transient unit; workers themselves both Result=success",
+    "workers_reaped": true,
+    "gufo_restored": {
+      "ActiveState": "active",
+      "SubState": "running",
+      "MainPID": "3887510",
+      "Result": "success",
+      "ExecMainStartTimestamp": "Sun 2026-11-01 22:40:46 CET"
+    },
+    "gufo_ready": {
+      "status": "ready",
+      "model": "qwen3.8-flash-next"
+    },
+    "ready_independently_rechecked": true
+  },
+  "limits": [
+    "Synthetic text-only Choice/Noul/Score,3 questions/request;9 requests represent3 unique states repeated3 times.",
+    "No GPU single-question temperature/media/Box/Track qualification for stock variant.",
+    "Different native/stock Torch/ROCm and attention implementations; not a kernel-isolated test.",
+    "No model-quality conclusion or universal probability acceptance threshold.",
+    "Final telemetry-disable wrapper commit01e0d94f changes no numerical source but was not this GPU-tested executable."
+  ]
+}

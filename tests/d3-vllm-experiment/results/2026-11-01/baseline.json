@@ -1,0 +1,716 @@
+{
+  "created": "2026-11-01T21:37:22.667101+00:00",
+  "python": "3.14.6",
+  "model": "d3-ultra",
+  "base_url": "http://127.0.0.1:8734",
+  "provenance": "Patched stock vLLM source9daf294c; Ultra52ba9e7; image6ac2fe8b; Torch2.14.0+rocm10.1.0 hip7.16.26385; baseline; causal libstrix attention swaps disabled; 4096 tokens; BF16 eager; isolated systemd and GPU runtime wrapper",
+  "before": {
+    "MemTotalKiB": 131156864,
+    "MemAvailableKiB": 35287088,
+    "SwapFreeKiB": 8339968
+  },
+  "requests": [
+    {
+      "workload": "code",
+      "repeat": 0,
+      "request_sha256": "44bb490b51c5fdca4ae8f7b45e94595fa7537896b17beeeb7948b5e2fc8cc50d",
+      "latency_seconds": 2.882067379076034,
+      "before": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 35287088,
+        "SwapFreeKiB": 8339968
+      },
+      "after": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 35055032,
+        "SwapFreeKiB": 8339968
+      },
+      "response": {
+        "id": "decision-8fa8dfeab5fbc203",
+        "object": "structured_decision",
+        "created": 1793569045,
+        "model": "d3-ultra",
+        "answers": {
+          "kind": {
+            "type": "choice",
+            "choice": "code",
+            "probabilities": {
+              "code": 0.9999999289701907,
+              "billing": 2.834467065388842e-08,
+              "summary": 4.2685138557323425e-08
+            },
+            "confidence": 0.999999893455286
+          },
+          "reasoning": {
+            "type": "noul",
+            "noul": 0.9649290052159156
+          },
+          "difficulty": {
+            "type": "score",
+            "score": 0.9969409168870486,
+            "legend": {
+              "0": "Trivial",
+              "1": "Moderate",
+              "2": "Hard"
+            },
+            "probabilities": {
+              "0": 0.0036657138060263504,
+              "1": 0.9957276555008987,
+              "2": 0.0006066306930749401
+            },
+            "confidence": 0.993591483251348
+          }
+        },
+        "usage": {
+          "input_tokens": 598,
+          "output_tokens": 0
+        },
+        "diagnostics": {
+          "kind": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "reasoning": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "difficulty": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          }
+        },
+        "joint": null
+      }
+    },
+    {
+      "workload": "code",
+      "repeat": 1,
+      "request_sha256": "44bb490b51c5fdca4ae8f7b45e94595fa7537896b17beeeb7948b5e2fc8cc50d",
+      "latency_seconds": 1.5930198590504006,
+      "before": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 35055032,
+        "SwapFreeKiB": 8339968
+      },
+      "after": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34691724,
+        "SwapFreeKiB": 8339968
+      },
+      "response": {
+        "id": "decision-8706011eb292b692",
+        "object": "structured_decision",
+        "created": 1793569047,
+        "model": "d3-ultra",
+        "answers": {
+          "kind": {
+            "type": "choice",
+            "choice": "code",
+            "probabilities": {
+              "code": 0.9999999289701907,
+              "billing": 2.834467065388842e-08,
+              "summary": 4.2685138557323425e-08
+            },
+            "confidence": 0.999999893455286
+          },
+          "reasoning": {
+            "type": "noul",
+            "noul": 0.9649290052159156
+          },
+          "difficulty": {
+            "type": "score",
+            "score": 0.9969409168870486,
+            "legend": {
+              "0": "Trivial",
+              "1": "Moderate",
+              "2": "Hard"
+            },
+            "probabilities": {
+              "0": 0.0036657138060263504,
+              "1": 0.9957276555008987,
+              "2": 0.0006066306930749401
+            },
+            "confidence": 0.993591483251348
+          }
+        },
+        "usage": {
+          "input_tokens": 598,
+          "output_tokens": 0
+        },
+        "diagnostics": {
+          "kind": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "reasoning": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "difficulty": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          }
+        },
+        "joint": null
+      }
+    },
+    {
+      "workload": "code",
+      "repeat": 2,
+      "request_sha256": "44bb490b51c5fdca4ae8f7b45e94595fa7537896b17beeeb7948b5e2fc8cc50d",
+      "latency_seconds": 1.579720038920641,
+      "before": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34691724,
+        "SwapFreeKiB": 8339968
+      },
+      "after": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34554344,
+        "SwapFreeKiB": 8339968
+      },
+      "response": {
+        "id": "decision-addb5a075d5b726a",
+        "object": "structured_decision",
+        "created": 1793569048,
+        "model": "d3-ultra",
+        "answers": {
+          "kind": {
+            "type": "choice",
+            "choice": "code",
+            "probabilities": {
+              "code": 0.9999999289701907,
+              "billing": 2.834467065388842e-08,
+              "summary": 4.2685138557323425e-08
+            },
+            "confidence": 0.999999893455286
+          },
+          "reasoning": {
+            "type": "noul",
+            "noul": 0.9649290052159156
+          },
+          "difficulty": {
+            "type": "score",
+            "score": 0.9969409168870486,
+            "legend": {
+              "0": "Trivial",
+              "1": "Moderate",
+              "2": "Hard"
+            },
+            "probabilities": {
+              "0": 0.0036657138060263504,
+              "1": 0.9957276555008987,
+              "2": 0.0006066306930749401
+            },
+            "confidence": 0.993591483251348
+          }
+        },
+        "usage": {
+          "input_tokens": 598,
+          "output_tokens": 0
+        },
+        "diagnostics": {
+          "kind": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "reasoning": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "difficulty": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          }
+        },
+        "joint": null
+      }
+    },
+    {
+      "workload": "billing",
+      "repeat": 0,
+      "request_sha256": "4639d698d94fb30e49fc84196dd969a8f1bf0828b964b92dd8d986be4ed24ca5",
+      "latency_seconds": 1.6505949940765277,
+      "before": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34554344,
+        "SwapFreeKiB": 8339968
+      },
+      "after": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34458936,
+        "SwapFreeKiB": 8339968
+      },
+      "response": {
+        "id": "decision-975cf171c9f9648c",
+        "object": "structured_decision",
+        "created": 1793569050,
+        "model": "d3-ultra",
+        "answers": {
+          "kind": {
+            "type": "choice",
+            "choice": "billing",
+            "probabilities": {
+              "code": 6.976194682266142e-07,
+              "billing": 0.9999989346683381,
+              "summary": 3.677121936315321e-07
+            },
+            "confidence": 0.999998402002507
+          },
+          "reasoning": {
+            "type": "noul",
+            "noul": 0.09877793712841211
+          },
+          "difficulty": {
+            "type": "score",
+            "score": 0.5266947105590685,
+            "legend": {
+              "0": "Trivial",
+              "1": "Moderate",
+              "2": "Hard"
+            },
+            "probabilities": {
+              "0": 0.47887070074777427,
+              "1": 0.5155638879453829,
+              "2": 0.00556541130684281
+            },
+            "confidence": 0.2733458319180744
+          }
+        },
+        "usage": {
+          "input_tokens": 628,
+          "output_tokens": 0
+        },
+        "diagnostics": {
+          "kind": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "reasoning": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "difficulty": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          }
+        },
+        "joint": null
+      }
+    },
+    {
+      "workload": "billing",
+      "repeat": 1,
+      "request_sha256": "4639d698d94fb30e49fc84196dd969a8f1bf0828b964b92dd8d986be4ed24ca5",
+      "latency_seconds": 1.627231282996945,
+      "before": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34458936,
+        "SwapFreeKiB": 8339968
+      },
+      "after": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34587424,
+        "SwapFreeKiB": 8339968
+      },
+      "response": {
+        "id": "decision-9cf50c80b53070f0",
+        "object": "structured_decision",
+        "created": 1793569052,
+        "model": "d3-ultra",
+        "answers": {
+          "kind": {
+            "type": "choice",
+            "choice": "billing",
+            "probabilities": {
+              "code": 6.976194682266142e-07,
+              "billing": 0.9999989346683381,
+              "summary": 3.677121936315321e-07
+            },
+            "confidence": 0.999998402002507
+          },
+          "reasoning": {
+            "type": "noul",
+            "noul": 0.09877793712841211
+          },
+          "difficulty": {
+            "type": "score",
+            "score": 0.5266947105590685,
+            "legend": {
+              "0": "Trivial",
+              "1": "Moderate",
+              "2": "Hard"
+            },
+            "probabilities": {
+              "0": 0.47887070074777427,
+              "1": 0.5155638879453829,
+              "2": 0.00556541130684281
+            },
+            "confidence": 0.2733458319180744
+          }
+        },
+        "usage": {
+          "input_tokens": 628,
+          "output_tokens": 0
+        },
+        "diagnostics": {
+          "kind": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "reasoning": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "difficulty": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          }
+        },
+        "joint": null
+      }
+    },
+    {
+      "workload": "billing",
+      "repeat": 2,
+      "request_sha256": "4639d698d94fb30e49fc84196dd969a8f1bf0828b964b92dd8d986be4ed24ca5",
+      "latency_seconds": 1.48190939205233,
+      "before": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34587424,
+        "SwapFreeKiB": 8339968
+      },
+      "after": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34593248,
+        "SwapFreeKiB": 8339968
+      },
+      "response": {
+        "id": "decision-9bbb1e6a2643506f",
+        "object": "structured_decision",
+        "created": 1793569053,
+        "model": "d3-ultra",
+        "answers": {
+          "kind": {
+            "type": "choice",
+            "choice": "billing",
+            "probabilities": {
+              "code": 6.976194682266142e-07,
+              "billing": 0.9999989346683381,
+              "summary": 3.677121936315321e-07
+            },
+            "confidence": 0.999998402002507
+          },
+          "reasoning": {
+            "type": "noul",
+            "noul": 0.09877793712841211
+          },
+          "difficulty": {
+            "type": "score",
+            "score": 0.5266947105590685,
+            "legend": {
+              "0": "Trivial",
+              "1": "Moderate",
+              "2": "Hard"
+            },
+            "probabilities": {
+              "0": 0.47887070074777427,
+              "1": 0.5155638879453829,
+              "2": 0.00556541130684281
+            },
+            "confidence": 0.2733458319180744
+          }
+        },
+        "usage": {
+          "input_tokens": 628,
+          "output_tokens": 0
+        },
+        "diagnostics": {
+          "kind": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "reasoning": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "difficulty": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          }
+        },
+        "joint": null
+      }
+    },
+    {
+      "workload": "long-summary",
+      "repeat": 0,
+      "request_sha256": "6789f5a828d3ffa9ec85e15241de5960cc7118fb571a9128cc9e1f00c6c101af",
+      "latency_seconds": 8.85396141698584,
+      "before": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34593248,
+        "SwapFreeKiB": 8339968
+      },
+      "after": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34127088,
+        "SwapFreeKiB": 8339972
+      },
+      "response": {
+        "id": "decision-b045fd317c6c6a8d",
+        "object": "structured_decision",
+        "created": 1793569062,
+        "model": "d3-ultra",
+        "answers": {
+          "kind": {
+            "type": "choice",
+            "choice": "summary",
+            "probabilities": {
+              "code": 0.00012608559213791776,
+              "billing": 3.6677331993742107e-07,
+              "summary": 0.9998735476345422
+            },
+            "confidence": 0.9998103214518133
+          },
+          "reasoning": {
+            "type": "noul",
+            "noul": 0.012553299179980664
+          },
+          "difficulty": {
+            "type": "score",
+            "score": 0.021867660575256413,
+            "legend": {
+              "0": "Trivial",
+              "1": "Moderate",
+              "2": "Hard"
+            },
+            "probabilities": {
+              "0": 0.9789018637312418,
+              "1": 0.020328611962260115,
+              "2": 0.0007695243064981489
+            },
+            "confidence": 0.9671985091371154
+          }
+        },
+        "usage": {
+          "input_tokens": 4606,
+          "output_tokens": 0
+        },
+        "diagnostics": {
+          "kind": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "reasoning": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "difficulty": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          }
+        },
+        "joint": null
+      }
+    },
+    {
+      "workload": "long-summary",
+      "repeat": 1,
+      "request_sha256": "6789f5a828d3ffa9ec85e15241de5960cc7118fb571a9128cc9e1f00c6c101af",
+      "latency_seconds": 8.900759048992768,
+      "before": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34127088,
+        "SwapFreeKiB": 8339972
+      },
+      "after": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 33283560,
+        "SwapFreeKiB": 8339972
+      },
+      "response": {
+        "id": "decision-bc4eb15b2280654c",
+        "object": "structured_decision",
+        "created": 1793569071,
+        "model": "d3-ultra",
+        "answers": {
+          "kind": {
+            "type": "choice",
+            "choice": "summary",
+            "probabilities": {
+              "code": 0.00012608559213791776,
+              "billing": 3.6677331993742107e-07,
+              "summary": 0.9998735476345422
+            },
+            "confidence": 0.9998103214518133
+          },
+          "reasoning": {
+            "type": "noul",
+            "noul": 0.012553299179980664
+          },
+          "difficulty": {
+            "type": "score",
+            "score": 0.021867660575256413,
+            "legend": {
+              "0": "Trivial",
+              "1": "Moderate",
+              "2": "Hard"
+            },
+            "probabilities": {
+              "0": 0.9789018637312418,
+              "1": 0.020328611962260115,
+              "2": 0.0007695243064981489
+            },
+            "confidence": 0.9671985091371154
+          }
+        },
+        "usage": {
+          "input_tokens": 4606,
+          "output_tokens": 0
+        },
+        "diagnostics": {
+          "kind": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "reasoning": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "difficulty": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          }
+        },
+        "joint": null
+      }
+    },
+    {
+      "workload": "long-summary",
+      "repeat": 2,
+      "request_sha256": "6789f5a828d3ffa9ec85e15241de5960cc7118fb571a9128cc9e1f00c6c101af",
+      "latency_seconds": 8.805592768010683,
+      "before": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 33283560,
+        "SwapFreeKiB": 8339972
+      },
+      "after": {
+        "MemTotalKiB": 131156864,
+        "MemAvailableKiB": 34671028,
+        "SwapFreeKiB": 8339972
+      },
+      "response": {
+        "id": "decision-a0af9058660f942a",
+        "object": "structured_decision",
+        "created": 1793569080,
+        "model": "d3-ultra",
+        "answers": {
+          "kind": {
+            "type": "choice",
+            "choice": "summary",
+            "probabilities": {
+              "code": 0.00012608559213791776,
+              "billing": 3.6677331993742107e-07,
+              "summary": 0.9998735476345422
+            },
+            "confidence": 0.9998103214518133
+          },
+          "reasoning": {
+            "type": "noul",
+            "noul": 0.012553299179980664
+          },
+          "difficulty": {
+            "type": "score",
+            "score": 0.021867660575256413,
+            "legend": {
+              "0": "Trivial",
+              "1": "Moderate",
+              "2": "Hard"
+            },
+            "probabilities": {
+              "0": 0.9789018637312418,
+              "1": 0.020328611962260115,
+              "2": 0.0007695243064981489
+            },
+            "confidence": 0.9671985091371154
+          }
+        },
+        "usage": {
+          "input_tokens": 4606,
+          "output_tokens": 0
+        },
+        "diagnostics": {
+          "kind": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "reasoning": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          },
+          "difficulty": {
+            "label_mass": 1.0,
+            "argmax_is_label": true
+          }
+        },
+        "joint": null
+      }
+    }
+  ],
+  "summary": {
+    "code": {
+      "latency_median_seconds": 1.5930198590504006,
+      "max_probability_drift": 0.0,
+      "argmax_stable": true
+    },
+    "billing": {
+      "latency_median_seconds": 1.627231282996945,
+      "max_probability_drift": 0.0,
+      "argmax_stable": true
+    },
+    "long-summary": {
+      "latency_median_seconds": 8.85396141698584,
+      "max_probability_drift": 0.0,
+      "argmax_stable": true
+    }
+  },
+  "model_card": {
+    "object": "list",
+    "data": [
+      {
+        "id": "d3-ultra",
+        "object": "model",
+        "created": 1793569042,
+        "owned_by": "vllm",
+        "root": "/models/d3-ultra",
+        "parent": null,
+        "max_model_len": 4096,
+        "permission": [
+          {
+            "id": "modelperm-9df1f021e31ab211",
+            "object": "model_permission",
+            "created": 1793569042,
+            "allow_create_engine": false,
+            "allow_sampling": true,
+            "allow_logprobs": true,
+            "allow_search_indices": false,
+            "allow_view": true,
+            "allow_fine_tuning": false,
+            "organization": "*",
+            "group": null,
+            "is_blocking": false
+          }
+        ]
+      }
+    ]
+  },
+  "model_readiness_seconds": 0.009908888954669237,
+  "after": {
+    "MemTotalKiB": 131156864,
+    "MemAvailableKiB": 34671028,
+    "SwapFreeKiB": 8339972
+  },
+  "all_argmax_stable": true
+}
