@@ -37,14 +37,6 @@ print("rendered")
 
 
 class RemoteRenderTests(unittest.TestCase):
-    def test_dormant_worker_is_rejected_before_ssh(self):
-        with tempfile.TemporaryDirectory() as raw, \
-             mock.patch.dict(os.environ, {"PAPER_RENDER_HOST": "strix-worker"}), \
-             mock.patch.object(bridge, "exchange") as exchange:
-            with self.assertRaisesRegex(ValueError, "dormant"):
-                self.client(Path(raw), self.response())
-            exchange.assert_not_called()
-
     def response(self, **changes):
         pdf = b"%PDF-1.7\nexample\n"
         response = {"version": 1, "returncode": 0,
@@ -112,6 +104,18 @@ class RemoteRenderTests(unittest.TestCase):
             with (mock.patch.object(bridge, "exchange", return_value=(255, b"", b"unreachable")),
                   self.assertRaisesRegex(ValueError, "exited 255")):
                 bridge.client(args)
+            self.assertFalse(args.output_dir.exists())
+
+    def test_dormant_worker_is_rejected_before_ssh(self):
+        with tempfile.TemporaryDirectory() as raw:
+            args = bridge.parser().parse_args([str(Path(raw) / "source.md"),
+                                              "--output-dir", str(Path(raw) / "job")])
+            args.input.write_text("# Brief\n")
+            with (mock.patch.dict(os.environ, {"PAPER_RENDER_HOST": "strix-worker"}),
+                  mock.patch.object(bridge, "exchange") as exchange,
+                  self.assertRaisesRegex(ValueError, "dormant")):
+                bridge.client(args)
+            exchange.assert_not_called()
             self.assertFalse(args.output_dir.exists())
 
     def test_exchange_stops_unbounded_output(self):

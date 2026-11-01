@@ -6,8 +6,7 @@
     "url": null,
     "model": "qwen3.8-flash-next",
     "execution_host": "nas",
-    "compute_host": "strix-coordinator",
-    "tally_pool": "strix-gpu"
+    "compute_host": "strix-coordinator"
   },
   "limits": {
     "commit_log": 80,
@@ -45,12 +44,8 @@
       {
         "name": "strix-worker",
         "hardware": "AMD Strix Halo, 128 GiB unified RAM (verify at install)",
-        "policy": "wired LAN only; no operator credentials or tailnet",
-        "roles": [
-          "compute",
-          "Gufo",
-          "Qwen TTS"
-        ]
+        "policy": "dormant until the replacement Strix Halo arrives; no builders or inference traffic",
+        "roles": []
       },
       {
         "name": "nas",
@@ -71,7 +66,7 @@
         ]
       }
     ],
-    "runtime_policy": "Every automated local LLM call goes through the local model server on Strix (the endpoint in lib/local-model.nix), serving qwen3.8-flash-next; the alternate (qwen3.8-27b) is operator-switched only. DeepSeek V4.1 Flash runs on ds4 (modules/ds4.nix, strix-worker :8732), hand-started and never called by automation.",
+    "runtime_policy": "Every automated local LLM call goes to Gufo on strix-coordinator (lib/local-model.nix), serving qwen3.8-flash-next. The qwen3.8-27b alternate is operator-switched only. strix-worker is dormant; no automation routes there. DSH is an agent harness, independent of the utility HTTP seam.",
     "change_policy": "The monthly workflow proposes catalog and source-pin changes only. It never downloads, installs, removes, or activates models."
   },
   "model_selection_policy": {
@@ -83,7 +78,6 @@
     "ccusage",
     "ck",
     "claude-agent-acp",
-    "qmd",
     "codex",
     "spec-kit"
   ],

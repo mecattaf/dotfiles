@@ -141,6 +141,23 @@ conflict with the proxy; they have no boot target. See `docs/gufo-demand.md`.
 Immich ML also runs on Strix; its socket starts it on demand with a 15-minute
 idle shutdown.
 
+**D3-Ultra (Tom, 2026-11-01).** D3 is a separate decision engine registered
+with the same llama-swap supervisor as Gufo, not a Gufo model. The BF16
+snapshot is pinned in `lib/decision-models.json`; acquire it on NAS and
+explicitly borrow it to strix-coordinator. `services.d3-decision` runs the
+native `vllm-srun` System One API under `/upstream/d3-ultra/v1/systemone`,
+sharing the default single-backend group and idle unloading. Builds and
+activation move no model bytes. See `docs/d3-decision-runtime.md` for the
+qualified runtime and the separate patched-vLLM/libstrix investigation.
+
+**DSH plugins (Tom, 2026-11-01).** Nix pins plugin packages and
+`programs.dsh.plugins` selects them by profile, following the existing nvim
+package/list pattern. Runtime state stays writable outside the store.
+`dsh mnemon` is the explicit Gufo-backed memory profile; normal profiles and
+Claude/Codex gain no hooks. Mnemon setup/update commands are not the install
+path. QMD was unused and is removed, with no ingestion or migration step.
+See `docs/dsh-mnemon.md`.
+
 **The NPU path is decommissioned — permanently, 2026-08-29.** FastFlowLM (`flm`)
 is no longer installed on any host, and the XDNA2 NPU is not an inference target
 on Strix. Strix boots with `amd_iommu=off`, which is by

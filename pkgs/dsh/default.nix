@@ -8,6 +8,21 @@
   writeText,
   llm-agents,
   dsh-plugins,
+  mnemon,
+  # As with nvim's plugin table: Nix delivers packages; this explicit list
+  # selects what each hand-run profile loads. No runtime installer.
+  profilePlugins ? {
+    herdr = [
+      "stderr-log"
+      "herdr-guard"
+      "dsh-herdr"
+      "jevcore"
+    ];
+    mnemon = [
+      "stderr-log"
+      "mnemon"
+    ];
+  },
   # Retired subscription: no fleet key is delivered. An explicit external
   # override may still supply a credential for another installation.
   qwenKeyFile ? null,
@@ -70,7 +85,13 @@ let
   };
 
   config = import ./config.nix {
-    inherit lib formats runner;
+    inherit
+      lib
+      formats
+      runner
+      mnemon
+      profilePlugins
+      ;
   };
   sessions = ./sessions.patch.yml;
 
@@ -82,29 +103,50 @@ let
   # load without it either way. The owned plugins carry a private npm scope:
   # dsh resolves a bundle name from its own installation before the profile,
   # so a generic name could one day be shadowed by a dependency of a bump.
-  nixProfiles = {
-    herdr = {
-      bundles = [
-        "@deepseek-ai/dsh-base"
-        "@deepseek-ai/dsh-headless"
-        "@mecattaf/stderr-log"
-        "@mecattaf/herdr-guard"
-        "@dsh-external/dsh-herdr-toolkit"
-        "jevcore-dsh"
-      ];
-      packages = {
-        "@mecattaf/stderr-log" = dsh-plugins.stderr-log;
-        "@mecattaf/herdr-guard" = dsh-plugins.herdr-guard;
-        "@dsh-external/dsh-herdr-toolkit" = dsh-plugins.dsh-herdr;
-        "jevcore-dsh" = dsh-plugins.jevcore;
-      };
-      patch = config.herdr;
-      # No herdr call outlives 10 minutes (an unbounded `pane wait-output`
-      # or `agent wait` included). DSH_HERDR_PREVIEW_REQUIRED stays unset: it
-      # is the model checking itself, not a human gate.
-      env.DSH_HERDR_CLI_TIMEOUT_MS = "600000";
-    };
+  pluginNames = {
+    stderr-log = "@mecattaf/stderr-log";
+    herdr-guard = "@mecattaf/herdr-guard";
+    dsh-herdr = "@dsh-external/dsh-herdr-toolkit";
+    jevcore = "jevcore-dsh";
+    mnemon = "dsh-mnemon";
   };
+  selectedPackages =
+    name:
+    builtins.listToAttrs (
+      map (plugin: {
+        name = pluginNames.${plugin};
+        value = dsh-plugins.${plugin};
+      }) (profilePlugins.${name} or [ ])
+    );
+  nixProfiles =
+    lib.mapAttrs
+      (
+        name: profile:
+        profile
+        // {
+          packages = selectedPackages name;
+          bundles = [
+            "@deepseek-ai/dsh-base"
+            "@deepseek-ai/dsh-headless"
+          ]
+          ++ map (plugin: pluginNames.${plugin}) (profilePlugins.${name} or [ ]);
+        }
+      )
+      {
+        herdr = {
+          patch = config.herdr;
+          # No herdr call outlives 10 minutes (an unbounded `pane wait-output`
+          # or `agent wait` included). DSH_HERDR_PREVIEW_REQUIRED stays unset: it
+          # is the model checking itself, not a human gate.
+          env.DSH_HERDR_CLI_TIMEOUT_MS = "600000";
+        };
+        mnemon = {
+          patch = config.mnemon;
+          # Gufo has no embeddings API. Keep the optional CLI probe local and
+          # independent of inherited cloud/embedding configuration.
+          env.MNEMON_EMBED_ENDPOINT = "http://127.0.0.1:11434";
+        };
+      };
   manifest =
     name: p:
     writeText "dsh-profile-${name}.json" (
@@ -139,6 +181,19 @@ let
   allowed = profiles ++ lib.attrNames nixProfiles;
   profileCase = lib.concatStringsSep " | " allowed;
 in
+assert lib.assertMsg (lib.all
+  (
+    name:
+    builtins.elem name [
+      "herdr"
+      "mnemon"
+    ]
+  )
+  (builtins.attrNames profilePlugins)
+) "DSH plugins can be selected only for the declared herdr and mnemon profiles";
+assert lib.assertMsg (
+  !(builtins.elem "mnemon" (profilePlugins.herdr or [ ]))
+) "Mnemon belongs in its dedicated profile, where the fleet memory policy is applied";
 writeShellApplication {
   name = "dsh";
   # bwrap on PATH for the model's own commands; the sandbox itself uses the
@@ -155,15 +210,18 @@ writeShellApplication {
       sessions
       qwenKeyFile
       nixProfiles
+      profilePlugins
       ;
     profiles = allowed;
     plugins = dsh-plugins;
+    mnemonPackage = mnemon;
     inherit (config)
       policy
       acp
       herdr
       herdrRows
       localProviders
+      mnemonRows
       smoke
       policyIds
       disabledIds

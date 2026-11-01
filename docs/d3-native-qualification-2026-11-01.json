@@ -1,0 +1,315 @@
+{
+  "date": "2026-11-01",
+  "host": "strix-coordinator",
+  "device": "AMD Radeon 8060S / gfx1151",
+  "scope": "Functional appliance qualification; not an accuracy benchmark, Jev evaluation or long-context qualification. No deployment was activated.",
+  "model": {
+    "repository": "vllm-sr/d3-ultra",
+    "revision": "52ba9e7a00402f9560c7fba8c039608e7ddee7fb",
+    "artifact": "d3-ultra-bf16",
+    "model_sha256": "9ee89147a8accca45747b3c03558a407f633b76f51bba7a4429d2714a0bab813",
+    "manifest_sha256": "b890afbbd6d4ffbfb30d23e4bb24d2e3da0cbf181dc9ee50999fe7f82e743dcd",
+    "loan_files": 36,
+    "loan_bytes": 52199363315,
+    "loan_mode": "0644; explicit verified NAS Library borrow; no startup downloads"
+  },
+  "runtime": {
+    "engine": "native vllm-srun",
+    "source_revision": "62c4f39e35aa2dfe929eb18223a7509ebeff6563",
+    "package": "/nix/store/jb75f5chhrqnvfd6ygmx3z8nqlywj8cd-python3.13-vllm-srun-0.2.0-unstable-2026-11-01",
+    "torch": "2.11.0+rocm7.15.0a20260719",
+    "triton": "3.7.1+git0263a6a6.rocm7.15.0a20260719",
+    "launcher": "/nix/store/bg8gssvam5vqqlp5hxk7md7bm4awji1q-d3-decision-start",
+    "dtype": "bfloat16",
+    "max_num_seqs": 1,
+    "max_num_batched_tokens": 4096,
+    "numerics": "approximate",
+    "golden": {
+      "status": "unverified",
+      "checked": 0,
+      "matched": 0,
+      "reference": null
+    }
+  },
+  "service": {
+    "supervisor": "llama-swap240",
+    "mode": "isolated real systemd transient proxy, default exclusive model group",
+    "native_path": "/upstream/d3-ultra/v1/systemone",
+    "hardening": [
+      "DynamicUser",
+      "PrivateUsers",
+      "PrivateIPC",
+      "PrivateTmp",
+      "ProtectHome",
+      "ProtectSystem=strict",
+      "RestrictNamespaces",
+      "SystemCallFilter=@system-service ~@privileged",
+      "MemoryDenyWriteExecute=false",
+      "private CacheDirectory",
+      "/run/user inaccessible"
+    ],
+    "memory_high": "96G",
+    "memory_max": "104G",
+    "runtime_host_reserve_gib": 12,
+    "lifecycle_helper_commit": "21935c91"
+  },
+  "readiness": {
+    "cold_process_seconds": 30.39372963597998,
+    "filesystem_cache": "warm after verified loan; not dropped",
+    "includes": "manifest verification, weight loading and native startup readiness"
+  },
+  "memory": {
+    "text_service_peak_bytes": 56911736832,
+    "text_service_peak_gib": 53.0031852722168,
+    "text_service_after_bytes": 45814677504,
+    "host_mem_available_before_kib": 127932064,
+    "host_mem_available_after_kib": 73515176,
+    "supplement_service_peak_bytes": 43576745984
+  },
+  "text": [
+    {
+      "name": "code",
+      "request_sha256": "44bb490b51c5fdca4ae8f7b45e94595fa7537896b17beeeb7948b5e2fc8cc50d",
+      "repeats": 3,
+      "questions_per_request": 3,
+      "input_tokens": 306,
+      "latency_median_seconds": 0.978732594056055,
+      "max_probability_drift": 0.0,
+      "argmax_stable": true,
+      "first_answers": {
+        "kind": {
+          "type": "choice",
+          "choice": "code",
+          "probabilities": {
+            "code": 0.999999924944538,
+            "billing": 2.990035017204969e-08,
+            "summary": 4.5155111813395094e-08
+          },
+          "confidence": 0.9999998874168069
+        },
+        "reasoning": {
+          "type": "noul",
+          "noul": 0.9649640213888434
+        },
+        "difficulty": {
+          "type": "score",
+          "score": 0.9971804715776926,
+          "probabilities": {
+            "0": 0.0033888515871768896,
+            "1": 0.9960418252479535,
+            "2": 0.0005693231648695933
+          },
+          "confidence": 0.9940627378719302,
+          "legend": {
+            "0": "Trivial",
+            "1": "Moderate",
+            "2": "Hard"
+          }
+        }
+      }
+    },
+    {
+      "name": "billing",
+      "request_sha256": "4639d698d94fb30e49fc84196dd969a8f1bf0828b964b92dd8d986be4ed24ca5",
+      "repeats": 3,
+      "questions_per_request": 3,
+      "input_tokens": 316,
+      "latency_median_seconds": 1.008792466018349,
+      "max_probability_drift": 0.0,
+      "argmax_stable": true,
+      "first_answers": {
+        "kind": {
+          "type": "choice",
+          "choice": "billing",
+          "probabilities": {
+            "code": 6.965189721894212e-07,
+            "billing": 0.9999989550453271,
+            "summary": 3.484357006981006e-07
+          },
+          "confidence": 0.9999984325679905
+        },
+        "reasoning": {
+          "type": "noul",
+          "noul": 0.09246394313764403
+        },
+        "difficulty": {
+          "type": "score",
+          "score": 0.5321523637414327,
+          "probabilities": {
+            "0": 0.4733695848981614,
+            "1": 0.5211084664622445,
+            "2": 0.005521948639594112
+          },
+          "confidence": 0.28166269969336677,
+          "legend": {
+            "0": "Trivial",
+            "1": "Moderate",
+            "2": "Hard"
+          }
+        }
+      }
+    },
+    {
+      "name": "long-summary",
+      "request_sha256": "6789f5a828d3ffa9ec85e15241de5960cc7118fb571a9128cc9e1f00c6c101af",
+      "repeats": 3,
+      "questions_per_request": 3,
+      "input_tokens": 1642,
+      "latency_median_seconds": 4.964314676006325,
+      "max_probability_drift": 0.0,
+      "argmax_stable": true,
+      "first_answers": {
+        "kind": {
+          "type": "choice",
+          "choice": "summary",
+          "probabilities": {
+            "code": 0.0001247770023450198,
+            "billing": 3.5662203724184226e-07,
+            "summary": 0.9998748663756177
+          },
+          "confidence": 0.9998122995634264
+        },
+        "reasoning": {
+          "type": "noul",
+          "noul": 0.013638014968661662
+        },
+        "difficulty": {
+          "type": "score",
+          "score": 0.025584789063037548,
+          "probabilities": {
+            "0": 0.9753698467040623,
+            "1": 0.023675517528837755,
+            "2": 0.0009546357670998961
+          },
+          "confidence": 0.9616228164054437,
+          "legend": {
+            "0": "Trivial",
+            "1": "Moderate",
+            "2": "Hard"
+          }
+        }
+      }
+    }
+  ],
+  "supplemental": [
+    {
+      "name": "single-choice-temperature",
+      "request_sha256": "fed33122771b542d1dbfbfe036205400c9fdbf56968f721d9d105e35bf03c3d0",
+      "latency_seconds": 26.10041238204576,
+      "valid": true,
+      "answers": {
+        "kind": {
+          "type": "choice",
+          "choice": "code",
+          "probabilities": {
+            "code": 0.9999997451895595,
+            "billing": 7.753295833719663e-08,
+            "summary": 1.7727748223016499e-07
+          },
+          "confidence": 0.9999996177843392
+        }
+      }
+    },
+    {
+      "name": "synthetic-image-box",
+      "request_sha256": "a76f52a2f78533bd1b380d3fb83f9cb1832b0c68037a0795460943ffaacc06e0",
+      "latency_seconds": 1.0280092069879174,
+      "valid": true,
+      "answers": {
+        "shape": {
+          "type": "choice",
+          "choice": "red_square",
+          "probabilities": {
+            "red_square": 0.999999285998654,
+            "blue_circle": 3.6816726424857116e-07,
+            "green_triangle": 3.4583408180604317e-07
+          },
+          "confidence": 0.9999989289979809
+        },
+        "red": {
+          "type": "noul",
+          "noul": 0.9998876394323394
+        },
+        "where": {
+          "type": "box",
+          "box": {
+            "top": 0.24595543828153496,
+            "bottom": 0.7110576912776577,
+            "left": 0.23367870410416156,
+            "right": 0.7443090442550634
+          },
+          "confidence": 1.0
+        }
+      },
+      "box_iou_with_synthetic_truth": 0.8779409556328847
+    },
+    {
+      "name": "synthetic-video-track",
+      "request_sha256": "d61c515603d728318ec8476a1a242f15dcb3e4089f5561a5854f9988a1428c9a",
+      "latency_seconds": 1.3507394719636068,
+      "valid": true,
+      "answers": {
+        "where": {
+          "type": "track",
+          "track": [
+            {
+              "time": 0.25,
+              "box": {
+                "top": 0.23908582682792237,
+                "bottom": 0.6682240506672787,
+                "left": 0.23908093815549966,
+                "right": 0.7444901890170259
+              },
+              "confidence": 1.0,
+              "visible": 0.9878290039949801
+            },
+            {
+              "time": 1.25,
+              "box": {
+                "top": 0.2381053533348434,
+                "bottom": 0.6699140845875176,
+                "left": 0.2386370148404735,
+                "right": 0.7437139807918831
+              },
+              "confidence": 1.0,
+              "visible": 0.9880991679328408
+            }
+          ]
+        }
+      },
+      "box_ious_with_synthetic_truth": [
+        0.7951611520602401,
+        0.7949923252770429
+      ]
+    }
+  ],
+  "synthetic_media": {
+    "pixels": "256x256 RGB black; red square x64..191,y64..191",
+    "truth_box": {
+      "top": 0.25,
+      "bottom": 0.75,
+      "left": 0.25,
+      "right": 0.75
+    },
+    "video": "2 seconds at 2fps; static image; H264/yuv420p; Track requested at1Hz"
+  },
+  "restoration": {
+    "both_test_units_inactive": true,
+    "controllers_exit_status": [
+      0,
+      0
+    ],
+    "gufo_active": true,
+    "gufo_pid_after_last_run": 3838140,
+    "gufo_ready": {
+      "status": "ready",
+      "model": "qwen3.8-flash-next"
+    },
+    "user_manager_and_Herdr_untouched": true
+  },
+  "raw_receipts": [
+    "/tmp/d3-native-qualification-20261101/",
+    "/tmp/d3-native-supplement-20261101/"
+  ],
+  "production_activation": "pending"
+}

@@ -43,13 +43,15 @@ final: _prev: {
   # Replaces paper-intake (paper-print-flush). See home/paper.nix.
   paper-daemon = final.callPackage ../pkgs/paper-daemon { };
   paper-render = final.callPackage ../pkgs/paper-render { };
+  utility-model = final.callPackage ../pkgs/utility-model { };
 
   # dsh (DeepSeek Harness) from llm-agents.nix behind the fleet policy: Qwen
   # Cloud as the default, Gufo for local picks, every DeepSeek-bound row off,
   # a hardened bwrap runner. Needs the flake's `llm-agents` overlay. See pkgs/dsh, home/dsh.nix.
   dsh = final.callPackage ../pkgs/dsh { };
-  # The plugins of its hand-run `herdr` profile (gated dsh-herdr, herdr-guard,
-  # offline jevcore). An attrset, not a package; pkgs/dsh picks them up.
+  mnemon = final.callPackage ../pkgs/mnemon { };
+  # Pinned plugins selected by the hand-run `herdr` and `mnemon` profiles.
+  # An attrset, not a package; pkgs/dsh picks them up.
   dsh-plugins = import ../pkgs/dsh-plugins {
     inherit (final) callPackage llm-agents;
     inherit herdr;
