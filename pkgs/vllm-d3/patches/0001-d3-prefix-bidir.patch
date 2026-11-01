@@ -1,0 +1,335 @@
+From: dotfiles D3 investigation
+Subject: [PATCH] Backport PR62584 prefix-bidir contract to pinned Strix vLLM
+
+Upstream: https://github.com/vllm-project/vllm/pull/62584
+Upstream-head: dfa830766b0d082870ff2f64b0fdc5ab0daaab49
+Base: asf0/strix-vllm efdfdf954bd7d3ae7dfa2ab4702b2317f9d20c42
+
+Preserve the fork's newer multimodal clamp/span handling when extracting
+the range hook. Reject bool state lengths. Prefix caching remains disabled
+by the launcher; this intentionally keeps PR62584's DefaultModelState path.
+
+--- a/vllm/entrypoints/openai/decisions/strategies.py
++++ b/vllm/entrypoints/openai/decisions/strategies.py
+@@ -1213,6 +1213,9 @@
+     #: The runtime reads videos at 2 frames per second, 4 to 32 frames each.
+     VIDEO_FPS = 2
+     VIDEO_MAX_FRAMES = 32
++    #: `PoolingParams.extra_kwargs` key of a prefix_bidir prompt's state block
++    #: size (`vllm.model_executor.models.d3.STATE_TOKENS`).
++    STATE_TOKENS = "d3_state_tokens"
+ 
+     def __init__(self, context: ReadContext):
+         super().__init__(context)
+@@ -1222,6 +1225,7 @@
+             raise ValueError(f"unknown decision prompt {decision['prompt']!r}")
+         self.codes: list[str] = decision["codes"]
+         self.temperature = float(decision.get("temperature", 1.0))
++        self.state_blocks = decision.get("attention_mode") == "prefix_bidir"
+         self.max_model_len = model_config.max_model_len
+         self.tokenizer = context.online_renderer.renderer.get_tokenizer()
+ 
+@@ -1300,6 +1304,21 @@
+     def _tokens(self, text: str) -> list[int]:
+         return self.tokenizer.encode(text, add_special_tokens=False)
+ 
++    def _encode(self, text: str, state: str) -> tuple[list[int], int]:
++        """``text``'s tokens and, for prefix_bidir checkpoints, how many lead
++        tokens are its state block: those that end by the end of the state text,
++        so a token straddling it belongs to the question block."""
++        if not self.state_blocks:
++            return self._tokens(text), 0
++        end = text.index(f"State:\n{state}\n\nQuestion:\n") + len(f"State:\n{state}")
++        encoded = self.tokenizer(  # type: ignore[call-arg]
++            text, add_special_tokens=False, return_offsets_mapping=True
++        )
++        offsets = encoded["offset_mapping"]
++        return encoded["input_ids"], next(
++            (i for i, (_, stop) in enumerate(offsets) if stop > end), len(offsets)
++        )
++
+     async def _render_media(
+         self, prefix: str, media: Mapping[str, Sequence[str]], cache_salt: str | None
+     ) -> MultiModalInput:
+@@ -1376,6 +1395,7 @@
+ 
+         engine_inputs: list[EngineInput] = []
+         prompt_ids: list[list[int]] = []
++        state_tokens: list[int] = []
+         if placeholders:
+             # The media come first, so every prompt starts with the same
+             # prefix, which ends at the last media placeholder.
+@@ -1386,15 +1406,19 @@
+                     "the questions' prompts do not share their media"
+                 )
+             media_input = await self._render_media(prefix, media or {}, cache_salt)
++            media_ids = media_input["prompt_token_ids"]
+             for p in prompts:
+-                ids = media_input["prompt_token_ids"] + self._tokens(p[split:])
++                tail, tail_state = self._encode(p[split:], state)
++                ids = media_ids + tail
+                 engine_inputs.append({**media_input, "prompt_token_ids": ids})
+                 prompt_ids.append(ids)
++                state_tokens.append(len(media_ids) + tail_state)
+         else:
+-            prompt_ids = [self._tokens(p) for p in prompts]
+-            engine_inputs = [
+-                tokens_input(ids, cache_salt=cache_salt) for ids in prompt_ids
+-            ]
++            for p in prompts:
++                ids, count = self._encode(p, state)
++                engine_inputs.append(tokens_input(ids, cache_salt=cache_salt))
++                prompt_ids.append(ids)
++                state_tokens.append(count)
+         for q, ids in zip(questions, prompt_ids):
+             if len(ids) > self.max_model_len:
+                 raise StructuredDecisionError(
+@@ -1403,10 +1427,14 @@
+                 )
+ 
+         async def read_one(n: int, engine_input: EngineInput) -> list[float]:
++            extra = {self.STATE_TOKENS: state_tokens[n]} if self.state_blocks else None
++            params = PoolingParams(
++                task="classify", use_activation=False, extra_kwargs=extra
++            )
+             result = None
+             async for result in self.context.engine_client.encode(
+                 engine_input,
+-                PoolingParams(task="classify", use_activation=False),
++                params,
+                 f"{request_id}-{n}",
+                 lora_request=lora_request,
+                 trace_headers=trace_headers,
+--- a/vllm/model_executor/models/config.py
++++ b/vllm/model_executor/models/config.py
+@@ -1112,7 +1112,7 @@
+                 f"unsupported decision_config.json pooling {decision['pooling']!r}"
+             )
+         attention_mode = decision.get("attention_mode", "causal")
+-        if attention_mode not in ("causal", "noncausal_full_attention"):
++        if attention_mode not in ("causal", "noncausal_full_attention", "prefix_bidir"):
+             raise ValueError(
+                 f"unsupported decision_config.json attention_mode {attention_mode!r}"
+             )
+@@ -1123,15 +1123,34 @@
+                 "decision_config.json must list one token id per answer code"
+             )
+ 
+-        # The full attention layers read the whole prompt in both directions;
+-        # the Gated DeltaNet layers stay causal.
+-        is_causal = attention_mode == "causal"
+-        for config in {
+-            id(config): config for config in (hf_config, model_config.hf_text_config)
+-        }.values():
+-            config.is_causal = is_causal
++        if attention_mode == "prefix_bidir":
++            # The full attention layers stay decoder layers that read each
++            # request's state and question blocks as PrefixLM ranges
++            # (`D3PrefixBidirModelState`). The prompt as a whole is still read
++            # bidirectionally, so chunked prefill and prefix caching stay off.
++            if model_config.hf_text_config is hf_config:
++                raise ValueError("prefix_bidir needs a separate text config")
++            hf_config.is_causal = False
++        else:
++            # The full attention layers read the whole prompt in both
++            # directions; the Gated DeltaNet layers stay causal.
++            is_causal = attention_mode == "causal"
++            for config in {
++                id(config): config
++                for config in (hf_config, model_config.hf_text_config)
++            }.values():
++                config.is_causal = is_causal
+         # One readout row per answer code.
+         hf_config.id2label = dict(enumerate(codes))
++        # The length the checkpoint was validated at is the default limit;
++        # --max-model-len still reaches the model's positions.
++        validated = decision.get("validated_length")
++        if validated and model_config.original_max_model_len is None:
++            model_config.max_model_len = min(model_config.max_model_len, validated)
++            logger.info(
++                "Using max model len %d, the checkpoint's validated length",
++                model_config.max_model_len,
++            )
+ 
+         # Probabilities only exist over a question's own options, so the head
+         # returns raw code logits unless activation is requested.
+--- a/vllm/model_executor/models/d3.py
++++ b/vllm/model_executor/models/d3.py
+@@ -7,6 +7,14 @@
+ last prompt token and is served as the `score` head of a classification model.
+ `D3ForSequenceClassificationConfig` applies the checkpoint's attention mode and
+ label space.
++
++Under the `prefix_bidir` attention mode a prompt is a state block (the system
++turn, the media, `State:` and the state) followed by a question block. The full
++attention layers read each block in both directions and the question block also
++reads the state block, so the state never sees a question; the linear-attention
++layers stay causal. Each request carries its state block's token count in
++`PoolingParams.extra_kwargs[STATE_TOKENS]`, and `D3PrefixBidirModelState` makes
++the two blocks the PrefixLM ranges of its attention.
+ """
+ 
+ from typing import TYPE_CHECKING
+@@ -14,8 +22,13 @@
+ from transformers.models.qwen3_vl import Qwen3VLProcessor
+ 
+ from vllm.config import VllmConfig
++from vllm.logger import init_logger
+ from vllm.model_executor.model_loader.default_loader import DefaultModelLoader
+ from vllm.multimodal import MULTIMODAL_REGISTRY
++from vllm.platforms import current_platform
++from vllm.v1.core.sched.output import NewRequestData
++from vllm.v1.worker.gpu.input_batch import InputBatch
++from vllm.v1.worker.gpu.model_states.default import DefaultModelState
+ 
+ from .adapters import as_seq_cls_model
+ from .interfaces_base import default_pooling_type
+@@ -23,7 +36,12 @@
+ from .qwen3_vl import Qwen3VLDummyInputsBuilder, Qwen3VLMultiModalProcessor
+ from .utils import WeightsMapper
+ 
++logger = init_logger(__name__)
++
+ READOUT_WEIGHTS = "readout.safetensors"
++# The `PoolingParams.extra_kwargs` key of a `prefix_bidir` request's state block
++# token count, set by the System One strategy.
++STATE_TOKENS = "d3_state_tokens"
+ 
+ # The media budgets of the checkpoint's runtime (`d3_runtime.py`), which differ
+ # from its processor config: images at 65,536 to 1,638,400 pixels, video frames
+@@ -48,6 +66,44 @@
+         video.max_video_tokens = VIDEO_FRAME_MAX_PIXELS // factor**2
+         video.do_sample_frames = False
+         return processor
++
++
++class D3PrefixBidirModelState(DefaultModelState):
++    """Model Runner V2 state of a `prefix_bidir` checkpoint: a request's state
++    block and question block are the PrefixLM ranges of its attention, so the
++    attention is causal across them and bidirectional within each."""
++
++    def __init__(self, *args, **kwargs) -> None:
++        super().__init__(*args, **kwargs)
++        self.blocks: dict[str, list[tuple[int, int]]] = {}
++
++    def add_request(self, req_index: int, new_req_data: NewRequestData) -> None:
++        super().add_request(req_index, new_req_data)
++        params = new_req_data.pooling_params
++        state = (params.extra_kwargs or {}).get(STATE_TOKENS) if params else None
++        length = len(new_req_data.prompt_token_ids or ())
++        if type(state) is int and 0 < state < length:
++            blocks = [(0, state - 1), (state, length - 1)]
++        else:
++            # Without a state block size (warm-up runs, or a request that did
++            # not go through /v1/systemone) the whole prompt is one block.
++            logger.debug_once("A prefix_bidir request has no state block size")
++            blocks = [(0, length - 1)]
++        self.blocks[new_req_data.req_id] = blocks
++
++    def remove_request(self, req_id: str) -> None:
++        super().remove_request(req_id)
++        self.blocks.pop(req_id, None)
++
++    def get_mm_prefix_ranges(
++        self, input_batch: InputBatch
++    ) -> dict[int, list[tuple[int, int]]] | None:
++        ranges = {
++            i: self.blocks[req_id]
++            for i, req_id in enumerate(input_batch.req_ids)
++            if req_id in self.blocks
++        }
++        return ranges or None
+ 
+ 
+ if TYPE_CHECKING:
+@@ -81,6 +137,23 @@
+                 allow_patterns_overrides=[READOUT_WEIGHTS],
+             )
+         ]
++        if model_config.hf_config.decision_config.get("attention_mode") == (
++            "prefix_bidir"
++        ):
++            # The blocks reach the attention only through Model Runner V2 and
++            # backends that read PrefixLM ranges, which multimodal checkpoints
++            # select while their multimodal inputs are enabled.
++            if not (
++                current_platform.is_cuda_alike()
++                and vllm_config.use_v2_model_runner
++                and model_config.is_mm_prefix_lm
++            ):
++                raise ValueError(
++                    "Decision 3.0 prefix_bidir checkpoints need a CUDA or ROCm "
++                    "GPU, Model Runner V2 and multimodal inputs enabled"
++                )
++            # The other attention modes keep the runner's default state.
++            self.get_model_state_cls = lambda: D3PrefixBidirModelState
+ 
+     def is_unused_checkpoint_weight(self, name: str) -> bool:
+         # The readout's only tensor, loaded through `secondary_weights`. A
+--- a/vllm/transformers_utils/model_arch_config_convertor.py
++++ b/vllm/transformers_utils/model_arch_config_convertor.py
+@@ -646,6 +646,8 @@
+                 hf_config.decision_config = get_hf_file_to_dict(
+                     "decision_config.json", model_path, revision
+                 )
++                if (hf_config.decision_config or {}).get("attention_mode") == "prefix_bidir":
++                    hf_config.is_mm_prefix_lm = True
+         super().__init__(hf_config, hf_text_config, revision)
+ 
+ 
+--- a/vllm/v1/worker/gpu/model_states/default.py
++++ b/vllm/v1/worker/gpu/model_states/default.py
+@@ -163,6 +163,28 @@
+         if self.rope_state is not None:
+             model_inputs["positions"] = self.rope_state.get_positions(num_tokens)
+         return model_inputs
++
++    def get_mm_prefix_ranges(
++        self, input_batch: InputBatch
++    ) -> dict[int, list[tuple[int, int]]] | None:
++        req_doc_ranges: dict[int, list[tuple[int, int]]] | None = None
++        if (
++            self.supports_mm_inputs
++            and self.encoder_cache is not None
++            and self.model_config.is_mm_prefix_lm
++        ):
++            mm_features = self.encoder_cache.mm_features
++            hf_text_config = self.model_config.hf_text_config
++            req_doc_ranges = compute_mm_prefix_ranges(
++                [mm_features.get(req_id, ()) for req_id in input_batch.req_ids],
++                sliding_window=self.model_config.get_sliding_window(),
++                clamp_sliding_window=getattr(
++                    self.model, "mm_prefix_clamp_sliding_window", False
++                )
++                or getattr(hf_text_config, "mm_prefix_clamp_sliding_window", False),
++                span_pad=getattr(self.model, "mm_prefix_span_leading_pad_modulus", 0),
++            )
++        return req_doc_ranges
+ 
+     def prepare_attn(
+         self,
+@@ -197,23 +219,7 @@
+             max_seq_len = self.max_model_len
+         else:
+             max_seq_len = seq_lens_cpu_upper_bound[:num_reqs].max().item()
+-        req_doc_ranges: dict[int, list[tuple[int, int]]] | None = None
+-        if (
+-            self.supports_mm_inputs
+-            and self.encoder_cache is not None
+-            and self.model_config.is_mm_prefix_lm
+-        ):
+-            mm_features = self.encoder_cache.mm_features
+-            hf_text_config = self.model_config.hf_text_config
+-            req_doc_ranges = compute_mm_prefix_ranges(
+-                [mm_features.get(req_id, ()) for req_id in input_batch.req_ids],
+-                sliding_window=self.model_config.get_sliding_window(),
+-                clamp_sliding_window=getattr(
+-                    self.model, "mm_prefix_clamp_sliding_window", False
+-                )
+-                or getattr(hf_text_config, "mm_prefix_clamp_sliding_window", False),
+-                span_pad=getattr(self.model, "mm_prefix_span_leading_pad_modulus", 0),
+-            )
++        req_doc_ranges = self.get_mm_prefix_ranges(input_batch)
+         attn_metadata = build_attn_metadata(
+             attn_groups=attn_groups,
+             num_reqs=num_reqs,
