@@ -2622,7 +2622,7 @@
           assert !(self.nixosConfigurations.strix-coordinator.options ? myCluster);
 
           # ── mono-model: the wanted sets, exact ─────────────────────────────
-          # Exact lists keep additional model loans explicit. Gufo's text
+          # Exact sets keep additional model loans explicit. Gufo's text
           # bundles and its ASR/TTS/image defaults (Tom 2026-10-25: every
           # gufo-rdma documented model on both Strix) join the production
           # diarization, TTS and voice artifacts;
@@ -2631,7 +2631,8 @@
           # loans, so a default borrow restores it and prune keeps it. The
           # coordinator's disk cannot hold Flash-Next Q8 or the ds4 Q2 (D-A).
           assert
-            strix.services.local-models.artifacts == [
+            nixpkgs.lib.sort builtins.lessThan strix.services.local-models.artifacts
+            == nixpkgs.lib.sort builtins.lessThan [
               "qwen38-flash-next-gguf"
               "qwen38-27b-gguf"
               "qwen38-27b-q8-gguf"
@@ -2645,12 +2646,14 @@
               "qwen3-tts-tokenizer-f32"
             ];
           assert
-            strixWorker.services.local-models.artifacts
-            == strix.services.local-models.artifacts
-            ++ [
-              "deepseek-v41-flash-1017-q2-gguf"
-              "qwen38-flash-next-q8-gguf"
-            ];
+            nixpkgs.lib.sort builtins.lessThan strixWorker.services.local-models.artifacts
+            == nixpkgs.lib.sort builtins.lessThan (
+              strix.services.local-models.artifacts
+              ++ [
+                "deepseek-v41-flash-1017-q2-gguf"
+                "qwen38-flash-next-q8-gguf"
+              ]
+            );
           # The catalogue is the kept estate after Tom's 2026-09-16 ruling,
           # narrowed on 2026-09-30 (sweep F1: the three Mage rows and the text
           # embedder retired); no other top-level attribute — no deployments,
