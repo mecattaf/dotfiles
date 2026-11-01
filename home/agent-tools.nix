@@ -26,7 +26,6 @@ let
     "ck"
     "claude-agent-acp"
     "claude-code-router" # bin: `ccr` — routes Claude Code requests to other model backends/providers
-    "qmd"
     "codex"
     "spec-kit" # bin: `specify` — GitHub Spec-Kit, spec-driven development bootstrapper
     "cc-switch-cli" # bin: `cc-switch` — switches Claude Code/Codex/Gemini CLI provider configs

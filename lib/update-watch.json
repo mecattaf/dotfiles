@@ -18,7 +18,6 @@
         "claude-agent-acp": "nixosConfigurations.nas.pkgs.llm-agents.claude-agent-acp.version",
         "claude-code-router": "nixosConfigurations.nas.pkgs.llm-agents.claude-code-router.version",
         "ccusage": "nixosConfigurations.nas.pkgs.llm-agents.ccusage.version",
-        "qmd": "nixosConfigurations.nas.pkgs.llm-agents.qmd.version",
         "spec-kit": "nixosConfigurations.nas.pkgs.llm-agents.spec-kit.version",
         "cc-switch-cli": "nixosConfigurations.nas.pkgs.llm-agents.cc-switch-cli.version",
         "ck": "nixosConfigurations.nas.pkgs.llm-agents.ck.version",
