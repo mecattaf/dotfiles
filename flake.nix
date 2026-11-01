@@ -2674,6 +2674,7 @@
           assert
             nixpkgs.lib.sort builtins.lessThan strix.services.local-models.artifacts
             == nixpkgs.lib.sort builtins.lessThan [
+              "d3-ultra-bf16"
               "qwen38-flash-next-gguf"
               "qwen38-27b-gguf"
               "qwen38-27b-q8-gguf"
@@ -2689,7 +2690,7 @@
           assert
             nixpkgs.lib.sort builtins.lessThan strixWorker.services.local-models.artifacts
             == nixpkgs.lib.sort builtins.lessThan (
-              strix.services.local-models.artifacts
+              nixpkgs.lib.remove "d3-ultra-bf16" strix.services.local-models.artifacts
               ++ [
                 "deepseek-v41-flash-1017-q2-gguf"
                 "qwen38-flash-next-q8-gguf"
@@ -2704,6 +2705,7 @@
           # v0.22.0 plus Q8 and the separately pinned ds4 V4.1 model.
           assert
             builtins.attrNames localModelCatalog.artifacts == [
+              "d3-ultra-bf16"
               "deepseek-v41-flash-1017-q2-gguf"
               "deepseek-v41-flash-dspark-gguf"
               "deepseek-v41-flash-vision-gguf"
