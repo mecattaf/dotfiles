@@ -84,6 +84,8 @@ let
     server=$!
     reserve_gib=${toString cfg.reserveGiB}
     reserve_kib=${toString (cfg.reserveGiB * 1024 * 1024)}
+    # The awk field reference belongs to awk, not the shell.
+    # shellcheck disable=SC2016
     memory_probe=(${pkgs.gawk}/bin/awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
     poll_sleep=(${pkgs.coreutils}/bin/sleep 2)
     ${builtins.readFile ./d3-decision-supervise.sh}
