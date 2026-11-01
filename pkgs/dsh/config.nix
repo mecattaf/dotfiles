@@ -2,6 +2,8 @@
   lib,
   formats,
   runner,
+  mnemon,
+  profilePlugins,
 }:
 # dsh (DeepSeek Harness 0.2.1-rc.2) fleet policy as Nix data.
 #
@@ -22,6 +24,7 @@
 #   policy : every profile the wrapper boots (headless, sdk, acp, herdr)
 #   acp    : acp only; its bundle pins the official DeepSeek route in its own row
 #   herdr  : the hand-run plugin profile only (jevcore's row; ./default.nix)
+#   mnemon : the dedicated local-memory profile, including its Gufo route
 #   smoke  : the gate's one inference call (no retries, low effort); never
 #            installed, built only as `nix build .#dsh.smoke`
 let
@@ -238,7 +241,7 @@ let
   # bash, edit or git call would become an ask, which headless denies.
   # FOLLOW-UP, NOT IMPLEMENTED: a real Jev route is this one row (provider
   # live, baseURL, model, apiKeyRef) plus the SDK back in pkgs/dsh-plugins.
-  herdr = [
+  herdr = lib.optionals (builtins.elem "jevcore" (profilePlugins.herdr or [ ])) [
     (set "jev" {
       provider = "mock";
       logLevel = "info";
@@ -247,6 +250,54 @@ let
         context = false;
       };
     })
+  ];
+
+  # Memory work is explicitly selected with `dsh mnemon`. Existing profiles,
+  # Claude and Codex do not acquire hooks. Writes are intended tool calls;
+  # there is no idle review, automatic capture, skill editing or Git sync.
+  mnemonProfile = [
+    (set "agent-default-model" {
+      provider = "gufo";
+      model = localModel.modelId;
+    })
+  ]
+  ++ lib.optionals (builtins.elem "mnemon" (profilePlugins.mnemon or [ ])) [
+    (set "mnemon" {
+      cliPath = lib.getExe mnemon;
+      storageScope = "global"; # ~/.mnemon; MNEMON_DATA_DIR may select a batch store.
+      lifecycleEnabled = true;
+      routingGuidance = true;
+      recallMode = "guided";
+      writebackMode = "off";
+      writeEnabled = true;
+      remoteAccess = "read-only";
+      tabEnabled = false;
+      timeoutMs = 30000;
+      embedding.enabled = false;
+      idleReview.enabled = false;
+      skills = {
+        evolution = false;
+        allowCreate = false;
+        allowUpdate = false;
+        autoBacktest = false;
+      };
+      syncEnabled = false;
+      taskAgentModel = {
+        mode = "fixed";
+        provider = "gufo";
+        model = localModel.modelId;
+        followConversation = false;
+      };
+    })
+    (set "mnemon-source-memory-spaces" {
+      providers = [
+        {
+          use = "dsh-mnemon-provider-mnemon-native";
+          instanceId = "mnemon-native";
+        }
+      ];
+    })
+    (off "mnemon-source-skills")
   ];
 
   # The gate's single call: fail on the first error rather than spend retries,
@@ -265,11 +316,15 @@ in
   policy = yaml.generate "dsh-policy.patch.yml" policy;
   acp = yaml.generate "dsh-acp.patch.yml" acp;
   herdr = yaml.generate "dsh-herdr.patch.yml" herdr;
+  mnemon = yaml.generate "dsh-mnemon.patch.yml" mnemonProfile;
   smoke = yaml.generate "dsh-smoke.patch.yml" smoke;
   # Local provider data for offline config checks.
   localProviders = { inherit gufo ds4; };
   # The herdr profile's rows as data, for checks.dsh-plugins.
   herdrRows = builtins.listToAttrs (map (row: lib.nameValuePair row.id row.config) herdr);
+  mnemonRows = builtins.listToAttrs (
+    map (row: lib.nameValuePair row.id row.config) (lib.filter (row: row ? config) mnemonProfile)
+  );
   # Row ids the policy touches, for checks.dsh-config.
   policyIds = map (row: row.id) policy;
   disabledIds = map (row: row.id) (lib.filter (row: row.disabled or false) policy);
