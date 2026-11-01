@@ -548,19 +548,30 @@ def c_inference(profile: dict) -> dict:
     if "gufo" not in profile.get("roles", []):
         return {"server": by_design("profile roles", f"profile {profile.get('name')} serves no model")}
     out: dict = {}
-    src = "systemctl list-units --all gufo-llm*"
+    src = "systemctl list-units --all llama-swap gufo-llm*"
     try:
-        units = json.loads(run(["systemctl", "list-units", "--all", "--output=json", "--no-pager", "gufo-llm*"]) or "[]")
+        units = json.loads(run(["systemctl", "list-units", "--all", "--output=json", "--no-pager", "llama-swap", "gufo-llm*"]) or "[]")
         out["gufo_units"] = fact({u["unit"]: u.get("active") for u in units}, src)
     except (CmdError, ValueError) as exc:
         out["gufo_units"] = unknown(src, str(exc))
     port = profile.get("gufo_port", 8731)
-    for name, path in (("health", "/ready"), ("models", "/v1/models")):
+    for name, path in (("health", "/running"), ("models", "/v1/models")):
         source = f"GET 127.0.0.1:{port}{path}"
         try:
             out[name] = fact(http_json(f"http://127.0.0.1:{port}{path}"), source)
         except Exception as exc:  # noqa: BLE001 — failed readiness stays visible
             out[name] = unknown(source, str(exc)[:160])
+    health = out["health"]
+    if health["grade"] == "measured":
+        running = health["value"].get("running") if isinstance(health["value"], dict) else None
+        if not isinstance(running, list):
+            out["health"] = unknown(health["source"], "invalid running-model response")
+        else:
+            health["value"] = {
+                "status": "sleeping" if not running else ",".join(m.get("state", "unknown") for m in running),
+                "model": ",".join(m.get("model", "unknown") for m in running) or None,
+                "running": running,
+            }
     return out
 
 

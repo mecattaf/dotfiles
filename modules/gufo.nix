@@ -13,10 +13,11 @@
 # HIP kernels compiled in. No container. Each `gufo serve <modality>` process
 # loads exactly ONE model, so this module runs one systemd unit per model:
 #
-#   gufo-llm.service          the resident text model (Flash-Next), at boot
-#                             when autoStart, on the fleet address and port
+#   llama-swap.service        the lightweight API endpoint, at boot when
+#                             autoStart; models load only for requests
+#   gufo-llm.service          explicit direct-mode text service, no boot target
 #   gufo-llm-<name>.service   an alternate text model (the 27B), started
-#                             only by `gufo-switch <name>`
+#                             directly by hand for diagnostics
 #   gufo-tts / gufo-asr / gufo-image.service
 #                             on demand only, loopback, no boot target
 #
@@ -39,30 +40,14 @@ let
 
   # Every file of the named artifacts present at its catalog size, or a clear
   # refusal naming the explicit borrow command.
-  bundleCheckFor =
-    ids:
-    pkgs.writeShellScript "gufo-bundle-check" ''
-      set -eu
-      fail=0
-      ${lib.concatMapStringsSep "\n" (
-        id:
-        lib.concatMapStringsSep "\n" (f: ''
-          p=${lib.escapeShellArg "${dirOf id}/${f.name}"}
-          if [ ! -r "$p" ] || [ "$(${pkgs.coreutils}/bin/stat -c %s "$p")" != ${toString f.bytes} ]; then
-            echo "gufo: missing or wrong size: $p (want ${toString f.bytes} bytes); run: sudo local-models-borrow --yes" >&2
-            fail=1
-          fi
-        '') modelStore.materialized.${id}.files
-      ) ids}
-      exit "$fail"
-    '';
+  bundleCheckFor = import ../lib/model-bundle-check.nix { inherit lib pkgs modelStore; };
 
   # Startup returns only once the model answers, so `systemctl start` and
   # `gufo-switch` report a usable server, not a process that is still loading.
   waitReady =
-    port:
+    port: path:
     pkgs.writeShellScript "gufo-wait-ready" ''
-      until ${pkgs.curl}/bin/curl -fsS -o /dev/null "http://127.0.0.1:${toString port}/ready"; do
+      until ${pkgs.curl}/bin/curl -fsS -o /dev/null "http://127.0.0.1:${toString port}${path}"; do
         sleep 5
       done
     '';
@@ -198,6 +183,40 @@ let
     RestartSec = "30s";
   };
 
+  apiIdOf =
+    name: m: if lib.hasSuffix "-q8" name then "${m.servedModelName}-q8" else m.servedModelName;
+  # Compatibility defaults for the established default/alternate declarations.
+  # Generic deployment rendering and required loans live in gufo-models.nix.
+  defaultModels =
+    lib.mapAttrs' (
+      name: m:
+      lib.nameValuePair (apiIdOf name m) {
+        inherit (m)
+          artifact
+          servedModelName
+          mmproj
+          mtp
+          dflashArtifact
+          dsparkArtifact
+          ;
+        serve = { inherit (m) sessions context extraArgs; };
+      }
+    ) ({ flash = cfg.llm; } // cfg.alternates)
+    // {
+      "qwen3-tts-12hz-1.7b-base" = {
+        modality = "tts";
+        inherit (cfg.tts) artifact voices;
+      };
+      "qwen3-asr-1.7b" = {
+        modality = "asr";
+        inherit (cfg.asr) artifact;
+      };
+      "Qwen-Image-2.1" = {
+        modality = "image";
+        inherit (cfg.image) artifact;
+      };
+    };
+
   alternateNames = builtins.attrNames cfg.alternates;
   unitOf = name: if name == "flash" then "gufo-llm.service" else "gufo-llm-${name}.service";
   textUnits = map unitOf ([ "flash" ] ++ alternateNames) ++ lib.optional tp.enable "gufo-tp2.service";
@@ -264,15 +283,18 @@ let
 
   mkLlmUnit = name: m: {
     description = "Gufo text model ${m.servedModelName} (${m.artifact})";
-    conflicts = (lib.remove (unitOf name) textUnits) ++ [ "gufo-image.service" ];
-    wantedBy = lib.optionals (name == "flash" && cfg.autoStart) [ "multi-user.target" ];
+    conflicts = (lib.remove (unitOf name) textUnits) ++ [
+      "gufo-image.service"
+      "llama-swap.service"
+    ];
+    wantedBy = [ ];
     serviceConfig = gpuServiceConfig // {
       MemoryHigh = "96G";
       MemoryMax = "104G";
       MemorySwapMax = 0;
       ExecStartPre = "${bundleCheckFor (artifactsOf m)}";
       ExecStart = lib.escapeShellArgs ([ (lib.getExe' cfg.package "gufo") ] ++ llmArgs m);
-      ExecStartPost = "${waitReady cfg.port}";
+      ExecStartPost = "${waitReady cfg.port "/ready"}";
     };
   };
 
@@ -287,7 +309,7 @@ let
     }:
     {
       description = "Gufo ${modality} (${artifact}), on demand";
-      inherit conflicts;
+      conflicts = conflicts ++ [ "llama-swap.service" ];
       serviceConfig = gpuServiceConfig // {
         ExecStartPre = "${bundleCheckFor ([ artifact ] ++ extraArtifacts)}";
         ExecStart = lib.escapeShellArgs (
@@ -304,13 +326,16 @@ let
           ]
           ++ args
         );
-        ExecStartPost = "${waitReady port}";
+        ExecStartPost = "${waitReady port "/ready"}";
       };
     };
 
   gufoSwitch = pkgs.writeShellApplication {
     name = "gufo-switch";
-    runtimeInputs = [ pkgs.systemd ];
+    runtimeInputs = [
+      pkgs.systemd
+      pkgs.curl
+    ];
     text = ''
       choice=''${1:-}
       case "$choice" in
@@ -319,25 +344,32 @@ let
           echo "usage: gufo-switch <${
             lib.concatStringsSep "|" ([ "flash" ] ++ alternateNames ++ [ "off" ])
           }>" >&2
-          echo "Stops whichever Gufo text model is resident and starts the named one (a cold load: minutes); off stops them all." >&2
+          echo "Warm the named model through llama-swap (cold load: minutes); off stops the endpoint and its models." >&2
           exit 64
           ;;
       esac
+      if [ "$choice" = off ]; then
+        systemctl stop llama-swap.service ${lib.escapeShellArgs textUnits}
+        exit 0
+      fi
       case "$choice" in
-        flash) unit=gufo-llm.service ;;
-        off) unit= ;;
-        *) unit="gufo-llm-$choice.service" ;;
+        flash) model=${lib.escapeShellArg cfg.llm.servedModelName} ;;
+        ${lib.concatStringsSep "\n" (
+          lib.mapAttrsToList (
+            name: m: "${lib.escapeShellArg name}) model=${lib.escapeShellArg (apiIdOf name m)} ;;"
+          ) cfg.alternates
+        )}
       esac
-      for u in ${lib.escapeShellArgs textUnits}; do
-        [ "$u" = "$unit" ] || systemctl stop "$u"
-      done
-      [ -n "$unit" ] || exit 0
-      systemctl start "$unit"
-      systemctl show "$unit" --property=Id,ActiveState,SubState,ActiveEnterTimestamp
+      systemctl start llama-swap.service
+      ${waitReady cfg.port "/health"}
+      curl --fail --silent --show-error --max-time 1200 "http://127.0.0.1:${toString cfg.port}/upstream/$model/ready"
+
     '';
   };
 in
 {
+  imports = [ ./gufo-models.nix ];
+
   options.services.gufo = {
     enable = lib.mkEnableOption "Gufo, the local inference engine (one systemd unit per model)";
 
@@ -351,7 +383,7 @@ in
     autoStart = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Whether the resident text model (gufo-llm) starts at boot.";
+      description = "Whether the lightweight llama-swap endpoint starts at boot. Models load only on demand.";
     };
 
     host = lib.mkOption {
@@ -363,7 +395,7 @@ in
     port = lib.mkOption {
       type = lib.types.port;
       default = 8731;
-      description = "The fleet text server port, shared by the resident model and its alternates.";
+      description = "The fleet API port, owned by llama-swap or an explicitly selected direct-mode service.";
     };
 
     lanInterface = lib.mkOption {
@@ -377,6 +409,24 @@ in
       default = cfg.autoStart;
       defaultText = lib.literalExpression "config.services.gufo.autoStart";
       description = "Whether to admit `port` on `lanInterface` (the host is the fleet's endpoint). Loopback is never filtered.";
+    };
+
+    demand = {
+      textIdleSeconds = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 600;
+        description = "Unload idle text/image models after this many seconds. In-flight requests prevent unload.";
+      };
+      audioIdleSeconds = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 120;
+        description = "Unload idle Gufo TTS/ASR models after this many seconds.";
+      };
+      startPort = lib.mkOption {
+        type = lib.types.port;
+        default = 18731;
+        description = "First private loopback backend port assigned by llama-swap; never opened in the firewall.";
+      };
     };
 
     llm = lib.mkOption {
@@ -403,7 +453,7 @@ in
           "180000"
         ];
       };
-      description = "The resident text model (gufo-llm.service).";
+      description = "The default text model, demand-loaded through llama-swap.";
     };
 
     alternates = lib.mkOption {
@@ -412,7 +462,7 @@ in
       description = ''
         Other text models, one unit each (gufo-llm-<name>.service), on the
         same port, never resident together with the primary or each other.
-        Only `gufo-switch <name>` starts one; `gufo-switch flash` goes back.
+        API model IDs select them through llama-swap; `gufo-switch` explicitly warms a model.
       '';
     };
 
@@ -530,6 +580,13 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    services.gufo.models = lib.mapAttrs (
+      _: row:
+      lib.mapAttrs (
+        key: value: if key == "serve" then lib.mapAttrs (_: lib.mkDefault) value else lib.mkDefault value
+      ) row
+    ) defaultModels;
+
     assertions = [
       {
         # The resident model only. An alternate whose artifacts this host does
@@ -556,7 +613,40 @@ in
       }
     ];
 
+    services.llama-swap = {
+      enable = true;
+      package = pkgs.llama-swap.override { withUI = false; };
+      listenAddress = cfg.host;
+      inherit (cfg) port;
+      openFirewall = false;
+      settings = {
+        healthCheckTimeout = 1200;
+        logLevel = "info";
+        logTimeFormat = "rfc3339";
+        logToStdout = "both";
+        captureBuffer = 0;
+        performance.disabled = true;
+        startPort = cfg.demand.startPort;
+        unloadTimeout = 90;
+        # No preload hooks or custom groups: the upstream default swaps one
+        # backend at a time, including across text, speech and image routes.
+      };
+    };
+
     systemd.services = {
+      llama-swap = {
+        wantedBy = lib.mkForce (lib.optional cfg.autoStart "multi-user.target");
+        conflicts = textUnits ++ [
+          "gufo-image.service"
+          "gufo-tts.service"
+          "gufo-asr.service"
+        ];
+        serviceConfig = (builtins.removeAttrs gpuServiceConfig [ "RestartSec" ]) // {
+          MemoryHigh = "96G";
+          MemoryMax = "104G";
+          MemorySwapMax = 0;
+        };
+      };
       gufo-tp2-latency = lib.mkIf (tp.enable && tp.cpuDmaLatencyUs != null) {
         description = "Gufo TP2 CPU DMA latency budget (${toString tp.cpuDmaLatencyUs} us)";
         wantedBy = [ ];
@@ -589,7 +679,10 @@ in
           "thunderbolt-ibverbs-check.service"
         ]
         ++ lib.optional (tp.cpuDmaLatencyUs != null) "gufo-tp2-latency.service";
-        conflicts = (lib.remove "gufo-tp2.service" textUnits) ++ [ "gufo-image.service" ];
+        conflicts = (lib.remove "gufo-tp2.service" textUnits) ++ [
+          "gufo-image.service"
+          "llama-swap.service"
+        ];
         serviceConfig =
           gpuServiceConfig
           // {
@@ -605,7 +698,7 @@ in
             ExecStart = "${tp2Start}";
           }
           // lib.optionalAttrs (tp.rank == 0) {
-            ExecStartPost = "${waitReady cfg.port}";
+            ExecStartPost = "${waitReady cfg.port "/ready"}";
           };
       };
       gufo-llm = mkLlmUnit "flash" cfg.llm;

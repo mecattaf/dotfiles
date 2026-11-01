@@ -695,7 +695,7 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(seats["gpu-strix"]["state"], "offline")
         self.assertEqual(seats["gpu-strix"]["grade"], "UNKNOWN")
         self.assertFalse(seats["gpu-strix"]["windows"])
-        self.assertEqual(seats["gpu-strix"]["source"]["endpoint"], "http://strix-coordinator:8731/ready")
+        self.assertEqual(seats["gpu-strix"]["source"]["endpoint"], "http://strix-coordinator:8731/v1/models")
         # The strix serves nothing: not-applicable, never headroom, and
         # the row says why rather than pretending to have probed something.
 
@@ -773,6 +773,25 @@ class SeatsTest(unittest.TestCase):
             result = self.box.run(*args)
             self.assertNotIn("sk-test-not-a-real-token", result.stdout)
             self.assertNotIn("sk-test-not-a-real-token", result.stderr)
+
+
+class GufoDemandTest(unittest.TestCase):
+    def test_sleeping_model_is_available_and_only_non_waking_probes_are_used(self):
+        spec = importlib.util.spec_from_loader(
+            "seats_mod_gufo", importlib.machinery.SourceFileLoader("seats_mod_gufo", SCRIPT))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        calls = []
+        def http(url, **kwargs):
+            calls.append(url)
+            return ({"running": []} if url.endswith('/running') else
+                    {"data": [{"id": "qwen3.8-flash-next"}]}), None
+        mod.http_json = http
+        seat = mod.read_gufo({"id": "gpu-strix", "provider": "gufo", "endpoint": "http://local"}, None)
+        self.assertTrue(seat['usable'])
+        self.assertEqual(seat['running'], [])
+        self.assertIn('sleeping', seat['detail'])
+        self.assertEqual(calls, ['http://local/v1/models', 'http://local/running'])
 
 
 class CodexLivePayloadTest(unittest.TestCase):

@@ -205,6 +205,7 @@ in
       wants = [ "network-online.target" ];
       after = [ "network-online.target" ];
       conflicts = [
+        "llama-swap.service"
         "gufo-llm.service"
         "gufo-tp2.service"
         "gufo-image.service"

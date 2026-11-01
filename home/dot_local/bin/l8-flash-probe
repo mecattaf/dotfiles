@@ -178,7 +178,7 @@ fi
 # ── 4. the fleet's native Gufo text unit on Strix ─────────────────────────
 # Read locally on the compute host, or over SSH from another seat. An
 # unreachable bus is UNKNOWN; an observed inactive unit is FAIL.
-GUFO_UNIT="gufo-llm.service"
+GUFO_UNIT="llama-swap.service"
 gufo_ctl=()
 gufo_via=""
 if [ "$HOST" = "$COMPUTE_HOST" ]; then

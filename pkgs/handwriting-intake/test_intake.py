@@ -141,7 +141,7 @@ class TransportHealthTests(unittest.TestCase):
         bodies={'/ready':json.dumps({'status':'ready','model':model}).encode(),
                 '/v1/models':json.dumps({'data':[{'id':model,'architecture':{'input_modalities':list(modalities)}}]}).encode(),
                 '/metrics':('# TYPE llamacpp:requests_processing gauge\nllamacpp:requests_processing '+processing+'\nllamacpp:requests_deferred '+deferred+'\n').encode()}
-        transport=Transport('http://local.invalid');transport.get=lambda path:bodies[path];return transport
+        transport=Transport('http://local.invalid');transport.get=lambda path:bodies[path.removeprefix("/upstream/"+MODEL)];return transport
     def test_idle_vision_server_reports_the_served_model(self):
         self.assertEqual(self.transport().health(),{'status':'ready','model':MODEL,'vision':{'enabled':True},'in_flight':False,'requests_processing':0.0,'requests_deferred':0.0})
     def test_admitted_or_deferred_requests_count_as_in_flight(self):

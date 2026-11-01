@@ -10,8 +10,8 @@ lib/local-model.nix).
 Installed by the fleet profile, with strix-coordinator as the upstream. This
 file forwards one request there and rewrites ``utility`` to the concrete served ID
 on the way out and back; the server answers 404 to any other ID.  No lock and
-no child process: the server is resident for the life of its unit, so the only
-thing left here is the bounded request itself.  It can still take minutes when
+no child process: llama-swap starts the server for inference and unloads it when idle,
+so this wrapper only owns its bounded request.  It can still take minutes when
 it lands while the unit is still cold-loading, or on a long generation, so the
 default timeout below is generous on purpose.
 
