@@ -18,7 +18,6 @@ let
     "gufo-image.service"
     "gufo-tts.service"
     "gufo-asr.service"
-    "qwen-tts.service"
     "ds4.service"
   ]
   ++ lib.optionals (config.services.gufo.enable or false) (
@@ -65,27 +64,14 @@ let
         --gpu-memory-utilization ${toString cfg.gpuMemoryUtilization} \
         "$@" --host 127.0.0.1 &
       server=$!
-      (
-        while kill -0 "$server" 2>/dev/null; do
-          available=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
-          if [ "$available" -lt ${toString (cfg.reserveGiB * 1024 * 1024)} ]; then
-            echo "d3-vllm-experiment: MemAvailable crossed the ${toString cfg.reserveGiB} GiB reserve; stopping this experiment" >&2
-            kill -TERM "$server"
-            exit 1
-          fi
-          sleep 2
-        done
-      ) &
-      guard=$!
-      cleanup() {
-        kill -TERM "$server" "$guard" 2>/dev/null || true
-        wait "$server" 2>/dev/null || true
-        wait "$guard" 2>/dev/null || true
-      }
-      trap cleanup EXIT
-      trap 'exit 143' TERM
-      trap 'exit 130' INT
-      wait "$server"
+      reserve_gib=${toString cfg.reserveGiB}
+      reserve_kib=${toString (cfg.reserveGiB * 1024 * 1024)}
+      # The awk field reference belongs to awk, not the shell.
+      # shellcheck disable=SC2016
+      memory_probe=(${pkgs.gawk}/bin/awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+      poll_sleep=(${pkgs.coreutils}/bin/sleep 2)
+      ${builtins.readFile ./d3-decision-supervise.sh}
+      d3_supervise
     '';
   };
   ready = pkgs.writeShellScript "d3-vllm-experiment-ready" ''

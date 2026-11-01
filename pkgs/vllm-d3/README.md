@@ -104,6 +104,11 @@ or timer, and the explicit `d3-vllm-experiment baseline|libstrix` CLI. The unit
 binds only `127.0.0.1:8734` and uses the same existing BF16 loan. It refuses to
 start while a declared GPU owner is active; it never stops another service.
 The production proxy and native D3 route keep their existing configuration.
+The preflight checks current owners; it cannot prevent a later manual Gufo
+start. Coordinate this experiment as one serial GPU window, start no other
+GPU owner during it, and restore the previous owner after both children have
+been reaped. The launcher shares the native D3 supervisor, including protection
+against repeated TERM signals interrupting shutdown.
 
 For supervised GPU qualification on compute, after the other owner has been
 explicitly released, the module's launcher can run inside the runtime wrapper:
