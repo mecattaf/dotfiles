@@ -1513,9 +1513,16 @@
           in
           assert homeConfig.programs.ai-memory.journalDir == expectedJournal;
           assert homeConfig.home.activation ? aiMemoryJournal;
-          assert builtins.all (p: nixpkgs.lib.getName p != "qmd") (
-            nixpkgs.lib.concatMap (p: p.paths or [ p ]) homeConfig.home.packages
-          );
+          assert builtins.all (
+            p:
+            let
+              name = nixpkgs.lib.getName p;
+            in
+            name != "qmd"
+            && (
+              name != "llm-agents-selected" || builtins.all (agent: nixpkgs.lib.getName agent != "qmd") p.paths
+            )
+          ) homeConfig.home.packages;
           assert !(nixpkgs.lib.hasInfix "qmd" homeConfig.home.activation.aiMemoryJournal.data);
           # Brain only: on the client it recreated ~/mecattaf/notes/journal.
           assert !(clientHome.home.activation ? aiMemoryJournal);
