@@ -99,10 +99,10 @@ use". The engine is the `rdma` branch of `github:neuhaus/gufo` (flake input
 model collection is catalogued in
 `lib/gufo-models.json` at the revisions Gufo's docs pin:
 - Qwen3.8 Flash-Next (UD-Q4_K_XL GGUF with the MTP predictor and the vision
-  projector): the resident text model, served as `qwen3.8-flash-next` on
-  `http://strix-coordinator:8731` (`gufo-llm.service`, target endpoint);
+  projector): the default demand-loaded text model, served as `qwen3.8-flash-next` on
+  `http://strix-coordinator:8731` (`llama-swap.service`, target endpoint);
 - Qwen3.8-27B (UD-Q4_K_XL with the DFlash2 draft): the alternate on the same
-  port, started only by `gufo-switch <name>`. Gufo's DeepSeek V4 Flash 0731
+  endpoint, selected by the API model ID or `gufo-switch <name>`. Gufo's DeepSeek V4 Flash 0731
   alternate was removed on 2026-10-25: DeepSeek is now kyuz0's V4.1 Flash
   1017 on ds4 (`modules/ds4.nix`), single host on strix-worker at
   `http://10.42.0.5:8732`, started by hand and reached through dsh;
@@ -116,7 +116,7 @@ exact served id. It has no `/v1/embeddings` (501), no reranking and no
 diarization.
 
 **Halogen is fully retired (Tom, 2026-10-23).** Tom: "just read in previous output of yours also: halogen is OUT fullly as inference provider (moving to gufo-rdma) and as models (we use the gufo-specific ones)"
-Gufo owns port 8731 with one execution session, 102400 tokens of context,
+llama-swap owns port 8731 and starts Gufo on demand with one execution session, 102400 tokens of context,
 thinking off and a fixed 1 GiB prefix cache. The provider, runtime, seat and
 link labels are `gufo`; no retired-provider alias is supported. Callers use
 Gufo's exact wire model IDs and the artifacts in `lib/gufo-models.json`.
@@ -127,6 +127,17 @@ bytes awaiting an explicit Library retirement, not active model definitions.
 `docs/gufo-cutover.md` records the coordinated Substrate/caller changes;
 mutable `models.toml` remains runtime data, never rewritten by activation.
 The RDMA engine/fleet-role rollout is separate from this declaration.
+
+**Demand loading (Tom, 2026-11-01).** Follow Gufo maintainer Federico's
+llama-swap pattern: standard NixOS service, upstream `mkGufoServe`, no preload,
+ten-minute idle TTL for text/image and two minutes for Gufo audio. Model
+selection in API requests swaps the backend; default upstream grouping keeps
+one model loaded at a time. Add future models through
+`services.gufo.models`, referencing catalog artifact IDs; the module derives
+both llama-swap routes and the complete required loan set.
+Routine probes use `/health`, `/running` and `/v1/models`, never `/upstream`,
+which can wake a model. Direct Gufo units remain manual diagnostic paths and
+conflict with the proxy; they have no boot target. See `docs/gufo-demand.md`.
 Immich ML also runs on Strix; its socket starts it on demand with a 15-minute
 idle shutdown.
 
@@ -138,7 +149,7 @@ pause. Do not add a `flm` invocation, an `flm serve` unit, or an NPU backend row
 back.
 
 **The `utility` slot forwards to the local text model.** The stable ID
-`utility` resolves to the compute host's resident Gufo Flash-Next model, and
+`utility` resolves to the compute host's demand-loaded Gufo Flash-Next model, and
 the request-scoped `utility-model` wrapper forwards a single
 chat-completions request to it over the wired LAN. `/drain` and `/print` dial
 that seam under the same name and with the same CLI flags as before. What must
@@ -234,7 +245,7 @@ annotation menu, declared by `modules/handwriting-annotation.nix`: NAS DNS,
 NAS Caddy and a CPU-only service on the NAS. Preserve `/var/lib/handwriting-annotation`
 and its append-only writer/model-review history across updates. Model-assisted
 resolutions are not writer labels. Huion sources arrive in `$(utility-path paper)/inbox`;
-`$(utility-path paper)/intake` is the printing route. Use the resident Gufo Flash-Next model for serial
+`$(utility-path paper)/intake` is the printing route. Use the demand-loaded Gufo Flash-Next model for serial
 OCR with thinking explicitly off. `docs/handwriting-intake.md` records the
 recipe, correction-evidence rules and real-Huion commissioning boundary. Do not
 reseed live review state or treat stable legacy capture files as proof of device

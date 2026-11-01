@@ -22,23 +22,9 @@
   ];
 
   config = {
-    services.local-models.artifacts = [
-      # Gufo text bundles, borrowed from the NAS Library. The 27B Q8 is the
-      # qwen38-27b-q8 alternate's bundle; both Strix hold it since the
-      # 2026-10-25 loans, so a default borrow restores it and prune keeps it.
-      "qwen38-flash-next-gguf"
-      "qwen38-27b-gguf"
-      "qwen38-27b-q8-gguf"
-      "qwen38-27b-dflash2-gguf"
-      # Gufo's speech and image units (gufo-asr, gufo-tts, gufo-image) check
-      # exactly these default artifacts. Wanted, so prune keeps the loans (Tom
-      # 2026-10-25: every gufo-rdma documented model loaded on both Strix).
-      "qwen3-asr-1.7b"
-      "qwen3-tts-12hz-1.7b-base"
-      "qwen-image-2.1"
-    ]
-    ++ lib.optionals (config.myFleet.has "compute") [
-      # The one diarization model (Tom, 2026-09-16), loaded by call-diarize.
+    # Gufo deployment rows add their own complete model/sidecar/voice loans.
+    services.local-models.artifacts = lib.optionals (config.myFleet.has "compute") [
+      # The one diarization model, outside Gufo (Tom, 2026-09-16).
       "vibevoice-asr-streaming-7b-bf16"
     ];
 

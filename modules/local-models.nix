@@ -286,9 +286,23 @@ let
 in
 {
   options.services.local-models = {
+    requirements = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+      default = { };
+      description = "Artifact IDs required by each service deployment. They are unioned with explicit artifacts into the one wanted set, including shared companion/voice bundles.";
+    };
     artifacts = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
+      # Service deployments may share a voice/support bundle. Preserve the
+      # duplicate guard for manually declared IDs, then union requirements
+      # once here so every manifest and consumer sees the same wanted set.
+      apply =
+        declared:
+        if builtins.length declared != builtins.length (lib.unique declared) then
+          throw "services.local-models.artifacts must not contain duplicate explicitly declared artifact IDs."
+        else
+          lib.unique (declared ++ lib.concatLists (builtins.attrValues cfg.requirements));
       description = ''
         Catalogue artifact IDs this host WANTS as working copies under
         /var/lib/local-models: the wanted set local-models-borrow loans from

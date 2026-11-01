@@ -27,7 +27,7 @@ from typing import Callable, Mapping, Sequence
 SOURCES = ("claude-code", "codex")
 STABLE_MODEL_ID = "utility"
 # The seam is the fleet's local model server on the strix, reached through the
-# `utility-model` wrapper. The server stays resident, but a request that lands
+# `utility-model` wrapper. llama-swap loads the server on demand; a request that lands
 # while its unit is still starting waits on that start, and a long
 # root turn is a long generation — so the per-request budget is generous.
 UTILITY_TIMEOUT_SECONDS = 1200.0

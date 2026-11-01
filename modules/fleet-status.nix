@@ -18,7 +18,7 @@
 #
 # Roles come from the configuration, not from hostnames, so a moved service
 # moves its facts with it:
-#   gufo    services.gufo.enable            → gufo-llm*, /ready, /v1/models
+#   gufo    services.gufo.enable            → llama-swap/gufo-llm*, /running, /v1/models
 #   (runs, the Tally planes, went with the Tally sunset on 2026-09-30)
 #   attention  the Herdr server host (home/herdr.nix gates its unit on
 #              myFleet.has "brain", and so does this module; the

@@ -137,15 +137,17 @@ def parse_answer(text):
 class Transport:
     def __init__(self,endpoint=ENDPOINT):self.endpoint=endpoint.rstrip('/')
     def get(self,path):
-        with urllib.request.urlopen(self.endpoint+path,timeout=20) as response:return response.read()
+        with urllib.request.urlopen(self.endpoint+path,timeout=1200) as response:return response.read()
     def health(self):
+        # An explicit OCR run may wake the model through llama-swap passthrough.
+        # Routine monitoring must use /running instead.
         # The local server reports liveness on /health, the loaded model on /ready, image input on
         # /v1/models and admitted requests on /metrics; fold them into the one record intake checks.
-        ready=json.loads(self.get('/ready'));listed=json.loads(self.get('/v1/models'))
+        ready=json.loads(self.get('/upstream/'+MODEL+'/ready'));listed=json.loads(self.get('/upstream/'+MODEL+'/v1/models'))
         entry=next((m for m in listed.get('data',[]) if m.get('id')==ready.get('model')),{})
         modalities=(entry.get('architecture') or {}).get('input_modalities') or []
         processing=deferred=None
-        for line in self.get('/metrics').decode().splitlines():
+        for line in self.get('/upstream/'+MODEL+'/metrics').decode().splitlines():
             if line.startswith('llamacpp:requests_processing '):processing=float(line.split()[-1])
             elif line.startswith('llamacpp:requests_deferred '):deferred=float(line.split()[-1])
         if processing is None:raise ValueError('The local model server reports no requests_processing metric')

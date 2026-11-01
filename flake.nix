@@ -815,6 +815,8 @@
                 bash ${./tests/util-01/test-token-windows.sh} | tee $out
             '';
 
+        gufo-demand = import ./tests/gufo-demand { inherit pkgs self; };
+
         gufo-unit-policy =
           let
             strix = self.nixosConfigurations.strix-coordinator.config;
@@ -2713,10 +2715,10 @@
               ) strix.environment.systemPackages
             ) == 1;
 
-          # llama-swap is gone from every host: no unit, no proxy, no door.
-          assert !strix.services.llama-swap.enable;
-
-          assert !(strix.systemd.services ? llama-swap);
+          # Gufo is demand-loaded behind the standard llama-swap endpoint.
+          assert strix.services.llama-swap.enable;
+          assert strix.services.llama-swap.port == strix.services.gufo.port;
+          assert strix.systemd.services.gufo-llm.wantedBy == [ ];
 
           assert !(strix.systemd.targets ? flashnext-lane);
 
