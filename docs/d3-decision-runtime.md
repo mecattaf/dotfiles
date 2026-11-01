@@ -101,3 +101,36 @@ Run runtime experiments through `runtime-test` on the target, with the source
 staged under `/var/lib/microvms/` and commands sent through `fleet-exec`.
 Production-model GPU qualification requires a coordinated idle window and
 restoring the established Gufo demand endpoint afterward.
+
+On 2026-11-01 the installed package passed the tiny Ultra CPU fixture through
+a separate real systemd/llama-swap service with DynamicUser, PrivateUsers,
+ProtectHome, ProtectSystem=strict, RestrictNamespaces and the production
+SystemCallFilter. The private cache was writable by the dynamic UID. Four
+Choice/Noul/Score requests retained the same probabilities on repetition;
+the service's memory peak was 598,544,384 bytes. This qualifies the service
+boundary, not production model accuracy or throughput. The upstream fixture
+writer makes safetensors files mode 0600; test copies need mode 0644, as the
+production borrow transaction already sets.
+
+The installed native stack is PyTorch
+`2.11.0+rocm7.15.0a20260719` and Triton
+`3.7.1+git0263a6a6.rocm7.15.0a20260719`. It differs from the model release's
+reference PyTorch build. A small BF16 matrix-multiply probe passed both in the
+GPU-enabled runtime-test wrapper and under the actual service hardening:
+AMD Radeon 8060S, gfx1151, exact expected result and a successful exit. The
+hardened probe peaked at 473.5 MiB. Full model numerical and performance
+qualification is separate.
+
+`tests/d3-decision/benchmark.py` records a bounded real-model smoke workload:
+code, a JSON billing ticket and a short document summary, each with
+Choice/Noul/Score questions. It validates finite normalized probabilities,
+records repeated-answer drift and argmax stability, and writes request
+digests, the model card, cold readiness time, request latencies, host memory
+and supplied provenance to JSON. It starts or stops no service:
+
+```sh
+runtime-test -- python3 tests/d3-decision/benchmark.py \
+  --base-url http://127.0.0.1:8731/upstream/d3-ultra --model d3-ultra \
+  --output /var/lib/microvms/d3-native-result.json \
+  --provenance 'Record the exact runtime, model revision and host generation here'
+```
