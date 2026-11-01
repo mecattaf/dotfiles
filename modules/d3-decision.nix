@@ -218,8 +218,14 @@ in
     };
     # PyTorch/Triton JIT code needs executable mappings. The proxy otherwise
     # keeps its existing dynamic user, read-only model paths and GPU groups.
-    systemd.services.llama-swap.serviceConfig = lib.mkIf cfg.demand.enable {
-      MemoryDenyWriteExecute = lib.mkForce false;
+    systemd.services.llama-swap = lib.mkIf cfg.demand.enable {
+      environment.LLAMA_CACHE = "/var/cache/llama-swap";
+      serviceConfig = {
+        MemoryDenyWriteExecute = lib.mkForce false;
+        # DynamicUser + ProtectSystem=strict need an explicitly writable,
+        # service-owned cache for PyTorch/Triton and the native autotuner.
+        CacheDirectory = "llama-swap";
+      };
     };
     systemd.services.d3-decision = {
       description = "D3 Ultra System One decisions (manual, native ROCm worker)";

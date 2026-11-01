@@ -577,6 +577,9 @@
             ;
           # `nix build .#gufo` — the engine modules/gufo.nix runs (#525).
           gufo = inputs.gufo.packages.${system}.default;
+          vllm-srun = pkgs.callPackage ./pkgs/vllm-srun {
+            torchRocm = strixAi.torch-rocm;
+          };
           rdmaCoreUsb4 = pkgs.callPackage ./pkgs/rdma-core-usb4 { inherit (inputs) donnerkeule; };
           gufo-rdma = inputs.gufo-rdma.packages.${system}.tp2-rdma.override {
             rdma-core = self.packages.${system}.rdmaCoreUsb4;
@@ -649,6 +652,10 @@
         };
         gufo-rdma = import ./tests/gufo-rdma {
           inherit pkgs self inputs;
+          inherit (nixpkgs) lib;
+        };
+        d3-decision = import ./tests/d3-decision {
+          inherit pkgs self;
           inherit (nixpkgs) lib;
         };
         strix-reachability =

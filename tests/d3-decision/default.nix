@@ -19,6 +19,8 @@ assert !(lib.elem "llama-swap.service" cfg.exclusiveServices);
 assert !(lib.elem cfg.port c.networking.firewall.allowedTCPPorts);
 assert lib.elem cfg.artifact c.services.local-models.artifacts;
 assert c.systemd.services.llama-swap.serviceConfig.MemoryDenyWriteExecute == false;
+assert c.systemd.services.llama-swap.serviceConfig.CacheDirectory == "llama-swap";
+assert c.systemd.services.llama-swap.environment.LLAMA_CACHE == "/var/cache/llama-swap";
 assert unit.serviceConfig.MemorySwapMax == "0";
 assert cfg.package.upstreamRevision == "62c4f39e35aa2dfe929eb18223a7509ebeff6563";
 pkgs.runCommand "d3-decision-policy"

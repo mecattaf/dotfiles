@@ -38,6 +38,12 @@
   myNasClient.useRemoteStorage = true;
 
   services.utilityModel.enable = true;
+  # D3 is a separate decision engine sharing llama-swap's single GPU slot.
+  # Declaring its loan set starts no worker and moves no model bytes.
+  services.d3-decision = {
+    enable = true;
+    wanted = true;
+  };
   # The TP2 rank shape stays, but each rank needs the full 340.6 GiB Q2 and
   # this disk has 108 GB free (D-A), so ds4's files are not wanted here: a
   # default borrow does not try them and prune would remove a stray copy.
