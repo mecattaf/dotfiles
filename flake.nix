@@ -1415,8 +1415,18 @@
           # The client's generated slot: touch mapped, the lid handled by
           # bindswitch (hosts/client/lid.nix relies on the compositor for the
           # panel), and no override of the herdr chords.
-          assert nixpkgs.lib.hasInfix "input type:touch map_to_output eDP-1"
-            clientHome.xdg.configFile."sway-local.conf".text;
+          assert builtins.all
+            (mapping: nixpkgs.lib.hasInfix mapping clientHome.xdg.configFile."sway-local.conf".text)
+            [
+              "input \"1267:16987:ELAN9008:00_04F3:425B\" map_to_output eDP-1"
+              "input \"1267:16986:ELAN9009:00_04F3:425A\" map_to_output eDP-2"
+              "input \"1267:16987:ELAN9008:00_04F3:425B_Stylus\" map_to_output eDP-1"
+              "input \"1267:16986:ELAN9009:00_04F3:425A_Stylus\" map_to_output eDP-2"
+            ];
+          assert
+            !(nixpkgs.lib.hasInfix "input type:touch map_to_output"
+              clientHome.xdg.configFile."sway-local.conf".text
+            );
           assert nixpkgs.lib.hasInfix "bindswitch --reload --locked lid:on output eDP-1 disable"
             clientHome.xdg.configFile."sway-local.conf".text;
           assert !(nixpkgs.lib.hasInfix "$mod+Return " clientHome.xdg.configFile."sway-local.conf".text);
@@ -1503,7 +1513,11 @@
           in
           assert homeConfig.programs.ai-memory.journalDir == expectedJournal;
           assert homeConfig.home.activation ? aiMemoryJournal;
-          # Strix only: on the client it recreated ~/mecattaf/notes/journal.
+          assert builtins.all (p: nixpkgs.lib.getName p != "qmd") (
+            nixpkgs.lib.concatMap (p: p.paths or [ p ]) homeConfig.home.packages
+          );
+          assert !(nixpkgs.lib.hasInfix "qmd" homeConfig.home.activation.aiMemoryJournal.data);
+          # Brain only: on the client it recreated ~/mecattaf/notes/journal.
           assert !(clientHome.home.activation ? aiMemoryJournal);
           assert !(clientHome.xdg.configFile ? "ai-memory/config.json");
           assert
@@ -1515,7 +1529,6 @@
             {
               nativeBuildInputs = [
                 pkgs.jq
-                pkgs.llm-agents.qmd
                 pkgs.python3
               ];
             }
@@ -1540,26 +1553,6 @@
                 -s ${./tests/ai-memory} \
                 -p 'test_*.py' \
                 -v
-
-              mkdir -p "$HOME/journal"
-              qmd --index ai-memory-check \
-                collection add "$HOME/journal" --name journal >/dev/null
-              printf '%s\n' \
-                '# Synthetic journal result' \
-                "" \
-                'UNIQUE_MEMORY_BOUNDARY_SENTINEL' \
-                > "$HOME/journal/note.md"
-              cp "$HOME/journal/note.md" "$TMPDIR/note.before"
-              qmd --index ai-memory-check update >/dev/null
-              qmd --index ai-memory-check \
-                search UNIQUE_MEMORY_BOUNDARY_SENTINEL --format json \
-                > "$TMPDIR/search.json"
-              jq -e '
-                length == 1
-                and .[0].file == "qmd://journal/note.md?index=ai-memory-check"
-              ' "$TMPDIR/search.json" >/dev/null
-              ${pkgs.diffutils}/bin/cmp \
-                "$TMPDIR/note.before" "$HOME/journal/note.md"
 
               touch "$out"
             '';
@@ -1610,17 +1603,22 @@
           assert !(compute.systemd.user.paths ? speech-queue);
           assert !(compute.systemd.user.timers ? speech-queue);
           assert !(compute.home-manager.users.tom.systemd.user.services ? speech-queue);
-          pkgs.runCommand "utility-storage" {
-            nativeBuildInputs = [ pkgs.python3 pkgs.systemd ];
-          } ''
-            export PYTHONDONTWRITEBYTECODE=1
-            export PYTHONPATH=${./lib/python}
-            export CALL_DIARIZE_REMOTE_SCRIPT=${./home/dot_local/bin/call-diarize-remote}
-            export SPEECH_QUEUE_SCRIPT=${./pkgs/speech-session/queue.py}
-            python3 -m unittest discover -s ${./tests/utility-storage} -v
-            python3 -m unittest discover -s ${./tests/speech-session} -v
-            touch "$out"
-          '';
+          pkgs.runCommand "utility-storage"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.systemd
+              ];
+            }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              export PYTHONPATH=${./lib/python}
+              export CALL_DIARIZE_REMOTE_SCRIPT=${./home/dot_local/bin/call-diarize-remote}
+              export SPEECH_QUEUE_SCRIPT=${./pkgs/speech-session/queue.py}
+              python3 -m unittest discover -s ${./tests/utility-storage} -v
+              python3 -m unittest discover -s ${./tests/speech-session} -v
+              touch "$out"
+            '';
 
         print-paper =
           pkgs.runCommand "print-paper"
@@ -1653,16 +1651,24 @@
               touch "$out"
             '';
 
-        print-render = pkgs.runCommand "print-render" {
-          nativeBuildInputs = [ pkgs.python3 pkgs.python3Packages.weasyprint pkgs.fontconfig pkgs.poppler-utils ];
-          FONTCONFIG_FILE = pkgs.paper-render.fonts;
-          PRINT_PAPER_SCRIPT = ./home/dot_claude/skills/print/scripts/print-paper.py;
-        } ''
-          export HOME="$TMPDIR/home"
-          mkdir -p "$HOME"
-          python3 ${./tests/print/render_integration.py} -v
-          touch "$out"
-        '';
+        print-render =
+          pkgs.runCommand "print-render"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.python3Packages.weasyprint
+                pkgs.fontconfig
+                pkgs.poppler-utils
+              ];
+              FONTCONFIG_FILE = pkgs.paper-render.fonts;
+              PRINT_PAPER_SCRIPT = ./home/dot_claude/skills/print/scripts/print-paper.py;
+            }
+            ''
+              export HOME="$TMPDIR/home"
+              mkdir -p "$HOME"
+              python3 ${./tests/print/render_integration.py} -v
+              touch "$out"
+            '';
 
         # nightly-record (dotfiles#298): five lanes, five rows, every night,
         # from the harness transcripts and nothing else. Same shape as
@@ -1809,7 +1815,12 @@
             fixtureMirror = pkgs.downloads-mirror.override { openssh = fixtureSsh; };
           in
           pkgs.runCommand "downloads-mirror"
-            { nativeBuildInputs = [ pkgs.python3 pkgs.rsync ]; }
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.rsync
+              ];
+            }
             ''
               export PYTHONDONTWRITEBYTECODE=1
               export DOWNLOADS_MIRROR_SCRIPT=${./pkgs/downloads-mirror/downloads-mirror.py}
@@ -1817,8 +1828,12 @@
               export DOWNLOADS_MIRROR_FIXTURE_BINARY=${pkgs.lib.getExe fixtureMirror}
               export DOWNLOADS_SYSTEMD_ANALYZE=${pkgs.systemd}/bin/systemd-analyze
               export DOWNLOADS_SYSTEMD_USER_UNITS=${pkgs.systemd}/example/systemd/user
-              export DOWNLOADS_MIRROR_PATH_UNIT=${self.nixosConfigurations.client.config.home-manager.users.tom.xdg.configFile."systemd/user/downloads-mirror-watch.path".source}
-              export DOWNLOADS_MIRROR_SERVICE_UNIT=${self.nixosConfigurations.client.config.home-manager.users.tom.xdg.configFile."systemd/user/downloads-mirror-notify.service".source}
+              export DOWNLOADS_MIRROR_PATH_UNIT=${
+                self.nixosConfigurations.client.config.home-manager.users.tom.xdg.configFile."systemd/user/downloads-mirror-watch.path".source
+              }
+              export DOWNLOADS_MIRROR_SERVICE_UNIT=${
+                self.nixosConfigurations.client.config.home-manager.users.tom.xdg.configFile."systemd/user/downloads-mirror-notify.service".source
+              }
               python3 -m unittest discover -s ${./tests/downloads-mirror} -p 'test_*.py' -v
               touch "$out"
             '';
@@ -2232,19 +2247,26 @@
             '';
 
         # Native controls are exercised with fake CLI/desktop commands only.
-        inzone-audio = pkgs.runCommand "inzone-audio" {
-          nativeBuildInputs = [
-            pkgs.python3 pkgs.bash pkgs.coreutils pkgs.util-linux pkgs.gawk
-          ];
-        } ''
-          export HOME="$TMPDIR/home"
-          export PYTHONDONTWRITEBYTECODE=1
-          export INZONE_MENU_SCRIPT=${./home/dot_local/bin/inzone-menu}
-          export INZONE_VOLUME_SCRIPT=${./home/dot_local/bin/volume}
-          mkdir -p "$HOME"
-          python3 -m unittest discover -s ${./tests/inzone-audio} -p 'test_*.py' -v
-          touch "$out"
-        '';
+        inzone-audio =
+          pkgs.runCommand "inzone-audio"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.util-linux
+                pkgs.gawk
+              ];
+            }
+            ''
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export INZONE_MENU_SCRIPT=${./home/dot_local/bin/inzone-menu}
+              export INZONE_VOLUME_SCRIPT=${./home/dot_local/bin/volume}
+              mkdir -p "$HOME"
+              python3 -m unittest discover -s ${./tests/inzone-audio} -p 'test_*.py' -v
+              touch "$out"
+            '';
 
         # Model bytes are explicit transactions, never activation work. Drive
         # the evaluated worker borrow binary against tiny fixtures, then keep
@@ -2950,8 +2972,7 @@
             brainHome = nas.home-manager.users.tom;
             compute = self.nixosConfigurations.strix-coordinator.config;
             daemonService = brainHome.systemd.user.services.paper-daemon;
-            postStart =
-              self.nixosConfigurations.nas.config.systemd.services.ensure-printers.postStart;
+            postStart = self.nixosConfigurations.nas.config.systemd.services.ensure-printers.postStart;
           in
           assert printingHosts != [ ];
           assert nixpkgs.lib.all (host: !host.services.printing.browsed.enable) printingHosts;
@@ -2959,17 +2980,21 @@
           # store paths differ, but every scheduler must enforce the same guard.
           assert nixpkgs.lib.all (
             host:
-            let guard = host.systemd.services.ensure-printers.postStart;
-            in nixpkgs.lib.hasInfix "ipp://10.42.0.4:631/ipp/print" guard
-              && nixpkgs.lib.hasInfix ''cupsFilter2: "image/urf'' guard
-              && nixpkgs.lib.hasInfix "implicitclass:" guard
+            let
+              guard = host.systemd.services.ensure-printers.postStart;
+            in
+            nixpkgs.lib.hasInfix "ipp://10.42.0.4:631/ipp/print" guard
+            && nixpkgs.lib.hasInfix ''cupsFilter2: "image/urf'' guard
+            && nixpkgs.lib.hasInfix "implicitclass:" guard
           ) printingHosts;
           assert nixpkgs.lib.hasInfix "ipp://10.42.0.4:631/ipp/print" postStart;
           assert nixpkgs.lib.hasInfix ''cupsFilter2: "image/urf'' postStart;
           assert nixpkgs.lib.hasInfix "implicitclass:" postStart;
           assert nas.services.printing.enable;
           assert brainHome.systemd.user.paths ? paper-daemon;
-          assert brainHome.systemd.user.paths.paper-daemon.Path.PathChanged == "%h/.local/share/utility-data/paper/intake";
+          assert
+            brainHome.systemd.user.paths.paper-daemon.Path.PathChanged
+            == "%h/.local/share/utility-data/paper/intake";
           assert !(brainHome.systemd.user.timers ? paper-daemon-sweep);
           assert brainHome.systemd.user.timers ? paper-daemon-flush;
           assert brainHome.systemd.user.timers.paper-daemon-flush.Timer.Persistent;
@@ -2978,7 +3003,9 @@
           assert nixpkgs.lib.elem "PAPER_RENDER_HOST=strix-coordinator" daemonService.Service.Environment;
           assert !(brainHome.systemd.user.services ? paper-print-flush);
           assert !(compute.home-manager.users.tom.systemd.user.paths ? paper-daemon);
-          assert builtins.any (package: nixpkgs.lib.getName package == "paper-render") compute.environment.systemPackages;
+          assert builtins.any (
+            package: nixpkgs.lib.getName package == "paper-render"
+          ) compute.environment.systemPackages;
 
           pkgs.runCommand "print-plane" { } ''
             ${builtins.head (nixpkgs.lib.toList daemonService.Service.ExecStart)} --help >/dev/null 2>&1 \
