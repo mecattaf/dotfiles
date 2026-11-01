@@ -143,8 +143,8 @@ The installed native stack is PyTorch
 reference PyTorch build. A small BF16 matrix-multiply probe passed both in the
 GPU-enabled runtime-test wrapper and under the actual service hardening:
 AMD Radeon 8060S, gfx1151, exact expected result and a successful exit. The
-hardened probe peaked at 473.5 MiB. Full model numerical and performance
-qualification is separate.
+hardened probe peaked at 473.5 MiB. The full-model results below are separate
+from this hardware probe.
 
 `tests/d3-decision/benchmark.py` records a bounded real-model smoke workload:
 code, a JSON billing ticket and a short document summary, each with
@@ -159,3 +159,35 @@ runtime-test -- python3 tests/d3-decision/benchmark.py \
   --output /var/lib/microvms/d3-native-result.json \
   --provenance 'Record the exact runtime, model revision and host generation here'
 ```
+
+The complete pinned BF16 model passed native GPU qualification on
+strix-coordinator on 2026-11-01, through a separate real llama-swap service
+with the same hardening and lifecycle-aware launcher. The verified 36-file,
+52,199,363,315-byte NAS loan was used directly. Cold-process readiness took
+30.4 seconds; the filesystem page cache was warm from the verified loan and
+was not dropped. The service peaked at 56,911,736,832 bytes (53.0 GiB), with
+one sequence and a 4,096-token batch budget.
+
+| Request | Questions | Repeats | Median latency |
+| --- | --- | --- | --- |
+| Code task | Choice, Noul, Score | 3 | 0.979 s |
+| JSON billing ticket | Choice, Noul, Score | 3 | 1.009 s |
+| Short document summary | Choice, Noul, Score | 3 | 4.964 s |
+
+All nine text requests returned valid distributions and exactly repeated
+their probabilities and argmax choices. A separate single-question Choice
+exercised Ultra's 1.046 temperature path. A synthetic 256×256 red square was
+recognized, with a valid Box at 1.028 seconds; a two-second, four-frame
+synthetic video returned two valid Track observations at 1.351 seconds.
+These are functional checks on simple inputs, not an accuracy benchmark or
+a Jev evaluation. The model's long-context capacity was not exercised.
+The native runtime reports `numerics: approximate` and no matched release
+golden reference for this local model identity; deterministic results here
+do not establish parity with the release's MI325X reference build.
+
+Both temporary proxy units were stopped and Gufo was restored and passed
+`/ready` after each window. No NixOS generation was activated. The compact
+[qualification receipt](d3-native-qualification-2026-11-01.json) records
+model/runtime identities, typed answers, timings, memory and restoration.
+`tests/d3-decision/qualify_multimodal.py` preserves the supplementary request
+capture workflow. Production activation remains pending.
