@@ -200,6 +200,7 @@ let
             (builtins.fromJSON (builtins.readFile ./speech-intake-models.json))
             // (builtins.fromJSON (builtins.readFile ./gufo-models.json))
             // (builtins.fromJSON (builtins.readFile ./ds4-models.json))
+            // (builtins.fromJSON (builtins.readFile ./decision-models.json))
             // {
               "qwen3-tts-1.7b-base-q8-0" = mkSingleFileArtifact {
                 maker = "Qwen";
