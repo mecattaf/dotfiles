@@ -190,4 +190,39 @@ Both temporary proxy units were stopped and Gufo was restored and passed
 [qualification receipt](d3-native-qualification-2026-11-01.json) records
 model/runtime identities, typed answers, timings, memory and restoration.
 `tests/d3-decision/qualify_multimodal.py` preserves the supplementary request
-capture workflow. Production activation remains pending.
+capture workflow. Verify production deployment separately using the host's
+configuration revision and the proxy probes above.
+
+## Patched vLLM and libstrix comparison
+
+Both experimental variants also loaded the complete BF16 model on this host
+and served the same nine text/JSON requests. The Nix appliance backports
+prefix-bidirectional attention and Ultra's prompt, temperature and native
+answer contract. Native remains the default: it supports Box/Track and had
+the lowest measured latency in this small workload.
+
+| Request | Native | Stock vLLM | vLLM with libstrix |
+| --- | --- | --- | --- |
+| Code task | 0.979 s | 1.593 s | 1.476 s |
+| JSON billing ticket | 1.009 s | 1.627 s | 1.486 s |
+| Short document summary | 4.964 s | 8.854 s | 7.734 s |
+
+These are median request latencies, excluding server startup. libstrix
+reduced stock vLLM's medians by 7–13%; it still took 1.47–1.56 times the
+native worker's latency. Logs confirm dispatch into libstrix convolution,
+post-convolution and GEMM kernels. Its causal attention replacements stayed
+disabled in order to preserve Ultra's prefix-bidirectional attention.
+
+All repetitions were stable and no argmax decision changed across engines.
+The maximum absolute probability difference from native was 0.006314 for
+stock and 0.003214 with libstrix. This is functional agreement on synthetic
+inputs, not a model-quality or broad numerical-parity evaluation. The two
+engines also use different pinned Torch/ROCm builds.
+
+The standard native worker does not load libstrix's vLLM plugin hook. That,
+the measured results and the complete native API are why libstrix is not
+used in the default appliance. The disabled manual experiment remains
+available through `nix build .#d3-vllm-experiment` on compute, followed by
+`d3-vllm-experiment baseline|libstrix` in a coordinated GPU window.
+[Package, patches, hardening fixes and reproduction](../pkgs/vllm-d3/README.md)
+and [retained comparison](../tests/d3-vllm-experiment/results/2026-11-01/comparison.json).
