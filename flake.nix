@@ -582,6 +582,12 @@
           vllm-srun = pkgs.callPackage ./pkgs/vllm-srun {
             torchRocm = strixAi.torch-rocm;
           };
+          d3-vllm = pkgs.callPackage ./pkgs/vllm-d3 { };
+          d3-vllm-experiment =
+            self.nixosConfigurations.strix-coordinator.config.services.d3-vllm-experiment.launcher;
+          libstrix-provenance = pkgs.writeText "libstrix-provenance.json" (
+            builtins.toJSON (import ./pkgs/libstrix/provenance.nix)
+          );
           rdmaCoreUsb4 = pkgs.callPackage ./pkgs/rdma-core-usb4 { inherit (inputs) donnerkeule; };
           gufo-rdma = inputs.gufo-rdma.packages.${system}.tp2-rdma.override {
             rdma-core = self.packages.${system}.rdmaCoreUsb4;
@@ -657,6 +663,11 @@
           inherit (nixpkgs) lib;
         };
         d3-decision = import ./tests/d3-decision {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+        d3-vllm-contract = self.packages.${system}.d3-vllm.tests.contract;
+        d3-vllm-experiment = import ./tests/d3-vllm-experiment {
           inherit pkgs self;
           inherit (nixpkgs) lib;
         };

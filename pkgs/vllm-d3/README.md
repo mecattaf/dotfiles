@@ -98,4 +98,30 @@ Qualify in a separate experimental unit first and scope any necessary
 namespace/syscall overrides to explicitly enabled experimental routes. Keep
 the production native D3 route unchanged until the comparison succeeds.
 
+The imported `services.d3-vllm-experiment` module defaults to disabled. Enabling
+it installs a manual `d3-vllm-experiment.service`, with no boot target, socket
+or timer, and the explicit `d3-vllm-experiment baseline|libstrix` CLI. The unit
+binds only `127.0.0.1:8734` and uses the same existing BF16 loan. It refuses to
+start while a declared GPU owner is active; it never stops another service.
+The production proxy and native D3 route keep their existing configuration.
+
+For supervised GPU qualification on compute, after the other owner has been
+explicitly released, the module's launcher can run inside the runtime wrapper:
+
+```sh
+nix build .#d3-vllm-experiment
+runtime-test --allow-gpu /dev/dri/renderD128 -- \
+  ./result/bin/d3-vllm-experiment baseline
+```
+
+Choose the real render node for the host. Repeat with `libstrix` after the
+first process has exited. The CLI uses separate writable caches per variant;
+no NixOS activation or worker boot target is needed for this manual comparison.
+
+CPU-only appliance imports passed in a transient DynamicUser service with
+these namespace and filesystem restrictions, NoNewPrivileges, and no GPU
+device mounts: Torch 2.14, all patched D3 classes, and libstrix's 48 registered
+kernels loaded successfully. This checks the extension ABI and service setup;
+it does not establish GPU answer parity or speed.
+
 No NPU or FastFlowLM path is part of this package.

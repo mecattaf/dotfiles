@@ -18,6 +18,7 @@
     ./local-models.nix
     ./gufo.nix
     ./d3-decision.nix
+    ./d3-vllm-experiment.nix
     # The utility-model seam (/drain, /print), independent of the engine.
     ./utility-model.nix
   ];
