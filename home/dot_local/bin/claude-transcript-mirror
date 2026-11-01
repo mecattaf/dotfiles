@@ -18,13 +18,13 @@ set -euo pipefail
 # Keep this hand-run entry point from recreating a second mutable archive.
 # The existing service's narrow PATH predates the Python collector; the NixOS
 # system profile supplies its runtime without activating or restarting a unit.
-if [ -f "$HOME/archives/chat-archive.py" ]; then
+if [ -f "$HOME/notes/archives/chat-archive.py" ]; then
   export PATH="/run/current-system/sw/bin:$PATH"
-  exec flock -x "$HOME/archives/.ai-chat.lock" \
-    python3 "$HOME/archives/chat-archive.py" harvest
+  exec flock -x "$HOME/notes/archives/.ai-chat.lock" \
+    python3 "$HOME/notes/archives/chat-archive.py" harvest
 fi
 
-M="$HOME/archives/claude-code-mirror"
+M="$HOME/notes/archives/claude-code-mirror"
 
 sync_root() { # $1 = source config dir, $2 = mirror subdir
   [ -d "$1/projects" ] || return 0
