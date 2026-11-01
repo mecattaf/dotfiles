@@ -84,6 +84,31 @@ directory, not the `/etc/local-models/artifacts/...` symlink.
   experiment is a distinct path and needs typed-decision numerical parity
   before performance comparisons. [libstrix](https://github.com/asf0/libstrix/tree/d7862c63cf7fa453780032b966363b6fb5d95121).
 
+The hardware precedent is [Semantic Router PR 5308](https://github.com/vllm-project/semantic-router/pull/5308):
+the earlier D3 BF16 model ran 231 requests on gfx1151 without a failed
+request. It retained gfx1151 rocBLAS/hipBLASLt libraries and supplied the
+missing causal-convolution device code. Ultra adds prefix-bidirectional
+attention and its own prompt/readout contract, so that earlier result does
+not qualify Ultra by itself. The native package above retains the existing
+Strix-capable PyTorch stack and implements Ultra's contract explicitly.
+
+### Quantizations checked on 2026-11-01
+
+Sizes are checkpoint/package download sizes, not peak loaded memory.
+
+| Release | Approximate size | Strix gfx1151 assessment |
+| --- | --- | --- |
+| [Official BF16](https://huggingface.co/vllm-sr/d3-ultra) | 52.2 GB | Initial reference; full local GPU qualification below. |
+| [Official FP8](https://huggingface.co/vllm-sr/d3-ultra-FP8) | 31.9 GB | Released W8A8 loader accepts gfx942/gfx950, excludes gfx1151. |
+| [Official INT4](https://huggingface.co/vllm-sr/d3-ultra-INT4) | 17.6 GB | Portable BF16 dequantization path; a later memory-saving candidate, not a proven speedup. |
+| [Official NVFP4](https://huggingface.co/vllm-sr/d3-ultra-NVFP4) | 17.3 GB | Released path requires NVIDIA Blackwell. |
+| [Community GPTQ W4A16](https://huggingface.co/evanrodgers/d3-ultra-W4A16-GPTQ) | 16.1 GB | Separate unqualified conversion; no fleet measurement. |
+| [Community GGUF](https://huggingface.co/magnitudedev/d3-ultra-GGUF) | Q4 15.8 GB plus 0.93 GB projector | Magnitude-specific decision metadata; does not establish Gufo support. |
+
+libstrix's FP8 weight kernels emulate a different W8A16 operation. Enabling
+them does not make the official D3 W8A8 loader support gfx1151. No quantized
+weights are borrowed by this initial BF16 declaration.
+
 ## Validation
 
 `tests/d3-decision/smoke.py <vllm-srun>` runs the installed native worker over
