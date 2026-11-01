@@ -1,6 +1,7 @@
 // The puller's durable state, all under one directory, written before the act it records:
 //   session-id              stable per directory: a restart is the same session (L5), a second copy is not
 //   held.json               leaseId -> the grant, written when a Lease answer arrives, removed when its verdict lands
+//   scoped-admissions.json  client-written receipts for LeaseScoped replies; written before held/outbox state
 //   pending-request-key     the Lease requestKey in flight; a restart re-sends it and gets the same grants (rule 2b)
 //   outbox/<leaseId>.json   a verdict not yet accepted by the floor; resent until it is
 //   runs/<runId>/           the run's own directory: script.js, journal.jsonl, events, jobs, result.json
@@ -11,6 +12,13 @@ import type { Grant } from "@substrate/link/contract.ts"
 import type { CompletePayload } from "@substrate/link/floor.ts"
 
 const atomic = (path: string, text: string) => { const tmp = `${path}.tmp-${process.pid}`; writeFileSync(tmp, text, { mode: 0o600 }); renameSync(tmp, path) }
+
+export interface ScopedAdmission {
+  readonly scope: string
+  readonly attempt: number
+  /** Absent for an invalid grant: its verdict may be delivered, but it may never execute. */
+  readonly grantSha256?: string
+}
 
 export class PullerState {
   constructor(readonly dir: string) { mkdirSync(join(dir, "outbox"), { recursive: true }); mkdirSync(join(dir, "runs"), { recursive: true }) }
@@ -24,6 +32,11 @@ export class PullerState {
     return existsSync(p) ? JSON.parse(readFileSync(p, "utf8")) as Record<string, Grant> : {}
   }
   putHeld(h: Record<string, Grant>) { atomic(join(this.dir, "held.json"), JSON.stringify(h)) }
+  scopedAdmissions(): Record<string, ScopedAdmission> {
+    const p = join(this.dir, "scoped-admissions.json")
+    return existsSync(p) ? JSON.parse(readFileSync(p, "utf8")) as Record<string, ScopedAdmission> : {}
+  }
+  putScopedAdmissions(receipts: Record<string, ScopedAdmission>) { atomic(join(this.dir, "scoped-admissions.json"), JSON.stringify(receipts)) }
   pendingKey(): string | undefined { const p = join(this.dir, "pending-request-key"); return existsSync(p) ? readFileSync(p, "utf8").trim() || undefined : undefined }
   setPendingKey(k: string | undefined) { const p = join(this.dir, "pending-request-key"); if (k === undefined) rmSync(p, { force: true }); else atomic(p, k) }
   outbox(): Array<CompletePayload> {

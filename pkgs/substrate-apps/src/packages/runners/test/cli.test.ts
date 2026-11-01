@@ -10,8 +10,8 @@ describe("cli", () => {
     const ex = await main(["example"]);
     expect(ex.code).toBe(0);
     const c = parseRuntimesToml(ex.out, "example", "/home/u");
-    expect(Object.keys(c.runtimes).sort()).toEqual(["ax", "edge", "gvisor", "herdr", "ssh:worker", "vm"]);
-    expect(c.phases).toEqual({ Review: "gvisor", Scout: "ssh:worker" });
+    expect(Object.keys(c.runtimes).sort()).toEqual(["ax", "edge", "gufo", "gvisor", "herdr", "vm"]);
+    expect(c.phases).toEqual({ Review: "gvisor", Scout: "gufo" });
   });
   it("select explains the choice; run executes a host job and exits with its status", async () => {
     const d = tmp();

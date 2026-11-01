@@ -2,6 +2,8 @@
   lib,
   stdenvNoCC,
   nodejs_24,
+  python3,
+  writeShellApplication,
   pnpm_10,
   esbuild,
   makeWrapper,
@@ -27,11 +29,10 @@
 # Re-vendor: ./sync.sh <substrate checkout> <sha>, then refresh pnpmDeps.hash (lib.fakeHash, build,
 # paste the got: value). E1: the code that wraps ax lives in dotfiles, pinned by sha, never a flake input.
 let
-  version = "0.1.0-unstable-2026-09-24";
+  version = "0.1.0-unstable-2026-10-28";
   src = ./src;
-  # The upstream base commit; SYNC.md also records the local Gufo contract patch.
-  # A future sync must carry that patch upstream before replacing this tree.
-  sourceSha = "200767b24484b3e0568795af121fb35dade05d20";
+  # Exact upstream commit, including the fleet Gufo contract and native DSH.
+  sourceSha = "096dd6e2e60ae8e4a2b5fe5795df4fb7d1182214";
 
   pnpmDeps = pnpm_10.fetchDeps {
     pname = "substrate-apps";
@@ -40,6 +41,12 @@ let
     # fc2f8bd, 2026-09-24: its lockfile only adds the apps/evaluator importer, no new packages).
     hash = "sha256-/10ykNk5FGChNhjBxfP8lfrUJI4G5O4kE+phfewLODc=";
     fetcherVersion = 3;
+  };
+
+  catalogMigrate = writeShellApplication {
+    name = "substrate-dsh-catalog";
+    runtimeInputs = [ python3 ];
+    text = ''exec python3 ${./migrate-dsh-catalog.py} "$@"'';
   };
 
   link = stdenvNoCC.mkDerivation {
@@ -168,6 +175,7 @@ in
     pusher
     puller
     pnpmDeps
+    catalogMigrate
     sourceSha
     ;
 }

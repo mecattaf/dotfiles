@@ -1,168 +1,27 @@
-# pkgs/substrate-apps/src: vendored source
+# Vendored scheduler execution programs
 
-- Upstream: agency-agency/substrate (private; the repo formerly named ax-conwip, Tom 2026-09-23 E10), local
-  checkout `/home/tom/mecattaf/substrate`, branch `main`.
-- Source sha: `200767b24484b3e0568795af121fb35dade05d20` (synced 2026-10-13T01:31:43Z, apps/puller present)
-  2026-10-13: synced to 200767b, the merge of agency-agency/substrate#33 (sessions and one clock). The lockfile did
-  not change (MEASURED `git diff --cached --stat` on the vendored pnpm-lock.yaml: empty), so `pnpmDeps.hash` is unchanged.
-  2026-10-10: synced to d2c1125, the HEAD of the branch `fix/models-file-pi-sessions` (agency-agency/substrate#9,
-  open: the model catalog is runtime data (`models_file`, D-S17), a pi provider with no entry is parked (D-S18),
-  host-side pi jobs save their session for seats (D-S19), Halogen base URL on strix). The lockfile did not change
-  (MEASURED `git diff --stat` on the vendored pnpm-lock.yaml: empty), so `pnpmDeps.hash` is unchanged. If #9 merges
-  with a merge commit, re-run `./sync.sh /home/tom/mecattaf/substrate <merge sha>` (content-identical, sha line only).
-  2026-09-30: synced to d455c3f, the HEAD of the UNMERGED branch `feat/providers-openrouter-qwen`
-  (agency-agency/substrate#1: pi providers qwen-token-plan / openrouter / openrouter-free, credit-metered
-  admission, fail-fast refusals) on top of fc2f8bd, so tonight's rebuild carries it. If that PR changes before it
-  merges, re-run `./sync.sh /home/tom/mecattaf/substrate <merge sha>`. The lockfile did not change, so
-  `pnpmDeps.hash` is unchanged.
-  "DECISIONS: D-S13, queued jobs never expire (ruling M2)", committed 2026-09-24 09:04 CEST. It is 6f681d3 (the
-  checkout the live coordinator puller and pusher were hand-started from on 2026-09-24) plus two floor-only commits
-  (78b285d, fc2f8bd), so the box-side programs here are the ones proven live. History: first vendored at dc7cd1d
-  (link and pusher only), then b105179 (2026-09-23, puller added), then this resync (63 commits later).
-- Taken with `git archive <sha> package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.json
-  src proto packages deploy apps/link apps/pusher apps/puller`, unchanged (`./sync.sh /home/tom/mecattaf/substrate
-  <sha>` does exactly this; 332 files, 3.6 MB at fc2f8bd). The puller imports the workspace root (`substrate/src/...`),
-  `@substrate/api`, `@substrate/link`, `@substrate/interpreter` and `@substrate/runners`, hence `src/`, `proto/` and
-  `packages/*`. Not vendored: `test/`, `tools/`, `docs/`, `apps/floor` (the Cloudflare Worker, deployed from the
-  substrate repo), `apps/cli` and `apps/mcp` (operator interfaces, not services of a box), `apps/evaluator` (new
-  at fc2f8bd, the mechanical receipt evaluator; nothing on the box imports it). pnpm tolerates the lockfile
-  importers of the apps not vendored.
-- Not vendored on purpose: the pusher's own vitest suite depends on `@substrate/planning` and `@substrate/factory`
-  (workspace packages); it runs upstream (1530 passed at b105179, REPORTED substrate/RECEIPT.md; not re-counted at fc2f8bd). The nix
-  checkPhase runs one dry tick against `apps/pusher/test/fixtures/seats-v1.json` instead.
-- `apps/link` at this sha differs from the copy in `pkgs/substrate-link/src` (a021003) only in tests,
-  `tsconfig.json` and `vitest.config.ts` (MEASURED `git diff --stat a021003 dc7cd1d -- apps/link`: 7 files, no
-  `src/` change). The NAS module `hosts/nas/substrate-link.nix` keeps `pkgs/substrate-link` as its default until a
-  follow-up re-points it here; `.#substrate-apps-link` is the same program from the newer sha.
+- Upstream: `agency-agency/substrate`, canonical checkout `~/mecattaf/substrate`.
+- Source sha: `096dd6e2e60ae8e4a2b5fe5795df4fb7d1182214` (synced 2026-10-28T16:48:04Z, apps/puller present)
 
-## What changed between b105179 and fc2f8bd that matters to the box
+The source includes the existing fleet Gufo capacity contract imported upstream
+in `18d287d` and the native DSH runner, persistent-session recovery and required
+project MCP plugin, trusted fixed maintenance tools, and scoped lease admission. The earlier Gufo-only local delta is now represented by
+upstream commits; no second patch must be applied after syncing this revision.
 
-From `git log --oneline b105179..fc2f8bd -- apps/puller apps/pusher packages/runners packages/api deploy` (24
-commits) and the config diffs. The pnpm dependency tree did not change (the lockfile only gains the
-`apps/evaluator` importer), so `pnpmDeps.hash` is the same value as at b105179 (MEASURED with lib.fakeHash).
+`sync.sh CHECKOUT SHA` archives the workspace metadata, source, protocols,
+packages and the link/pusher/puller apps from an exact commit. It does not copy
+credentials, installed dependencies, private transcript corpora or the deployed
+Cloudflare Worker. The latter is built and deployed from the Substrate repo.
+The native DSH plugins are part of the runner package source and must ship with
+it; deleting a plugin as presumed test data breaks persistent sessions.
 
-- Seat routing by `agent()` option (be42f18, merging eb956de and 22c4ae8): `agent(p, { seat: "codex" })` or
-  `runsOn: ["seat:codex"]` runs on the one runtime `runtimes.toml` permits for that seat (the phase or default
-  runtime first), else it is refused with the runtime=seat list. A runtime table's `seat` wins over `[seats]`; the
-  floor refuses an unserved seat (d112022: runs-on carries the seat the runtime spends).
-- `[credentials.seats]` (RG-1) and its alias `seat_dirs` (TX5), one map seat id -> Claude config dir, merged at
-  load; a seat both spell with different dirs, or one dir claimed by two seats, is a load error; entries must be
-  absolute after `~` expansion. With the map present every claude runtime with a local credential must name a seat
-  in it and a call whose seat has no entry is refused. Without it, `[credentials].claude` serves only when set
-  explicitly and at most one claude seat is bound. Also new in `[credentials]`: `context` (list of absolute paths
-  bound read-only into gVisor jobs).
-- `codexSandbox` (runtime tables, codex harness only): `"read-only"` (default) or `"workspace-write"`; set on any
-  other harness it is a load error.
-- `runtimes.toml` top level also gains `cancel_grace_ms` (default 10000; SIGTERM then SIGKILL, G-BK1) and
-  `[hooks]` `pre_start` / `pre_exit` argv with `timeout_ms` (G-BK8). A runtime named `locked` is reserved for the
-  untrusted shape (gvisor, `credential = false`, network not host).
-- `peerCacheDir` (pusher.json; `--peer-cache-dir`): the seats oracle's `SEATS_PEER_CACHE_DIR`. Default now
-  `~/.local/state/substrate/seats-peer-cache` (D-S09, a substrate-owned cache); `"inherit"` keeps the oracle's own
-  default; a `tally-rewrite` path is refused (exit 2). The live pusher config sets `"inherit"`.
-- New `[puller]` keys (`packages/api/src/config.ts`, `deploy/client.config.example.toml`), all optional:
-  - `demand_dir`: marker dir touched while a run is held so the pusher reads at its active cadence (example
-    `~/.local/state/substrate/demand`, the pusher's own `--demand-dir` default).
-  - `capacity_wait_s`: how long a node waits on a stale or refused capacity reading before it fails. Default 600.
-  - `drain_timeout_s`: first SIGTERM lets in-flight runs finish this long, then aborts them with the cancel
-    grace; a second signal aborts, a third kills. Default 60; 0 aborts at once (G-BK4).
-  - `health_addr`: loopback `host:port` serving `GET /status.json` and `/metrics`. Absent: no endpoint (G-BK7).
-  - Top level (not `[puller]`): `read_token_file` (or `SUBSTRATE_READ_TOKEN_FILE`), the read-only bearer for
-    `substrate watch` (TX4); the puller does not read it.
-- Puller behaviour: streams the run's `events.jsonl` to the floor's live log while it holds the lease (G-BK3),
-  uploads every local node's transcript before the verdict (TX2), run-scoped writes under the run's interpreter
-  lease (G-BK5), self-fences before `reassignSeconds`, graceful drain ladder (G-BK2/G-BK4), marks pusher demand
-  while a run is held and waits on capacity instead of nulling a node (0ba7550). Runners archive each job's
-  harness transcript outside the run dir before cleanup and record finished attempts by stable id for resume (C3-4).
-- Unchanged contract: the puller with no config exits 78 with a `config-invalid` line (`apps/puller/src/main.ts`;
-  exit 3 pidfile held, 75 holder session conflict). The pusher still imports only `node:` builtins and its own
-  files. Upstream `packages/runners/package.json` names a bin `bin/substrate-runners.mjs` that does not exist
-  (the file is `bin/ax-conwip-runners.mjs`); pnpm warns and skips it, harmless for the puller.
+The pnpm lock did not change in this update. The existing dependency hash stays
+in `default.nix`; verify it by building the real puller on strix-coordinator.
+A dependency-lock change requires refreshing that fixed-output hash, never
+silently accepting an unverified substitute or falling back to a NAS build.
 
-## What changed between d2c1125 and 200767b that matters to the box (2026-10-13)
-
-- `agent({session})`: a turn resumes one harness session by id (claude `--session-id` then `--resume`, pi `--session-id`), in a per-session cwd and session directory under the transcript root, with the project MCP written per session from `[sessions]` (`project_bin`, `project_url`, `project_token_file`); a session call with no `[sessions]` table is refused.
-- pi coordinator turns get the coordinator `--tools` list plus `--no-skills --no-context-files`.
-- The verdict carries `calls[]` with usage, route and the harness session id; a prompt over 16 KB goes through CONWIP's prompt-file route instead of being refused.
-- The floor side (session records, the feed pull, reports, the clock) is the Worker's, deployed from the substrate repo, not vendored here.
-
-## Programs and where they run
-
-| attr | upstream | host | dotfiles module |
-|---|---|---|---|
-| `link` | `apps/link` | NAS (system unit) | `hosts/nas/substrate-link.nix` (still on pkgs/substrate-link a021003) |
-| `pusher` | `apps/pusher/bin/substrate-pusher.mjs` | coordinator (user unit) | `modules/substrate.nix` `services.substrate.pusher` |
-| `puller` | `apps/puller/bin/substrate-puller.mjs` | coordinator (user unit) | `modules/substrate.nix` `services.substrate.puller` |
-
-## How the puller is installed
-
-Upstream starts it as `node apps/puller/bin/substrate-puller.mjs`, which registers tsx's ESM loader and imports
-`src/main.ts`; nothing is bundled upstream. The derivation keeps that: `pnpm install --prod --offline
---frozen-lockfile` from the shared `pnpmDeps`, then the whole tree with its production `node_modules` is copied to
-`$out/lib/substrate-apps` and `bin/substrate-puller` wraps node over it. Its checkPhase starts it with no config
-and requires exit 78 with a `config-invalid` line: every import resolved through tsx and the workspace links, and
-`main()` ran to its first config check. Its configuration is the `[puller]` table of a client `config.toml`
-(`packages/api/src/config.ts`, `deploy/client.config.example.toml`), which the module renders.
-
-## To resync
-
-1. `./sync.sh /home/tom/mecattaf/substrate <sha>` (rewrites `src/`, the sha line above and `sourceSha`), then
-   `git add pkgs/substrate-apps`: the flake only sees tracked files, and a new upstream file left untracked fails
-   the puller check with ERR_MODULE_NOT_FOUND (it did at fc2f8bd: `packages/api/src/seats.ts`).
-2. In `default.nix` set `pnpmDeps.hash = lib.fakeHash`, `nix build .#substrate-apps-link`, paste the `got:` value.
-3. `nix build .#substrate-pusher .#substrate-puller .#substrate-apps-link --no-link` and `nix flake check --no-build`.
-4. Commit with the sha in the message.
-
-## Unknowns and proposed defaults
-
-- Whether the vendored copy should become a flake input once the repo is public-shaped. Default: keep vendoring by
-  sha (E1: the code that wraps ax lives in dotfiles; a private input would also need a token on every build host).
-- Whether `pkgs/substrate-link` (a021003) is retired in favour of this set's `link`. Default: yes, in the follow-up
-  that re-points `hosts/nas/substrate-link.nix`, after Lane A's 4-VM test is green on ax/fleet-zero; not in this lane
-  (hosts/ is Lane A's).
-
-## Local fleet patch (2026-10-08, upstreamed 2026-10-10)
-
-`packages/runners/src/backend.ts` and its successor-r4 assertion pointed the
-Halogen client at `strix` as a local patch after the worker's retirement. That
-patch is upstream since d2c1125 (substrate#9), so `src/` is again a clean
-`git archive` of the sha above and nothing is carried by hand. Deployment config
-maps `gpu-strix` to the stable `halogen` seat. The authenticated puller holder
-remains `coordinator` until the remote token binding is migrated separately.
-
-## What changed between d455c3f and d2c1125 that matters to the box (2026-10-10)
-
-- `runtimes.toml` top level gains `models_file` (the mutable model catalog, re-read on every call; it must exist at
-  load, so `modules/substrate.nix` seeds it from the puller unit when absent). `[[models]]` entries may carry a
-  `[models.pi]` table for a model pi's catalog does not know; the runner injects it into a job-scoped pi agent dir.
-- A pi provider with no catalog entry is parked: the route is refused at once ("no model configured"). The compiled
-  default has no `openrouter-free` entry, so the rendered runtimes keep that runtime and seat while the data file
-  holds no model for it.
-- Host-side pi jobs run `--session-dir <shadow>/pi-agent/sessions`; the session is archived under
-  `~/.local/state/substrate/transcripts/<run>/<job>/pi-*.jsonl` (what `seats` reads for the Qwen seat).
-- `HALOGEN_BASE_URL` is `http://strix:8731/v1` upstream (was the local patch).
-
-## Local Gufo contract patch (2026-10-23)
-
-The source SHA above is the upstream **base**, not a claim that `src/` is an
-unchanged archive after this patch. Dotfiles PR #605 carries a local patch
-through the vendored runners, link, puller, pusher, shared capacity projection,
-examples and tests: provider/runtime/seat/gateway `gufo`, label `seat:gufo`,
-and wire model `qwen3.8-flash-next`. The generated sandbox catalog matches
-Gufo's 102400 context, 16384 output limit, vision support and thinking-off
-resident default. The pnpm lock and dependency hash are unchanged.
-
-Carry this delta into agency-agency/substrate before the next `sync.sh` run.
-Its Cloudflare floor is not vendored here: its use of the shared capacity
-projector and its configured job labels must move together with the host-side
-programs. See [the cutover contract](../../docs/gufo-cutover.md) for mutable
-catalogs, queued work, old caches and the retired link's external gateway.
-The earlier clean-archive statements above describe the historical base.
-
-For local validation of the puller tests, the intentionally excluded
-`apps/floor/{package.json,src}` and `programs/turn.workflow.js` were temporarily
-read from that exact upstream base into untracked files and removed afterward.
-They are test fixtures only, not part of the vendored or installed package.
-The planner's unrelated `test-policy/` suite depends on excluded root `tools/`;
-its shipped `test/` and `test-selector/` suites are run directly instead.
-The runners' fence scanner now classifies paths relative to its package, so a
-parent directory named `src` does not misclassify test fixtures as production.
+The Nix module, runtime model catalog and queued session bindings have separate
+roles. Updating the package does not convert an old Pi session into DSH or
+rewrite an existing model catalog. Follow `docs/substrate-dsh-cutover.md`, audit
+queued work before resuming a holder, and record actual live execution after a
+controlled rollout. No Herdr/user-manager restart is part of this migration.

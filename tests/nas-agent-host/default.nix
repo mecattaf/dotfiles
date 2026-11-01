@@ -134,9 +134,47 @@ assert !(builtins.any (p: lib.getName p == "atuin") h.home.packages);
 assert !(lib.hasInfix "/.local/share/atuin/key" c.system.userActivationScripts.script);
 assert lib.hasInfix "/.local/share/atuin/key"
   self.nixosConfigurations.client.config.system.userActivationScripts.script;
-assert !(c.systemd.user.services ? substrate-puller);
-assert !(c.systemd.user.services ? substrate-pusher);
-assert !(c.age.secrets ? substrate-floor-token);
+# The NAS brain owns the restored executor; compute/client retain no executor
+# units or scheduler credentials. Scope admission before touching old queues.
+assert c.services.substrate.puller.enable;
+assert c.services.substrate.pusher.enable;
+assert c.systemd.user.services ? substrate-puller;
+assert c.systemd.user.services ? substrate-pusher;
+assert
+  c.services.substrate.puller.sessionScope == [
+    {
+      project = "dotfiles";
+      thread = "T-69";
+    }
+  ];
+assert c.services.substrate.puller.defaultModel == "qwen3.8-flash-next";
+assert c.services.substrate.puller.runtimes.default == "gufo";
+assert c.services.substrate.puller.runtimes.runtime.gufo.harness == "dsh";
+assert c.services.substrate.puller.runtimes.runtime.gufo.provider == "gufo";
+assert builtins.all
+  (name: c.age.secrets.${name}.owner == "tom" && c.age.secrets.${name}.mode == "0400")
+  [
+    "substrate-floor-token"
+    "substrate-link-token-strix"
+  ];
+assert
+  c.systemd.user.services.substrate-puller.serviceConfig.LoadCredential == [
+    "floor-token:${c.age.secrets.substrate-floor-token.path}"
+    "link-token:${c.age.secrets.substrate-link-token-strix.path}"
+  ];
+assert
+  c.systemd.user.services.substrate-pusher.serviceConfig.LoadCredential == [
+    "floor-token:${c.age.secrets.substrate-floor-token.path}"
+  ];
+assert builtins.all (
+  cfg:
+  !(cfg.services.substrate.puller.enable or false)
+  && !(cfg.services.substrate.pusher.enable or false)
+  && !(cfg.systemd.user.services ? substrate-puller)
+  && !(cfg.systemd.user.services ? substrate-pusher)
+  && !(cfg.age.secrets ? substrate-floor-token)
+  && !(cfg.age.secrets ? substrate-link-token-strix)
+) nonBrainConfigs;
 assert h.home.file ? ".local/state/agency/crm/node";
 assert
   toString h.home.file.".local/bin".source == toString (h.lib.rawDotfiles.link "dot_local/bin");
