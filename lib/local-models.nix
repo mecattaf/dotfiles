@@ -192,9 +192,9 @@ let
           # This is a metadata roster. modules/strix.nix roots only its explicit
           # per-host allowlists, so catalog candidates never download merely by
           # existing here.
-          # gufo-models.json: Gufo's collection, the fleet's full set of
-          # models (Tom, 2026-10-13: "use that as the full collection of
-          # modles that we use"), as gufo-org/gufo v0.22.0 pins it, plus its Q8 options. Bytes
+          # gufo-models.json pins Gufo's collection and its Q8 options.
+          # Separately approved appliances, including D3-Ultra, have their
+          # own catalog files and runtime modules beside Gufo. Bytes
           # and sha256 come from the Hugging Face API at the pinned revisions.
           artifacts =
             (builtins.fromJSON (builtins.readFile ./speech-intake-models.json))
