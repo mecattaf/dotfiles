@@ -82,22 +82,12 @@ let
     export TORCHINDUCTOR_CACHE_DIR="$cache/torchinductor" TRITON_CACHE_DIR="$cache/triton"
     ${lib.escapeShellArgs args} --port "$port" --autotune-cache "$cache/autotune" &
     server=$!
-    (
-      while kill -0 "$server" 2>/dev/null; do
-        available="$(${pkgs.gawk}/bin/awk '/^MemAvailable:/ {print $2}' /proc/meminfo)"
-        if [ "$available" -lt ${toString (cfg.reserveGiB * 1024 * 1024)} ]; then
-          echo "d3-decision: stopping after host MemAvailable fell below ${toString cfg.reserveGiB} GiB" >&2
-          kill -TERM "$server"
-          exit 1
-        fi
-        ${pkgs.coreutils}/bin/sleep 2
-      done
-    ) &
-    guard=$!
-    trap 'kill -TERM "$server" "$guard" 2>/dev/null || true' EXIT
-    trap 'exit 143' TERM
-    trap 'exit 130' INT
-    wait "$server"
+    reserve_gib=${toString cfg.reserveGiB}
+    reserve_kib=${toString (cfg.reserveGiB * 1024 * 1024)}
+    memory_probe=(${pkgs.gawk}/bin/awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+    poll_sleep=(${pkgs.coreutils}/bin/sleep 2)
+    ${builtins.readFile ./d3-decision-supervise.sh}
+    d3_supervise
   '';
   ready = pkgs.writeShellScript "d3-decision-ready" ''
     until ${pkgs.curl}/bin/curl --fail --silent --output /dev/null http://127.0.0.1:${toString cfg.port}/health; do
@@ -179,13 +169,14 @@ in
         "gufo-llm.service"
         "gufo-tp2.service"
         "gufo-image.service"
+        "gufo-tts.service"
+        "gufo-asr.service"
         "ds4.service"
-        "qwen-tts.service"
       ]
       ++ lib.optionals (config.services.gufo.enable or false) (
         map (name: "gufo-llm-${name}.service") (builtins.attrNames config.services.gufo.alternates)
       );
-      description = "Refuse startup while any named GPU owner is active; never stop it implicitly.";
+      description = "System GPU owners checked by demand startup and ordered against direct diagnostics. User Qwen TTS is outside this manager.";
     };
   };
 
@@ -230,8 +221,8 @@ in
     systemd.services.d3-decision = {
       description = "D3 Ultra System One decisions (manual, native ROCm worker)";
       # No wantedBy/socket/path/timer: rebuilding never starts a GPU workload.
-      after = [ "network.target" ];
-      conflicts = [ "llama-swap.service" ];
+      after = [ "network.target" ] ++ cfg.exclusiveServices ++ [ "llama-swap.service" ];
+      conflicts = cfg.exclusiveServices ++ [ "llama-swap.service" ];
       environment.D3_CACHE_ROOT = "/var/cache/d3-decision";
       serviceConfig = {
         Type = "exec";
