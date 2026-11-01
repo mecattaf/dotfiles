@@ -1353,11 +1353,11 @@
           # 2026-09-11 flip — and no
           # `client (VNC)` profile ever exists on the strix, in either
           # direction of the flip), no :5900 door, no
-          # seat-feeder clocks. Touch is mapped to eDP-1 in sway-local.conf.
+          # seat-feeder clocks. Touch and pen are mapped per panel in sway-local.conf.
           assert clientHome.home.username == "tom";
-          # The client's home stays clean by construction (2026-10-11): every
-          # file Home Manager places there is hidden, no XDG user dir but
-          # Downloads is visible or created, and no activation names
+          # The client's home stays clean by construction: Home Manager places
+          # hidden files only. Existing Downloads, Pictures and Videos stay
+          # available, no user directory is created, and no activation names
           # ~/mecattaf (the checkout and the journal lane are gone there).
           assert builtins.all (f: nixpkgs.lib.hasPrefix "." f.target) (
             builtins.attrValues clientHome.home.file
@@ -1366,17 +1366,17 @@
           assert !clientHome.xdg.userDirs.createDirectories;
           assert clientHome.xdg.userDirs.package == null;
           assert clientHome.xdg.userDirs.download == "/home/tom/Downloads";
+          assert clientHome.xdg.userDirs.pictures == "/home/tom/Pictures";
+          assert clientHome.xdg.userDirs.videos == "/home/tom/Videos";
           assert builtins.all (nixpkgs.lib.hasPrefix "/home/tom/.local/share/user-dirs/") (
             with clientHome.xdg.userDirs;
             [
               desktop
               documents
               music
-              pictures
               projects
               publicShare
               templates
-              videos
             ]
           );
           assert
