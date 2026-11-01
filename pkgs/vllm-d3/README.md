@@ -110,6 +110,12 @@ or timer, and the explicit `d3-vllm-experiment baseline|libstrix` CLI. The unit
 binds only `127.0.0.1:8734` and uses the same existing BF16 loan. It refuses to
 start while a declared GPU owner is active; it never stops another service.
 The production proxy and native D3 route keep their existing configuration.
+The experimental unit permits executable mappings specifically from its own
+private cache with `ExecPaths=/var/cache/d3-vllm-experiment`. systemd mounts a
+DynamicUser cache with `noexec`; without this scoped exception Triton's JIT
+HIP helper compiles successfully but `dlopen` fails before model loading.
+An isolated CPU probe reproduced that failure and passed after this exception;
+the writable cache remains private, idmapped, nodev and nosuid.
 The preflight checks current owners; it cannot prevent a later manual Gufo
 start. Coordinate this experiment as one serial GPU window, start no other
 GPU owner during it, and restore the previous owner after both children have

@@ -30,6 +30,7 @@ assert
     "mnt"
   ];
 assert unit.serviceConfig.MemoryDenyWriteExecute == false;
+assert unit.serviceConfig.ExecPaths == [ "/var/cache/d3-vllm-experiment" ];
 assert (proxy production).RestrictNamespaces == (proxy experiment).RestrictNamespaces;
 assert (proxy production).SystemCallFilter == (proxy experiment).SystemCallFilter;
 assert

@@ -167,6 +167,10 @@ in
           "video"
         ];
         CacheDirectory = "d3-vllm-experiment";
+        # systemd's private DynamicUser cache is noexec by default. Triton
+        # must dlopen the HIP helper it compiles inside this cache; allow
+        # executable mappings only here, retaining the private idmapped path.
+        ExecPaths = [ "/var/cache/d3-vllm-experiment" ];
         ProtectSystem = "strict";
         ProtectHome = true;
         PrivateTmp = true;
