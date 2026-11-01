@@ -31,6 +31,13 @@ outside Git in protected fleet-move staging. Install each fresh key only on its
 named host. Preserve old keys in protected recovery, and do not restore the old
 operator-capable coordinator identity onto fresh compute.
 
+## QwenCloud retirement (2026-11-01)
+
+Tom initiated account closure and requested removal of the saved key. The
+QwenCloud ciphertext, recipient entry and agenix delivery are removed. The
+older table above records the completed October migration, not an active
+QwenCloud credential. Historical sessions and usage receipts remain.
+
 ## Compute service credential
 
 `secrets/gufo-tp2-control-token.age` now exists: one random scoped Gufo control

@@ -8,9 +8,9 @@
   writeText,
   llm-agents,
   dsh-plugins,
-  # The agent host's agenix path for the Qwen Token Plan key. home/dsh.nix
-  # passes osConfig's path, or null where the secret is not declared.
-  qwenKeyFile ? "/run/agenix/qwencloud-token",
+  # Retired subscription: no fleet key is delivered. An explicit external
+  # override may still supply a credential for another installation.
+  qwenKeyFile ? null,
   # The stock profiles the wrapper will boot. Everything else, but the
   # Nix-declared profiles below, is refused, so a custom profile cannot carry
   # the web or sdk-minimal bundles past the name check.
@@ -351,6 +351,7 @@ writeShellApplication {
   + lib.optionalString (qwenKeyFile == null) ''
 
     : "$dumping"
+    unset QWEN_TOKEN_PLAN_API_KEY
   ''
   + lib.optionalString (qwenKeyFile != null) ''
 

@@ -68,7 +68,6 @@ in
   "secrets/cloudflare-api-token.age".publicKeys = editors ++ brainOnly;
   # Only the Library/agent host accesses Hugging Face; compute borrows bytes.
   "secrets/huggingface-token.age".publicKeys = editors ++ brainOnly;
-  "secrets/qwencloud-token.age".publicKeys = editors ++ brainOnly;
   "secrets/openrouter-token.age".publicKeys = editors ++ brainOnly;
   # Seed once, never overwrite the live Codex OAuth session on activation.
   "secrets/codex-auth.age".publicKeys = editors ++ brainOnly;

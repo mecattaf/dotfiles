@@ -118,7 +118,7 @@ STATE = Path(os.environ.get("SEATS_STATE") or (HOME / ".local/state/seats"))
 
 USAGE_ENDPOINT = "https://api.anthropic.com/api/oauth/usage"
 QWEN_BASE = "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
-QWEN_KEY_FILE = os.environ.get("SEATS_QWEN_KEY_FILE") or "/run/agenix/qwencloud-token"
+QWEN_KEY_FILE = os.environ.get("SEATS_QWEN_KEY_FILE")
 QWEN_HOLD_FILES = [Path(p) for p in
                    (os.environ.get("SEATS_QWEN_HOLD") or "").split(":") if p] or [
     HOME / ".local/state/seats/qwen-hold.json",
@@ -1281,6 +1281,8 @@ def qwen_key():
     value = os.environ.get("QWENCLOUD_TOKEN")
     if value:
         return value.strip(), "environment"
+    if not QWEN_KEY_FILE:
+        return None, "QwenCloud subscription retired; no saved key"
     try:
         return Path(QWEN_KEY_FILE).read_text(encoding="utf-8").strip(), QWEN_KEY_FILE
     except OSError:
