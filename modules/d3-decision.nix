@@ -79,8 +79,13 @@ let
     cache="''${D3_CACHE_ROOT:-''${LLAMA_CACHE:-/var/cache/d3-decision}/d3-decision}"
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
     export HF_HOME="$cache/huggingface" XDG_CACHE_HOME="$cache"
-    export TORCHINDUCTOR_CACHE_DIR="$cache/torchinductor" TRITON_CACHE_DIR="$cache/triton"
-    ${lib.escapeShellArgs args} --port "$port" --autotune-cache "$cache/autotune" &
+    # DynamicUser mounts CacheDirectory noexec. Triton 3.8 builds a HIP
+    # launcher shared object, so keep executable JIT artifacts in PrivateTmp.
+    # This survives model swaps and disappears when the proxy unit stops.
+    jit="''${TMPDIR:-/tmp}/d3-decision-jit"
+    ${pkgs.coreutils}/bin/install -d -m 0700 "$jit"
+    export TORCHINDUCTOR_CACHE_DIR="$jit/torchinductor" TRITON_CACHE_DIR="$jit/triton"
+    ${lib.escapeShellArgs args} --port "$port" --autotune-cache "$jit/autotune" &
     server=$!
     reserve_gib=${toString cfg.reserveGiB}
     reserve_kib=${toString (cfg.reserveGiB * 1024 * 1024)}
