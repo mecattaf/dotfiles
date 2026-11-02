@@ -2,6 +2,7 @@
   lib,
   fetchFromGitHub,
   python313Packages,
+  stdenv,
   torchRocm,
 }:
 let
@@ -53,6 +54,10 @@ py.buildPythonPackage {
   # adding py.torch would pull a second, differently built ROCm stack.
   pythonRemoveDeps = [ "torch" ];
   makeWrapperArgs = [
+    # Triton 3.8 compiles its HIP driver launcher on first use.
+    "--set"
+    "CC"
+    "${stdenv.cc}/bin/cc"
     "--prefix"
     "PYTHONPATH"
     ":"
