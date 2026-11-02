@@ -108,9 +108,13 @@ its qualified engine until its separately planned move to Gufo TTS.
 ## Runtime and qualification
 
 The native package pins Semantic Router commit
-`62c4f39e35aa2dfe929eb18223a7509ebeff6563` (`vllm-srun` 0.2.0), with the existing
-Strix-capable nix-strix-halo PyTorch 2.11 / ROCm 7.15 stack. This follows the
-native-runtime approach established on gfx1151 by
+`62c4f39e35aa2dfe929eb18223a7509ebeff6563` (`vllm-srun` 0.2.0), with AMD's
+stable PyTorch 2.13 / ROCm 10.1 stack and matching Triton 3.8 and gfx1151
+device kernels. `pkgs/vllm-srun/rocm10-wheels.json` pins every official wheel
+by SHA-256; the existing Nix wheel builder assembles them offline. This
+D3-specific bundle replaces the July ROCm 7.15 snapshot without changing the
+other engines' dependency sets. This follows the native-runtime approach
+established on gfx1151 by
 [Semantic Router PR 5308](https://github.com/vllm-project/semantic-router/pull/5308).
 Ultra's prompt, prefix-bidirectional attention and answer contract are handled
 by this native worker. Hugging Face checkpoint Python is not imported.
@@ -121,7 +125,8 @@ the launcher terminates its worker below a 12 GiB reserve. Proxy hardening
 retains DynamicUser, read-only model paths and service-owned writable caches
 for PyTorch/Triton; executable mappings are permitted for JIT code.
 
-Full BF16 qualification on gfx1151 returned stable valid distributions over
+The retained 2026-11-01 BF16 qualification used the earlier PyTorch 2.11 /
+ROCm 7.15 bundle. It returned stable valid distributions on gfx1151 over
 three repeats per request. Median request latencies were 0.979 s for code,
 1.009 s for a JSON billing ticket and 4.964 s for a document summary. The
 service peaked at 53.0 GiB. Single-question calibration, a synthetic image

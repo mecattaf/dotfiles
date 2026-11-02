@@ -38,6 +38,7 @@ assert c.systemd.services.llama-swap.serviceConfig.CacheDirectory == "llama-swap
 assert c.systemd.services.llama-swap.environment.LLAMA_CACHE == "/var/cache/llama-swap";
 assert unit.serviceConfig.MemorySwapMax == "0";
 assert cfg.package.upstreamRevision == "62c4f39e35aa2dfe929eb18223a7509ebeff6563";
+assert cfg.package.torchRocm.wheelSources.rocmVersion == "10.1.0";
 pkgs.runCommand "d3-decision-policy"
   {
     nativeBuildInputs = [
