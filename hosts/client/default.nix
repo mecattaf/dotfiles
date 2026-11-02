@@ -202,13 +202,17 @@
   services.hardware.bolt.enable = true;
   # lsusb for dock inspection over ssh; the strix has it, this box
   # otherwise would not.
-  environment.systemPackages = [ pkgs.usbutils ];
+  environment.systemPackages = [
+    pkgs.usbutils
+    pkgs.cups # client tools; the scheduler stays on the NAS
+  ];
 
-  # ── no printing queue on a thin client ─────────────────────────────────────
-  # modules/printing.nix is fleet-wide for interactive hosts; printing from
-  # here goes through a Chrome tab on the strix or the print skill
-  # there. Off, and its ensure-printers unit masked so the module's drop-in
-  # cannot leave a half-defined service behind.
+  # Chrome and other local applications use the NAS's persistent Brother
+  # queue. libcups supports a remote server without a local scheduler;
+  # services.printing.clientConf would only install with that scheduler on.
+  environment.etc."cups/client.conf".text = ''
+    ServerName nas:631
+  '';
   services.printing.enable = lib.mkForce false;
   systemd.services.ensure-printers.enable = false;
 
