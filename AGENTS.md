@@ -148,7 +148,10 @@ explicitly borrow it to strix-coordinator. `services.d3-decision` runs the
 native `vllm-srun` System One API under `/upstream/d3-ultra/v1/systemone`,
 sharing the default single-backend group and idle unloading. Builds and
 activation move no model bytes. See `docs/d3-decision-runtime.md` for the
-qualified runtime and the separate patched-vLLM/libstrix investigation.
+selected native runtime and retained comparison evidence. Stock vLLM and
+libstrix are retired experiments, not alternate deployment options. This gateway
+scope covers D3 and Gufo; the existing qualified speech, one-off diarization and
+Immich ML utilities remain separate (Tom, 2026-11-02).
 
 **DSH plugins (Tom, 2026-11-01).** Nix pins plugin packages and
 `programs.dsh.plugins` selects them by profile, following the existing nvim
