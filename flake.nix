@@ -2999,6 +2999,14 @@
               touch "$out"
             '';
 
+        home-printing-wifi =
+          pkgs.runCommand "home-printing-wifi" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              HOME_PRINTING_SCRIPT=${./hosts/client/home-printing.sh} \
+                python3 ${./tests/print/test_home_printing_wifi.py}
+              touch "$out"
+            '';
+
         # print-plane (#384): the two silent failures of 2026-09-11/12 and the
         # daemon that now owns /print, asserted at eval time. cups-browsed off
         # on EVERY host that prints (it rewrote the pinned DeviceURI to

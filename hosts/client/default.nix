@@ -81,6 +81,7 @@
     ./trackpad.nix
     ./huion.nix # the Huion Note X10 paper inbox: patched bluetoothd, hid-generic unbind
     ./wifi-ladder.nix # thomas-6ghz -> thomas-6ghz-direct -> Freebox and back (Tom, 2026-10-25)
+    ./home-printing.nix # offer the NAS printer only on NAS-managed thomas-6ghz
     # No dedicated nixos-hardware module for the UX8406; compose the generics.
     # common-pc-laptop does NOT enable bolt — modules/common.nix does, fleet-
     # wide, and this docking host is exactly what that line is for.
