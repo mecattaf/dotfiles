@@ -10,6 +10,13 @@ let
   route = c.services.llama-swap.settings.models.${cfg.servedModelName};
 in
 assert cfg.enable && cfg.demand.enable;
+assert cfg.artifact == "d3-ultra-bf16" && cfg.servedModelName == "d3-ultra";
+assert cfg.host == "127.0.0.1";
+assert c.services.gufo.enable && c.services.llama-swap.enable;
+assert c.services.local-models.requirements.d3-decision == [ cfg.artifact ];
+assert !(c.systemd.services ? d3-vllm-experiment);
+assert !(self.packages.${pkgs.stdenv.hostPlatform.system} ? d3-vllm);
+assert !(self.packages.${pkgs.stdenv.hostPlatform.system} ? d3-vllm-experiment);
 assert route.cmd == cfg.deploymentCommand;
 assert route.checkEndpoint == "/health" && route.ttl == 600;
 assert !(route ? capabilities);
@@ -31,6 +38,7 @@ assert c.systemd.services.llama-swap.serviceConfig.CacheDirectory == "llama-swap
 assert c.systemd.services.llama-swap.environment.LLAMA_CACHE == "/var/cache/llama-swap";
 assert unit.serviceConfig.MemorySwapMax == "0";
 assert cfg.package.upstreamRevision == "62c4f39e35aa2dfe929eb18223a7509ebeff6563";
+assert cfg.package.torchRocm.wheelSources.rocmVersion == "10.1.0";
 pkgs.runCommand "d3-decision-policy"
   {
     nativeBuildInputs = [

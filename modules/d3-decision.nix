@@ -102,9 +102,7 @@ in
     enable = lib.mkEnableOption "the offline D3 decision-model worker";
     package = lib.mkOption {
       type = lib.types.package;
-      default = pkgs.callPackage ../pkgs/vllm-srun {
-        torchRocm = inputs.nix-strix-halo.packages.${pkgs.stdenv.hostPlatform.system}.torch-rocm;
-      };
+      default = inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.vllm-srun;
       description = "Pinned native vLLM Semantic Router runtime with gfx1151 PyTorch.";
     };
     artifact = lib.mkOption {
