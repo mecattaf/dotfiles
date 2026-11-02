@@ -117,7 +117,10 @@ other engines' dependency sets. This follows the native-runtime approach
 established on gfx1151 by
 [Semantic Router PR 5308](https://github.com/vllm-project/semantic-router/pull/5308).
 Ultra's prompt, prefix-bidirectional attention and answer contract are handled
-by this native worker. Hugging Face checkpoint Python is not imported.
+by this native worker. Hugging Face checkpoint Python is not imported. The wrapper supplies a pinned
+C compiler for Triton’s HIP launcher. JIT shared objects use the service’s
+private `/tmp/d3-decision-jit`, because DynamicUser mounts its persistent
+CacheDirectory with `noexec`; Hub metadata remains in the persistent cache.
 
 The initial appliance permits one sequence and 4,096 batched tokens, with a
 90 GiB estimated engine budget. Startup requires 80 GiB host MemAvailable;
