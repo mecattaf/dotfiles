@@ -2921,6 +2921,7 @@
         printing =
           let
             nasCfg = self.nixosConfigurations.nas.config;
+            clientCfg = self.nixosConfigurations.client.config;
             computeHosts = [
               self.nixosConfigurations.strix-coordinator.config
               self.nixosConfigurations.strix-worker.config
@@ -2941,7 +2942,10 @@
               # behind on the old name in that commit and had been failing since.
               deviceUri = "ipp://10.42.0.4:631/ipp/print";
               model = "everywhere";
-              ppdOptions.PageSize = "A4";
+              ppdOptions = {
+                PageSize = "A4";
+                "printer-is-shared" = "true";
+              };
             };
           in
           assert nixpkgs.lib.all (host: host.services.printing.enable) activeHosts;
@@ -2952,7 +2956,22 @@
           assert nasCfg.services.avahi.allowInterfaces == [ "enp1s0" ];
           assert !nasCfg.services.avahi.openFirewall;
           assert !nasCfg.services.printing.openFirewall;
-          assert nasCfg.services.printing.listenAddresses == [ "localhost:631" ];
+          assert
+            nasCfg.services.printing.listenAddresses == [
+              "localhost:631"
+              "10.42.0.1:631"
+            ];
+          assert nasCfg.services.printing.allowFrom == "Allow localhost\nAllow 10.42.0.16";
+          assert nixpkgs.lib.hasInfix
+            ''iifname "enp1s0" ip saddr 10.42.0.16 ip daddr 10.42.0.1 tcp dport 631 accept''
+            nasCfg.networking.firewall.extraInputRules;
+          assert !(builtins.elem 631 nasCfg.networking.firewall.allowedTCPPorts);
+          assert nasCfg.systemd.sockets.cups.socketConfig.FreeBind;
+          assert !clientCfg.services.printing.enable;
+          assert !clientCfg.systemd.services.ensure-printers.enable;
+          assert clientCfg.hardware.printers.ensurePrinters == [ ];
+          assert clientCfg.environment.etc."cups/client.conf".text == "ServerName nas:631\n";
+          assert builtins.elem clientCfg.services.printing.package clientCfg.environment.systemPackages;
           assert nixpkgs.lib.all (
             host: host.services.resolved.settings.Resolve.MulticastDNS == false
           ) activeHosts;

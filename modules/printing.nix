@@ -6,8 +6,9 @@
 }:
 
 # Home-printer plane. common.nix imports it fleet-wide, but the CUPS queue
-# lives only on the brain (the NAS), next to paper-daemon; the strix hosts and
-# the client run no CUPS and no Avahi printing stanza. Avahi on the NAS is
+# lives only on the brain (the NAS), next to paper-daemon. The Zenbook uses
+# that queue as a CUPS client; neither it nor the Strix hosts run a scheduler.
+# Avahi on the NAS is
 # declared by hosts/nas/discovery.nix (enp1s0 only, firewall closed).
 lib.mkIf (config.myFleet.has "brain") {
   # CUPS supplies Chrome's system print dialog and the lp/lpr CLI. The Brother
@@ -27,11 +28,26 @@ lib.mkIf (config.myFleet.has "brain") {
     # and driverless, so there is nothing for discovery to add; Repaired live with
     # `lpadmin -p Brother_HL_L2445DW -v ipp://10.42.0.4:631/ipp/print`.
     browsed.enable = false;
-    # The queue is local: paper-daemon and lp on the NAS use the loopback
-    # socket, and 631 is admitted in no firewall.
-    listenAddresses = [ "localhost:631" ];
+    # Chrome runs on the Zenbook. Share the persistent queue with its
+    # DHCP-reserved LAN address, while paper-daemon keeps using loopback.
+    # No discovery or public/tailnet listener is needed.
+    listenAddresses = [
+      "localhost:631"
+      "10.42.0.1:631"
+    ];
+    allowFrom = [
+      "localhost"
+      "10.42.0.16"
+    ];
     openFirewall = false;
   };
+
+  networking.firewall.extraInputRules = ''
+    iifname "enp1s0" ip saddr 10.42.0.16 ip daddr 10.42.0.1 tcp dport 631 accept comment "Zenbook printing"
+  '';
+
+  # sockets.target can precede the static LAN address at boot.
+  systemd.sockets.cups.socketConfig.FreeBind = true;
 
   # Discovery alone creates an on-demand temporary queue, which Chrome does
   # not reliably enumerate. Keep one persistent A4 queue with the name already
@@ -56,7 +72,10 @@ lib.mkIf (config.myFleet.has "brain") {
         location = "Home";
         deviceUri = "ipp://10.42.0.4:631/ipp/print";
         model = "everywhere";
-        ppdOptions.PageSize = "A4";
+        ppdOptions = {
+          PageSize = "A4";
+          "printer-is-shared" = "true";
+        };
       }
     ];
   };
