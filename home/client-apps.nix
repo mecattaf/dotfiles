@@ -17,6 +17,9 @@ in
     # Speech queue playback and voice sessions (speech-wake and Parakeet were
     # removed on 2026-09-30).
     pkgs.speech-session
+    # Hand-run Tacit Kit playground; no boot service or compositor changes.
+    pkgs.quickshell
+    pkgs.tacit-kit-trial
     # No Claude Desktop or ChatGPT desktop apps (Tom, 2026-10-12: "installed
     # chatgp and claude apps must also be gone").
   ];

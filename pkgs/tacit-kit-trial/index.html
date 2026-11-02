@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tacit Kit walkthrough</title>
+<style>
+@font-face{font-family:Tacit;src:url('/font.ttf')}*{box-sizing:border-box}
+:root{color-scheme:dark;font-family:Tacit,sans-serif;color:#e8e5e0;background:#191817;font-size:15px}
+body{margin:0}main{max-width:1060px;margin:auto;padding:32px 24px 64px}
+header{display:flex;justify-content:space-between;gap:24px;align-items:baseline;border-bottom:1px solid #44413d;padding-bottom:20px}
+h1{font-size:25px;font-weight:550;margin:0}h2{font-size:19px;font-weight:550;margin:0 0 16px}
+p{line-height:1.6;color:#c4c0b9}a{color:#e8e5e0;text-underline-offset:3px}
+button,select{font:inherit;color:inherit;background:#2d2b28;border:1px solid #615c54;border-radius:6px;padding:8px 13px;cursor:pointer}
+button:hover{background:#3a3732}button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #d6be9b;outline-offset:3px}
+button:disabled{opacity:.55;cursor:wait}section{margin-top:28px}nav{display:flex;gap:18px;flex-wrap:wrap}
+.settings,.step-actions{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.settings label{display:flex;gap:8px;align-items:center}
+input[type=checkbox]{width:18px;height:18px;accent-color:#d6be9b}.walkthrough{border:1px solid #514b44;padding:20px}
+.walkthrough p{margin:8px 0 18px;min-height:48px}.step-actions span{color:#c4c0b9;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse}th{text-align:left;font-weight:500;color:#c4c0b9}td,th{padding:16px 8px;border-bottom:1px solid #44413d;vertical-align:top}
+th:first-child,td:first-child{padding-left:0}td p{margin:5px 0;font-size:14px}td:last-child{text-align:right;white-space:nowrap}
+.state{display:block;font-size:13px;color:#c4c0b9;margin-top:8px}.status{font-size:14px;min-height:24px}
+#error{white-space:pre-wrap;color:#f3b0a4}details{margin-top:24px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#22201e;padding:16px;font-size:13px}
+footer{border-top:1px solid #44413d;margin-top:32px;padding-top:18px;font-size:13px;color:#c4c0b9}
+@media(max-width:680px){header{display:block}nav{margin-top:18px}td,th{padding:12px 4px}td:nth-child(2),th:nth-child(2){display:none}td:last-child button{display:block;margin:0 0 6px auto}main{padding:24px 16px}}
+</style>
+<main>
+<header><h1>Tacit Kit walkthrough</h1><nav><a href="https://design.tacitos.co" target="_blank" rel="noreferrer">Component guide</a><a href="https://github.com/ciscobugger/tacit-kit#licence" target="_blank" rel="noreferrer">Source &amp; licence</a></nav></header>
+<p>Spawn a real desktop window, try its components, then close it here or inside the window. Keep this page beside the native example.</p>
+<section class="settings" aria-label="Appearance">
+<label>Sample palette <select id="palette"><option value="dusk">Dusk</option><option value="moss">Moss</option></select></label>
+<label><input type="checkbox" id="motion"> Reduce motion</label>
+<button id="close-all">Close all examples</button>
+</section>
+<section class="walkthrough" aria-labelledby="step-title">
+<h2 id="step-title"></h2><p id="step-copy"></p>
+<div class="step-actions"><button id="previous">Previous</button><button id="try-step">Open this example</button><button id="next">Next</button><span id="step-count"></span></div>
+</section>
+<section aria-labelledby="examples-title"><h2 id="examples-title">Native examples</h2>
+<table><thead><tr><th>Example</th><th>Try</th><th>Window</th></tr></thead><tbody id="examples"></tbody></table>
+</section>
+<p class="status" id="status" role="status">Connecting to the local controller…</p>
+<pre id="error" role="alert" hidden></pre>
+<details><summary>Values reported by the native windows</summary><p>Change a control in its desktop window; its value appears here.</p><pre id="native">No examples open.</pre></details>
+<footer>Quickshell + the actual Tacit.Kit QML module. Sample data stays in memory. Palettes affect these examples only. <a href="/source/DemoWindow" target="_blank">Shared window source</a></footer>
+</main>
+<script nonce="__TOKEN__">
+const token='__TOKEN__';
+const examples=[
+ {id:'controls',title:'Controls',copy:'Field, Switch, Slider, Check, Choices',try:'Type a name. Toggle the switch. Drag the slider, then focus it and use the arrow keys.'},
+ {id:'lists',title:'Lists and search',copy:'SearchField, RowList, ListRow, inline rename',try:'Search for “notes”. Clear the search. Select with Ctrl/Shift, press Enter, and use F2 to rename a sample row.'},
+ {id:'actions',title:'Actions and feedback',copy:'Slab, WordAction, Notice, Progress',try:'Add and remove sample items, try Undo, then run the progress example. “Clear” confirms inside the action.'},
+ {id:'navigation',title:'Tabs, menus and panels',copy:'Tabs, Select, MenuButton, DockedPanel',try:'Switch tabs with arrow keys. Open the menu and choose an action. Show the details panel, edit its field, then close it.'}
+];
+const steps=[
+ {title:'1. Spawn and try controls',copy:examples[0].try,id:'controls'},
+ {title:'2. Search, select and rename',copy:examples[1].try,id:'lists'},
+ {title:'3. Try actions and Undo',copy:examples[2].try,id:'actions'},
+ {title:'4. Open a menu and panel',copy:examples[3].try,id:'navigation'},
+ {title:'5. Compare appearance and close',copy:'Leave an example open. Switch Dusk to Moss above, then enable reduced motion and open or close the details panel. Finish with “Close all examples”.',id:'navigation'}
+];
+let step=0,busy=false,lastState;
+const $=id=>document.getElementById(id);
+for(const item of examples){
+ const row=document.createElement('tr');
+ const description=document.createElement('td');
+ const name=document.createElement('strong');name.textContent=item.title;
+ const copy=document.createElement('p');copy.textContent=item.copy;
+ const link=document.createElement('a');link.href='/source/'+item.id;link.target='_blank';link.textContent='View QML';
+ description.append(name,copy,link);
+ const instructions=document.createElement('td');instructions.textContent=item.try;
+ const actions=document.createElement('td');
+ const spawn=document.createElement('button');spawn.textContent='Spawn';spawn.id='spawn-'+item.id;spawn.onclick=()=>act('/api/spawn',{id:item.id});
+ const close=document.createElement('button');close.textContent='Close';close.id='close-'+item.id;close.onclick=()=>act('/api/close',{id:item.id});
+ const state=document.createElement('span');state.className='state';state.id='state-'+item.id;
+ actions.append(spawn,document.createTextNode(' '),close,state);row.append(description,instructions,actions);$('examples').append(row);
+}
+function renderStep(){const s=steps[step];$('step-title').textContent=s.title;$('step-copy').textContent=s.copy;$('step-count').textContent=`${step+1} / ${steps.length}`;$('previous').disabled=step===0;$('next').disabled=step===steps.length-1;}
+$('previous').onclick=()=>{step--;renderStep()};$('next').onclick=()=>{step++;renderStep()};
+$('try-step').onclick=()=>act('/api/spawn',{id:steps[step].id});
+$('close-all').onclick=()=>act('/api/close-all',{});
+function settings(){act('/api/settings',{palette:$('palette').value,reducedMotion:$('motion').checked})}
+$('palette').onchange=settings;$('motion').onchange=settings;
+function render(data){
+ lastState=data;
+ for(const w of data.windows){$('state-'+w.id).textContent=w.running?'Open · native window connected':w.error?'Window is not responding':'Closed';$('spawn-'+w.id).disabled=busy||w.running;$('close-'+w.id).disabled=busy||!w.running;}
+ if(!busy){$('palette').value=data.palette;$('motion').checked=data.reducedMotion;}
+ const count=data.windows.filter(w=>w.running).length;
+ $('status').textContent=`Local controller connected · ${count} native ${count===1?'window':'windows'} open`;
+ const values=Object.fromEntries(data.windows.filter(w=>w.running).map(w=>[w.id,w.native.details]));
+ $('native').textContent=count?JSON.stringify(values,null,2):'No examples open.';
+ const failure=data.windows.find(w=>w.error||w.exitCode);
+ if(failure)showError(failure.error||failure.log||`Example exited with code ${failure.exitCode}`);
+}
+function showError(message){$('error').hidden=false;$('error').textContent=message;}
+async function act(path,body){
+ if(busy)return;busy=true;$('error').hidden=true;if(lastState)render(lastState);
+ try{const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Trial-Token':token},body:JSON.stringify(body)});const data=await response.json();if(!response.ok)throw Error(data.error);lastState=data;}
+ catch(error){showError(error.message)}finally{busy=false;if(lastState)render(lastState)}
+}
+async function poll(){if(busy)return;try{const response=await fetch('/api/status');if(!response.ok)throw Error('Controller returned '+response.status);render(await response.json())}catch(error){$('status').textContent='Local controller disconnected';showError(error.message)}}
+renderStep();poll();setInterval(poll,1800);
+</script>
+</html>
