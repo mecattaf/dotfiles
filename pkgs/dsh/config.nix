@@ -105,7 +105,14 @@ let
     retryPolicy:
     keyed "Groq" "GROQ_API_KEY" retryPolicy {
       models = [
-        { id = "qwen/qwen3.8-27b"; } # default; Tom's wanted model
+        {
+          id = "qwen/qwen3.8-27b"; # default; Tom's wanted model
+          # pi-ai sends the instructions as a `developer` message to every
+          # reasoning model whose compat allows it; Groq's Qwen chat template
+          # answers 400 "Unexpected message role" to that (measured
+          # 2026-11-03), so this model takes a `system` message instead.
+          compat.supportsDeveloperRole = false;
+        }
         { id = "openai/gpt-oss-120b"; }
         { id = "openai/gpt-oss-20b"; }
       ];
@@ -425,17 +432,24 @@ let
       provider = "nvidia";
       model = "deepseek-ai/deepseek-v4.1-flash";
     };
+    # The Cloudflare ids and the hand-declared Hugging Face id carry no
+    # reasoning metadata, so the overlay's `high` effort is refused
+    # (UNSUPPORTED_REASONING_EFFORT, measured 2026-11-03); `null` leaves the
+    # row without an effort and the provider at its own default.
     cloudflare = {
       provider = "cloudflare-workers-ai";
       model = "@cf/qwen/qwen3.8-27b";
+      reasoningEffort = null;
     };
     cloudflare-deepseek = {
       provider = "cloudflare-workers-ai";
       model = "@cf/deepseek-ai/deepseek-v4-pro-0813";
+      reasoningEffort = null;
     };
     huggingface = {
       provider = "huggingface";
       model = "openai/gpt-oss-120b:cheapest";
+      reasoningEffort = null;
     };
     cerebras = {
       provider = "cerebras";
@@ -650,7 +664,10 @@ in
   routeOverlays = lib.mapAttrs (
     name: route:
     yaml.generate "dsh-route-${name}.patch.yml" [
-      (set "agent-default-model" (route // { reasoningEffort = "high"; }))
+      # `high` unless the route names its own effort; `null` drops the key.
+      (set "agent-default-model" (
+        lib.filterAttrs (_: v: v != null) ({ reasoningEffort = "high"; } // route)
+      ))
     ]
   ) routes;
   # Local provider data for offline config checks.
