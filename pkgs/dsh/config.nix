@@ -30,7 +30,8 @@
 #   routeOverlays : one-row `agent-default-model` overlays, one per name in
 #            `routes`, for `DSH_ROUTE=<name>` (./default.nix). The keyed free
 #            lanes (Gemini, Groq, Mistral, Cohere, NVIDIA, Cloudflare Workers
-#            AI, Hugging Face) are selected only this way; Gemini is the default
+#            AI, Hugging Face, Cerebras, Vercel AI Gateway) are selected only
+#            this way; Gemini is the default
 #   smoke  : the gate's one inference call (no retries, low effort); never
 #            installed, built only as `nix build .#dsh.smoke`
 let
@@ -244,6 +245,34 @@ let
       ];
     };
 
+  # Cerebras (https://api.cerebras.ai/v1): one key, no per-key rotation.
+  # The strongest lane by allowance (measured headers: 450 requests/minute,
+  # 648K/day, 150K tokens/minute, 216M tokens/day). Both ids are
+  # catalog-verified (131,072 context, 40,960 out, reasoning); qwen-3.8-27b
+  # answered.
+  cerebras =
+    retryPolicy:
+    keyed "Cerebras" "CEREBRAS_API_KEY" retryPolicy {
+      models = [
+        { id = "qwen-3.8-27b"; } # default; answered
+        { id = "gpt-oss-120b"; }
+      ];
+    };
+
+  # Vercel AI Gateway: the catalog route `vercel-ai-gateway` (pi-ai speaks
+  # anthropic-messages to https://ai-gateway.vercel.sh for its chat ids,
+  # not the OpenAI-compatible /v1 that was measured). One key, valid, with a
+  # credits balance of 0 today, so every call fails until Tom tops it up;
+  # declared so it works then, the default of nothing (DSH_ROUTE=vercel).
+  # No model was measured; the id is the catalog's qwen3.8-27b.
+  vercel =
+    retryPolicy:
+    keyed "Vercel AI Gateway (no credits)" "AI_GATEWAY_API_KEY" retryPolicy {
+      models = [
+        { id = "alibaba/qwen3.8-27b"; } # default; catalog id, not measured
+      ];
+    };
+
   # Gufo's keyless LAN route. The wrapper supplies a public dummy bearer:
   # pi-ai still requires a nonempty credential for a custom provider.
   # The alternate shares the endpoint and must be selected with gufo-switch first.
@@ -333,6 +362,8 @@ let
     nvidia = nvidia retryPolicy;
     cloudflare-workers-ai = cloudflare retryPolicy;
     huggingface = huggingface retryPolicy;
+    cerebras = cerebras retryPolicy;
+    vercel-ai-gateway = vercel retryPolicy;
   };
   providers = retryPolicy: keyedProviders retryPolicy // { inherit gufo ds4; };
 
@@ -405,6 +436,18 @@ let
     huggingface = {
       provider = "huggingface";
       model = "openai/gpt-oss-120b:cheapest";
+    };
+    cerebras = {
+      provider = "cerebras";
+      model = "qwen-3.8-27b";
+    };
+    cerebras-oss = {
+      provider = "cerebras";
+      model = "gpt-oss-120b";
+    };
+    vercel = {
+      provider = "vercel-ai-gateway";
+      model = "alibaba/qwen3.8-27b";
     };
     zen-deepseek = {
       provider = zenProvider;

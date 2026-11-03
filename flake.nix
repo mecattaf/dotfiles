@@ -2011,6 +2011,9 @@
               "cloudflare"
               "cloudflare-deepseek"
               "huggingface"
+              "cerebras"
+              "cerebras-oss"
+              "vercel"
             ];
             batch2Dumps = pkgs.lib.concatMapStringsSep "\n" (
               name: "EXPECT=${expectRoute name} DSH_ROUTE=${name} dump route-${name} headless --dump-config"
@@ -2095,6 +2098,8 @@
               refused env DSH_ROUTE=cloudflare-workers-ai "$dsh" headless --dump-config
               refused env DSH_ROUTE=google "$dsh" headless --dump-config
               refused env DSH_ROUTE=hf "$dsh" headless --dump-config
+              refused env DSH_ROUTE=vercel-ai-gateway "$dsh" headless --dump-config
+              refused env DSH_ROUTE=grok "$dsh" headless --dump-config
               refused env DSH_ROUTE=groq "$dsh" mnemon --dump-config
               (cd "$HOME" && refused "$dsh" headless --dump-config)
               (cd "$DSH_HOME" && refused "$dsh" headless --dump-config)

@@ -34,7 +34,8 @@
   # GEMINI_API_KEY x3, OPENCODE_ZEN_FREE_API_KEY x4, GROQ_API_KEY x3,
   # MISTRAL_API_KEY x3, COHERE_API_KEY x5, NVIDIA_API_KEY x1,
   # CLOUDFLARE_WORKERS_AI_TOKEN x1 with CLOUDFLARE_ACCOUNT_ID x1, HF_TOKEN
-  # x1). DSH_KEY_SLOT=<n> (default 1) picks the n-th file of EVERY list for
+  # x1, CEREBRAS_API_KEY x1, AI_GATEWAY_API_KEY x1). DSH_KEY_SLOT=<n>
+  # (default 1) picks the n-th file of EVERY list for
   # the exec'd dsh only; "" or an unreadable file means no key. Empty here,
   # so a check's wrapper reads nothing.
   keyFiles ? { },
@@ -84,7 +85,8 @@
 #      profile's layers; any other name is refused;
 #   7. unsets every free-lane variable (GEMINI_API_KEY, the Zen pair, GROQ,
 #      MISTRAL, COHERE, NVIDIA, the Cloudflare token/key/account id, the two
-#      Hugging Face names) so nothing ambient reaches any profile: the NAS
+#      Hugging Face names, CEREBRAS, the Vercel gateway key, the xAI names)
+#      so nothing ambient reaches any profile: the NAS
 #      login shell exports the full-scope CLOUDFLARE_API_TOKEN, which must
 #      never stand in for the Workers AI token. Then, for a real run (never a
 #      config dump), reads the DSH_KEY_SLOT-th agenix file of each `keyFiles`
@@ -293,7 +295,7 @@ writeShellApplication {
       ;
   };
   meta = {
-    description = "DeepSeek Harness behind the fleet policy (Gemini, Groq, Mistral, Cohere, NVIDIA, Cloudflare Workers AI, Hugging Face, OpenCode Zen, Gufo and ds4 routes, hardened sandbox)";
+    description = "DeepSeek Harness behind the fleet policy (Gemini, Groq, Mistral, Cohere, NVIDIA, Cloudflare Workers AI, Hugging Face, Cerebras, Vercel AI Gateway, OpenCode Zen, Gufo and ds4 routes, hardened sandbox)";
     mainProgram = "dsh";
     inherit (unwrapped.meta) license platforms;
   };
@@ -315,6 +317,7 @@ writeShellApplication {
     unset GROQ_API_KEY MISTRAL_API_KEY COHERE_API_KEY NVIDIA_API_KEY
     unset CLOUDFLARE_WORKERS_AI_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_API_KEY CLOUDFLARE_ACCOUNT_ID
     unset HF_TOKEN HUGGING_FACE_HUB_TOKEN
+    unset CEREBRAS_API_KEY AI_GATEWAY_API_KEY XAI_API_KEY GROK_API_KEY
 
     refuse() {
       echo "dsh: $*; refused by the fleet wrapper" >&2
