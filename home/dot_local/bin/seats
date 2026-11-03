@@ -12,6 +12,9 @@ tokens the seat has actually burned inside its own current weekly window.
     seats --check cc      exit oracle: 0 headroom / 1 spent / 2 unmeasurable
     seats --pick          print the seat with the most headroom, exit 1 if none
     seats --watch 60      redraw every 60s
+    seats --probe         one cheap request per free-lane key (off by default)
+    seats --record groq 1 qwen/qwen3.8-27b ok
+                          append one call to the local lane-usage meter
 
 WHY IT EXISTS. Three programs on this box already know a piece of this:
 claude-capacity knows ONE Claude seat's windows, tally-seat-feeder stamps
@@ -76,6 +79,39 @@ THE SEATS, and where each one's truth lives:
                 row says whether the server is up and which model id it
                 answers to.
 
+  cc-credit, cc2-credit
+                The Claude cloud credit (`claude --cloud`), parsed from the
+                `iguana_necktie` field of the same usage payload the cc rows
+                already fetch: dollars used, dollars left, and the expiry. A
+                credit expires; it does not reset, so the row has no free_at.
+
+  gemini-N, zen-N, groq-N, mistral-N, cohere-N, nvidia-N, cloudflare-N, hf-N, ds4
+                THE BURNDOWN LEDGER (Tom, 2026-11-03): one row per free-lane
+                key, strongest model first, so the lanes can be spent in order
+                until each dries up. Four facts sit on a row and each is
+                labelled as what it is:
+                  allowance  STATIC — the provider's published free tier, typed
+                             into LANE_FAMILIES with a date; never measured here
+                  reset      COMPUTED — from the provider's reset rule (Pacific
+                             midnight, UTC midnight, calendar month, rolling) and
+                             the clock; a credit's expiry is a fixed stamp
+                  today      LOCAL — calls this box recorded against the lane
+                             in the current window, from the append-only
+                             ~/.local/state/seats/lane-usage.jsonl (one line
+                             {ts, lane, slot, model, status}; `seats --record`
+                             appends one, the dsh wrapper will append its own)
+                  probe      LIVE, opt-in — `--probe` makes ONE cheap request
+                             per key (GET /models) with the key read from its
+                             /run/agenix file, never printed, and keeps only the
+                             status and the rate-limit headers the provider
+                             returns (Groq, Cohere state remaining requests;
+                             the rest answer ok / 429 / 402). A probe answer
+                             is reused for ten minutes, and --watch with
+                             --probe refuses to run faster than that.
+                A key file missing on this host is a row saying so, not an
+                error. Nothing on these rows is a guess wearing a number: a
+                lane with no probe and no local record is graded UNKNOWN.
+
 FRESHNESS AND THE 429. /api/oauth/usage rate-limits — polling it by hand a few
 times in one minute already returned 429 (measured 2026-09-02). Every reading
 is cached per seat in $XDG_RUNTIME_DIR for --cache-ttl seconds, and when a
@@ -107,6 +143,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -215,6 +252,142 @@ HTTP_TIMEOUT = 8
 CACHE_TTL = 60           # seconds a reading counts as fresh
 STALE_GRACE = 900        # seconds an old reading still beats "unknown"
 
+# ── the free lanes: where the keys live, what each lane allows ─────────────
+# Key files are agenix secrets on the NAS (modules/secrets.nix), owner tom,
+# mode 400, present only after the generation that declares them is switched
+# in. A file is read at probe time, sent once, never printed, cached or logged.
+AGENIX_DIR = Path(os.environ.get("SEATS_AGENIX_DIR") or "/run/agenix")
+LANE_USAGE = STATE / "lane-usage.jsonl"
+PROBE_TTL = 600          # a probe spends the thing it measures: reuse it this long
+WATCH_PROBE_FLOOR = 600  # --watch with --probe never redraws faster than this
+
+# Every allowance below is a CITATION of the provider's published free tier as
+# read on 2026-11-03 (free-tiers design, docs/free-lanes.md), not a reading.
+# Models are listed strongest first: the burndown order. `reset` names the
+# rule the reset column is computed from:
+#   pacific-midnight  daily, 00:00 America/Los_Angeles (US DST rule applied)
+#   utc-midnight      daily, 00:00 UTC
+#   monthly           calendar month, 00:00 UTC on the 1st (anchor unverified)
+#   rolling-minute    a per-minute limiter; a 429 clears within the minute
+#   per-header        daily, exact reset only in the provider's own headers
+#   unpublished       the provider states no reset; today = since 00:00 UTC
+#   none              local, no quota
+LANE_FAMILIES = {
+    "gemini": {
+        "label": "Gemini AI Studio",
+        "models": ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"],
+        "allowance": "free tier per project; RPM/RPD unpublished",
+        "reset": "pacific-midnight",
+        "exhaustion": "HTTP 429 with a quota message",
+        "key": "gemini-api-key-{slot}",
+        "probe": {"url": "https://generativelanguage.googleapis.com/v1beta/openai/models"},
+        "run": "DSH_KEY_SLOT={slot} DSH_ROUTE=gemini dsh headless",
+        "note": "per-model RPM/RPD at aistudio.google.com/rate-limit (logged in); "
+                "3.5-flash free status unverified",
+    },
+    "zen": {
+        "label": "OpenCode Zen org",
+        "models": ["deepseek-v4.1-flash-free", "glm-5.3-flash-free"],
+        "allowance": "free; per-IP limited; daily allowance unpublished",
+        "reset": "unpublished",
+        "exhaustion": "HTTP 429 FreeUsageLimitError",
+        "key": "opencode-zen-key-{slot}",
+        "probe": {"url": "https://opencode.ai/inference/openai/v1/models"},
+        # Zen refuses plain clients before it looks at quota (403 from the
+        # edge, 429 FreeUsageLimitError on a first call: MEASURED 2026-11-03).
+        # So a 4xx on this probe proves reachability and nothing about the
+        # allowance; the row never turns unauth or spent on it.
+        "probe_gate": True,
+        "run": "DSH_KEY_SLOT={slot} dsh zen",
+        "note": "pulse-alpha-free is 403 RegionError (France); a plain client's 429 is "
+                "the fingerprint gate, only a 429 through the dsh zen profile counts",
+    },
+    "groq": {
+        "label": "Groq key",
+        "models": ["qwen/qwen3.8-27b", "openai/gpt-oss-120b"],
+        "allowance": "1,000 req/day, 8,000 tok/min per key",
+        "reset": "per-header",
+        "exhaustion": "HTTP 429; x-ratelimit-remaining-requests reaches 0",
+        "key": "groq-api-key-{slot}",
+        "probe": {"url": "https://api.groq.com/openai/v1/models",
+                  "limit": "x-ratelimit-limit-requests",
+                  "remaining": "x-ratelimit-remaining-requests",
+                  "reset": "x-ratelimit-reset-requests"},
+        "note": "x-ratelimit-* headers on every response",
+    },
+    "mistral": {
+        "label": "Mistral key",
+        "models": ["mistral-medium-latest", "codestral-latest"],
+        "allowance": "free plan pending activation (0 req/min)",
+        "reset": "rolling-minute",
+        "exhaustion": "HTTP 429",
+        "key": "mistral-api-key-{slot}",
+        "probe": {"url": "https://api.mistral.ai/v1/models"},
+        "state": "n/a",
+        "note": "free plan pending activation",
+    },
+    "cohere": {
+        "label": "Cohere trial key",
+        "models": ["command-a-plus-05-2026"],
+        "allowance": "trial: 20 calls/min, 1,000/month",
+        "reset": "monthly",
+        "exhaustion": "HTTP 429; x-trial-endpoint-call-remaining reaches 0",
+        "key": "cohere-api-key-{slot}",
+        "probe": {"url": "https://api.cohere.com/v1/models",
+                  "limit": "x-trial-endpoint-call-limit",
+                  "remaining": "x-trial-endpoint-call-remaining"},
+        "note": "x-trial-endpoint-call-* headers on each call",
+    },
+    "nvidia": {
+        "label": "NVIDIA NIM key",
+        "models": ["z-ai/glm-5.3-flash", "deepseek-ai/deepseek-v4.1-flash"],
+        "allowance": "~40 req/min",
+        "reset": "rolling-minute",
+        "exhaustion": "HTTP 429",
+        "key": "nvidia-api-key-{slot}",
+        "probe": {"url": "https://integrate.api.nvidia.com/v1/models"},
+    },
+    "cloudflare": {
+        "label": "Cloudflare Workers AI",
+        "models": ["@cf/qwen/qwen3.8-27b", "@cf/deepseek-ai/deepseek-v4.1-flash-1017"],
+        "allowance": "10,000 neurons/day",
+        "reset": "utc-midnight",
+        "exhaustion": "HTTP 429 once the day's neurons are spent",
+        "key": "cloudflare-workers-ai-token",
+        "account_id": "cloudflare-account-id",
+        "probe": {"url": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/models/search"},
+    },
+    "hf": {
+        "label": "Hugging Face",
+        "models": [],
+        "allowance": "needs credits (402 on Free)",
+        "reset": "none",
+        "exhaustion": "HTTP 402",
+        "key": "huggingface-token",
+        "probe": {"url": "https://router.huggingface.co/v1/models"},
+        "state": "n/a",
+        "note": "needs credits",
+    },
+}
+
+# Local rows in the same ledger: no key, no quota. The gpu-strix row probes
+# its server already; ds4's server is down while strix-worker is dormant, so
+# its row is static until that host returns.
+LOCAL_LANES = {
+    "gpu-strix": {"models": ["qwen3.8-flash-next", "qwen3.8-27b"], "allowance": "local, no quota",
+                  "run": "DSH_ROUTE=gufo dsh headless"},
+    "ds4": {"models": ["deepseek-v4.1-flash-1017"], "allowance": "local, no quota",
+            "run": "route ds4 (10.42.0.5:8732)"},
+    "codex": {"models": ["gpt-6.1-sol", "gpt terra"], "allowance": "weekly window (plan)"},
+}
+
+
+def lane_spec(family, slot):
+    """One DEFAULT_SEATS row for key `slot` of a lane family."""
+    fam = LANE_FAMILIES[family]
+    return {"id": f"{family}-{slot}", "provider": "lane", "lane": family, "slot": slot,
+            "label": f"{fam['label']} {slot}", "owner": "tom", "meter": "free-requests"}
+
 WARN_PCT = 80.0          # at or above this a window is TIGHT
 WALL_PCT = 95.0          # at or above this a window is SPENT
 
@@ -246,6 +419,22 @@ DEFAULT_SEATS = [
      "owner": "tom", "meter": "free-requests"},
     {"id": "gpu-strix", "provider": "gufo", "label": "Local GPU (Strix, local model)",
      "owner": "kernel", "endpoint": INFERENCE_URL},
+    # The burndown ledger (Tom, 2026-11-03). The credit rows are derived from
+    # the cc/cc2 readings above, so they cost the usage endpoint nothing.
+    {"id": "cc-credit", "provider": "claude-credit", "label": "Claude cloud credit (cc)",
+     "seat": "cc", "owner": "tom", "meter": "usd"},
+    {"id": "cc2-credit", "provider": "claude-credit", "label": "Claude cloud credit (cc2)",
+     "seat": "cc2", "owner": "tom", "meter": "usd"},
+    *[lane_spec("gemini", n) for n in (1, 2, 3)],
+    *[lane_spec("zen", n) for n in (1, 2, 3, 4)],
+    *[lane_spec("groq", n) for n in (1, 2, 3)],
+    *[lane_spec("mistral", n) for n in (1, 2, 3)],
+    *[lane_spec("cohere", n) for n in (1, 2, 3, 4, 5)],
+    lane_spec("nvidia", 1),
+    lane_spec("cloudflare", 1),
+    lane_spec("hf", 1),
+    {"id": "ds4", "provider": "none", "label": "Local GPU (ds4, strix-worker)", "owner": "kernel",
+     "reason": "strix-worker is dormant until its replacement arrives; no server behind this row"},
 ]
 
 
@@ -849,6 +1038,22 @@ def read_claude(spec, opts):
         "credits_enabled": spend.get("enabled"),
         "can_purchase_credits": spend.get("can_purchase_credits"),
     }
+    # The cloud credit (`claude --cloud`) rides in the same payload under an
+    # undocumented key, `iguana_necktie` (read 2026-11-03: limit_dollars,
+    # used_dollars, remaining_dollars, resets_at, locked_reason). It is
+    # parsed here and published as its own row (cc-credit) by the derived
+    # reader, so nothing asks the endpoint twice.
+    credit = usage.get("iguana_necktie")
+    if isinstance(credit, dict) and _number(credit.get("limit_dollars")) is not None:
+        seat["cloud_credit"] = {
+            "limit_dollars": _number(credit.get("limit_dollars")),
+            "used_dollars": _number(credit.get("used_dollars")),
+            "remaining_dollars": _number(credit.get("remaining_dollars")),
+            "utilization": _number(credit.get("utilization")),
+            "expires_at": iso(parse_ts(credit.get("resets_at"))),
+            "locked_reason": credit.get("locked_reason"),
+            "field": "iguana_necktie",
+        }
     seat["grade"] = grade
     seat["source"] = {"kind": origin, "endpoint": USAGE_ENDPOINT,
                       "config_dir": str(config_dir),
@@ -1682,9 +1887,434 @@ def read_openrouter(spec, opts):
     return openrouter_row(spec, reading, age, error, openrouter_config(), OPENROUTER_KEY_FILE)
 
 
+# ── the burndown ledger: reset rules ────────────────────────────────────────
+
+def _nth_sunday(year, month, n):
+    first = datetime(year, month, 1, tzinfo=timezone.utc)
+    return first + timedelta(days=(6 - first.weekday()) % 7 + 7 * (n - 1))
+
+
+def pacific_offset_hours(stamp):
+    """UTC offset of America/Los_Angeles at `stamp`, by the US DST rule.
+
+    Computed rather than looked up because the hermetic test runs in a build
+    sandbox with no zoneinfo database. Second Sunday of March 02:00 PST
+    (10:00Z) to first Sunday of November 02:00 PDT (09:00Z).
+    """
+    stamp = stamp.astimezone(timezone.utc)
+    start = _nth_sunday(stamp.year, 3, 2).replace(hour=10)
+    end = _nth_sunday(stamp.year, 11, 1).replace(hour=9)
+    return -7 if start <= stamp < end else -8
+
+
+def pacific_midnights(stamp=None):
+    """(previous, next) 00:00 America/Los_Angeles around `stamp`, as UTC."""
+    base = (stamp or now()).astimezone(timezone.utc)
+    local = (base + timedelta(hours=pacific_offset_hours(base))).replace(tzinfo=None)
+    out = []
+    for day in (0, 1):
+        wall = (local + timedelta(days=day)).replace(hour=0, minute=0, second=0, microsecond=0)
+        # The offset that applies AT that midnight, not at `stamp`.
+        guess = wall.replace(tzinfo=timezone.utc) - timedelta(hours=pacific_offset_hours(base))
+        out.append(wall.replace(tzinfo=timezone.utc) - timedelta(hours=pacific_offset_hours(guess)))
+    return out[0], out[1]
+
+
+def utc_midnights(stamp=None):
+    base = (stamp or now()).astimezone(timezone.utc)
+    previous = base.replace(hour=0, minute=0, second=0, microsecond=0)
+    return previous, previous + timedelta(days=1)
+
+
+def month_edges(stamp=None):
+    base = (stamp or now()).astimezone(timezone.utc)
+    previous = base.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    following = (previous + timedelta(days=32)).replace(day=1)
+    return previous, following
+
+
+def reset_window(rule, stamp=None):
+    """(window_start, next_reset, how) for a lane's reset rule.
+
+    `how` is the one-line statement of what the reset column means, so a
+    computed stamp is never mistaken for a provider's own. A rule with no
+    reset stamp (rolling, unpublished, none) still has a window start, which
+    is what the local 'today' count is measured over.
+    """
+    moment = stamp or now()
+    if rule == "pacific-midnight":
+        previous, following = pacific_midnights(moment)
+        return previous, following, "daily, midnight Pacific (computed)"
+    if rule == "utc-midnight":
+        previous, following = utc_midnights(moment)
+        return previous, following, "daily, 00:00 UTC (computed)"
+    if rule == "monthly":
+        previous, following = month_edges(moment)
+        return previous, following, "calendar month (anchor unverified)"
+    if rule == "rolling-minute":
+        return moment - timedelta(days=1), None, "per minute, rolling"
+    if rule == "per-header":
+        return moment - timedelta(days=1), None, "daily; exact reset in the provider's headers"
+    if rule == "none":
+        return moment - timedelta(days=1), None, "local, no quota"
+    previous, _ = utc_midnights(moment)
+    return previous, None, "unpublished"
+
+
+DURATION = re.compile(r"(\d+(?:\.\d+)?)\s*(h|ms|m|s)")
+
+
+def parse_duration(text):
+    """'1h2m3.5s' or '59.2s' (Groq's x-ratelimit-reset-*) -> seconds, or None."""
+    if not text:
+        return None
+    total, seen = 0.0, False
+    for amount, unit in DURATION.findall(str(text)):
+        seen = True
+        total += float(amount) * {"h": 3600, "m": 60, "s": 1, "ms": 0.001}[unit]
+    return total if seen else None
+
+
+# ── the burndown ledger: the local usage meter ──────────────────────────────
+
+def record_lane_call(lane, slot, model, status, stamp=None):
+    """Append one {ts, lane, slot, model, status} line. Never rewrites."""
+    STATE.mkdir(parents=True, exist_ok=True)
+    row = {"ts": iso(stamp or now()), "lane": str(lane), "slot": str(slot),
+           "model": str(model), "status": str(status)}
+    with LANE_USAGE.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(row, sort_keys=True) + "\n")
+    return row
+
+
+def lane_usage(family, slot, since):
+    """Calls recorded against (family, slot) at or after `since`.
+
+    A line names the lane either as the family plus a slot ("groq", "1") or
+    as the row id ("groq-1"); both join here. A line that does not parse
+    loses only itself.
+    """
+    calls, refusals, by_status, by_model = 0, 0, {}, {}
+    last = None
+    row_id = f"{family}-{slot}"
+    try:
+        stream = LANE_USAGE.open(encoding="utf-8")
+    except OSError:
+        return {"calls": 0, "refusals": 0, "by_status": {}, "by_model": {}, "last": None,
+                "since": iso(since), "file": str(LANE_USAGE), "present": False}
+    with stream:
+        for line in stream:
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(row, dict):
+                continue
+            lane, s = str(row.get("lane") or ""), str(row.get("slot") or "")
+            if not ((lane == family and s == str(slot)) or lane == row_id):
+                continue
+            stamp = parse_ts(row.get("ts"))
+            if stamp is None or stamp < since:
+                continue
+            status = str(row.get("status") or "")
+            calls += 1
+            by_status[status] = by_status.get(status, 0) + 1
+            model = str(row.get("model") or "")
+            by_model[model] = by_model.get(model, 0) + 1
+            if status.startswith(("429", "402")):
+                refusals += 1
+            if last is None or stamp >= last[0]:
+                last = (stamp, status, model)
+    return {"calls": calls, "refusals": refusals, "by_status": by_status, "by_model": by_model,
+            "last": None if last is None else {"ts": iso(last[0]), "status": last[1], "model": last[2]},
+            "since": iso(since), "file": str(LANE_USAGE), "present": True}
+
+
+# ── the burndown ledger: the probe ──────────────────────────────────────────
+
+def lane_secret(name):
+    """(value, path). Read to be SENT once, never shown, never cached."""
+    path = AGENIX_DIR / name
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None, str(path)
+    return (value or None), str(path)
+
+
+RATE_HEADER_PREFIXES = ("x-ratelimit", "x-trial", "ratelimit", "retry-after")
+
+
+def rate_headers(headers):
+    """Only the rate-limit headers of a RESPONSE. The request's headers,
+    which carry the key, are never in reach of this function."""
+    out = {}
+    for name, value in (headers or {}).items():
+        low = str(name).lower()
+        if low.startswith(RATE_HEADER_PREFIXES):
+            out[low] = str(value)
+    return out
+
+
+def http_probe(url, headers, timeout=HTTP_TIMEOUT):
+    """(status, rate_headers, error). ONE request, no retry: a probe that
+    retried a 429 would be asking the thing it measures."""
+    if OFFLINE:
+        return None, {}, "offline: SEATS_NO_NETWORK=1"
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            response.read(65536)
+            return response.status, rate_headers(response.headers), None
+    except urllib.error.HTTPError as error:
+        body = ""
+        try:
+            body = error.read().decode("utf-8", "replace")[:200]
+        except Exception:  # noqa: BLE001
+            pass
+        return error.code, rate_headers(error.headers), one_line(body, 100)
+    except Exception as error:  # noqa: BLE001 — DNS, TLS, timeout, refused
+        return None, {}, f"unreachable: {error}"
+
+
+def probe_lane(fam, slot, opts):
+    """({status, headers, error, probed_at}, age, key_note). Cached PROBE_TTL.
+
+    The key and, for Cloudflare, the account id are read from their agenix
+    files. A missing file is reported as such; nothing is probed without one.
+    """
+    name = fam["key"].format(slot=slot)
+    key, key_path = lane_secret(name)
+    if key is None:
+        return None, None, f"no key on this host: {name}"
+    url = fam["probe"]["url"]
+    if "{account_id}" in url:
+        account, _ = lane_secret(fam["account_id"])
+        if account is None:
+            return None, None, f"no account id on this host: {fam['account_id']}"
+        url = url.replace("{account_id}", urllib.parse.quote(account, safe=""))
+    cache_name = f"lane-probe-{fam['key'].format(slot=slot)}"
+    if not opts.refresh:
+        cached, age = cache_read(cache_name, PROBE_TTL)
+        if cached is not None:
+            return cached, age, key_path
+    status, headers, error = http_probe(url, {"Authorization": f"Bearer {key}",
+                                              "Accept": "application/json"})
+    reading = {"status": status, "headers": headers, "error": error or "",
+               "probed_at": iso(now()), "url": url if "{account_id}" not in fam["probe"]["url"]
+               else fam["probe"]["url"]}
+    if status is not None:
+        cache_write(cache_name, reading)
+    return reading, 0.0, key_path
+
+
+# ── the burndown ledger: the rows ───────────────────────────────────────────
+
+def read_lane(spec, opts):
+    fam = LANE_FAMILIES.get(spec.get("lane") or "")
+    seat = blank_seat(spec, "unknown", "UNKNOWN")
+    if fam is None:
+        seat["detail"] = f"no such lane family: {spec.get('lane')}"
+        return seat
+    slot = spec.get("slot", 1)
+    key_name = fam["key"].format(slot=slot)
+    since, next_reset, how = reset_window(fam["reset"])
+    seat["tier"] = "free lane"
+    seat["models"] = list(fam["models"])
+    seat["lane"], seat["slot"] = spec["lane"], slot
+    seat["ledger"] = {
+        "allowance": fam["allowance"], "allowance_grade": "STATIC",
+        "allowance_read": "2026-11-03",
+        "reset_rule": fam["reset"], "reset_how": how,
+        "resets_at": iso(next_reset), "window_start": iso(since),
+        "exhaustion": fam.get("exhaustion", ""),
+        "key_file": str(AGENIX_DIR / key_name),
+        "key_present": (AGENIX_DIR / key_name).is_file(),
+        "run": fam.get("run", "").format(slot=slot),
+    }
+    today = lane_usage(spec["lane"], slot, since)
+    seat["usage_today"] = today
+    seat["source"] = {"kind": "lane-ledger", "usage_file": str(LANE_USAGE),
+                      "probe": "off" if not getattr(opts, "probe", False) else "on"}
+
+    notes = []
+    if fam.get("note"):
+        notes.append(fam["note"])
+
+    # 1. Static posture: a lane the provider has not opened is n/a whatever
+    #    the key file says.
+    if fam.get("state") == "n/a":
+        seat["state"], seat["usable"] = "n/a", False
+        if not seat["ledger"]["key_present"]:
+            notes.insert(0, f"no key on this host: {key_name}")
+        seat["detail"] = "; ".join(notes)
+        return seat
+
+    # 2. The key file: present or not, never read unless probing.
+    if not seat["ledger"]["key_present"]:
+        seat["state"], seat["usable"] = "unauth", False
+        seat["detail"] = "; ".join([f"no key on this host: {key_name}"] + notes[:1])
+        return seat
+
+    # 3. Local meter: the last call's status inside the window. A refusal on
+    #    a per-minute limiter clears within the minute, so it holds only that
+    #    long; on a daily lane it holds until the computed reset.
+    seat["state"], seat["usable"] = "open", True
+    last = today.get("last") or {}
+    if last.get("status", "").startswith(("429", "402")):
+        age = (now() - (parse_ts(last["ts"]) or now())).total_seconds()
+        holds = age < 60 if fam["reset"] == "rolling-minute" else True
+        if holds:
+            seat["state"], seat["usable"] = "spent", False
+            seat["grade"] = "MEASURED-FROM-REFUSAL"
+            seat["free_at"] = iso(next_reset)
+            notes.insert(0, f"last call {last['status']} at {last['ts'][11:16]}Z (local record)")
+    if today["calls"]:
+        notes.insert(0, f"{today['calls']} call{'s' if today['calls'] != 1 else ''} recorded "
+                     f"since {today['since'][11:16]}Z")
+
+    # 4. The probe, only when asked for: one GET, status and rate headers.
+    if getattr(opts, "probe", False):
+        reading, age, key_note = probe_lane(fam, slot, opts)
+        if reading is None:
+            seat["probe"] = {"status": None, "note": key_note}
+            notes.insert(0, key_note)
+        else:
+            status = reading.get("status")
+            headers = reading.get("headers") or {}
+            seat["probe"] = dict(reading, age_seconds=round(age or 0))
+            stamp = f" ({round((age or 0) / 60)}m old)" if age and age > CACHE_TTL else ""
+            if status is None:
+                notes.insert(0, f"probe: {reading.get('error') or 'no answer'}")
+            elif fam.get("probe_gate") and status in (401, 403, 429):
+                # Reachable, refused at the client-fingerprint gate: not a
+                # quota reading, so the grade stays UNKNOWN.
+                notes.insert(0, f"probe: HTTP {status} = fingerprint gate, not quota{stamp}")
+            elif status == 429:
+                seat["state"], seat["usable"] = "spent", False
+                seat["grade"] = "MEASURED-FROM-REFUSAL"
+                seat["free_at"] = iso(next_reset)
+                notes.insert(0, f"probe: 429{stamp}")
+            elif status == 402:
+                seat["state"], seat["usable"] = "n/a", False
+                seat["grade"] = "MEASURED"
+                notes.insert(0, f"probe: 402 needs credits{stamp}")
+            elif status in (401, 403):
+                seat["state"], seat["usable"] = "unauth", False
+                seat["grade"] = "MEASURED"
+                notes.insert(0, f"probe: HTTP {status}{stamp}")
+            elif 200 <= status < 300:
+                seat["grade"] = "CACHED" if stamp else "MEASURED"
+                notes.insert(0, f"probe: ok{stamp}")
+            else:
+                notes.insert(0, f"probe: HTTP {status}{stamp}")
+            # Providers that state the day's remaining requests in headers
+            # (Groq, Cohere) get a credit counter like openrouter-free.
+            spec_probe = fam["probe"]
+            limit = _number(_int_or_none(headers.get(spec_probe.get("limit", ""))))
+            remaining = _number(_int_or_none(headers.get(spec_probe.get("remaining", ""))))
+            if limit is not None and remaining is not None:
+                reset_at = next_reset
+                wait = parse_duration(headers.get(spec_probe.get("reset", "")))
+                if wait is not None:
+                    reset_at = (parse_ts(reading.get("probed_at")) or now()) + timedelta(seconds=wait)
+                seat["credits"] = {"unit": "requests", "used": limit - remaining, "limit": limit,
+                                   "allowance": limit, "remaining": remaining,
+                                   "resets_at": iso(reset_at), "counter": "provider",
+                                   "basis": f"{spec_probe['remaining']} header on the probe"}
+                if reset_at is not None:
+                    seat["ledger"]["resets_at"] = iso(reset_at)
+                    seat["ledger"]["reset_how"] = "provider header"
+                if remaining <= 0:
+                    seat["state"], seat["usable"] = "spent", False
+                    seat["free_at"] = iso(reset_at)
+                elif seat["state"] == "open" and remaining <= limit * (100 - WARN_PCT) / 100:
+                    seat["state"] = "tight"
+                notes.insert(1, f"{int(remaining)} of {int(limit)} requests left")
+            elif headers:
+                notes.insert(1, ", ".join(f"{k}={v}" for k, v in sorted(headers.items())[:3]))
+    elif seat["grade"] == "UNKNOWN":
+        notes.append("unprobed")
+    seat["detail"] = "; ".join(notes)
+    return seat
+
+
+def _int_or_none(value):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def derive_claude_credit(spec, opts, seats, specs):
+    """The cloud credit row, from the sibling Claude seat's reading."""
+    seat = blank_seat(spec, "unknown", "UNKNOWN")
+    seat["tier"] = "cloud credit (usd)"
+    seat["models"] = ["Fable", "Opus"]
+    sibling_id = spec.get("seat", "")
+    sibling = next((s for s in seats if s["id"] == sibling_id), None)
+    if sibling is None:
+        sibling_spec = next((s for s in specs if s["id"] == sibling_id), None)
+        sibling = read_claude(sibling_spec, opts) if sibling_spec else None
+    seat["ledger"] = {"allowance": "cloud credit, expires", "allowance_grade": "PROVIDER",
+                      "reset_rule": "expires", "reset_how": "expiry stated by the provider",
+                      "resets_at": "", "run": f"claude --cloud (as {sibling_id})"}
+    seat["source"] = {"kind": "claude-usage-payload", "field": "iguana_necktie",
+                      "seat": sibling_id}
+    credit = (sibling or {}).get("cloud_credit")
+    if not credit:
+        seat["state"] = sibling["state"] if sibling and sibling["state"] == "unauth" else "unknown"
+        seat["detail"] = ("payload carries no cloud credit" if sibling and sibling.get("windows")
+                          else (sibling or {}).get("detail") or f"no reading for {sibling_id}")
+        return seat
+    seat["grade"] = sibling["grade"]
+    seat["source"]["reading_age_seconds"] = sibling.get("source", {}).get("reading_age_seconds", 0)
+    limit, used = credit["limit_dollars"], credit.get("used_dollars") or 0.0
+    remaining = credit.get("remaining_dollars")
+    remaining = max(0.0, limit - used) if remaining is None else remaining
+    expiry = parse_ts(credit.get("expires_at"))
+    seat["ledger"]["resets_at"] = iso(expiry)
+    seat["credits"] = {"unit": "usd", "used": round(used, 2), "limit": round(limit, 2),
+                       "allowance": round(limit, 2), "remaining": round(remaining, 2),
+                       "resets_at": None, "expires_at": iso(expiry), "counter": "provider",
+                       "locked_reason": credit.get("locked_reason"),
+                       "basis": "usage payload iguana_necktie; expires, never resets"}
+    expired = expiry is not None and expiry <= now()
+    if expired or remaining <= 0 or credit.get("locked_reason"):
+        seat["state"], seat["usable"] = "spent", False
+    elif used >= limit * WARN_PCT / 100.0:
+        seat["state"], seat["usable"] = "tight", True
+    else:
+        seat["state"], seat["usable"] = "open", True
+    seat["detail"] = (f"${remaining:,.2f} of ${limit:,.2f} left"
+                      + (f", expires {until(expiry)}" if expiry and not expired else
+                         (", expired" if expired else ""))
+                      + (f"; locked: {credit['locked_reason']}" if credit.get("locked_reason") else ""))
+    return seat
+
+
+def attach_ledger(seats, specs):
+    """Models and allowance for the rows that are not lanes but belong in the
+    burndown order (Codex, the local servers)."""
+    for seat in seats:
+        static = LOCAL_LANES.get(seat["id"])
+        if static is None or "ledger" in seat:
+            continue
+        weekly = next((w for w in seat["windows"] if w["minutes"] == 10080 and w["binding"]), None)
+        seat["models"] = list(static["models"])
+        seat["ledger"] = {"allowance": static["allowance"], "allowance_grade": "STATIC",
+                          "reset_rule": "window" if weekly else "none",
+                          "reset_how": "the seat's own weekly window" if weekly else "local, no quota",
+                          "resets_at": seat["free_at"] or (weekly["resets_at"] if weekly else ""),
+                          "run": static.get("run", "")}
+
+
 READERS = {"claude": read_claude, "codex": read_codex,
            "qwen": read_qwen, "gufo": read_gufo, "openrouter": read_openrouter,
-           "none": read_none}
+           "none": read_none, "lane": read_lane}
+
+# Rows computed from other rows' readings, after the pool has run.
+DERIVED_READERS = {"claude-credit": derive_claude_credit}
 
 
 # ── spend: tokens actually burned inside the seat's own window ──────────────
@@ -1928,10 +2558,82 @@ def bar(value, width=10):
     return "█" * filled + "░" * (width - filled)
 
 
+LEDGER_ONLY_PROVIDERS = ("lane", "claude-credit")
+
+
+def ledger_only(seat):
+    """True for a row that lives in the burndown ledger and not the window table."""
+    return (seat["provider"] in LEDGER_ONLY_PROVIDERS
+            or (seat["provider"] == "none" and seat["id"] in LOCAL_LANES))
+
+
+def render_ledger(report, color, width=100):
+    """The burndown ledger: one line per lane/key, then the models per family."""
+    rows = []
+    for seat in report["seats"]:
+        ledger = seat.get("ledger")
+        if not ledger:
+            continue
+        today = seat.get("usage_today")
+        if today is None:
+            today_cell = "—"
+        elif not today["calls"]:
+            today_cell = "0"
+        else:
+            today_cell = str(today["calls"]) + (f" ({today['refusals']}×429)" if today["refusals"] else "")
+        reset = ""
+        stamp = parse_ts(ledger.get("resets_at"))
+        if stamp is not None:
+            verb = "exp " if ledger.get("reset_rule") == "expires" else ""
+            reset = f"{verb}{stamp.strftime('%a %H:%MZ')} {until(stamp).replace('in ', '+')}"
+        elif ledger.get("reset_rule") in ("rolling-minute",):
+            reset = "per minute"
+        elif ledger.get("reset_rule") == "per-header":
+            reset = "per header"
+        elif ledger.get("reset_rule") == "none":
+            reset = "—"
+        else:
+            reset = "unpublished"
+        credits = seat.get("credits") if isinstance(seat.get("credits"), dict) else None
+        allowance = ledger.get("allowance", "")
+        if credits and credits.get("unit") == "usd":
+            allowance = f"${credits['remaining']:,.2f} of ${credits['allowance']:,.2f} left"
+        rows.append([seat["id"], paint(seat["state"], seat["state"], color),
+                     one_line(allowance, 24), today_cell, reset, seat["detail"]])
+    if not rows:
+        return []
+    headers = ["LANE", "STATE", "ALLOWANCE (static)", "TODAY", "RESET", "NOTE"]
+    plain = [[re.sub(r"\033\[[0-9;]*m", "", c) for c in row] for row in rows]
+    widths = [max(len(headers[i]), *(len(r[i]) for r in plain)) for i in range(len(headers) - 1)]
+    note_width = max(12, width - sum(widths) - 2 * (len(headers) - 1))
+    lines = ["", "burndown ledger: strongest model first. ALLOWANCE is the provider's published tier,",
+             "TODAY this box's own count (seats --record), RESET computed from the provider's rule;",
+             "--probe adds one live GET per key and shows its rate-limit headers:"]
+    lines.append("  ".join(h.ljust(widths[i]) for i, h in enumerate(headers[:-1])) + "  " + headers[-1])
+    lines.append("  ".join("─" * widths[i] for i in range(len(headers) - 1)) + "  " + "─" * note_width)
+    for row, flat in zip(rows, plain):
+        lines.append("  ".join(row[i] + " " * (widths[i] - len(flat[i]))
+                               for i in range(len(headers) - 1))
+                     + "  " + one_line(row[-1], note_width))
+    families = []
+    for seat in report["seats"]:
+        key = seat.get("lane") or seat["id"]
+        models = seat.get("models")
+        if models is not None and key not in [f[0] for f in families]:
+            families.append((key, models))
+    lines.append("models, strongest first:")
+    for key, models in families:
+        text = ", ".join(models) if models else "(none: needs credits)"
+        lines.append(f"  {key:<11} " + one_line(text, width - 14))
+    return lines
+
+
 def render_table(report, color):
     lines = []
     rows = []
     for seat in report["seats"]:
+        if ledger_only(seat):
+            continue
         windows = {w["id"]: w for w in seat["windows"]}
         session = windows.get("five_hour")
         weekly = next((w for w in seat["windows"]
@@ -1966,13 +2668,15 @@ def render_table(report, color):
 
     headers = ["SEAT", "STATE", "SESSION (5h)", "WEEKLY (7d)", "NEXT RESET",
                "IN+OUT", "W/CACHE", "NOTE"]
-    plain = [[re.sub(r"\033\[[0-9;]*m", "", c) for c in row] for row in rows]
-    widths = [max(len(headers[i]), *(len(r[i]) for r in plain)) for i in range(len(headers))]
-    lines.append("  ".join(h.ljust(widths[i]) for i, h in enumerate(headers)))
-    lines.append("  ".join("─" * widths[i] for i in range(len(headers))))
-    for row, flat in zip(rows, plain):
-        lines.append("  ".join(
-            row[i] + " " * (widths[i] - len(flat[i])) for i in range(len(headers))))
+    if rows:
+        plain = [[re.sub(r"\033\[[0-9;]*m", "", c) for c in row] for row in rows]
+        widths = [max(len(headers[i]), *(len(r[i]) for r in plain)) for i in range(len(headers))]
+        lines.append("  ".join(h.ljust(widths[i]) for i, h in enumerate(headers)))
+        lines.append("  ".join("─" * widths[i] for i in range(len(headers))))
+        for row, flat in zip(rows, plain):
+            lines.append("  ".join(
+                row[i] + " " * (widths[i] - len(flat[i])) for i in range(len(headers))))
+    lines.extend(render_ledger(report, color))
 
     budgets = [(s["id"], s["model_budget"]) for s in report["seats"] if s.get("model_budget")
                and s["model_budget"]["models"]]
@@ -2155,12 +2859,17 @@ def load_specs(only):
     except (OSError, ValueError):
         pass
     if only:
+        # A seat id, a provider, a lane family ("gemini"), or "ledger" for
+        # every burndown row at once.
         wanted = {s.strip() for s in only.split(",") if s.strip()}
-        specs = [s for s in specs if s["id"] in wanted or s["provider"] in wanted]
+        specs = [s for s in specs if s["id"] in wanted or s["provider"] in wanted
+                 or s.get("lane") in wanted
+                 or ("ledger" in wanted and (s["provider"] in ("lane", "claude-credit")
+                                             or s["id"] in LOCAL_LANES))]
     return specs
 
 
-def collect(specs, opts):
+def collect(specs, opts, all_specs=None):
     def one(spec):
         reader = READERS.get(spec["provider"])
         if reader is None:
@@ -2172,8 +2881,17 @@ def collect(specs, opts):
 
     if not specs:
         return []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(specs))) as pool:
-        seats = list(pool.map(one, specs))
+    direct = [s for s in specs if s["provider"] not in DERIVED_READERS]
+    derived = [s for s in specs if s["provider"] in DERIVED_READERS]
+    seats = []
+    if direct:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(direct))) as pool:
+            seats = list(pool.map(one, direct))
+    for spec in derived:
+        try:
+            seats.append(DERIVED_READERS[spec["provider"]](spec, opts, seats, all_specs or specs))
+        except Exception as error:  # noqa: BLE001
+            seats.append(blank_seat(spec, "unknown", "UNKNOWN", f"reader failed: {error}"))
     order = {spec["id"]: i for i, spec in enumerate(specs)}
     seats.sort(key=lambda s: order.get(s["id"], 99))
     return seats
@@ -2181,7 +2899,8 @@ def collect(specs, opts):
 
 def build_report(opts):
     specs = load_specs(opts.only)
-    seats = collect(specs, opts)
+    seats = collect(specs, opts, load_specs(None))
+    attach_ledger(seats, specs)
     if not opts.no_spend:
         attach_spend(seats, specs, opts.days)
     return {
@@ -2227,9 +2946,30 @@ def main(argv=None):
                              "(no process spawned, but only as fresh as the last run)")
     parser.add_argument("--probe-qwen", action="store_true",
                         help="spend one Qwen token to learn the quota state")
+    parser.add_argument("--probe", action="store_true",
+                        help="free lanes: one cheap request per key, reading the rate-limit "
+                             f"headers; answers are reused for {PROBE_TTL}s")
+    parser.add_argument("--record", nargs=4, metavar=("LANE", "SLOT", "MODEL", "STATUS"),
+                        help="append one call to the local lane-usage meter "
+                             "(~/.local/state/seats/lane-usage.jsonl) and exit")
     parser.add_argument("--watch", type=float, metavar="SECONDS", help="redraw on an interval")
     parser.add_argument("--no-color", action="store_true")
     opts = parser.parse_args(argv)
+
+    if opts.record:
+        lane, slot, model, status = opts.record
+        if lane not in LANE_FAMILIES and lane.rsplit("-", 1)[0] not in LANE_FAMILIES:
+            print(f"seats --record: unknown lane {lane!r} (known: "
+                  f"{', '.join(sorted(LANE_FAMILIES))})", file=sys.stderr)
+            return 2
+        row = record_lane_call(lane, slot, model, status)
+        print(json.dumps(row, sort_keys=True))
+        return 0
+
+    if opts.probe and opts.watch and opts.watch < WATCH_PROBE_FLOOR:
+        print(f"seats: --probe inside --watch needs an interval of at least "
+              f"{WATCH_PROBE_FLOOR}s; a probe spends the thing it measures", file=sys.stderr)
+        return 2
 
     if opts.check:
         opts.only = opts.check

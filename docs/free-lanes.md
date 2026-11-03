@@ -108,9 +108,47 @@ Nothing here touches `~/.dsh`: the profile manifest and store links under
 ## 4. The burndown ledger (reading of 2026-11-03, about 21:00Z)
 
 One row per lane and account, strongest model first. The Claude cloud
-credits expire 2026-11-05 07:59Z. The `seats` rows for the free lanes
-(gemini-1..3, zen-1..4, the two credit rows) are NOT in this PR; until they
-land, the reading is the lane's own first call.
+credits expire 2026-11-05 07:59Z.
+
+**Reading the ledger with `seats`.** `seats` (home/dot_local/bin/seats)
+prints the same table live, under the window table, as "burndown ledger":
+one row per key (`gemini-1..3`, `zen-1..4`, `groq-1..3`, `mistral-1..3`,
+`cohere-1..5`, `nvidia-1`, `cloudflare-1`, `hf-1`), the two cloud-credit
+rows (`cc-credit`, `cc2-credit`, parsed from the usage payload the `cc`
+rows already fetch, so the endpoint is never asked twice), and the local
+rows (`gpu-strix`, `ds4`, `codex`). Each column says what kind of fact it
+is: ALLOWANCE is the provider's published tier typed into the script on
+2026-11-03 (static, never measured); RESET is computed from the provider's
+rule (Gemini midnight Pacific, Cloudflare 00:00 UTC, Cohere the calendar
+month, a credit's own expiry; Groq only from its headers, Zen unpublished);
+TODAY is this box's own count of calls recorded against the row since the
+last reset, read from the append-only
+`~/.local/state/seats/lane-usage.jsonl` (one line
+`{ts, lane, slot, model, status}`). Nothing appends to that file yet except
+`seats --record <lane> <slot> <model> <status>` (for example
+`seats --record gemini 2 gemini-3.8-flash 429`); the dsh wrapper will append
+its own line per call in a later PR. A row with no key file on the host says
+`no key on this host`; a row with a key and no record is `open` but graded
+UNKNOWN until probed. `seats --probe` makes ONE cheap GET per key (the
+models list), reads the key from `/run/agenix/<name>` and never prints it,
+keeps only the status and the rate-limit headers (Groq's
+`x-ratelimit-*`, Cohere's `x-trial-endpoint-call-*` become a request
+counter; the rest read ok / 429 / 402), reuses an answer for ten minutes,
+and refuses `--watch` intervals under 600 s. A plain-client 429 from Zen is
+the fingerprint gate, not quota: only a 429 recorded from `dsh zen` counts.
+`seats --only ledger` limits the output to these rows; `--only gemini`
+to one family. For the day-over-day index Tom asked for, append one line
+per row after each lane run, by hand or from any script, no timer here
+(Substrate owns schedules):
+
+```
+seats --no-spend --jsonl --only ledger >> ~/today/ledger.jsonl
+```
+
+Secret names the script expects beyond this PR's seven: `groq-api-key-N`,
+`mistral-api-key-N`, `cohere-api-key-N`, `nvidia-api-key-1`,
+`cloudflare-workers-ai-token` plus `cloudflare-account-id`, and
+`huggingface-token`; `SEATS_AGENIX_DIR` moves the directory for tests.
 
 | Lane / account | Harness | Models, strongest first | Allowance | How exhaustion shows | How to read it today | Credential |
 |---|---|---|---|---|---|---|
