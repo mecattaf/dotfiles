@@ -29,6 +29,7 @@ let
     "codex"
     "spec-kit" # bin: `specify` — GitHub Spec-Kit, spec-driven development bootstrapper
     "cc-switch-cli" # bin: `cc-switch` — switches Claude Code/Codex/Gemini CLI provider configs
+    "opencode" # bin: `opencode` — headless client for OpenCode Zen's free models behind the `zen` wrapper (dot_local/bin); NOT a harness
   ];
   llmAgentsSelected = pkgs.buildEnv {
     name = "llm-agents-selected";
@@ -88,5 +89,17 @@ lib.mkIf (osConfig.myFleet.has "brain" || osConfig.myFleet.has "seat") {
   # Both read the same agentskills.io SKILL.md format (name/description
   # frontmatter, symlinks followed), so ONE tree feeds every harness.
   home.file.".agents/skills".source = link "dot_claude/skills";
+
+  # OpenCode CLI config for the Zen free lane (docs/free-lanes.md, last
+  # section): default and small model, sharing off, only the `opencode`
+  # provider, and a permission block that denies edit/bash/web so an unattended
+  # `opencode run` can only read inside its cwd. ONE file, not a whole-dir
+  # link: ~/.config/opencode is a real directory Tom made in July 2026
+  # (package.json, package-lock.json, .gitignore, opencode.jsonc) and it stays
+  # his. Measured on 1.19.3: opencode.jsonc is loaded AFTER opencode.json and
+  # wins on conflicting keys, but his .jsonc holds only "$schema", so this
+  # file's keys all survive the merge. Delivering as opencode.jsonc would have
+  # collided with his file at activation.
+  xdg.configFile."opencode/opencode.json".source = link "dot_config/opencode/opencode.json";
 
 }

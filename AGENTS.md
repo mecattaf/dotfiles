@@ -185,7 +185,12 @@ a 0 balance, both the default of nothing; the stored Grok key has no
 provider), with eighteen more brain-only ciphertexts selected by the same
 `DSH_KEY_SLOT`; Gemini stays the
 default and no lane has had a live call through dsh until the first commands
-of `docs/free-lanes.md` section 5 are run. See `docs/free-lanes.md`.
+of `docs/free-lanes.md` section 5 are run.
+The plugin route
+did not pass Zen's gate when measured after the switch (429 on every slot),
+so the OpenCode CLI is installed as a headless client for that lane only,
+behind the `zen` wrapper (Tom: "i m open to installing opencode just for the
+free compute anyway"); nobody sits in `opencode`. See `docs/free-lanes.md`.
 
 **The NPU path is decommissioned — permanently, 2026-08-29.** FastFlowLM (`flm`)
 is no longer installed on any host, and the XDNA2 NPU is not an inference target
