@@ -42,12 +42,20 @@ SCRIPT = os.environ.get("SEATS_SCRIPT")
 NOW = datetime.now(timezone.utc)
 
 
+def load_seats_module(name="seats_mod_shared"):
+    spec = importlib.util.spec_from_loader(
+        name, importlib.machinery.SourceFileLoader(name, SCRIPT))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def iso(stamp):
     return stamp.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def window_cache(five_hour_pct, weekly_pct, weekly_reset, scoped=None,
-                 severity=None, active=None):
+                 severity=None, active=None, credit=None):
     """The shape tally-seat-feeder leaves beside its meter rows.
 
     `severity` and `active` are the provider's own grading, which the meter now
@@ -76,6 +84,12 @@ def window_cache(five_hour_pct, weekly_pct, weekly_reset, scoped=None,
             "resets_at": iso(weekly_reset), "severity": severity,
             "is_active": active == "scoped",
             "scope": {"model": {"id": None, "display_name": "Fable"}}})
+    if credit is not None:
+        # The cloud credit, under the undocumented key read on 2026-11-03.
+        limit, used, expires = credit
+        usage["iguana_necktie"] = {"utilization": used / limit * 100.0, "resets_at": iso(expires),
+                                   "limit_dollars": limit, "used_dollars": used,
+                                   "remaining_dollars": limit - used, "locked_reason": None}
     return {"observed_at": iso(NOW - timedelta(seconds=30)), "usage": usage}
 
 
@@ -94,7 +108,7 @@ class SeatsFixture:
 
     # ── seats ───────────────────────────────────────────────────────────────
     def claude(self, seat, config, five_hour, weekly, scoped=None, events=(),
-               severity=None, active=None):
+               severity=None, active=None, credit=None):
         (self.home / config).mkdir(parents=True, exist_ok=True)
         (self.home / config / ".credentials.json").write_text(json.dumps({
             "claudeAiOauth": {
@@ -104,7 +118,7 @@ class SeatsFixture:
                 "expiresAt": int((NOW + timedelta(hours=1)).timestamp() * 1000)}}))
         (self.peer / f".window-cache-{seat}.json").write_text(
             json.dumps(window_cache(five_hour, weekly, self.weekly_reset, scoped,
-                                    severity, active)))
+                                    severity, active, credit)))
         project = self.home / config / "projects" / "-proj"
         project.mkdir(parents=True, exist_ok=True)
         lines = []
@@ -236,6 +250,7 @@ class SeatsFixture:
                "SEATS_QWEN_HOLD": str(self.state / "qwen-hold.json"),
                "SEATS_QWEN_KEY_FILE": str(self.state / "no-such-key"),
                "SEATS_OPENROUTER_KEY_FILE": str(self.state / "no-such-openrouter-key"),
+               "SEATS_AGENIX_DIR": str(self.root / "agenix"),
                "PYTHONDONTWRITEBYTECODE": "1",
                "NO_COLOR": "1"}
         env.pop("XDG_RUNTIME_DIR", None)   # never touch the caller's live cache
@@ -294,8 +309,8 @@ class SeatsTest(unittest.TestCase):
     def test_every_seat_produces_exactly_one_row(self):
         report, seats = self.box.report()
         self.assertEqual(report["schema_version"], "seat-capacity/1")
-        self.assertEqual(len(report["seats"]), 8)
-        self.assertEqual(len(seats), 8, "seat ids must be unique")
+        self.assertEqual(len(report["seats"]), len(load_seats_module().DEFAULT_SEATS))
+        self.assertEqual(len(seats), len(report["seats"]), "seat ids must be unique")
         for seat in report["seats"]:
             self.assertIn("state", seat)
             self.assertIn(seat["grade"],
@@ -759,7 +774,7 @@ class SeatsTest(unittest.TestCase):
 
         jsonl = self.box.run("--jsonl")
         rows = [json.loads(line) for line in jsonl.stdout.splitlines()]
-        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(rows), len(load_seats_module().DEFAULT_SEATS))
         self.assertTrue(all("generated_at" in row for row in rows))
 
     def test_only_filters_by_id_and_by_provider(self):
@@ -971,3 +986,287 @@ class OpenRouterRowTest(unittest.TestCase):
             for row in seats.values():
                 self.assertEqual(row["state"], "unauth")
                 self.assertNotIn("credits", row)
+
+
+class BurndownLedgerTest(unittest.TestCase):
+    """The free-lane rows and the cloud-credit rows (2026-11-03).
+
+    Pins: every lane key is a row even with no key file, and says so; the
+    allowance is static and labelled; the reset is computed from the rule
+    (Pacific midnight under the US DST rule, UTC midnight, the month); a
+    recorded 429 spends the row until the reset and a per-minute refusal
+    clears; the probe never runs inside a fast --watch; the credit rows come
+    out of the sibling seat's payload; no key material ever reaches stdout.
+    """
+
+    def setUp(self):
+        self.assertTrue(SCRIPT, "SEATS_SCRIPT must be set")
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.box = SeatsFixture(pathlib.Path(self.tmp.name))
+        self.mod = load_seats_module("seats_mod_ledger")
+        self.agenix = self.box.root / "agenix"
+        self.agenix.mkdir()
+
+    def lanes(self, *args):
+        _, seats = self.box.report("--only", "ledger", *args)
+        return seats
+
+    def test_every_lane_key_is_a_row_that_names_its_missing_key(self):
+        seats = self.lanes()
+        for family, slots in (("gemini", 3), ("zen", 4), ("groq", 3), ("mistral", 3),
+                              ("cohere", 5), ("nvidia", 1), ("cloudflare", 1), ("hf", 1),
+                              ("cerebras", 1), ("vercel", 1), ("grok", 1)):
+            for slot in range(1, slots + 1):
+                row = seats[f"{family}-{slot}"]
+                self.assertEqual(row["provider"], "lane")
+                self.assertEqual(row["grade"], "UNKNOWN")
+                self.assertFalse(row["ledger"]["key_present"])
+                self.assertIn("no key on this host", row["detail"])
+                self.assertEqual(row["ledger"]["allowance_grade"], "STATIC")
+                self.assertFalse(row["usable"], "an unprobed lane is never headroom")
+        self.assertEqual(seats["gemini-1"]["state"], "unauth")
+        self.assertEqual(seats["mistral-1"]["state"], "n/a")
+        self.assertEqual(seats["hf-1"]["state"], "n/a")
+        self.assertEqual(seats["ds4"]["state"], "n/a")
+        self.assertEqual(seats["vercel-1"]["state"], "n/a")
+        self.assertEqual(seats["grok-1"]["state"], "n/a")
+        self.assertEqual(seats["cerebras-1"]["models"], ["qwen-3.8-27b", "gpt-oss-120b"])
+        self.assertEqual(seats["hf-1"]["ledger"]["key_file"].rsplit("/", 1)[1],
+                         "huggingface-inference-token-1", "never the Hub download token")
+        self.assertTrue(seats["cloudflare-1"]["ledger"]["key_file"].endswith("cloudflare-workers-ai-token-1"))
+        self.assertEqual(seats["gemini-1"]["models"][0], "gemini-3.8-flash")
+        self.assertEqual(seats["zen-1"]["models"], ["deepseek-v4.1-flash-free", "glm-5.3-flash-free"])
+
+    def test_only_accepts_a_lane_family(self):
+        _, seats = self.box.report("--only", "groq")
+        self.assertEqual(sorted(seats), ["groq-1", "groq-2", "groq-3"])
+
+    def test_pacific_midnight_follows_the_us_dst_rule(self):
+        mid = self.mod.pacific_midnights
+        utc = timezone.utc
+        # Standard time (after the first Sunday of November): 00:00 PST = 08:00Z.
+        prev, nxt = mid(datetime(2026, 11, 3, 21, 0, tzinfo=utc))
+        self.assertEqual(iso(nxt), "2026-11-04T08:00:00Z")
+        self.assertEqual(iso(prev), "2026-11-03T08:00:00Z")
+        # Daylight time: 00:00 PDT = 07:00Z.
+        prev, nxt = mid(datetime(2026, 7, 10, 3, 0, tzinfo=utc))
+        self.assertEqual(iso(nxt), "2026-07-10T07:00:00Z")
+        self.assertEqual(iso(prev), "2026-07-09T07:00:00Z")
+        # 06:30Z on a July day is still the previous Pacific day.
+        prev, nxt = mid(datetime(2026, 7, 10, 6, 30, tzinfo=utc))
+        self.assertEqual(iso(nxt), "2026-07-10T07:00:00Z")
+
+    def test_reset_rules_are_computed_and_labelled(self):
+        seats = self.lanes()
+        gemini = self.mod.parse_ts(seats["gemini-1"]["ledger"]["resets_at"])
+        self.assertIn(gemini.hour, (7, 8))
+        self.assertLessEqual(gemini - NOW, timedelta(days=1))
+        self.assertIn("computed", seats["gemini-1"]["ledger"]["reset_how"])
+        cloudflare = self.mod.parse_ts(seats["cloudflare-1"]["ledger"]["resets_at"])
+        self.assertEqual((cloudflare.hour, cloudflare.minute), (0, 0))
+        cohere = self.mod.parse_ts(seats["cohere-1"]["ledger"]["resets_at"])
+        self.assertEqual(cohere.day, 1)
+        self.assertIn("unverified", seats["cohere-1"]["ledger"]["reset_how"])
+        self.assertEqual(seats["groq-1"]["ledger"]["resets_at"], "")
+        self.assertEqual(seats["groq-1"]["ledger"]["reset_rule"], "per-header")
+        self.assertEqual(seats["zen-1"]["ledger"]["reset_how"], "unpublished")
+
+    def test_groq_reset_header_durations_parse(self):
+        parse = self.mod.parse_duration
+        self.assertAlmostEqual(parse("1h2m3.5s"), 3723.5)
+        self.assertAlmostEqual(parse("59.2s"), 59.2)
+        self.assertAlmostEqual(parse("250ms"), 0.25)
+        self.assertAlmostEqual(parse("1234.5"), 1234.5, msg="Cerebras states bare seconds")
+        self.assertIsNone(parse(""))
+        self.assertIsNone(parse(None))
+
+    def test_record_appends_and_the_row_counts_it(self):
+        (self.agenix / "groq-api-key-1").write_text("not-a-real-groq-key\n")
+        for status in ("ok", "ok"):
+            result = self.box.run("--record", "groq", "1", "qwen/qwen3.8-27b", status)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        lines = (self.box.state / "lane-usage.jsonl").read_text().splitlines()
+        self.assertEqual(len(lines), 2)
+        row = json.loads(lines[0])
+        self.assertEqual(set(row), {"ts", "lane", "slot", "model", "status"})
+        groq = self.lanes()["groq-1"]
+        self.assertEqual(groq["state"], "open")
+        self.assertEqual(groq["usage_today"]["calls"], 2)
+        self.assertEqual(groq["usage_today"]["by_model"], {"qwen/qwen3.8-27b": 2})
+        self.assertIn("2 calls recorded", groq["detail"])
+        # Another slot's calls are not this row's.
+        self.box.run("--record", "groq", "2", "qwen/qwen3.8-27b", "ok")
+        self.assertEqual(self.lanes()["groq-1"]["usage_today"]["calls"], 2)
+        # The row id form joins too.
+        self.box.run("--record", "groq-1", "1", "openai/gpt-oss-120b", "ok")
+        self.assertEqual(self.lanes()["groq-1"]["usage_today"]["calls"], 3)
+
+    def test_record_refuses_an_unknown_lane(self):
+        result = self.box.run("--record", "bogus", "1", "x", "ok")
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse((self.box.state / "lane-usage.jsonl").exists())
+
+    def test_a_recorded_refusal_spends_a_daily_lane_until_its_reset(self):
+        (self.agenix / "gemini-api-key-2").write_text("not-a-real-gemini-key\n")
+        self.box.run("--record", "gemini", "2", "gemini-3.8-flash", "ok")
+        self.box.run("--record", "gemini", "2", "gemini-3.8-flash", "429")
+        gemini = self.lanes()["gemini-2"]
+        self.assertEqual(gemini["state"], "spent")
+        self.assertEqual(gemini["grade"], "MEASURED-FROM-REFUSAL")
+        self.assertEqual(gemini["free_at"], gemini["ledger"]["resets_at"])
+        self.assertEqual(gemini["usage_today"]["refusals"], 1)
+        # A later ok clears it: the last status decides.
+        self.box.run("--record", "gemini", "2", "gemini-3.8-flash", "ok")
+        self.assertEqual(self.lanes()["gemini-2"]["state"], "open")
+
+    def test_a_per_minute_refusal_clears_within_the_minute(self):
+        (self.agenix / "nvidia-api-key-1").write_text("not-a-real-nvidia-key\n")
+        self.box.state.mkdir(exist_ok=True)
+        with (self.box.state / "lane-usage.jsonl").open("a") as stream:
+            stream.write(json.dumps({"ts": iso(NOW - timedelta(minutes=5)), "lane": "nvidia",
+                                     "slot": "1", "model": "z-ai/glm-5.3-flash",
+                                     "status": "429"}) + "\n")
+        self.assertEqual(self.lanes()["nvidia-1"]["state"], "open")
+        with (self.box.state / "lane-usage.jsonl").open("a") as stream:
+            stream.write(json.dumps({"ts": iso(NOW), "lane": "nvidia", "slot": "1",
+                                     "model": "z-ai/glm-5.3-flash", "status": "429"}) + "\n")
+        self.assertEqual(self.lanes()["nvidia-1"]["state"], "spent")
+
+    def test_a_present_key_is_open_but_unknown_until_probed(self):
+        (self.agenix / "gemini-api-key-1").write_text("not-a-real-gemini-key\n")
+        gemini = self.lanes()["gemini-1"]
+        self.assertEqual(gemini["state"], "open")
+        self.assertEqual(gemini["grade"], "UNKNOWN")
+        self.assertTrue(gemini["ledger"]["key_present"])
+        self.assertIn("unprobed", gemini["detail"])
+        self.assertNotIn("probe", gemini)
+
+    def test_probe_is_off_by_default_and_offline_says_so(self):
+        (self.agenix / "gemini-api-key-1").write_text("not-a-real-gemini-key\n")
+        self.assertNotIn("probe", self.lanes()["gemini-1"])
+        gemini = self.lanes("--probe")["gemini-1"]
+        self.assertEqual(gemini["probe"]["status"], None)
+        self.assertIn("offline", gemini["probe"]["error"])
+        self.assertIn("probe: offline", gemini["detail"])
+        # A lane without its key is not probed, and the row says why.
+        self.assertIn("no key on this host", self.lanes("--probe")["gemini-2"]["detail"])
+
+    def test_probe_refuses_a_fast_watch(self):
+        result = self.box.run("--probe", "--watch", "30")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("600", result.stderr)
+
+    def test_no_key_material_ever_reaches_the_output(self):
+        for name in ("gemini-api-key-1", "groq-api-key-1", "cloudflare-workers-ai-token-1",
+                     "cloudflare-account-id", "vercel-ai-gateway-key-1", "grok-api-key-1"):
+            (self.agenix / name).write_text(f"SECRET-{name}-VALUE\n")
+        for args in ([], ["--json"], ["--jsonl"], ["--tsv"], ["--probe", "--json"],
+                     ["--probe"]):
+            result = self.box.run(*args)
+            self.assertNotIn("SECRET-", result.stdout, args)
+            self.assertNotIn("SECRET-", result.stderr, args)
+        for path in (self.box.root / "runtime" / "seats").glob("*.json"):
+            self.assertNotIn("SECRET-", path.read_text(), path)
+
+    def test_probe_headers_become_a_request_counter(self):
+        # Pure: the row built from a captured Groq-style answer.
+        fam = self.mod.LANE_FAMILIES["groq"]
+        reading = {"status": 200, "probed_at": iso(NOW), "error": "",
+                   "headers": {"x-ratelimit-limit-requests": "1000",
+                               "x-ratelimit-remaining-requests": "250",
+                               "x-ratelimit-reset-requests": "2h30m0s"}}
+        original_probe = self.mod.probe_lane
+        self.mod.probe_lane = lambda f, s, o: (reading, 0.0, "/run/agenix/groq-api-key-1")
+        self.mod.AGENIX_DIR = self.agenix
+        (self.agenix / "groq-api-key-1").write_text("x\n")
+        opts = type("O", (), {"probe": True, "refresh": False})()
+        seat = self.mod.read_lane(self.mod.lane_spec("groq", 1), opts)
+        self.assertEqual(seat["grade"], "MEASURED")
+        self.assertEqual(seat["credits"]["remaining"], 250)
+        self.assertEqual(seat["credits"]["limit"], 1000)
+        self.assertEqual(seat["state"], "open")
+        reset = self.mod.parse_ts(seat["credits"]["resets_at"])
+        self.assertAlmostEqual((reset - NOW).total_seconds(), 9000, delta=5)
+        self.assertEqual(seat["ledger"]["reset_how"], "provider header")
+        reading["headers"]["x-ratelimit-remaining-requests"] = "0"
+        seat = self.mod.read_lane(self.mod.lane_spec("groq", 1), opts)
+        self.assertEqual(seat["state"], "spent")
+        self.assertEqual(seat["free_at"], seat["credits"]["resets_at"])
+        reading.update({"status": 429, "headers": {}})
+        seat = self.mod.read_lane(self.mod.lane_spec("groq", 1), opts)
+        self.assertEqual((seat["state"], seat["grade"]), ("spent", "MEASURED-FROM-REFUSAL"))
+        reading.update({"status": 402})
+        seat = self.mod.read_lane(self.mod.lane_spec("hf", 1), opts)
+        self.assertEqual(seat["state"], "n/a")
+        # Vercel: the balance in the body decides; grok has no probe at all.
+        reading.update({"status": 200, "headers": {}, "fields": {"balance": 0.0, "total_used": 0.0}})
+        (self.agenix / "vercel-ai-gateway-key-1").write_text("x\n")
+        seat = self.mod.read_lane(self.mod.lane_spec("vercel", 1), opts)
+        self.assertEqual(seat["state"], "n/a")
+        self.assertIn("balance $0.00", seat["detail"])
+        reading["fields"]["balance"] = 5.0
+        self.assertEqual(self.mod.read_lane(self.mod.lane_spec("vercel", 1), opts)["state"], "open")
+        (self.agenix / "grok-api-key-1").write_text("x\n")
+        self.mod.probe_lane = original_probe   # grok has no probe spec, so none is made
+        seat = self.mod.read_lane(self.mod.lane_spec("grok", 1), opts)
+        self.assertEqual(seat["state"], "n/a")
+        self.assertIn("no probe", seat["detail"])
+
+    def test_cloud_credit_rows_come_from_the_sibling_payload(self):
+        expires = NOW + timedelta(hours=35)
+        self.box.claude("cc", ".claude", 10.0, 15.0, credit=(250.0, 0.0, expires))
+        self.box.claude("cc2", ".claude-work", 0.0, 4.0, credit=(250.0, 160.73, expires))
+        self.box.claude("cc3", ".claude-3", 0.0, 0.0)
+        _, seats = self.box.report("--only", "claude,claude-credit")
+        cc = seats["cc-credit"]
+        self.assertEqual(cc["provider"], "claude-credit")
+        self.assertEqual(cc["credits"]["unit"], "usd")
+        self.assertEqual(cc["credits"]["remaining"], 250.0)
+        self.assertEqual(cc["credits"]["expires_at"], iso(expires))
+        self.assertIsNone(cc["credits"]["resets_at"], "a credit expires, it never resets")
+        self.assertEqual(cc["free_at"], "")
+        self.assertEqual(cc["state"], "open")
+        self.assertEqual(cc["grade"], seats["cc"]["grade"])
+        self.assertEqual(cc["models"], ["Fable", "Opus"])
+        cc2 = seats["cc2-credit"]
+        self.assertAlmostEqual(cc2["credits"]["remaining"], 89.27)
+        self.assertEqual(cc2["state"], "open")
+        self.assertIn("$89.27 of $250.00 left", cc2["detail"])
+        self.assertIn("payload carries no cloud credit", seats["cc3-credit"]["detail"]
+                      if "cc3-credit" in seats else "payload carries no cloud credit")
+        # The credit row alone still reads (through the sibling's cache).
+        _, alone = self.box.report("--only", "cc2-credit")
+        self.assertEqual(list(alone), ["cc2-credit"])
+        self.assertAlmostEqual(alone["cc2-credit"]["credits"]["remaining"], 89.27)
+
+    def test_an_expired_or_drained_credit_is_spent(self):
+        self.box.claude("cc", ".claude", 10.0, 15.0, credit=(250.0, 250.0, NOW + timedelta(days=1)))
+        self.box.claude("cc2", ".claude-work", 0.0, 4.0, credit=(250.0, 10.0, NOW - timedelta(hours=1)))
+        _, seats = self.box.report("--only", "claude,claude-credit")
+        self.assertEqual(seats["cc-credit"]["state"], "spent")
+        self.assertEqual(seats["cc2-credit"]["state"], "spent")
+        self.assertIn("expired", seats["cc2-credit"]["detail"])
+        self.assertEqual(seats["cc"]["state"], "open", "the credit never binds the seat")
+        tight = self.box.claude("cc", ".claude", 10.0, 15.0, credit=(250.0, 210.0, NOW + timedelta(days=1)))
+        _, seats = self.box.report("--only", "cc,cc-credit")
+        self.assertEqual(seats["cc-credit"]["state"], "tight")
+
+    def test_the_ledger_renders_within_100_columns_and_jsonl_carries_it(self):
+        (self.agenix / "gemini-api-key-1").write_text("not-a-real-gemini-key\n")
+        self.box.run("--record", "gemini", "1", "gemini-3.8-flash", "ok")
+        table = self.box.run("--no-spend")
+        self.assertEqual(table.returncode, 0, table.stderr)
+        body = table.stdout
+        self.assertIn("burndown ledger", body)
+        start = body.index("burndown ledger")
+        end = body.index("model-scoped limits") if "model-scoped limits" in body else len(body)
+        for line in body[start:end].splitlines():
+            self.assertLessEqual(len(line), 100, line)
+        self.assertIn("gemini      gemini-3.8-flash, gemini-3.5-flash", body)
+        self.assertNotIn("gemini-1", body[:start], "lane rows live in the ledger, not the window table")
+        jsonl = self.box.run("--jsonl", "--only", "ledger")
+        rows = {json.loads(line)["id"]: json.loads(line) for line in jsonl.stdout.splitlines()}
+        self.assertEqual(rows["gemini-1"]["usage_today"]["calls"], 1)
+        self.assertEqual(rows["gemini-1"]["ledger"]["allowance_grade"], "STATIC")
+        self.assertIn("generated_at", rows["gemini-1"])
