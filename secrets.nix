@@ -96,6 +96,10 @@ in
   "secrets/cloudflare-workers-ai-token-1.age".publicKeys = editors ++ brainOnly;
   "secrets/cloudflare-account-id.age".publicKeys = editors ++ brainOnly;
   "secrets/huggingface-inference-token-1.age".publicKeys = editors ++ brainOnly;
+  "secrets/cerebras-api-key-1.age".publicKeys = editors ++ brainOnly;
+  "secrets/vercel-ai-gateway-key-1.age".publicKeys = editors ++ brainOnly;
+  # Stored only: xAI rejects it as an API key today; no provider reads it.
+  "secrets/grok-api-key-1.age".publicKeys = editors ++ brainOnly;
   # Seed once, never overwrite the live Codex OAuth session on activation.
   "secrets/codex-auth.age".publicKeys = editors ++ brainOnly;
 }

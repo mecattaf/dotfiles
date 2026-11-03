@@ -3,8 +3,8 @@
 Issues: [#685](https://github.com/mecattaf/dotfiles/issues/685) (Gemini and
 OpenCode Zen, the first batch) and
 [#687](https://github.com/mecattaf/dotfiles/issues/687) (Groq, Mistral,
-Cohere, NVIDIA, Cloudflare Workers AI and Hugging Face, the second batch,
-same day). Tom's rulings
+Cohere, NVIDIA, Cloudflare Workers AI, Hugging Face, Cerebras and Vercel AI
+Gateway, plus a stored Grok key, the second batch, same day). Tom's rulings
 (2026-11-03): the only harnesses are dsh, Claude Code and Codex, and API
 providers go through dsh; for Zen's free models the known workaround plugin
 jiesou/dsh-opencode-zen-free-provider replaces installing the OpenCode CLI;
@@ -93,9 +93,20 @@ entries in section 6 come from issue 687.
 - Hugging Face: a fine-grained token with `inference.serverless.write`;
   `https://router.huggingface.co/v1` lists 127 models, chat is HTTP 402 on a
   Free account (no included credits).
+- Cerebras: one key (no per-key rotation), valid at `https://api.cerebras.ai/v1`;
+  `qwen-3.8-27b` answered, `gpt-oss-120b` is listed. Headers: 450
+  requests/minute, 648K requests/day, 150K tokens/minute, 216M tokens/day.
+- Vercel AI Gateway: one key, valid at `https://ai-gateway.vercel.sh/v1`
+  (OpenAI-compatible); credits balance 0 today, so no call can answer. No
+  model was measured.
+- Grok (xAI): one stored key that xAI rejects as an API key; Tom keeps it for
+  later. Declared as a ciphertext only, no provider, no reader.
 - pi-ai 1.3.0 (the fleet dsh) ships native catalog routes `groq`,
   `mistral` (wire protocol `mistral-conversations` on `https://api.mistral.ai`,
   not the `/v1` chat the orchestrator measured), `nvidia`, `huggingface` and
+  `cerebras` (openai-completions, both measured ids catalog-verified),
+  `vercel-ai-gateway` (anthropic-messages on `https://ai-gateway.vercel.sh`,
+  not the OpenAI-compatible `/v1` that was measured),
   `cloudflare-workers-ai` (its model endpoints carry the placeholder
   `{CLOUDFLARE_ACCOUNT_ID}`, which pi-ai's own resolver fills from the
   variable of that name in the process environment at request time); it
@@ -107,8 +118,9 @@ entries in section 6 come from issue 687.
 - Ciphertexts: `secrets/groq-api-key-{1,2,3}.age`, `secrets/mistral-api-key-{1,2,3}.age`,
   `secrets/cohere-api-key-{1..5}.age`, `secrets/nvidia-api-key-1.age`,
   `secrets/cloudflare-workers-ai-token-1.age`, `secrets/cloudflare-account-id.age`,
-  `secrets/huggingface-inference-token-1.age`; same recipients and delivery
-  as the first batch. The account id is an identifier, not a credential, but
+  `secrets/huggingface-inference-token-1.age`, `secrets/cerebras-api-key-1.age`,
+  `secrets/vercel-ai-gateway-key-1.age`, `secrets/grok-api-key-1.age`; same
+  recipients and delivery as the first batch. The account id is an identifier, not a credential, but
   is kept at the same tier; it is the one value of this lane that dsh does
   not strip from the model's child processes (dsh strips names matching
   KEY, TOKEN, SECRET or PASSWORD, and pi-ai reads it under that exact name).
@@ -154,9 +166,9 @@ bucket from the NAS (inferred, not measured).
 | Key slots | `pkgs/dsh/default.nix` `keyFiles`, `home/dsh.nix` | `DSH_KEY_SLOT=<n>` (default 1) reads the n-th agenix file of each list into `GEMINI_API_KEY` (3) and `OPENCODE_ZEN_FREE_API_KEY` (4) for the exec'd dsh only; never on a config dump, never traced, never printed; the wrapper first unsets those two and `OPENCODE_API_KEY`; a slot past a list says so once on stderr and exports nothing (`DSH_KEY_SLOT=4` is Zen-only, `5` is anonymous Zen); `0`, blank or non-numeric is refused |
 | Secrets | `secrets.nix`, `modules/secrets.nix`, `REKEY.md` | seven brain-only ciphertexts, owner tom, mode 400, like openrouter-token |
 | Checks | `tests/dsh-zen` (new), `tests/dsh-config`, `tests/dsh-plugins`, `lib/update-watch.json` | dsh-zen boots the zen profile from a seeded catalog cache (proves the pi-ai 1.3.0 import, `createProvider` and `registerAdapter`), dumps zen/headless/route overlays, refusals, the slot reader with sandbox-only dummy files; dsh-config checks the google provider and the gemini-pro overlay; dsh-zen is built on every llm-agents bump |
-| Batch-2 routes (issue 687) | `pkgs/dsh/config.nix` | native catalog routes `groq` (GROQ_API_KEY), `mistral` (MISTRAL_API_KEY), `nvidia` (NVIDIA_API_KEY), `cloudflare-workers-ai` (CLOUDFLARE_WORKERS_AI_TOKEN, plus CLOUDFLARE_ACCOUNT_ID read by pi-ai), `huggingface` (HF_TOKEN), each narrowed to the measured ids; `cohere` hand-declared (api openai-completions, baseURL `https://api.cohere.com/compatibility/v1`, no `store`, reasoning `high` on the two reasoning ids, sizes declared not measured); Gemini stays the default of every profile |
-| Batch-2 overlays and slots | `pkgs/dsh/config.nix` `routes`, `pkgs/dsh/default.nix`, `home/dsh.nix` | `DSH_ROUTE=<groq\|groq-oss\|mistral\|codestral\|cohere\|nvidia\|nvidia-deepseek\|cloudflare\|cloudflare-deepseek\|huggingface>`; `DSH_KEY_SLOT=<n>` now also picks groq (3), mistral (3), cohere (5), nvidia (1), the Cloudflare token and account id (1), huggingface (1); the wrapper first unsets all of them and the login shell's full-scope `CLOUDFLARE_API_TOKEN` and pi-ai's ambient `CLOUDFLARE_API_KEY` |
-| Batch-2 secrets | `secrets.nix`, `modules/secrets.nix`, `REKEY.md` | 15 brain-only ciphertexts, owner tom, mode 400 |
+| Batch-2 routes (issue 687) | `pkgs/dsh/config.nix` | native catalog routes `groq` (GROQ_API_KEY), `mistral` (MISTRAL_API_KEY), `nvidia` (NVIDIA_API_KEY), `cloudflare-workers-ai` (CLOUDFLARE_WORKERS_AI_TOKEN, plus CLOUDFLARE_ACCOUNT_ID read by pi-ai), `huggingface` (HF_TOKEN), `cerebras` (CEREBRAS_API_KEY), `vercel-ai-gateway` (AI_GATEWAY_API_KEY), each narrowed to the measured ids; `cohere` hand-declared (api openai-completions, baseURL `https://api.cohere.com/compatibility/v1`, no `store`, reasoning `high` on the two reasoning ids, sizes declared not measured); Gemini stays the default of every profile |
+| Batch-2 overlays and slots | `pkgs/dsh/config.nix` `routes`, `pkgs/dsh/default.nix`, `home/dsh.nix` | `DSH_ROUTE=<groq\|groq-oss\|mistral\|codestral\|cohere\|nvidia\|nvidia-deepseek\|cloudflare\|cloudflare-deepseek\|huggingface\|cerebras\|cerebras-oss\|vercel>`; `DSH_KEY_SLOT=<n>` now also picks groq (3), mistral (3), cohere (5), nvidia (1), the Cloudflare token and account id (1), huggingface (1), cerebras (1), the Vercel gateway key (1); the wrapper first unsets all of them and the login shell's full-scope `CLOUDFLARE_API_TOKEN` and pi-ai's ambient `CLOUDFLARE_API_KEY` |
+| Batch-2 secrets | `secrets.nix`, `modules/secrets.nix`, `REKEY.md` | 18 brain-only ciphertexts, owner tom, mode 400 (`grok-api-key-1` stored only, no reader) |
 | Batch-2 checks | `tests/dsh-config`, `flake.nix`, `tests/dsh-zen` | every new route dumps in headless with empty stderr; the hand-declared cohere route's api/baseURL and every keyed route's apiKeyEnv and ids are checked against the policy; `DSH_ROUTE=cloudflare-workers-ai` (a provider name) is refused; dsh-zen's slot reader covers a single-file list (slot 4 says so for NVIDIA and the account id, slot 1 is silent) |
 
 Model selection is explicit per run: `agent-default-model` is the profile
@@ -198,6 +210,9 @@ land, the reading is the lane's own first call.
 | NVIDIA NIM | `DSH_ROUTE=nvidia` (glm-5.3-flash), `nvidia-deepseek` (deepseek-v4.1-flash) | z-ai/glm-5.3-flash, deepseek-ai/deepseek-v4.1-flash, nvidia/nemotron-3.5-super-vl-120b-a12b, nvidia/nemotron-3-super-120b-a12b, minimaxai/minimax-m3.1-flash, openai/gpt-oss-20b | about 40 RPM (docs, unconfirmed); no daily figure published | HTTP 429; dsh RATE_LIMIT | own call timing; build.nvidia.com shows the credit/usage state | `nvidia-api-key-1` (slot 1 only) |
 | Cloudflare Workers AI | `DSH_ROUTE=cloudflare` (qwen3.8-27b), `cloudflare-deepseek` (deepseek-v4-pro-0813) | @cf/qwen/qwen3.8-27b, @cf/deepseek-ai/deepseek-v4-pro-0813, @cf/openai/gpt-oss-120b, @cf/google/gemma-4-26b-a4b-it, @cf/meta/llama-4-scout-17b-16e-instruct (deepseek-v4.1-flash-1017 waits for a catalog bump) | 10,000 neurons/day, reset 00:00 UTC | HTTP 429 with a neurons message (text not yet captured); dsh QUOTA | the Workers AI page of the Cloudflare dashboard (neurons used today); the `cf-aig`/usage headers are not published | `cloudflare-workers-ai-token-1` + `cloudflare-account-id` (slot 1 only) |
 | Hugging Face | `DSH_ROUTE=huggingface` (gpt-oss-120b:cheapest) | openai/gpt-oss-120b:cheapest, openai/gpt-oss-120b, Qwen/Qwen3.8-27B, deepseek-ai/DeepSeek-V4.1-Flash, zai-org/GLM-5.3-Flash | Free account: no included credits, every chat is 402 today; PRO or bought credits open it | HTTP 402 (no credits) or 429; dsh QUOTA | huggingface.co/settings/billing | `huggingface-inference-token-1` (slot 1 only) |
+| Cerebras | `DSH_ROUTE=cerebras` (qwen-3.8-27b), `cerebras-oss` (gpt-oss-120b) | qwen-3.8-27b, gpt-oss-120b | 450 RPM, 648K requests/day, 150K TPM, 216M tokens/day (headers measured); single key, no rotation | HTTP 429; dsh RATE_LIMIT/QUOTA | the `x-ratelimit-*` headers of any call | `cerebras-api-key-1` (slot 1 only) |
+| Vercel AI Gateway | `DSH_ROUTE=vercel` (alibaba/qwen3.8-27b, catalog id, not measured) | the gateway's catalog; one id declared | credits balance 0 today: nothing answers until topped up | HTTP 402/403 on a 0 balance (text not captured); dsh QUOTA | vercel.com AI Gateway billing page | `vercel-ai-gateway-key-1` (slot 1 only) |
+| Grok (xAI) | none | — | the stored key is rejected by xAI as an API key | — | — | `grok-api-key-1` (stored, no reader) |
 | Gufo (local) | `DSH_ROUTE=gufo` | qwen3.8-flash-next, qwen3.8-27b | local, no quota | wrong-id 404, cold-load latency | `seats` row `gpu-strix` | none (LAN) |
 | ds4 (local) | route `ds4` | DeepSeek V4.1 Flash 1017 | local | down: strix-worker dormant | no row | none |
 | OpenRouter | parked, no dsh route | — | $27.16 of $40.00 left; free lane parked 0/1000 | — | `seats` rows `openrouter`, `openrouter-free` | agenix openrouter-token |
@@ -245,6 +260,8 @@ DSH_KEY_SLOT=1 DSH_ROUTE=nvidia dsh headless "reply with the single word ready"
 DSH_KEY_SLOT=1 DSH_ROUTE=cloudflare dsh headless "reply with the single word ready"  # proves the {CLOUDFLARE_ACCOUNT_ID} fill
 DSH_KEY_SLOT=1 DSH_ROUTE=mistral dsh headless "reply with the single word ready"     # 429 until the Experiment plan is active
 DSH_KEY_SLOT=1 DSH_ROUTE=huggingface dsh headless "reply with the single word ready" # 402 until credits or PRO
+DSH_KEY_SLOT=1 DSH_ROUTE=cerebras dsh headless "reply with the single word ready"    # the strongest lane
+DSH_KEY_SLOT=1 DSH_ROUTE=vercel dsh headless "reply with the single word ready"      # fails on a 0 balance
 ```
 
 If the Mistral route still fails once the plan is active, the fallback is
@@ -287,4 +304,6 @@ tonight-only escape hatch the design named, `pkgs.llm-agents.opencode` with
   code, not run); the hand-declared NVIDIA ids' sizes and whether NIM answers
   them for this account; Hugging Face's `:cheapest` suffix through pi-ai;
   every exhaustion text; Groq's 200K tokens/day and NVIDIA's 40 RPM figures;
-  Mistral's Experiment-plan limits as published.
+  Mistral's Experiment-plan limits as published; Vercel's anthropic-messages
+  protocol through pi-ai and whether `alibaba/qwen3.8-27b` is served there
+  (0 balance today, no model measured).

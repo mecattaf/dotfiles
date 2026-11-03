@@ -178,10 +178,12 @@ deferred). The QwenCloud route was deleted with the account. Nothing
 sensitive goes through a free lane; Gufo keeps that work. The stock
 `headless` profile that substrate drives mounts no plugin. The second batch
 (issue 687, same day) adds Groq, Mistral, Cohere, NVIDIA NIM, Cloudflare
-Workers AI and Hugging Face as `DSH_ROUTE` picks on pi-ai's native catalog
-routes (Cohere hand-declared on its OpenAI-compatible endpoint; Hugging Face
-is 402 until credits and the default of nothing), with fifteen more
-brain-only ciphertexts selected by the same `DSH_KEY_SLOT`; Gemini stays the
+Workers AI, Hugging Face, Cerebras and Vercel AI Gateway as `DSH_ROUTE`
+picks on pi-ai's native catalog routes (Cohere hand-declared on its
+OpenAI-compatible endpoint; Hugging Face is 402 until credits and Vercel has
+a 0 balance, both the default of nothing; the stored Grok key has no
+provider), with eighteen more brain-only ciphertexts selected by the same
+`DSH_KEY_SLOT`; Gemini stays the
 default and no lane has had a live call through dsh until the first commands
 of `docs/free-lanes.md` section 5 are run. See `docs/free-lanes.md`.
 

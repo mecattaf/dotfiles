@@ -32,6 +32,8 @@ account's key and the dsh wrapper reads one per run (`DSH_KEY_SLOT`):
 | `nvidia-api-key-1` (NVIDIA NIM) | NAS |
 | `cloudflare-workers-ai-token-1`, `cloudflare-account-id` (one Workers AI token and the account id its endpoint needs; not the operator `cloudflare-api-token`) | NAS |
 | `huggingface-inference-token-1` (fine-grained inference token; not the library-fetch `huggingface-token`) | NAS |
+| `cerebras-api-key-1` (single key, no rotation), `vercel-ai-gateway-key-1` | NAS |
+| `grok-api-key-1` (stored only; xAI rejects it as an API key, no reader) | NAS |
 
 The previous Strix SSH **host** identity was already an authorized decryption
 recipient. It was used once to decrypt and re-encrypt directly through memory.

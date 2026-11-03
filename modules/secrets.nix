@@ -209,7 +209,9 @@ in
       # since issue 687: 3 Groq, 3 Mistral, 5 Cohere, 1 NVIDIA, 1 Cloudflare
       # Workers AI token with the account id it belongs to (an identifier,
       # kept at the same tier), 1 Hugging Face inference token (distinct from
-      # huggingface-token above, which library-fetch reads). Delivered
+      # huggingface-token above, which library-fetch reads), 1 Cerebras,
+      # 1 Vercel AI Gateway, and 1 Grok key that is stored only (xAI rejects
+      # it as an API key; Tom keeps it; nothing reads it). Delivered
       # read-only under /run/agenix; the dsh wrapper (pkgs/dsh, home/dsh.nix)
       # reads ONE file per list per run into that list's variable for the
       # exec'd dsh only, selected by DSH_KEY_SLOT. No unit, no shell export,
@@ -238,6 +240,9 @@ in
                 "cloudflare-workers-ai-token-1"
                 "cloudflare-account-id"
                 "huggingface-inference-token-1"
+                "cerebras-api-key-1"
+                "vercel-ai-gateway-key-1"
+                "grok-api-key-1"
               ]
             )
         );

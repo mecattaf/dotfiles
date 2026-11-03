@@ -10,8 +10,9 @@
 # plugins on the agent host and hands the wrapper the agenix key files of the
 # free lanes (modules/secrets.nix: three Gemini AI Studio keys, four OpenCode
 # Zen keys, three Groq, three Mistral, five Cohere, one NVIDIA, one Cloudflare
-# Workers AI token with its account id, one Hugging Face token;
-# `DSH_KEY_SLOT=<n>` picks account n of every list per run,
+# Workers AI token with its account id, one Hugging Face token, one
+# Cerebras key, one Vercel AI Gateway key; the stored Grok key has no
+# reader. `DSH_KEY_SLOT=<n>` picks account n of every list per run,
 # docs/free-lanes.md). The QwenCloud credential was retired 2026-11-01.
 #
 # Nothing here touches ~/.dsh. Everything there is dsh's own state, and its
@@ -67,6 +68,8 @@ in
             (lib.attrByPath [ "age" "secrets" "cloudflare-account-id" "path" ] "" osConfig)
           ];
           HF_TOKEN = slotFiles "huggingface-inference-token" 1;
+          CEREBRAS_API_KEY = slotFiles "cerebras-api-key" 1;
+          AI_GATEWAY_API_KEY = slotFiles "vercel-ai-gateway-key" 1;
         };
         profilePlugins = cfg.plugins;
       })
