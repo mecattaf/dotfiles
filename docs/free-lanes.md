@@ -101,6 +101,19 @@ entries in section 6 come from issue 687.
   model was measured.
 - Grok (xAI): one stored key that xAI rejects as an API key; Tom keeps it for
   later. Declared as a ciphertext only, no provider, no reader.
+- Live smoke after the NAS switch (2026-11-03, one request per lane on its
+  default model): groq-oss, cohere, nvidia, cerebras, cerebras-oss,
+  gemini-lite and the three `zen` modes answered; mistral 429 (plan not
+  activated) and vercel 403 (`customer_verification_required`: a credit card
+  must be on file before the free credits serve) refused as expected. Three
+  routes failed on configuration, fixed in the same day: pi-ai sends the
+  instructions as a `developer` message to every reasoning model whose
+  compat allows it and Groq's Qwen chat template answers 400 "Unexpected
+  message role", so `qwen/qwen3.8-27b` declares
+  `compat.supportsDeveloperRole = false`; the Cloudflare ids and the
+  hand-declared Hugging Face id carry no reasoning metadata, so their routes
+  declare `reasoningEffort = null` and the overlay drops the key instead of
+  forcing `high` (UNSUPPORTED_REASONING_EFFORT).
 - pi-ai 1.3.0 (the fleet dsh) ships native catalog routes `groq`,
   `mistral` (wire protocol `mistral-conversations` on `https://api.mistral.ai`,
   not the `/v1` chat the orchestrator measured), `nvidia`, `huggingface` and
