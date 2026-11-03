@@ -124,7 +124,10 @@ role to the NAS. Its routes ([`../../pkgs/dsh/config.nix`](../../pkgs/dsh/config
 - in the hand-run `dsh zen` profile only, OpenCode Zen's free models through
   jiesou's provider plugin (`opencode-zen-free-provider/deepseek-v4.1-flash-free`).
 
-`DSH_ROUTE=<gemini|gemini-pro|gemini-lite|gufo|zen-deepseek|zen-glm>` picks the
+`DSH_ROUTE=<gemini|gemini-pro|gemini-lite|gufo|zen-deepseek|zen-glm>` (and,
+since issue 687, `groq`, `groq-oss`, `mistral`, `codestral`, `cohere`,
+`nvidia`, `nvidia-deepseek`, `cloudflare`, `cloudflare-deepseek`,
+`huggingface`; `docs/free-lanes.md`) picks the
 route per run; the QwenCloud route was removed with the account (2026-11-01).
 
 Both local routes use a public dummy bearer. Session-log and plugin-inventory

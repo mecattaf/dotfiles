@@ -1,6 +1,10 @@
-# Free model lanes in dsh: Gemini and OpenCode Zen
+# Free model lanes in dsh
 
-Issue: [#685](https://github.com/mecattaf/dotfiles/issues/685). Tom's rulings
+Issues: [#685](https://github.com/mecattaf/dotfiles/issues/685) (Gemini and
+OpenCode Zen, the first batch) and
+[#687](https://github.com/mecattaf/dotfiles/issues/687) (Groq, Mistral,
+Cohere, NVIDIA, Cloudflare Workers AI and Hugging Face, the second batch,
+same day). Tom's rulings
 (2026-11-03): the only harnesses are dsh, Claude Code and Codex, and API
 providers go through dsh; for Zen's free models the known workaround plugin
 jiesou/dsh-opencode-zen-free-provider replaces installing the OpenCode CLI;
@@ -9,8 +13,10 @@ nice-to-have. The QwenCloud account closed on 2026-11-01, so dsh's
 `qwen-token-plan` route is deleted here.
 
 Everything in this file is either MEASURED (the orchestrator, firsthand, on
-the NAS on 2026-11-03) or a declaration this PR makes. Nothing below claims a
-live smoke that has not run; section 6 lists what is still unverified.
+the NAS on 2026-11-03) or a declaration one of the two PRs makes. Nothing
+below claims a live smoke that has not run; section 6 lists what is still
+unverified. Section 1b, the batch-2 rows of sections 3 to 5 and their
+entries in section 6 come from issue 687.
 
 ## 1. Measured facts (2026-11-03)
 
@@ -50,6 +56,62 @@ live smoke that has not run; section 6 lists what is still unverified.
   key (the brain-only tier). Delivered by `modules/secrets.nix` as
   `/run/agenix/<name>`, owner tom, mode 400. No key value appears in any
   file, log or test of this repository.
+
+## 1b. Measured facts, second batch (2026-11-03, orchestrator)
+
+- Groq: three keys, all valid at `https://api.groq.com/openai/v1`;
+  `qwen/qwen3.8-27b` (131,072 context, the wanted model),
+  `openai/gpt-oss-120b`, `openai/gpt-oss-20b` and whisper are listed and a
+  chat answered. Per key, the `x-ratelimit` headers say 1,000 requests/day
+  and 8,000 tokens/minute; the docs say 30 RPM and 200K tokens/day.
+- Mistral: three keys, all valid at `https://api.mistral.ai/v1` (55 models,
+  among them mistral-medium-latest, codestral-latest,
+  magistral-medium-latest, mistral-small-latest, ministral-14b, devstral).
+  Chat answers HTTP 429 with `x-ratelimit-limit-req-minute: 0`: the free
+  Experiment plan is not yet activated on the accounts (Tom is doing that).
+- Cohere: five keys, all valid at `https://api.cohere.com` (v2 chat). The
+  OpenAI-compatible `https://api.cohere.com/compatibility/v1` answers 401
+  without a key on `/models` and `/chat/completions`, so it exists; the
+  docs page (docs.cohere.com/docs/compatibility-api) shows bearer auth,
+  streaming, tools, no `store`, `reasoning_effort` only `none` or `high`,
+  and names only `command-a-plus-05-2026` as a chat model; the other three
+  ids (command-a-03-2025, command-a-reasoning-08-2025,
+  command-r-plus-08-2024) were listed by the v2 API. Trial: 20 calls/minute,
+  1,000/month per key.
+- NVIDIA NIM: one key at `https://integrate.api.nvidia.com/v1`;
+  `z-ai/glm-5.3-flash` answered with reasoning; `deepseek-ai/deepseek-v4.1-flash`,
+  `nvidia/nemotron-3.5-super-vl-120b-a12b`, `nvidia/nemotron-3-super-120b-a12b`,
+  `minimaxai/minimax-m3.1-flash` and `openai/gpt-oss-20b` are listed;
+  `moonshotai/kimi-k2.6` is 404 for this account. About 40 RPM (docs,
+  unconfirmed).
+- Cloudflare Workers AI: token and account id valid; OpenAI-compatible base
+  `https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/ai/v1`;
+  `@cf/qwen/qwen3.8-27b`, `@cf/deepseek-ai/deepseek-v4.1-flash-1017`,
+  `@cf/deepseek-ai/deepseek-v4-pro-0813`, `@cf/openai/gpt-oss-120b`,
+  `@cf/google/gemma-4-26b-a4b-it`, `@cf/meta/llama-4-scout-17b-16e-instruct`.
+  10,000 neurons/day, reset 00:00 UTC.
+- Hugging Face: a fine-grained token with `inference.serverless.write`;
+  `https://router.huggingface.co/v1` lists 127 models, chat is HTTP 402 on a
+  Free account (no included credits).
+- pi-ai 1.3.0 (the fleet dsh) ships native catalog routes `groq`,
+  `mistral` (wire protocol `mistral-conversations` on `https://api.mistral.ai`,
+  not the `/v1` chat the orchestrator measured), `nvidia`, `huggingface` and
+  `cloudflare-workers-ai` (its model endpoints carry the placeholder
+  `{CLOUDFLARE_ACCOUNT_ID}`, which pi-ai's own resolver fills from the
+  variable of that name in the process environment at request time); it
+  ships no `cohere` route. On a catalog route a hand-declared id takes its
+  api and endpoint from the catalog provider, which works for groq, mistral,
+  nvidia and huggingface but not for cloudflare-workers-ai (no fixed
+  endpoint to default from), so `@cf/deepseek-ai/deepseek-v4.1-flash-1017`
+  is not declared until a pi-ai catalog lists it.
+- Ciphertexts: `secrets/groq-api-key-{1,2,3}.age`, `secrets/mistral-api-key-{1,2,3}.age`,
+  `secrets/cohere-api-key-{1..5}.age`, `secrets/nvidia-api-key-1.age`,
+  `secrets/cloudflare-workers-ai-token-1.age`, `secrets/cloudflare-account-id.age`,
+  `secrets/huggingface-inference-token-1.age`; same recipients and delivery
+  as the first batch. The account id is an identifier, not a credential, but
+  is kept at the same tier; it is the one value of this lane that dsh does
+  not strip from the model's child processes (dsh strips names matching
+  KEY, TOKEN, SECRET or PASSWORD, and pi-ai reads it under that exact name).
 
 ## 2. What the Zen plugin does, plainly
 
@@ -92,6 +154,10 @@ bucket from the NAS (inferred, not measured).
 | Key slots | `pkgs/dsh/default.nix` `keyFiles`, `home/dsh.nix` | `DSH_KEY_SLOT=<n>` (default 1) reads the n-th agenix file of each list into `GEMINI_API_KEY` (3) and `OPENCODE_ZEN_FREE_API_KEY` (4) for the exec'd dsh only; never on a config dump, never traced, never printed; the wrapper first unsets those two and `OPENCODE_API_KEY`; a slot past a list says so once on stderr and exports nothing (`DSH_KEY_SLOT=4` is Zen-only, `5` is anonymous Zen); `0`, blank or non-numeric is refused |
 | Secrets | `secrets.nix`, `modules/secrets.nix`, `REKEY.md` | seven brain-only ciphertexts, owner tom, mode 400, like openrouter-token |
 | Checks | `tests/dsh-zen` (new), `tests/dsh-config`, `tests/dsh-plugins`, `lib/update-watch.json` | dsh-zen boots the zen profile from a seeded catalog cache (proves the pi-ai 1.3.0 import, `createProvider` and `registerAdapter`), dumps zen/headless/route overlays, refusals, the slot reader with sandbox-only dummy files; dsh-config checks the google provider and the gemini-pro overlay; dsh-zen is built on every llm-agents bump |
+| Batch-2 routes (issue 687) | `pkgs/dsh/config.nix` | native catalog routes `groq` (GROQ_API_KEY), `mistral` (MISTRAL_API_KEY), `nvidia` (NVIDIA_API_KEY), `cloudflare-workers-ai` (CLOUDFLARE_WORKERS_AI_TOKEN, plus CLOUDFLARE_ACCOUNT_ID read by pi-ai), `huggingface` (HF_TOKEN), each narrowed to the measured ids; `cohere` hand-declared (api openai-completions, baseURL `https://api.cohere.com/compatibility/v1`, no `store`, reasoning `high` on the two reasoning ids, sizes declared not measured); Gemini stays the default of every profile |
+| Batch-2 overlays and slots | `pkgs/dsh/config.nix` `routes`, `pkgs/dsh/default.nix`, `home/dsh.nix` | `DSH_ROUTE=<groq\|groq-oss\|mistral\|codestral\|cohere\|nvidia\|nvidia-deepseek\|cloudflare\|cloudflare-deepseek\|huggingface>`; `DSH_KEY_SLOT=<n>` now also picks groq (3), mistral (3), cohere (5), nvidia (1), the Cloudflare token and account id (1), huggingface (1); the wrapper first unsets all of them and the login shell's full-scope `CLOUDFLARE_API_TOKEN` and pi-ai's ambient `CLOUDFLARE_API_KEY` |
+| Batch-2 secrets | `secrets.nix`, `modules/secrets.nix`, `REKEY.md` | 15 brain-only ciphertexts, owner tom, mode 400 |
+| Batch-2 checks | `tests/dsh-config`, `flake.nix`, `tests/dsh-zen` | every new route dumps in headless with empty stderr; the hand-declared cohere route's api/baseURL and every keyed route's apiKeyEnv and ids are checked against the policy; `DSH_ROUTE=cloudflare-workers-ai` (a provider name) is refused; dsh-zen's slot reader covers a single-file list (slot 4 says so for NVIDIA and the account id, slot 1 is silent) |
 
 Model selection is explicit per run: `agent-default-model` is the profile
 default, `DSH_ROUTE` overlays it, a caller's own `--patch` still comes last.
@@ -165,6 +231,15 @@ directory for tests.
 | cc weekly window | Claude Code, cc | Fable, capped at 50% | 15.0% used; resets Wed 10:00Z | 429 or 100% on the usage endpoint | `seats --only cc` | same |
 | cc2 weekly window | Claude Code, cc2 | same | 4.0% used; resets Thu 05:59Z | same | `seats --only cc2` | same |
 | Codex | `codex exec` | gpt-6.1-sol, gpt terra | weekly window 100% spent, resets Wed 07:50Z; 3 rate-limit reset credits (next expires 11-06, a person spends one) | window exhausted in the rollout | `seats --only codex` | `~/.codex` |
+| Groq key 1 | `DSH_ROUTE=groq` (qwen3.8-27b), `groq-oss` (gpt-oss-120b); gpt-oss-20b by `--patch` | qwen/qwen3.8-27b, openai/gpt-oss-120b, openai/gpt-oss-20b | per key: 1,000 requests/day, 200K tokens/day, 30 RPM, 8,000 TPM (headers measured) | HTTP 429 with `x-ratelimit-remaining-requests: 0` or `-tokens: 0`; dsh reports QUOTA/RATE_LIMIT | the `x-ratelimit-remaining-*` and `x-ratelimit-reset-*` headers of any call | `groq-api-key-1` (slot 1) |
+| Groq keys 2, 3 | same | same | same, per key (three accounts) | same | same | `groq-api-key-{2,3}` (slots 2, 3) |
+| Mistral key 1 | `DSH_ROUTE=mistral` (mistral-medium-latest), `codestral` | mistral-medium-latest, magistral-medium-latest, codestral-latest, devstral-latest, mistral-small-latest, ministral-14b-2512 | Experiment plan, NOT YET ACTIVE: 429 with `x-ratelimit-limit-req-minute: 0` until Tom activates it; the plan's own limits are on Mistral's pricing page, not yet read | HTTP 429; dsh QUOTA | `x-ratelimit-*` headers; the console at console.mistral.ai | `mistral-api-key-1` (slot 1) |
+| Mistral keys 2, 3 | same | same | same, per account | same | same | `mistral-api-key-{2,3}` (slots 2, 3) |
+| Cohere key 1 | `DSH_ROUTE=cohere` (command-a-plus-05-2026) | command-a-plus-05-2026, command-a-reasoning-08-2025, command-a-03-2025, command-r-plus-08-2024 | trial: 20 calls/minute, 1,000 calls/month per key | HTTP 429 (per-minute) or the monthly cap message; dsh QUOTA/RATE_LIMIT | own call count; dashboard.cohere.com usage page | `cohere-api-key-1` (slot 1) |
+| Cohere keys 2 to 5 | same | same | same, per key | same | same | `cohere-api-key-{2,3,4,5}` (slots 2 to 5) |
+| NVIDIA NIM | `DSH_ROUTE=nvidia` (glm-5.3-flash), `nvidia-deepseek` (deepseek-v4.1-flash) | z-ai/glm-5.3-flash, deepseek-ai/deepseek-v4.1-flash, nvidia/nemotron-3.5-super-vl-120b-a12b, nvidia/nemotron-3-super-120b-a12b, minimaxai/minimax-m3.1-flash, openai/gpt-oss-20b | about 40 RPM (docs, unconfirmed); no daily figure published | HTTP 429; dsh RATE_LIMIT | own call timing; build.nvidia.com shows the credit/usage state | `nvidia-api-key-1` (slot 1 only) |
+| Cloudflare Workers AI | `DSH_ROUTE=cloudflare` (qwen3.8-27b), `cloudflare-deepseek` (deepseek-v4-pro-0813) | @cf/qwen/qwen3.8-27b, @cf/deepseek-ai/deepseek-v4-pro-0813, @cf/openai/gpt-oss-120b, @cf/google/gemma-4-26b-a4b-it, @cf/meta/llama-4-scout-17b-16e-instruct (deepseek-v4.1-flash-1017 waits for a catalog bump) | 10,000 neurons/day, reset 00:00 UTC | HTTP 429 with a neurons message (text not yet captured); dsh QUOTA | the Workers AI page of the Cloudflare dashboard (neurons used today); the `cf-aig`/usage headers are not published | `cloudflare-workers-ai-token-1` + `cloudflare-account-id` (slot 1 only) |
+| Hugging Face | `DSH_ROUTE=huggingface` (gpt-oss-120b:cheapest) | openai/gpt-oss-120b:cheapest, openai/gpt-oss-120b, Qwen/Qwen3.8-27B, deepseek-ai/DeepSeek-V4.1-Flash, zai-org/GLM-5.3-Flash | Free account: no included credits, every chat is 402 today; PRO or bought credits open it | HTTP 402 (no credits) or 429; dsh QUOTA | huggingface.co/settings/billing | `huggingface-inference-token-1` (slot 1 only) |
 | Gufo (local) | `DSH_ROUTE=gufo` | qwen3.8-flash-next, qwen3.8-27b | local, no quota | wrong-id 404, cold-load latency | `seats` row `gpu-strix` | none (LAN) |
 | ds4 (local) | route `ds4` | DeepSeek V4.1 Flash 1017 | local | down: strix-worker dormant | no row | none |
 | OpenRouter | parked, no dsh route | — | $27.16 of $40.00 left; free lane parked 0/1000 | — | `seats` rows `openrouter`, `openrouter-free` | agenix openrouter-token |
@@ -202,7 +277,22 @@ DSH_KEY_SLOT=5 dsh zen "reply with the single word ready"    # past every list: 
 
 # 4. Ledger (until the seats rows exist, note the 429 texts by hand)
 seats --watch 60
+
+# 5. Second batch (issue 687), after that PR's switch; same cwd rule
+ls -l /run/agenix/groq-api-key-1 /run/agenix/cohere-api-key-5 /run/agenix/cloudflare-account-id   # 400, tom
+DSH_KEY_SLOT=1 DSH_ROUTE=groq dsh headless "reply with the single word ready"
+DSH_KEY_SLOT=2 DSH_ROUTE=groq-oss dsh headless "reply with the single word ready"
+DSH_KEY_SLOT=1 DSH_ROUTE=cohere dsh headless "reply with the single word ready"      # the hand-declared route's first live call
+DSH_KEY_SLOT=1 DSH_ROUTE=nvidia dsh headless "reply with the single word ready"
+DSH_KEY_SLOT=1 DSH_ROUTE=cloudflare dsh headless "reply with the single word ready"  # proves the {CLOUDFLARE_ACCOUNT_ID} fill
+DSH_KEY_SLOT=1 DSH_ROUTE=mistral dsh headless "reply with the single word ready"     # 429 until the Experiment plan is active
+DSH_KEY_SLOT=1 DSH_ROUTE=huggingface dsh headless "reply with the single word ready" # 402 until credits or PRO
 ```
+
+If the Mistral route still fails once the plan is active, the fallback is
+to override the catalog route's protocol in `pkgs/dsh/config.nix`
+(`api = "openai-completions"; baseURL = "https://api.mistral.ai/v1";` on the
+`mistral` provider), which is the endpoint the orchestrator measured.
 
 If a Zen smoke returns 429 `FreeUsageLimitError` through the plugin, compare
 its request headers against the opencode 1.19.3 client in the NAS store
@@ -228,3 +318,15 @@ tonight-only escape hatch the design named, `pkgs.llm-agents.opencode` with
 - Gemini free-tier RPM/TPM/RPD per model; free status of 3.7-flash and
   3.5-flash; whether the three keys sit in three projects.
 - Zen's data terms.
+- Batch 2 (issue 687): no live call has gone through dsh on any of the six
+  lanes; the checks prove composition, not serviceability. In particular:
+  Mistral's `mistral-conversations` protocol on the Experiment plan (the
+  measured 429 was on `/v1/chat/completions`); whether Cohere's compatibility
+  endpoint accepts pi-ai's openai-completions request shape (tools, the
+  `developer` role, `reasoning_effort: high`) and the declared sizes of
+  command-a-plus-05-2026; that pi-ai fills `{CLOUDFLARE_ACCOUNT_ID}` from the
+  wrapper's exported variable in a real request (read from the resolver's
+  code, not run); the hand-declared NVIDIA ids' sizes and whether NIM answers
+  them for this account; Hugging Face's `:cheapest` suffix through pi-ai;
+  every exhaustion text; Groq's 200K tokens/day and NVIDIA's 40 RPM figures;
+  Mistral's Experiment-plan limits as published.

@@ -78,6 +78,24 @@ in
   "secrets/opencode-zen-key-2.age".publicKeys = editors ++ brainOnly;
   "secrets/opencode-zen-key-3.age".publicKeys = editors ++ brainOnly;
   "secrets/opencode-zen-key-4.age".publicKeys = editors ++ brainOnly;
+  # Second batch (issue 687): Groq, Mistral, Cohere, NVIDIA, Cloudflare
+  # Workers AI (token + the account id its endpoint needs), Hugging Face
+  # inference (not the library-fetch token above).
+  "secrets/groq-api-key-1.age".publicKeys = editors ++ brainOnly;
+  "secrets/groq-api-key-2.age".publicKeys = editors ++ brainOnly;
+  "secrets/groq-api-key-3.age".publicKeys = editors ++ brainOnly;
+  "secrets/mistral-api-key-1.age".publicKeys = editors ++ brainOnly;
+  "secrets/mistral-api-key-2.age".publicKeys = editors ++ brainOnly;
+  "secrets/mistral-api-key-3.age".publicKeys = editors ++ brainOnly;
+  "secrets/cohere-api-key-1.age".publicKeys = editors ++ brainOnly;
+  "secrets/cohere-api-key-2.age".publicKeys = editors ++ brainOnly;
+  "secrets/cohere-api-key-3.age".publicKeys = editors ++ brainOnly;
+  "secrets/cohere-api-key-4.age".publicKeys = editors ++ brainOnly;
+  "secrets/cohere-api-key-5.age".publicKeys = editors ++ brainOnly;
+  "secrets/nvidia-api-key-1.age".publicKeys = editors ++ brainOnly;
+  "secrets/cloudflare-workers-ai-token-1.age".publicKeys = editors ++ brainOnly;
+  "secrets/cloudflare-account-id.age".publicKeys = editors ++ brainOnly;
+  "secrets/huggingface-inference-token-1.age".publicKeys = editors ++ brainOnly;
   # Seed once, never overwrite the live Codex OAuth session on activation.
   "secrets/codex-auth.age".publicKeys = editors ++ brainOnly;
 }

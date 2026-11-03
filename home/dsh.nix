@@ -9,8 +9,10 @@
 # its sandbox runner live in pkgs/dsh; this module selects its installed
 # plugins on the agent host and hands the wrapper the agenix key files of the
 # free lanes (modules/secrets.nix: three Gemini AI Studio keys, four OpenCode
-# Zen keys; `DSH_KEY_SLOT=<n>` picks one per run, docs/free-lanes.md). The
-# QwenCloud credential was retired 2026-11-01.
+# Zen keys, three Groq, three Mistral, five Cohere, one NVIDIA, one Cloudflare
+# Workers AI token with its account id, one Hugging Face token;
+# `DSH_KEY_SLOT=<n>` picks account n of every list per run,
+# docs/free-lanes.md). The QwenCloud credential was retired 2026-11-01.
 #
 # Nothing here touches ~/.dsh. Everything there is dsh's own state, and its
 # profile files are replaced by atomic rename on settings writes, which would
@@ -52,6 +54,19 @@ in
         keyFiles = {
           GEMINI_API_KEY = slotFiles "gemini-api-key" 3;
           OPENCODE_ZEN_FREE_API_KEY = slotFiles "opencode-zen-key" 4;
+          GROQ_API_KEY = slotFiles "groq-api-key" 3;
+          MISTRAL_API_KEY = slotFiles "mistral-api-key" 3;
+          COHERE_API_KEY = slotFiles "cohere-api-key" 5;
+          NVIDIA_API_KEY = slotFiles "nvidia-api-key" 1;
+          # pi-ai's Cloudflare resolver reads the account id under this exact
+          # name from the process environment and fills the endpoint's
+          # {CLOUDFLARE_ACCOUNT_ID} placeholder (pkgs/dsh/config.nix). One
+          # account, so one file beside its token; it is not a credential.
+          CLOUDFLARE_WORKERS_AI_TOKEN = slotFiles "cloudflare-workers-ai-token" 1;
+          CLOUDFLARE_ACCOUNT_ID = [
+            (lib.attrByPath [ "age" "secrets" "cloudflare-account-id" "path" ] "" osConfig)
+          ];
+          HF_TOKEN = slotFiles "huggingface-inference-token" 1;
         };
         profilePlugins = cfg.plugins;
       })

@@ -31,10 +31,12 @@
   # override may still supply a credential for another installation.
   qwenKeyFile ? null,
   # env var name -> ordered agenix files, one per account (home/dsh.nix:
-  # GEMINI_API_KEY x3, OPENCODE_ZEN_FREE_API_KEY x4). DSH_KEY_SLOT=<n>
-  # (default 1) picks the n-th file of EVERY list for the exec'd dsh only; ""
-  # or an unreadable file means no key. Empty here, so a check's wrapper reads
-  # nothing.
+  # GEMINI_API_KEY x3, OPENCODE_ZEN_FREE_API_KEY x4, GROQ_API_KEY x3,
+  # MISTRAL_API_KEY x3, COHERE_API_KEY x5, NVIDIA_API_KEY x1,
+  # CLOUDFLARE_WORKERS_AI_TOKEN x1 with CLOUDFLARE_ACCOUNT_ID x1, HF_TOKEN
+  # x1). DSH_KEY_SLOT=<n> (default 1) picks the n-th file of EVERY list for
+  # the exec'd dsh only; "" or an unreadable file means no key. Empty here,
+  # so a check's wrapper reads nothing.
   keyFiles ? { },
   # The stock profiles the wrapper will boot. Everything else, but the
   # Nix-declared profiles below, is refused, so a custom profile cannot carry
@@ -80,16 +82,22 @@
 #   6. DSH_ROUTE=<name> (headless, sdk, acp, zen only) adds the one-row
 #      `agent-default-model` overlay of ./config.nix's `routes` after the
 #      profile's layers; any other name is refused;
-#   7. unsets GEMINI_API_KEY, OPENCODE_ZEN_FREE_API_KEY and OPENCODE_API_KEY
-#      so nothing ambient reaches any profile, then, for a real run (never a
+#   7. unsets every free-lane variable (GEMINI_API_KEY, the Zen pair, GROQ,
+#      MISTRAL, COHERE, NVIDIA, the Cloudflare token/key/account id, the two
+#      Hugging Face names) so nothing ambient reaches any profile: the NAS
+#      login shell exports the full-scope CLOUDFLARE_API_TOKEN, which must
+#      never stand in for the Workers AI token. Then, for a real run (never a
 #      config dump), reads the DSH_KEY_SLOT-th agenix file of each `keyFiles`
 #      list into its variable for the exec'd dsh only: never on argv, never
 #      echoed, never traced, never written under DSH_HOME. dsh drops every
-#      *KEY*/*TOKEN* name and every DSH_* name from the children it spawns,
-#      so the model's bash does not inherit it. A slot past a list's length
-#      leaves that variable unset with one stderr line: the Gemini route then
-#      fails MISSING_CREDENTIAL and the Zen plugin sends the anonymous
-#      `public` bearer. The old Qwen key file (qwenKeyFile) keeps its reader.
+#      name matching KEY, TOKEN, SECRET or PASSWORD and every DSH_* name from
+#      the children it spawns, so the model's bash does not inherit a key;
+#      CLOUDFLARE_ACCOUNT_ID matches none of those and does reach them (an
+#      identifier pi-ai must read under that exact name, not a credential).
+#      A slot past a list's length leaves that variable unset with one
+#      stderr line per list: that route then fails MISSING_CREDENTIAL and
+#      the Zen plugin sends the anonymous `public` bearer. The old Qwen key
+#      file (qwenKeyFile) keeps its reader.
 # It never sets DSH_HOME: ~/.dsh by default, an explicit one is respected.
 let
   unwrapped = llm-agents.dsh;
@@ -285,7 +293,7 @@ writeShellApplication {
       ;
   };
   meta = {
-    description = "DeepSeek Harness behind the fleet policy (Gemini, OpenCode Zen, Gufo and ds4 routes, hardened sandbox)";
+    description = "DeepSeek Harness behind the fleet policy (Gemini, Groq, Mistral, Cohere, NVIDIA, Cloudflare Workers AI, Hugging Face, OpenCode Zen, Gufo and ds4 routes, hardened sandbox)";
     mainProgram = "dsh";
     inherit (unwrapped.meta) license platforms;
   };
@@ -300,8 +308,13 @@ writeShellApplication {
     export DS4_API_KEY=local-no-auth
     export DSH_TELEMETRY_DISABLED=1
     # Never inherit the provider keys from the caller's environment: a slot
-    # file below is the only source.
+    # file below is the only source. CLOUDFLARE_API_TOKEN is the full-scope
+    # operator token every NAS login shell exports (modules/secrets.nix);
+    # CLOUDFLARE_API_KEY is pi-ai's own ambient name for the same provider.
     unset GEMINI_API_KEY OPENCODE_ZEN_FREE_API_KEY OPENCODE_API_KEY
+    unset GROQ_API_KEY MISTRAL_API_KEY COHERE_API_KEY NVIDIA_API_KEY
+    unset CLOUDFLARE_WORKERS_AI_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_API_KEY CLOUDFLARE_ACCOUNT_ID
+    unset HF_TOKEN HUGGING_FACE_HUB_TOKEN
 
     refuse() {
       echo "dsh: $*; refused by the fleet wrapper" >&2
@@ -503,8 +516,8 @@ writeShellApplication {
     # Not for config dumps, which make no request. Never traced.
     { set +o xtrace; } 2>/dev/null
     # pick_key VAR SLOT FILE...: sets `picked` to the SLOT-th file's contents,
-    # or leaves it empty (then VAR stays unset: Gemini fails MISSING_CREDENTIAL,
-    # Zen goes anonymous). Prints no value.
+    # or leaves it empty (then VAR stays unset: a keyed route fails
+    # MISSING_CREDENTIAL, Zen goes anonymous). Prints no value.
     pick_key() {
       local var="$1" n="$2" file
       shift 2

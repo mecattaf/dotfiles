@@ -30,7 +30,7 @@ docs/local-ai/  Gufo (:8731) and ds4 (:8732), the model catalogue and per-host w
 docs/old/       archival stub indexing retired docs in Git history
 ```
 
-## Free model lanes in dsh (Gemini, OpenCode Zen)
+## Free model lanes in dsh (Gemini, OpenCode Zen, Groq, Mistral, Cohere, NVIDIA, Cloudflare, Hugging Face)
 
 The Qwen token plan that used to sit here is gone: the QwenCloud account was
 closed on 2026-11-01 (`REKEY.md`), so its dsh route was deleted. Since
@@ -45,10 +45,24 @@ NAS brain tier, mode 400):
   slot past every list sends Zen's anonymous `public` bearer.
 - `DSH_ROUTE=<gemini|gemini-pro|gemini-lite|gufo|zen-deepseek|zen-glm>` picks
   the model per run; there is no fallback list, a 429 means another slot.
+- Since issue 687 (same day): Groq (`DSH_ROUTE=groq`, `groq-oss`; three
+  keys), Mistral (`mistral`, `codestral`; three keys, Experiment plan),
+  Cohere (`cohere`; five trial keys, hand-declared on its OpenAI-compatible
+  endpoint), NVIDIA NIM (`nvidia`, `nvidia-deepseek`; one key), Cloudflare
+  Workers AI (`cloudflare`, `cloudflare-deepseek`; one token and its account
+  id) and Hugging Face (`huggingface`; one token, 402 until credits). Fifteen
+  more ciphertexts (`secrets/{groq,mistral,cohere}-api-key-N.age`,
+  `nvidia-api-key-1`, `cloudflare-workers-ai-token-1`, `cloudflare-account-id`,
+  `huggingface-inference-token-1`), same tier and mode. `DSH_KEY_SLOT=<n>`
+  picks account n of every lane at once; a slot past a lane's list leaves
+  that lane keyless with one stderr line. Gemini stays the default.
 
-Wiring: the dsh wrapper (`pkgs/dsh`, `home/dsh.nix`) reads ONE file per run
-into `GEMINI_API_KEY` / `OPENCODE_ZEN_FREE_API_KEY` for the dsh process only,
-never for a config dump. dsh strips credential-shaped names from every child
+Wiring: the dsh wrapper (`pkgs/dsh`, `home/dsh.nix`) reads ONE file per
+lane per run into its variable (`GEMINI_API_KEY`, `OPENCODE_ZEN_FREE_API_KEY`,
+`GROQ_API_KEY`, `MISTRAL_API_KEY`, `COHERE_API_KEY`, `NVIDIA_API_KEY`,
+`CLOUDFLARE_WORKERS_AI_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`, `HF_TOKEN`) for
+the dsh process only, never for a config dump, after unsetting all of them
+and the login shell's full-scope `CLOUDFLARE_API_TOKEN`. dsh strips credential-shaped names from every child
 it spawns, and its sandbox runner masks `/run/agenix`. Both tiers may use
 prompts for training and review: nothing sensitive goes through them (Gufo
 is the lane for that). The ledger, the measured facts, the plugin's

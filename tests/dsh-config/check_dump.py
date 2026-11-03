@@ -70,16 +70,28 @@ def main(dump_path, expect_path):
     check(sorted(providers) == sorted([*cloud, *local]), f"llm-pi-ai providers are {sorted(providers)}")
     for name, config in local.items():
         check(providers.get(name) == config, f"{name}: provider config is {providers.get(name)!r}")
-    # A keyed cloud route: the native catalog provider under its own name
-    # (no api/baseURL of its own), its key named so nothing ambient is read,
-    # and exactly the policy's model list. retryPolicy differs per overlay.
+    # A keyed cloud route: its key named so nothing ambient is read, exactly
+    # the policy's model list, and its api/baseURL exactly as the policy
+    # states them: absent for a native catalog route (pi-ai's own endpoint
+    # and protocol under the catalog name), both present for a hand-declared
+    # one (cohere). retryPolicy differs per overlay.
     for name, config in cloud.items():
         got = providers.get(name) or {}
         check(got.get("apiKeyEnv") == config["apiKeyEnv"], f"{name}: apiKeyEnv is {got.get('apiKeyEnv')!r}")
-        check("api" not in got and "baseURL" not in got, f"{name}: declares its own api/baseURL {got!r}")
+        for field in ("api", "baseURL"):
+            check(
+                got.get(field) == config.get(field),
+                f"{name}: {field} is {got.get(field)!r}, expected {config.get(field)!r}",
+            )
         want = [m["id"] for m in config["models"]]
         have = [m.get("id") for m in got.get("models") or []]
         check(have == want, f"{name}: models are {have!r}, expected {want!r}")
+    # No provider row may carry a credential-shaped value or a resolved
+    # Cloudflare account id: keys reach dsh through the environment only.
+    for name, got in providers.items():
+        text = json.dumps(got, default=str)
+        check("{CLOUDFLARE_ACCOUNT_ID}" not in text, f"{name}: names the Cloudflare placeholder in the policy")
+        check("/run/agenix" not in text, f"{name}: names an agenix path")
     # The retired route must not survive in any layer.
     check("qwen-token-plan" not in providers, "qwen-token-plan provider still declared")
 

@@ -176,8 +176,14 @@ straightforward to select the model that we use with each provider. no need
 for round-robin style usage but it IS a nice to have"; round-robin is
 deferred). The QwenCloud route was deleted with the account. Nothing
 sensitive goes through a free lane; Gufo keeps that work. The stock
-`headless` profile that substrate drives mounts no plugin. See
-`docs/free-lanes.md`.
+`headless` profile that substrate drives mounts no plugin. The second batch
+(issue 687, same day) adds Groq, Mistral, Cohere, NVIDIA NIM, Cloudflare
+Workers AI and Hugging Face as `DSH_ROUTE` picks on pi-ai's native catalog
+routes (Cohere hand-declared on its OpenAI-compatible endpoint; Hugging Face
+is 402 until credits and the default of nothing), with fifteen more
+brain-only ciphertexts selected by the same `DSH_KEY_SLOT`; Gemini stays the
+default and no lane has had a live call through dsh until the first commands
+of `docs/free-lanes.md` section 5 are run. See `docs/free-lanes.md`.
 
 **The NPU path is decommissioned — permanently, 2026-08-29.** FastFlowLM (`flm`)
 is no longer installed on any host, and the XDNA2 NPU is not an inference target
