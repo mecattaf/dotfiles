@@ -8,7 +8,6 @@
 }:
 let
   enabled = osConfig.myDisplay.enable;
-  package = inputs.vicinae.packages.${pkgs.stdenv.hostPlatform.system}.default;
   cfgHome = config.xdg.configHome;
   command = name: title: exec: {
     inherit name exec;
@@ -24,7 +23,7 @@ in
   config = lib.mkIf enabled {
     programs.vicinae = {
       enable = true;
-      enableChromeIntegration = false; # Chrome is installed outside HM's browser module.
+      enableChromeIntegration = false; # Browser integration is intentionally disabled.
       enableFirefoxIntegration = false;
       systemd = {
         enable = true;
@@ -84,7 +83,6 @@ in
         favorites = [
           "applications:herdr-picker"
           "clipboard:history"
-          "browser-extension:browse-tabs"
           "media:now-playing"
           "core:search-tray"
         ];
@@ -95,8 +93,6 @@ in
     # `theme apply` rescans and reloads it without restarting Vicinae.
     xdg.dataFile."vicinae/themes/dotfiles-current.toml".source =
       config.lib.file.mkOutOfStoreSymlink "${cfgHome}/theme/vicinae.toml";
-    xdg.configFile."google-chrome/NativeMessagingHosts/com.vicinae.vicinae.json".source =
-      "${package}/etc/chromium/native-messaging-hosts/com.vicinae.vicinae.json";
     xdg.configFile."xdg-terminals.list".text = "kitty.desktop\n";
     # asusd stays (it holds the Zenbook's Quiet profile and charge limit); only
     # its ROG Control Center launcher entry is hidden (Tom, 2026-10-12).
