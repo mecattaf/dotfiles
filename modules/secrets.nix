@@ -205,13 +205,16 @@ in
       })
 
       # dsh free-lane provider keys (docs/free-lanes.md): 3 Gemini AI Studio
-      # keys (3 Google accounts) and 4 OpenCode Zen console keys (4 orgs).
-      # Delivered read-only under /run/agenix; the dsh wrapper (pkgs/dsh,
-      # home/dsh.nix) reads ONE per run into GEMINI_API_KEY or
-      # OPENCODE_ZEN_FREE_API_KEY for the exec'd dsh only, selected by
-      # DSH_KEY_SLOT. No unit, no shell export, no seed: nothing else reads
-      # them. Free tiers: prompts may be used for training and review, so
-      # nothing sensitive goes through these lanes.
+      # keys (3 Google accounts), 4 OpenCode Zen console keys (4 orgs), and
+      # since issue 687: 3 Groq, 3 Mistral, 5 Cohere, 1 NVIDIA, 1 Cloudflare
+      # Workers AI token with the account id it belongs to (an identifier,
+      # kept at the same tier), 1 Hugging Face inference token (distinct from
+      # huggingface-token above, which library-fetch reads). Delivered
+      # read-only under /run/agenix; the dsh wrapper (pkgs/dsh, home/dsh.nix)
+      # reads ONE file per list per run into that list's variable for the
+      # exec'd dsh only, selected by DSH_KEY_SLOT. No unit, no shell export,
+      # no seed: nothing else reads them. Free tiers: prompts may be used for
+      # training and review, so nothing sensitive goes through these lanes.
       (lib.mkIf (config.myFleet.has "brain") {
         age.secrets = lib.listToAttrs (
           map
@@ -227,6 +230,15 @@ in
             (
               map (n: "gemini-api-key-${toString n}") (lib.range 1 3)
               ++ map (n: "opencode-zen-key-${toString n}") (lib.range 1 4)
+              ++ map (n: "groq-api-key-${toString n}") (lib.range 1 3)
+              ++ map (n: "mistral-api-key-${toString n}") (lib.range 1 3)
+              ++ map (n: "cohere-api-key-${toString n}") (lib.range 1 5)
+              ++ [
+                "nvidia-api-key-1"
+                "cloudflare-workers-ai-token-1"
+                "cloudflare-account-id"
+                "huggingface-inference-token-1"
+              ]
             )
         );
       })

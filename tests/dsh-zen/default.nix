@@ -61,11 +61,15 @@ let
     disabledRows = [ "credentials" ];
   };
   # The slot reader, with key files that exist only inside this sandbox and
-  # hold no secret. Static paths: the sandbox build directory is /build.
+  # hold no secret. Static paths: the sandbox build directory is /build. The
+  # single-account lists (NVIDIA, the Cloudflare account id) stand for the
+  # batch-2 lanes: a slot past them says so per list and exports nothing.
   keyed = dsh.override {
     keyFiles = {
       GEMINI_API_KEY = map (n: "/build/keys/gemini-${toString n}") (lib.range 1 3);
       OPENCODE_ZEN_FREE_API_KEY = map (n: "/build/keys/zen-${toString n}") (lib.range 1 4);
+      NVIDIA_API_KEY = [ "/build/keys/nvidia-1" ];
+      CLOUDFLARE_ACCOUNT_ID = [ "/build/keys/cf-account" ];
     };
   };
   # The seeded last-good catalog, in the plugin's own cache format.
@@ -109,6 +113,8 @@ pkgs.runCommand "dsh-zen"
     export HOME="$build/home" DSH_HOME="$build/dsh-home" TMPDIR="$build/tmp"
     export PYTHONDONTWRITEBYTECODE=1
     unset GEMINI_API_KEY OPENCODE_ZEN_FREE_API_KEY OPENCODE_API_KEY QWEN_TOKEN_PLAN_API_KEY
+    unset GROQ_API_KEY MISTRAL_API_KEY COHERE_API_KEY NVIDIA_API_KEY HF_TOKEN
+    unset CLOUDFLARE_WORKERS_AI_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_API_KEY CLOUDFLARE_ACCOUNT_ID
     mkdir -p "$HOME" "$build/cwd" "$TMPDIR"
     mkdir -m 700 "$DSH_HOME"
     cd "$build/cwd"
@@ -168,7 +174,7 @@ pkgs.runCommand "dsh-zen"
     # once on stderr and exports nothing; a dump never reads a file. The
     # files hold no secret and exist only here.
     if mkdir -p /build/keys 2>/dev/null; then
-      for f in gemini-1 gemini-2 gemini-3 zen-1 zen-2 zen-3 zen-4; do
+      for f in gemini-1 gemini-2 gemini-3 zen-1 zen-2 zen-3 zen-4 nvidia-1 cf-account; do
         echo "not-a-key-$f" > "/build/keys/$f"
       done
       keyed=${keyed}/bin/dsh
@@ -177,7 +183,14 @@ pkgs.runCommand "dsh-zen"
       env DSH_KEY_SLOT=4 "$keyed" zen --session-id session-none "reply OK" > /dev/null 2> "$TMPDIR/slot4.err" || rc=$?
       test "$rc" = 1
       grep -qF 'DSH_KEY_SLOT=4 but GEMINI_API_KEY has only 3 key file(s); no key exported' "$TMPDIR/slot4.err"
+      grep -qF 'DSH_KEY_SLOT=4 but NVIDIA_API_KEY has only 1 key file(s); no key exported' "$TMPDIR/slot4.err"
+      grep -qF 'DSH_KEY_SLOT=4 but CLOUDFLARE_ACCOUNT_ID has only 1 key file(s); no key exported' "$TMPDIR/slot4.err"
       if grep -qF 'OPENCODE_ZEN_FREE_API_KEY has only' "$TMPDIR/slot4.err"; then exit 1; fi
+      # Slot 1 reads every list silently.
+      rc=0
+      env DSH_KEY_SLOT=1 "$keyed" zen --session-id session-none "reply OK" > /dev/null 2> "$TMPDIR/slot1.err" || rc=$?
+      test "$rc" = 1
+      if grep -qF 'no key exported' "$TMPDIR/slot1.err"; then exit 1; fi
       rc=0
       env DSH_KEY_SLOT=5 "$keyed" zen --session-id session-none "reply OK" > /dev/null 2> "$TMPDIR/slot5.err" || rc=$?
       test "$rc" = 1

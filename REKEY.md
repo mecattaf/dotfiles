@@ -26,6 +26,12 @@ account's key and the dsh wrapper reads one per run (`DSH_KEY_SLOT`):
 | --- | --- |
 | `gemini-api-key-1`, `gemini-api-key-2`, `gemini-api-key-3` (AI Studio, three Google accounts) | NAS |
 | `opencode-zen-key-1` (GitHub-linked org), `opencode-zen-key-2`, `-3`, `-4` (Google-linked orgs) | NAS |
+| `groq-api-key-1`, `-2`, `-3` (three Groq accounts) | NAS |
+| `mistral-api-key-1`, `-2`, `-3` (three Mistral accounts, Experiment plan) | NAS |
+| `cohere-api-key-1` to `-5` (five Cohere trial keys) | NAS |
+| `nvidia-api-key-1` (NVIDIA NIM) | NAS |
+| `cloudflare-workers-ai-token-1`, `cloudflare-account-id` (one Workers AI token and the account id its endpoint needs; not the operator `cloudflare-api-token`) | NAS |
+| `huggingface-inference-token-1` (fine-grained inference token; not the library-fetch `huggingface-token`) | NAS |
 
 The previous Strix SSH **host** identity was already an authorized decryption
 recipient. It was used once to decrypt and re-encrypt directly through memory.

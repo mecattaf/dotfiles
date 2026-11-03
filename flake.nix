@@ -1984,17 +1984,37 @@
               runner = "${dshPackage.runner}/bin/dsh-bwrap";
             };
             expect = pkgs.writeText "dsh-config-expect.json" (builtins.toJSON base);
-            # DSH_ROUTE=gemini-pro: the one-row overlay replaces the default
+            # DSH_ROUTE=<name>: the one-row overlay replaces the default
             # model after the policy; the acp row keeps the policy default.
-            expectPro = pkgs.writeText "dsh-config-expect-pro.json" (
-              builtins.toJSON (
-                base
-                // {
-                  defaultRoute = dshPackage.routes.gemini-pro;
-                  acpRoute = dshPackage.defaultRoute;
-                }
-              )
-            );
+            expectRoute =
+              name:
+              pkgs.writeText "dsh-config-expect-${name}.json" (
+                builtins.toJSON (
+                  base
+                  // {
+                    defaultRoute = dshPackage.routes.${name};
+                    acpRoute = dshPackage.defaultRoute;
+                  }
+                )
+              );
+            expectPro = expectRoute "gemini-pro";
+            # The batch-2 lanes (issue 687): every route of docs/free-lanes.md
+            # composes in headless with empty stderr.
+            batch2Routes = [
+              "groq"
+              "groq-oss"
+              "mistral"
+              "codestral"
+              "cohere"
+              "nvidia"
+              "nvidia-deepseek"
+              "cloudflare"
+              "cloudflare-deepseek"
+              "huggingface"
+            ];
+            batch2Dumps = pkgs.lib.concatMapStringsSep "\n" (
+              name: "EXPECT=${expectRoute name} DSH_ROUTE=${name} dump route-${name} headless --dump-config"
+            ) batch2Routes;
           in
           pkgs.runCommand "dsh-config"
             {
@@ -2035,6 +2055,10 @@
               EXPECT=${expectPro} DSH_ROUTE=gemini-pro dump route-pro headless --dump-config
               EXPECT=${expectPro} DSH_ROUTE=gemini-pro dump route-pro-acp acp --dump-config
               DSH_ROUTE=gemini DSH_KEY_SLOT=3 dump route-slot headless --dump-config
+              ${batch2Dumps}
+              # A slot past every list is still a valid dump (the keys of the
+              # single-account lanes are read only for a real run).
+              EXPECT=${expectRoute "cohere"} DSH_ROUTE=cohere DSH_KEY_SLOT=5 dump route-cohere-slot5 headless --dump-config
 
               refused() {
                 set +e
@@ -2066,6 +2090,12 @@
               refused env DSH_KEY_SLOT=two "$dsh" headless --dump-config
               refused env DSH_ROUTE=nope "$dsh" headless --dump-config
               refused env DSH_ROUTE=qwen-token-plan "$dsh" headless --dump-config
+              # Provider names are not route names (the Cloudflare route keeps
+              # pi-ai's catalog name; the lane is DSH_ROUTE=cloudflare).
+              refused env DSH_ROUTE=cloudflare-workers-ai "$dsh" headless --dump-config
+              refused env DSH_ROUTE=google "$dsh" headless --dump-config
+              refused env DSH_ROUTE=hf "$dsh" headless --dump-config
+              refused env DSH_ROUTE=groq "$dsh" mnemon --dump-config
               (cd "$HOME" && refused "$dsh" headless --dump-config)
               (cd "$DSH_HOME" && refused "$dsh" headless --dump-config)
               (cd "$build" && refused "$dsh" headless --dump-config)

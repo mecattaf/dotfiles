@@ -28,7 +28,9 @@
 #   zen    : the hand-run OpenCode Zen free-model profile (jiesou's provider
 #            plugin, credentials re-enabled, Zen as the default route)
 #   routeOverlays : one-row `agent-default-model` overlays, one per name in
-#            `routes`, for `DSH_ROUTE=<name>` (./default.nix)
+#            `routes`, for `DSH_ROUTE=<name>` (./default.nix). The keyed free
+#            lanes (Gemini, Groq, Mistral, Cohere, NVIDIA, Cloudflare Workers
+#            AI, Hugging Face) are selected only this way; Gemini is the default
 #   smoke  : the gate's one inference call (no retries, low effort); never
 #            installed, built only as `nix build .#dsh.smoke`
 let
@@ -74,6 +76,173 @@ let
       { id = "gemini-2.5-flash-lite"; } # cheapest
     ];
   };
+
+  # The second batch of free lanes (issue 687, docs/free-lanes.md). Five of
+  # them reuse pi-ai 1.3.0's NATIVE catalog routes under the catalog's own
+  # name, like `google` above: no api/baseURL here, the catalog's endpoint and
+  # wire protocol, the key named through apiKeyEnv so nothing ambient is read,
+  # and `models` narrowing the catalog to the ids measured on 2026-11-03,
+  # strongest first. An id the catalog does not describe is declared by hand
+  # on the same route (its api and baseURL come from the catalog provider;
+  # its sizes are stated here and are a claim, not a measurement). Cohere has
+  # no catalog route, so it is a hand-declared openai-completions route on
+  # Cohere's compatibility endpoint. Retry: QUOTA and AUTH are never retried
+  # by dsh whatever retryPolicy says; a 429 means another DSH_KEY_SLOT.
+  # Data posture is the free lanes' (see docs/free-lanes.md section 4):
+  # nothing sensitive goes through any of them.
+  keyed =
+    displayName: apiKeyEnv: retryPolicy: extra:
+    {
+      inherit displayName apiKeyEnv retryPolicy;
+    }
+    // extra;
+
+  # Groq (https://api.groq.com/openai/v1): three keys, 1,000 requests and
+  # 200K tokens per day per key (measured headers: 8,000 tokens/minute). All
+  # three ids are catalog-verified (qwen3.8-27b: 131,042 context, 16,384 out).
+  groq =
+    retryPolicy:
+    keyed "Groq" "GROQ_API_KEY" retryPolicy {
+      models = [
+        { id = "qwen/qwen3.8-27b"; } # default; Tom's wanted model
+        { id = "openai/gpt-oss-120b"; }
+        { id = "openai/gpt-oss-20b"; }
+      ];
+    };
+
+  # Mistral (https://api.mistral.ai, catalog api `mistral-conversations`, NOT
+  # the OpenAI-compatible /v1 the orchestrator measured): three keys on the
+  # free Experiment plan, which answers 429 with a 0 requests/minute limit
+  # until Tom activates it per account. Catalog-verified ids; the measured
+  # `ministral-14b-latest` alias is the catalog's dated ministral-14b-2512.
+  mistral =
+    retryPolicy:
+    keyed "Mistral (Experiment plan)" "MISTRAL_API_KEY" retryPolicy {
+      models = [
+        { id = "mistral-medium-latest"; } # default; reasoning
+        { id = "magistral-medium-latest"; } # reasoning
+        { id = "codestral-latest"; } # code; DSH_ROUTE=codestral
+        { id = "devstral-latest"; } # agentic code
+        { id = "mistral-small-latest"; }
+        { id = "ministral-14b-2512"; }
+      ];
+    };
+
+  # Cohere: no pi-ai catalog route, so a hand-declared openai-completions
+  # route on the compatibility endpoint (docs.cohere.com/docs/compatibility-api:
+  # bearer auth, /chat/completions with streaming and tools; `store` is not
+  # accepted; reasoning_effort takes only `none` and `high`). The endpoint
+  # answered 401 without a key on 2026-11-03, so it exists; the chat call is
+  # the first live smoke. Five trial keys, 20 calls/minute and 1,000/month
+  # each. Sizes are Cohere's published context/output figures, declared by
+  # hand (not measured); command-a-plus-05-2026 is assumed command-a-sized.
+  cohereModels = [
+    {
+      id = "command-a-plus-05-2026"; # default; the page's own example model
+      contextWindow = 256000;
+      maxTokens = 8192;
+      reasoningEfforts.high = "high";
+    }
+    {
+      id = "command-a-reasoning-08-2025";
+      contextWindow = 256000;
+      maxTokens = 32768;
+      reasoningEfforts.high = "high";
+    }
+    {
+      id = "command-a-03-2025";
+      contextWindow = 256000;
+      maxTokens = 8192;
+    }
+    {
+      id = "command-r-plus-08-2024";
+      contextWindow = 128000;
+      maxTokens = 4096;
+    }
+  ];
+  cohere =
+    retryPolicy:
+    keyed "Cohere (trial)" "COHERE_API_KEY" retryPolicy {
+      api = "openai-completions";
+      baseURL = "https://api.cohere.com/compatibility/v1";
+      compat = {
+        supportsStore = false;
+        supportsDeveloperRole = true;
+        supportsReasoningEffort = true;
+      };
+      models = map (m: m // { input = [ "text" ]; }) cohereModels;
+    };
+
+  # NVIDIA NIM (https://integrate.api.nvidia.com/v1): one key, about 40
+  # requests/minute (docs, unconfirmed). glm-5.3-flash answered with
+  # reasoning; the other catalog ids were listed. nemotron-3-super and
+  # minimax-m3.1-flash are listed for this account but absent from the
+  # catalog, so they are declared by hand (sizes assumed, no reasoning
+  # offered). moonshotai/kimi-k2.6 is in the catalog but 404 for this
+  # account, so it is left out.
+  nvidia =
+    retryPolicy:
+    keyed "NVIDIA NIM" "NVIDIA_API_KEY" retryPolicy {
+      models = [
+        { id = "z-ai/glm-5.3-flash"; } # default; answered with reasoning
+        { id = "deepseek-ai/deepseek-v4.1-flash"; }
+        { id = "nvidia/nemotron-3.5-super-vl-120b-a12b"; }
+        {
+          id = "nvidia/nemotron-3-super-120b-a12b"; # listed, not in the catalog
+          contextWindow = 262144;
+          maxTokens = 32768;
+        }
+        {
+          id = "minimaxai/minimax-m3.1-flash"; # listed, not in the catalog
+          contextWindow = 262144;
+          maxTokens = 32768;
+        }
+        { id = "openai/gpt-oss-20b"; }
+      ];
+    };
+
+  # Cloudflare Workers AI: the catalog route `cloudflare-workers-ai`, whose
+  # model endpoints carry the placeholder {CLOUDFLARE_ACCOUNT_ID}; pi-ai's
+  # own resolver fills it from the CLOUDFLARE_ACCOUNT_ID variable of the
+  # process environment at request time, which the wrapper exports from the
+  # agenix file beside the token (./default.nix, home/dsh.nix). The route
+  # must keep the catalog name for that resolver to run, and a hand-declared
+  # id cannot be added to it (the catalog provider carries no fixed endpoint
+  # to default it from), so the measured @cf/deepseek-ai/deepseek-v4.1-flash-1017
+  # waits for a pi-ai catalog that lists it. 10,000 neurons/day, reset 00:00Z.
+  cloudflare =
+    retryPolicy:
+    keyed "Cloudflare Workers AI" "CLOUDFLARE_WORKERS_AI_TOKEN" retryPolicy {
+      models = [
+        { id = "@cf/qwen/qwen3.8-27b"; } # default
+        { id = "@cf/deepseek-ai/deepseek-v4-pro-0813"; }
+        { id = "@cf/openai/gpt-oss-120b"; }
+        { id = "@cf/google/gemma-4-26b-a4b-it"; }
+        { id = "@cf/meta/llama-4-scout-17b-16e-instruct"; }
+      ];
+    };
+
+  # Hugging Face Inference Providers (https://router.huggingface.co/v1): a
+  # Free account with no included credits, so every chat is HTTP 402 today.
+  # The route is declared so it works the day Tom buys credits or PRO; it is
+  # the default of nothing and reachable only as DSH_ROUTE=huggingface. The
+  # `:cheapest` suffix is the router's provider selection, declared by hand
+  # with the catalog's gpt-oss-120b sizes; the plain catalog ids follow.
+  huggingface =
+    retryPolicy:
+    keyed "Hugging Face (no credits)" "HF_TOKEN" retryPolicy {
+      models = [
+        {
+          id = "openai/gpt-oss-120b:cheapest"; # default; router picks the cheapest provider
+          contextWindow = 131072;
+          maxTokens = 32768;
+        }
+        { id = "openai/gpt-oss-120b"; }
+        { id = "Qwen/Qwen3.8-27B"; }
+        { id = "deepseek-ai/DeepSeek-V4.1-Flash"; }
+        { id = "zai-org/GLM-5.3-Flash"; }
+      ];
+    };
 
   # Gufo's keyless LAN route. The wrapper supplies a public dummy bearer:
   # pi-ai still requires a nonempty credential for a custom provider.
@@ -154,10 +323,18 @@ let
       }
     ];
   };
-  providers = retryPolicy: {
+  # The keyed cloud routes, by their pi-ai route name (catalog names where
+  # pi-ai ships the provider; `cohere` is hand-declared).
+  keyedProviders = retryPolicy: {
     google = google retryPolicy;
-    inherit gufo ds4;
+    groq = groq retryPolicy;
+    mistral = mistral retryPolicy;
+    cohere = cohere retryPolicy;
+    nvidia = nvidia retryPolicy;
+    cloudflare-workers-ai = cloudflare retryPolicy;
+    huggingface = huggingface retryPolicy;
   };
+  providers = retryPolicy: keyedProviders retryPolicy // { inherit gufo ds4; };
 
   defaultRoute = {
     provider = "google";
@@ -189,6 +366,46 @@ let
       provider = "gufo";
       model = localModel.modelId;
     };
+    groq = {
+      provider = "groq";
+      model = "qwen/qwen3.8-27b";
+    };
+    groq-oss = {
+      provider = "groq";
+      model = "openai/gpt-oss-120b";
+    };
+    mistral = {
+      provider = "mistral";
+      model = "mistral-medium-latest";
+    };
+    codestral = {
+      provider = "mistral";
+      model = "codestral-latest";
+    };
+    cohere = {
+      provider = "cohere";
+      model = "command-a-plus-05-2026";
+    };
+    nvidia = {
+      provider = "nvidia";
+      model = "z-ai/glm-5.3-flash";
+    };
+    nvidia-deepseek = {
+      provider = "nvidia";
+      model = "deepseek-ai/deepseek-v4.1-flash";
+    };
+    cloudflare = {
+      provider = "cloudflare-workers-ai";
+      model = "@cf/qwen/qwen3.8-27b";
+    };
+    cloudflare-deepseek = {
+      provider = "cloudflare-workers-ai";
+      model = "@cf/deepseek-ai/deepseek-v4-pro-0813";
+    };
+    huggingface = {
+      provider = "huggingface";
+      model = "openai/gpt-oss-120b:cheapest";
+    };
     zen-deepseek = {
       provider = zenProvider;
       model = "deepseek-v4.1-flash-free";
@@ -218,7 +435,8 @@ let
     # 3. No runtime plugin installs; plugins come from Nix only.
     (off "plugin-manager")
     (off "tool-plugin-manager")
-    # 4. Inference: Gemini (free tier) is the default; Gufo and ds4 are explicit picks.
+    # 4. Inference: Gemini (free tier) is the default; the other keyed lanes,
+    #    Gufo and ds4 are explicit DSH_ROUTE picks.
     (set "llm-pi-ai" {
       providers = providers {
         mode = "normal";
@@ -394,13 +612,12 @@ in
   ) routes;
   # Local provider data for offline config checks.
   localProviders = { inherit gufo ds4; };
-  # The keyed cloud provider(s) of the policy and the default route, for
-  # checks.dsh-config (the policy's retry settings, not the smoke's).
-  cloudProviders = {
-    google = google {
-      mode = "normal";
-      maxRetries = 3;
-    };
+  # The keyed cloud providers of the policy, for checks.dsh-config (the
+  # policy's retry settings, not the smoke's): apiKeyEnv, the model ids and,
+  # for the hand-declared cohere route, its api and baseURL.
+  cloudProviders = keyedProviders {
+    mode = "normal";
+    maxRetries = 3;
   };
   inherit defaultRoute routes zenProvider;
   # The herdr profile's rows as data, for checks.dsh-plugins.
