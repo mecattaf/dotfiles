@@ -18,6 +18,15 @@ host recipients are:
 | `cloudflare-api-token`, `qwencloud-token`, `openrouter-token` | NAS |
 | `codex-auth`, `huggingface-token` | NAS |
 
+Added 2026-11-03 for dsh's free lanes (`docs/free-lanes.md`), encrypted to
+admin and the NAS host key like the brain-only rows above; each file holds one
+account's key and the dsh wrapper reads one per run (`DSH_KEY_SLOT`):
+
+| Ciphertext | Host recipients, in addition to admin |
+| --- | --- |
+| `gemini-api-key-1`, `gemini-api-key-2`, `gemini-api-key-3` (AI Studio, three Google accounts) | NAS |
+| `opencode-zen-key-1` (GitHub-linked org), `opencode-zen-key-2`, `-3`, `-4` (Google-linked orgs) | NAS |
+
 The previous Strix SSH **host** identity was already an authorized decryption
 recipient. It was used once to decrypt and re-encrypt directly through memory.
 NAS-side decryption was verified privately for every result. No delivered SSH

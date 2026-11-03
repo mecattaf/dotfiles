@@ -7,7 +7,10 @@
 }:
 # dsh (DeepSeek Harness) on the agent host (T-31). The package, its policy and
 # its sandbox runner live in pkgs/dsh; this module selects its installed
-# plugins on the agent host. The QwenCloud credential was retired 2026-11-01.
+# plugins on the agent host and hands the wrapper the agenix key files of the
+# free lanes (modules/secrets.nix: three Gemini AI Studio keys, four OpenCode
+# Zen keys; `DSH_KEY_SLOT=<n>` picks one per run, docs/free-lanes.md). The
+# QwenCloud credential was retired 2026-11-01.
 #
 # Nothing here touches ~/.dsh. Everything there is dsh's own state, and its
 # profile files are replaced by atomic rename on settings writes, which would
@@ -21,6 +24,13 @@
 let
   cfg = config.programs.dsh;
   link = config.lib.rawDotfiles.link;
+  # "" where a host does not declare the secret: the route then fails
+  # MISSING_CREDENTIAL (Zen: anonymous) instead of reading anything under /run.
+  slotFiles =
+    prefix: count:
+    map (n: lib.attrByPath [ "age" "secrets" "${prefix}-${toString n}" "path" ] "" osConfig) (
+      lib.range 1 count
+    );
 in
 {
   options.programs.dsh.enable = lib.mkOption {
@@ -39,6 +49,10 @@ in
     home.packages = [
       (pkgs.dsh.override {
         qwenKeyFile = null;
+        keyFiles = {
+          GEMINI_API_KEY = slotFiles "gemini-api-key" 3;
+          OPENCODE_ZEN_FREE_API_KEY = slotFiles "opencode-zen-key" 4;
+        };
         profilePlugins = cfg.plugins;
       })
       pkgs.mnemon

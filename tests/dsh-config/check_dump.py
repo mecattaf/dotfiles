@@ -4,9 +4,10 @@ Usage: check_dump.py <dump.yml> <expectations.json>
 
 The dump is dsh's composed profile tree: a YAML list of rows, some carrying
 `!!js` expressions (kept as opaque strings here; nothing is evaluated). The
-expectations come from pkgs/dsh's passthru, so the check follows the policy
-instead of restating it. checks.dsh-plugins adds `rows`, `present` and
-`absent` for the plugin profile.
+expectations come from pkgs/dsh's passthru (`defaultRoute`, `cloudProviders`,
+`localProviders`, ...), so the check follows the policy instead of restating
+it. checks.dsh-plugins and checks.dsh-zen add `rows`, `present` and `absent`
+for the plugin profiles; a `DSH_ROUTE` dump passes the route as `defaultRoute`.
 """
 
 import json
@@ -58,15 +59,29 @@ def main(dump_path, expect_path):
         check(row is not None, f"{row_id}: row missing")
         check(row is None or row.get("disabled") is True, f"{row_id}: not disabled")
 
+    route = expect["defaultRoute"]
     model = (by_id.get("agent-default-model") or {}).get("config") or {}
-    check(model.get("provider") == "qwen-token-plan", f"agent-default-model provider is {model.get('provider')!r}")
-    check(model.get("model") == "deepseek-v4.1-flash", f"agent-default-model model is {model.get('model')!r}")
+    check(model.get("provider") == route["provider"], f"agent-default-model provider is {model.get('provider')!r}")
+    check(model.get("model") == route["model"], f"agent-default-model model is {model.get('model')!r}")
 
     providers = ((by_id.get("llm-pi-ai") or {}).get("config") or {}).get("providers") or {}
     local = expect["localProviders"]
-    check(sorted(providers) == sorted(["qwen-token-plan", *local]), f"llm-pi-ai providers are {sorted(providers)}")
+    cloud = expect["cloudProviders"]
+    check(sorted(providers) == sorted([*cloud, *local]), f"llm-pi-ai providers are {sorted(providers)}")
     for name, config in local.items():
         check(providers.get(name) == config, f"{name}: provider config is {providers.get(name)!r}")
+    # A keyed cloud route: the native catalog provider under its own name
+    # (no api/baseURL of its own), its key named so nothing ambient is read,
+    # and exactly the policy's model list. retryPolicy differs per overlay.
+    for name, config in cloud.items():
+        got = providers.get(name) or {}
+        check(got.get("apiKeyEnv") == config["apiKeyEnv"], f"{name}: apiKeyEnv is {got.get('apiKeyEnv')!r}")
+        check("api" not in got and "baseURL" not in got, f"{name}: declares its own api/baseURL {got!r}")
+        want = [m["id"] for m in config["models"]]
+        have = [m.get("id") for m in got.get("models") or []]
+        check(have == want, f"{name}: models are {have!r}, expected {want!r}")
+    # The retired route must not survive in any layer.
+    check("qwen-token-plan" not in providers, "qwen-token-plan provider still declared")
 
     sessions = (by_id.get("session-persistence-jsonl") or {}).get("config") or {}
     check(sessions.get("compression") == "none", f"session compression is {sessions.get('compression')!r}")
@@ -88,7 +103,7 @@ def main(dump_path, expect_path):
 
     if "acp" in by_id:
         acp = by_id["acp"].get("config") or {}
-        check(acp.get("provider") == "qwen-token-plan", f"acp provider is {acp.get('provider')!r}")
+        check(acp.get("provider") == expect.get("acpRoute", route)["provider"], f"acp provider is {acp.get('provider')!r}")
 
     # Optional, for checks.dsh-plugins: rows whose whole config is pinned,
     # rows that must mount, rows that must not exist at all.
@@ -98,6 +113,9 @@ def main(dump_path, expect_path):
     for row_id in expect.get("present", []):
         row = by_id.get(row_id)
         check(row is not None and row.get("disabled") is not True, f"{row_id}: row missing or disabled")
+    for row_id in expect.get("disabledRows", []):
+        row = by_id.get(row_id)
+        check(row is not None and row.get("disabled") is True, f"{row_id}: row missing or enabled")
     for row_id in expect.get("absent", []):
         check(row_id not in by_id, f"{row_id}: row present")
 

@@ -116,10 +116,16 @@ nothing.
 dsh (`pkgs/dsh`, `home/dsh.nix`) is the agent harness; it follows the brain
 role to the NAS. Its routes ([`../../pkgs/dsh/config.nix`](../../pkgs/dsh/config.nix)):
 
-- `qwen-token-plan/deepseek-v4.1-flash`, the default (Qwen Cloud);
+- `google/gemini-3.8-flash`, the default (Gemini free tier, one of three AI
+  Studio keys per run; [`../free-lanes.md`](../free-lanes.md));
 - `gufo/qwen3.8-flash-next` and `gufo/qwen3.8-27b` (the latter only after
   `gufo-switch qwen38-27b`);
-- `ds4/deepseek-v4.1-flash`, only while `ds4.service` runs on strix-worker.
+- `ds4/deepseek-v4.1-flash`, only while `ds4.service` runs on strix-worker;
+- in the hand-run `dsh zen` profile only, OpenCode Zen's free models through
+  jiesou's provider plugin (`opencode-zen-free-provider/deepseek-v4.1-flash-free`).
+
+`DSH_ROUTE=<gemini|gemini-pro|gemini-lite|gufo|zen-deepseek|zen-glm>` picks the
+route per run; the QwenCloud route was removed with the account (2026-11-01).
 
 Both local routes use a public dummy bearer. Session-log and plugin-inventory
 upload to DeepSeek, DeepSeek sign-in and telemetry are disabled rows in the

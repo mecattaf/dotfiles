@@ -21,10 +21,14 @@
 # a warning on stderr; checks.dsh-config fails on any stderr from a dump.
 #
 # Outputs:
-#   policy : every profile the wrapper boots (headless, sdk, acp, herdr)
+#   policy : every profile the wrapper boots (headless, sdk, acp, herdr, mnemon, zen)
 #   acp    : acp only; its bundle pins the official DeepSeek route in its own row
 #   herdr  : the hand-run plugin profile only (jevcore's row; ./default.nix)
 #   mnemon : the dedicated local-memory profile, including its Gufo route
+#   zen    : the hand-run OpenCode Zen free-model profile (jiesou's provider
+#            plugin, credentials re-enabled, Zen as the default route)
+#   routeOverlays : one-row `agent-default-model` overlays, one per name in
+#            `routes`, for `DSH_ROUTE=<name>` (./default.nix)
 #   smoke  : the gate's one inference call (no retries, low effort); never
 #            installed, built only as `nix build .#dsh.smoke`
 let
@@ -36,40 +40,38 @@ let
   };
   set = id: config: { inherit id config; };
 
-  # Qwen Cloud token plan through llm-pi-ai's catalog route `qwen-token-plan`
-  # (OpenAI chat-completions on the same endpoint pi uses; URL, protocol and
-  # compat come from the pi-ai catalog). The key arrives as an env var the
-  # wrapper reads from the agenix file; naming it here makes a missing key fail
-  # MISSING_CREDENTIAL instead of falling back to anything ambient.
-  qwenTokenPlan = retryPolicy: {
-    displayName = "Qwen Cloud (token plan)";
-    apiKeyEnv = "QWEN_TOKEN_PLAN_API_KEY";
+  # Google Gemini through llm-pi-ai's NATIVE catalog route `google` (api
+  # google-generative-ai, https://generativelanguage.googleapis.com/v1beta,
+  # pi-ai 1.3.0). The route name must stay `google`: a hand-declared name can
+  # only use the openai-*/anthropic protocols. The wrapper puts one of three AI
+  # Studio keys in GEMINI_API_KEY per run (DSH_KEY_SLOT, ./default.nix); naming
+  # it here makes a missing key fail MISSING_CREDENTIAL instead of reading
+  # anything ambient. `models` replaces the 23-id catalog; each entry defaults
+  # from the catalog (3.8-flash: 1,048,576 context, 65,536 output, text+image,
+  # thinking low/medium/high, so `reasoningEffort = "high"`, never `max`).
+  # Free tier (AI Studio terms): prompts are used for training and human
+  # review, so non-sensitive inputs only; anything sensitive stays on Gufo.
+  # The 11 ids below were all served to the three keys on 2026-11-03;
+  # gemini-3.1-pro-preview is paid-only, so it refuses a free key.
+  # (The former `qwen-token-plan` route was deleted: the account closed
+  # 2026-11-01 and its keyless rows could only fail MISSING_CREDENTIAL.)
+  google = retryPolicy: {
+    displayName = "Google Gemini (AI Studio)";
+    apiKeyEnv = "GEMINI_API_KEY";
     # QUOTA and AUTH are never retried by dsh whatever this says.
     inherit retryPolicy;
-    # Narrows the 20-id catalog to what the plan serves. No automatic failover
-    # exists in dsh: a fallback is an explicit model pick.
     models = [
-      { id = "deepseek-v4.1-flash"; } # default: DeepSeek's latest Flash
-      # Dated pin, not in the pi-ai catalog, so every field is declared.
-      # Runtime admission is unverified (the gate calls the undated alias).
-      {
-        id = "deepseek-v4.1-flash-1017";
-        name = "DeepSeek V4.1 Flash 1017";
-        contextWindow = 1000000;
-        maxTokens = 384000;
-        input = [
-          "text"
-          "image"
-        ];
-        reasoningEfforts = {
-          low = "low";
-          high = "high";
-          max = "max";
-        };
-      }
-      { id = "qwen3.8-max"; } # fallback: the model this key has run under pi
-      { id = "deepseek-v4-pro"; } # explicit pick, hard tasks
-      { id = "qwen3.8-flash"; } # explicit pick, cheap
+      { id = "gemini-3.8-flash"; } # default; free; strongest free-eligible
+      { id = "gemini-3.7-flash"; } # free status unknown
+      { id = "gemini-3.6-flash"; } # free
+      { id = "gemini-3.5-flash"; } # free status unknown
+      { id = "gemini-3-flash-preview"; } # free, tighter limits
+      { id = "gemini-3.1-pro-preview"; } # PAID ONLY on free keys
+      { id = "gemini-2.5-pro"; } # deprecated, rerouted 2026-12-01
+      { id = "gemini-2.5-flash"; } # deprecated, rerouted 2026-12-01
+      { id = "gemini-3.5-flash-lite"; } # cheap
+      { id = "gemini-3.1-flash-lite"; } # cheap
+      { id = "gemini-2.5-flash-lite"; } # cheapest
     ];
   };
 
@@ -153,13 +155,48 @@ let
     ];
   };
   providers = retryPolicy: {
-    qwen-token-plan = qwenTokenPlan retryPolicy;
+    google = google retryPolicy;
     inherit gufo ds4;
   };
 
   defaultRoute = {
-    provider = "qwen-token-plan";
-    model = "deepseek-v4.1-flash";
+    provider = "google";
+    model = "gemini-3.8-flash";
+  };
+
+  # The Zen provider id jiesou's plugin registers (its `name` export), the row
+  # id its bundle inserts and the settings namespace it reads.
+  zenProvider = "opencode-zen-free-provider";
+
+  # Per-run route selection, `DSH_ROUTE=<name> dsh <profile> ...` (./default.nix):
+  # each name is a one-row `agent-default-model` overlay laid AFTER the
+  # profile's own layers (a caller's --patch still comes last). There is no
+  # model flag in dsh and no ordered fallback: a 429 means the operator re-runs
+  # with another DSH_KEY_SLOT or route. The zen-* routes answer only in the
+  # `zen` profile, where the plugin is mounted; model ids there come from the
+  # live catalog at mount, so an id missing tonight fails UNKNOWN_MODEL.
+  routes = {
+    gemini = defaultRoute;
+    gemini-pro = {
+      provider = "google";
+      model = "gemini-3.1-pro-preview";
+    };
+    gemini-lite = {
+      provider = "google";
+      model = "gemini-3.5-flash-lite";
+    };
+    gufo = {
+      provider = "gufo";
+      model = localModel.modelId;
+    };
+    zen-deepseek = {
+      provider = zenProvider;
+      model = "deepseek-v4.1-flash-free";
+    };
+    zen-glm = {
+      provider = zenProvider;
+      model = "glm-5.3-flash-free";
+    };
   };
 
   policy = [
@@ -181,7 +218,7 @@ let
     # 3. No runtime plugin installs; plugins come from Nix only.
     (off "plugin-manager")
     (off "tool-plugin-manager")
-    # 4. Inference: Qwen Cloud stays the default; Gufo and ds4 are explicit picks.
+    # 4. Inference: Gemini (free tier) is the default; Gufo and ds4 are explicit picks.
     (set "llm-pi-ai" {
       providers = providers {
         mode = "normal";
@@ -300,6 +337,36 @@ let
     (off "mnemon-source-skills")
   ];
 
+  # `dsh zen "<task>"`: the Zen free models (jiesou's provider) as the default
+  # route. `credentials` is re-enabled for this profile only: the headless
+  # bundle disables it, and the plugin reads its key solely through that
+  # service (otherwise it sends the anonymous `public` bearer). With it on,
+  # credentials-local resolves $DSH_HOME/.credentials.yaml first, then the
+  # inherited environment (the wrapper's OPENCODE_ZEN_FREE_API_KEY), then .env
+  # files: a stored key outranks the slot. The pi-ai routes of the policy
+  # overlay (Gemini, Gufo, ds4) stay available as explicit picks. A patch
+  # REPLACES a row's config, so the plugin row restates every key it keeps.
+  # Retry: the design proposed `mode = "always"`, which in this dsh has no
+  # maxRetries and would retry a 429 FreeUsageLimitError without bound; the
+  # fleet's bounded policy is used instead (QUOTA is not retryable there).
+  zenProfile = [
+    {
+      id = "credentials";
+      disabled = false;
+    }
+  ]
+  ++ lib.optionals (builtins.elem "opencode-zen-free" (profilePlugins.zen or [ ])) [
+    (set zenProvider {
+      retryPolicy = {
+        mode = "normal";
+        maxRetries = 3;
+      };
+      maxRequestImageBytes = 2097152;
+      requestImageMaxBytes = 1048576;
+    })
+    (set "agent-default-model" (routes.zen-deepseek // { reasoningEffort = "high"; }))
+  ];
+
   # The gate's single call: fail on the first error rather than spend retries,
   # and think as little as the model allows.
   smoke = [
@@ -317,13 +384,32 @@ in
   acp = yaml.generate "dsh-acp.patch.yml" acp;
   herdr = yaml.generate "dsh-herdr.patch.yml" herdr;
   mnemon = yaml.generate "dsh-mnemon.patch.yml" mnemonProfile;
+  zen = yaml.generate "dsh-zen.patch.yml" zenProfile;
   smoke = yaml.generate "dsh-smoke.patch.yml" smoke;
+  routeOverlays = lib.mapAttrs (
+    name: route:
+    yaml.generate "dsh-route-${name}.patch.yml" [
+      (set "agent-default-model" (route // { reasoningEffort = "high"; }))
+    ]
+  ) routes;
   # Local provider data for offline config checks.
   localProviders = { inherit gufo ds4; };
+  # The keyed cloud provider(s) of the policy and the default route, for
+  # checks.dsh-config (the policy's retry settings, not the smoke's).
+  cloudProviders = {
+    google = google {
+      mode = "normal";
+      maxRetries = 3;
+    };
+  };
+  inherit defaultRoute routes zenProvider;
   # The herdr profile's rows as data, for checks.dsh-plugins.
   herdrRows = builtins.listToAttrs (map (row: lib.nameValuePair row.id row.config) herdr);
   mnemonRows = builtins.listToAttrs (
     map (row: lib.nameValuePair row.id row.config) (lib.filter (row: row ? config) mnemonProfile)
+  );
+  zenRows = builtins.listToAttrs (
+    map (row: lib.nameValuePair row.id row.config) (lib.filter (row: row ? config) zenProfile)
   );
   # Row ids the policy touches, for checks.dsh-config.
   policyIds = map (row: row.id) policy;

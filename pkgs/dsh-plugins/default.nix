@@ -4,11 +4,12 @@
   # The flake's herdr (inputs.herdr, the one home/herdr.nix installs).
   herdr,
 }:
-# The dsh plugins selected for hand-run profiles (pkgs/dsh, T-31/#676). Each is a
-# plain package directory with a `dsh.bundle` manifest; the dsh wrapper links
-# them into $DSH_HOME/profiles/<name>/node_modules and lists them in that
-# profile's bundles. None is ever mounted in the stock headless profile that
-# substrate drives. checks.dsh-plugins and checks.dsh-mnemon boot the profiles.
+# The dsh plugins selected for the hand-run profiles herdr, mnemon and zen
+# (pkgs/dsh, T-31/#676). Each is a plain package directory with a `dsh.bundle`
+# manifest; the dsh wrapper links them into $DSH_HOME/profiles/<name>/node_modules
+# and lists them in that profile's bundles. None is ever mounted in the stock headless profile that
+# substrate drives. checks.dsh-plugins, checks.dsh-mnemon and checks.dsh-zen
+# boot the profiles.
 let
   # The dsh-tools of the dsh this fleet runs. The plugins import it as a peer
   # at runtime; dsh-herdr's tests import it at build time.
@@ -27,4 +28,7 @@ in
   stderr-log = callPackage ./stderr-log { };
   # Mnemon's published JS plus its pinned runtime dependency closure.
   mnemon = callPackage ./mnemon { inherit dshModules; };
+  # jiesou's OpenCode Zen free-model provider, committed lib/ as published.
+  # Only the hand-run `zen` profile mounts it (Tom, 2026-11-03).
+  opencode-zen-free = callPackage ./opencode-zen-free { };
 }
