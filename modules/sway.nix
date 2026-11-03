@@ -98,13 +98,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    # Google Chrome policy and the signed upstream launcher cache on both seats.
-    programs.chromium = {
-      enable = true;
-      extensions = [
-        "kcmipingpfbohfjckomimmahknoddnke;https://clients2.google.com/service/update2/crx"
-      ];
-    };
+    # The signed upstream launcher cache for the physical seat.
     nix.settings = {
       extra-substituters = [ "https://vicinae.cachix.org" ];
       extra-trusted-public-keys = [
