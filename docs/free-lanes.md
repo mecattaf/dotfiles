@@ -419,8 +419,10 @@ zen [-k N] [-m MODEL] [--burndown] PROMPT...
   prints `Error: ...` on an API error).
 - Meter: one JSON line per attempt in `~/.local/state/seats/lane-usage.jsonl`
   (`mkdir -p`), `{"ts","lane":"zen","slot","model","status"}`, status
-  `sent` (exec path), `ok`, `drained` or `error`. This is the meter the
-  seats ledger reads; the wrapper writes nothing else. opencode itself keeps
+  `sent` (exec path), `ok`, `429` (the stderr line still says "drained")
+  or `error`. This is the meter the seats ledger reads: a status starting
+  with `429` counts as a refusal and marks the slot spent until its reset,
+  the others count as calls; the wrapper writes nothing else. opencode itself keeps
   sessions, snapshots and logs under `~/.local/share/opencode` (Tom's July
   database stays there).
 - A non-TTY stdin is closed unless `ZEN_STDIN=1`: opencode appends piped
