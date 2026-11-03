@@ -22,6 +22,7 @@
         "spec-kit": "nixosConfigurations.nas.pkgs.llm-agents.spec-kit.version",
         "cc-switch-cli": "nixosConfigurations.nas.pkgs.llm-agents.cc-switch-cli.version",
         "ck": "nixosConfigurations.nas.pkgs.llm-agents.ck.version",
+        "opencode": "nixosConfigurations.nas.pkgs.llm-agents.opencode.version",
         "dsh": "nixosConfigurations.nas.pkgs.llm-agents.dsh.version"
       },
       "notes": {
@@ -36,9 +37,13 @@
         "dsh": {
           "repo": "deepseek-ai/deepseek-harness",
           "tagPrefix": "dsh-v"
+        },
+        "opencode": {
+          "repo": "anomalyco/opencode",
+          "tagPrefix": "v"
         }
       },
-      "switch": "Home Manager only. Running agent sessions keep the binary they started with; the next session starts on the new one. The substrate units find claude and codex through the profile, so their unit text does not change and nothing restarts. dsh is the pkgs/dsh wrapper around llm-agents.dsh; its policy is store --patch overlays, so a bump changes nothing under ~/.dsh, and checks.dsh-config (built above) re-checks the policy against the new release. checks.dsh-plugins (built above) re-runs the herdr profile's plugin tests against the new dsh-tools and boots that profile; its plugins are re-linked under ~/.dsh/profiles/herdr only when Tom next runs `dsh herdr`. checks.dsh-zen (built above) boots the zen profile's OpenCode Zen provider plugin against the new dsh's bundled pi-ai, which is where a bump breaks that plugin first."
+      "switch": "Home Manager only. Running agent sessions keep the binary they started with; the next session starts on the new one. The substrate units find claude and codex through the profile, so their unit text does not change and nothing restarts. dsh is the pkgs/dsh wrapper around llm-agents.dsh; its policy is store --patch overlays, so a bump changes nothing under ~/.dsh, and checks.dsh-config (built above) re-checks the policy against the new release. checks.dsh-plugins (built above) re-runs the herdr profile's plugin tests against the new dsh-tools and boots that profile; its plugins are re-linked under ~/.dsh/profiles/herdr only when Tom next runs `dsh herdr`. checks.dsh-zen (built above) boots the zen profile's OpenCode Zen provider plugin against the new dsh's bundled pi-ai, which is where a bump breaks that plugin first. opencode (pkgs.llm-agents.opencode) is the headless client behind the `zen` wrapper for the Zen free lane, never a harness; a bump changes which client fingerprint Zen sees, so the first `zen` call after the switch is the check."
     },
     {
       "name": "herdr",

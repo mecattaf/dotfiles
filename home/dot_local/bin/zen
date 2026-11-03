@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# zen: headless client for OpenCode Zen's free models through the official
+# OpenCode CLI (docs/free-lanes.md, "Zen client: OpenCode CLI"). Not a harness.
+#   zen [-k N] [-m MODEL] [--burndown] PROMPT...
+# Key: /run/agenix/opencode-zen-key-N (N = -k, else $ZEN_SLOT, else 1), read
+# into OPENCODE_API_KEY for the opencode process only; never printed or traced.
+# Meter: one JSON line per attempt in ~/.local/state/seats/lane-usage.jsonl
+# (read by `seats`); this script writes nothing else. opencode itself keeps its
+# sessions and logs under ~/.local/share/opencode. opencode appends a non-TTY
+# stdin to the prompt and waits for EOF, which hangs under an agent's open
+# pipe; stdin is closed unless ZEN_STDIN=1 (`cat f | ZEN_STDIN=1 zen ...`).
+set -euo pipefail
+[ -t 0 ] || [ "${ZEN_STDIN:-0}" = 1 ] || exec </dev/null
+
+slot=${ZEN_SLOT:-1} model='' burndown=0
+usage() { echo "usage: zen [-k N] [-m MODEL] [--burndown] PROMPT..." >&2; exit 2; }
+while [ $# -gt 0 ]; do
+  case $1 in
+    -k) [ $# -ge 2 ] || usage; slot=$2; shift 2 ;;
+    -m) [ $# -ge 2 ] || usage; model=$2; shift 2 ;;
+    --burndown) burndown=1; shift ;;
+    --) shift; break ;;
+    -*) usage ;;
+    *) break ;;
+  esac
+done
+[ $# -gt 0 ] || usage
+case $slot in [1-4]) ;; *) echo "zen: slot must be 1-4, got '$slot'" >&2; exit 2 ;; esac
+
+# Default order, strongest first. pulse-alpha-free is 403 RegionError (France)
+# and stays out; name it with -m if that ever changes.
+models=(deepseek-v4.1-flash-free glm-5.3-flash-free)
+[ -n "$model" ] && models=("$model")
+meter=$HOME/.local/state/seats/lane-usage.jsonl
+
+load_key() { # slot -> exports OPENCODE_API_KEY; the value never reaches a trace
+  local f=/run/agenix/opencode-zen-key-$1
+  [ -r "$f" ] || { echo "zen: cannot read $f (slot $1)" >&2; return 1; }
+  { set +o xtrace; } 2>/dev/null
+  OPENCODE_API_KEY=$(<"$f"); export OPENCODE_API_KEY
+}
+record() { # slot model status
+  mkdir -p "${meter%/*}"
+  printf '{"ts":"%s","lane":"zen","slot":%s,"model":"%s","status":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" "$3" >>"$meter"
+}
+
+if [ "$burndown" = 0 ]; then
+  load_key "$slot"
+  record "$slot" "${models[0]}" sent # exec: the outcome is opencode's exit status
+  exec opencode run -m "opencode/${models[0]}" "$@"
+fi
+
+# Burndown: slot N..4 on the first model, then the same slots on the next.
+# A reply that names FreeUsageLimitError or 429 is "drained" whatever the exit
+# status (opencode's exit code on an API error is not documented); any other
+# failure stops here with opencode's own output.
+for m in "${models[@]}"; do
+  for s in $(seq "$slot" 4); do
+    load_key "$s" || continue
+    rc=0; out=$(opencode run -m "opencode/$m" "$@" 2>&1) || rc=$?
+    if grep -q 'FreeUsageLimitError\|429' <<<"$out"; then
+      echo "zen: slot $s model $m drained" >&2; record "$s" "$m" 429; continue
+    fi
+    if [ "$rc" = 0 ]; then printf '%s\n' "$out"; record "$s" "$m" ok; exit 0; fi
+    printf '%s\n' "$out" >&2; record "$s" "$m" error; exit "$rc"
+  done
+done
+echo "zen: every slot and model drained" >&2; exit 1

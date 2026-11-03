@@ -349,3 +349,110 @@ tonight-only escape hatch the design named, `pkgs.llm-agents.opencode` with
   Mistral's Experiment-plan limits as published; Vercel's anthropic-messages
   protocol through pi-ai and whether `alibaba/qwen3.8-27b` is served there
   (0 balance today, no model measured).
+
+## Zen client: OpenCode CLI
+
+Issue: [#691](https://github.com/mecattaf/dotfiles/issues/691). Tom: "i m
+open to installing opencode just for the free compute anyway". So the
+OpenCode CLI is installed as a headless client for the Zen free lane only,
+behind the `zen` wrapper; the harnesses stay dsh, Claude Code and Codex, and
+nobody sits in `opencode`.
+
+### Why the plugin route did not pass (measured 2026-11-03, 22:30 local, NAS)
+
+After the switch to PR 686, `dsh zen` with the jiesou plugin returned
+`429 FreeUsageLimitError "Free usage limit reached. Free models work in
+OpenCode"` on key slots 1 and 2 and on the anonymous bearer, for both
+deepseek-v4.1-flash-free and glm-5.3-flash-free. In the same minutes the
+official client `opencode` 1.19.3 (`pkgs.llm-agents.opencode` at the locked
+llm-agents rev 8b5adae, prebuilt in cache.numtide.com and already in the NAS
+store) with `OPENCODE_API_KEY` from key 2 and `opencode run -m
+opencode/deepseek-v4.1-flash-free "Reply with the single word: ready"`
+answered `ready`. The keys and models are live; Zen's gate wants the real
+client. The plugin package and the `dsh zen` profile stay as they are; this
+section adds the client beside them.
+
+### What is delivered
+
+- `opencode` in the llm-agents allowlist (`home/agent-tools.nix`).
+- `~/.config/opencode/opencode.json`: default model
+  `opencode/deepseek-v4.1-flash-free`, small model
+  `opencode/glm-5.3-flash-free`, `share: disabled`, `autoupdate: false`,
+  `enabled_providers: ["opencode"]`, and a permission block that allows
+  read/glob/grep/list and denies edit, bash, task, webfetch, websearch,
+  question, external_directory and doom_loop. A plain `opencode run` needs no
+  tool, so nothing that writes or runs is allowed; the Zen lane answers and
+  reads, dsh edits. The docs do not say what an unattended `run` does with an
+  `ask` rule, so no rule is left at `ask`. Delivered as ONE file, not a
+  whole-dir link: `~/.config/opencode` is Tom's real July 2026 directory
+  (package.json, package-lock.json, .gitignore, opencode.jsonc) and keeps his
+  files. Measured on 1.19.3: `opencode.jsonc` loads after `opencode.json` and
+  wins on conflicting keys, but his `.jsonc` holds only `$schema`, so every
+  key of the delivered `opencode.json` survives the merge (`opencode debug
+  config` shows it). Delivering under `opencode.jsonc` would have collided
+  with his file at activation.
+- `zen` (`home/dot_local/bin/zen`, bash, shellcheck-clean): the only place a
+  Zen key is read. `OPENCODE_API_KEY` is exported for the exec'd `opencode`
+  only, after `set +o xtrace`, and never printed.
+- `opencode` in `lib/update-watch.json` (releases at anomalyco/opencode,
+  tag prefix `v`; upstream is on 2.2.x while the lock holds 1.19.3).
+
+### `zen` usage
+
+```
+zen [-k N] [-m MODEL] [--burndown] PROMPT...
+```
+
+- `-k N` picks `/run/agenix/opencode-zen-key-N` (1 to 4; `ZEN_SLOT` is the
+  env form, default 1). An unreadable key file or a slot outside 1 to 4 is a
+  refusal on stderr, exit 1 or 2, and nothing is sent.
+- `-m MODEL` names the Zen model id without the `opencode/` prefix. The
+  default order is deepseek-v4.1-flash-free, then glm-5.3-flash-free.
+  pulse-alpha-free answers 403 RegionError for France and is not in the
+  order.
+- Without `--burndown`, it execs `opencode run -m opencode/MODEL PROMPT...`
+  on the first model, so the exit status is opencode's.
+- With `--burndown`, it runs (not exec) slot N..4 on the first model, then
+  the same slots on the next; a reply naming `FreeUsageLimitError` or `429`
+  moves on with one stderr line `zen: slot N model M drained`; any other
+  failure stops with opencode's output (measured: opencode exits 1 and
+  prints `Error: ...` on an API error).
+- Meter: one JSON line per attempt in `~/.local/state/seats/lane-usage.jsonl`
+  (`mkdir -p`), `{"ts","lane":"zen","slot","model","status"}`, status
+  `sent` (exec path), `ok`, `429` (the stderr line still says "drained")
+  or `error`. This is the meter the seats ledger reads: a status starting
+  with `429` counts as a refusal and marks the slot spent until its reset,
+  the others count as calls; the wrapper writes nothing else. opencode itself keeps
+  sessions, snapshots and logs under `~/.local/share/opencode` (Tom's July
+  database stays there).
+- A non-TTY stdin is closed unless `ZEN_STDIN=1`: opencode appends piped
+  stdin to the prompt and waits for EOF, which hangs under an agent's open
+  pipe (measured: two 120 s timeouts before the fix).
+- Arguments after `--` go to `opencode run` unchanged, e.g.
+  `zen -k 2 -- --print-logs "..."`.
+
+### Measured before merge (2026-11-03, 21:37Z, worktree cwd, locked opencode on PATH)
+
+`zen -k 2 "Reply with the single word: ready"` answered `ready` (deepseek,
+9 s wall); `zen -k 2 -m glm-5.3-flash-free "..."` answered `ready`;
+`zen -k 2 --burndown -m pulse-alpha-free "..."` printed `Error: This model
+is not available in your country`, exit 1, meter status `error`;
+`zen -k 2 --burndown "..."` answered `ready`, meter status `ok`. The test
+meter lines were removed afterwards. A real `drained` step was not provoked.
+
+### First commands, after the switch
+
+```
+sudo nixos-rebuild switch --flake .#nas          # from /home/tom/mecattaf/dotfiles
+opencode --version                                # 1.19.3
+opencode debug config | head -5                   # model opencode/deepseek-v4.1-flash-free
+zen -k 2 "Reply with the single word: ready"
+zen -k 2 -m glm-5.3-flash-free "Reply with the single word: ready"
+zen --burndown "Reply with the single word: ready"   # slots 1..4, then glm
+tail -3 ~/.local/state/seats/lane-usage.jsonl
+```
+
+Unverified: whether a real 429 through the official client is a per-key or
+per-IP bucket (no slot has drained yet); the unreadable-key refusal was
+exercised only through the slot-range check, since all four key files are
+readable on the NAS.
