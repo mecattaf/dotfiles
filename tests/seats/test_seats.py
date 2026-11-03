@@ -1015,7 +1015,8 @@ class BurndownLedgerTest(unittest.TestCase):
     def test_every_lane_key_is_a_row_that_names_its_missing_key(self):
         seats = self.lanes()
         for family, slots in (("gemini", 3), ("zen", 4), ("groq", 3), ("mistral", 3),
-                              ("cohere", 5), ("nvidia", 1), ("cloudflare", 1), ("hf", 1)):
+                              ("cohere", 5), ("nvidia", 1), ("cloudflare", 1), ("hf", 1),
+                              ("cerebras", 1), ("vercel", 1), ("grok", 1)):
             for slot in range(1, slots + 1):
                 row = seats[f"{family}-{slot}"]
                 self.assertEqual(row["provider"], "lane")
@@ -1028,6 +1029,12 @@ class BurndownLedgerTest(unittest.TestCase):
         self.assertEqual(seats["mistral-1"]["state"], "n/a")
         self.assertEqual(seats["hf-1"]["state"], "n/a")
         self.assertEqual(seats["ds4"]["state"], "n/a")
+        self.assertEqual(seats["vercel-1"]["state"], "n/a")
+        self.assertEqual(seats["grok-1"]["state"], "n/a")
+        self.assertEqual(seats["cerebras-1"]["models"], ["qwen-3.8-27b", "gpt-oss-120b"])
+        self.assertEqual(seats["hf-1"]["ledger"]["key_file"].rsplit("/", 1)[1],
+                         "huggingface-inference-token-1", "never the Hub download token")
+        self.assertTrue(seats["cloudflare-1"]["ledger"]["key_file"].endswith("cloudflare-workers-ai-token-1"))
         self.assertEqual(seats["gemini-1"]["models"][0], "gemini-3.8-flash")
         self.assertEqual(seats["zen-1"]["models"], ["deepseek-v4.1-flash-free", "glm-5.3-flash-free"])
 
@@ -1070,6 +1077,7 @@ class BurndownLedgerTest(unittest.TestCase):
         self.assertAlmostEqual(parse("1h2m3.5s"), 3723.5)
         self.assertAlmostEqual(parse("59.2s"), 59.2)
         self.assertAlmostEqual(parse("250ms"), 0.25)
+        self.assertAlmostEqual(parse("1234.5"), 1234.5, msg="Cerebras states bare seconds")
         self.assertIsNone(parse(""))
         self.assertIsNone(parse(None))
 
@@ -1150,8 +1158,8 @@ class BurndownLedgerTest(unittest.TestCase):
         self.assertIn("600", result.stderr)
 
     def test_no_key_material_ever_reaches_the_output(self):
-        for name in ("gemini-api-key-1", "groq-api-key-1", "cloudflare-workers-ai-token",
-                     "cloudflare-account-id"):
+        for name in ("gemini-api-key-1", "groq-api-key-1", "cloudflare-workers-ai-token-1",
+                     "cloudflare-account-id", "vercel-ai-gateway-key-1", "grok-api-key-1"):
             (self.agenix / name).write_text(f"SECRET-{name}-VALUE\n")
         for args in ([], ["--json"], ["--jsonl"], ["--tsv"], ["--probe", "--json"],
                      ["--probe"]):
@@ -1168,6 +1176,7 @@ class BurndownLedgerTest(unittest.TestCase):
                    "headers": {"x-ratelimit-limit-requests": "1000",
                                "x-ratelimit-remaining-requests": "250",
                                "x-ratelimit-reset-requests": "2h30m0s"}}
+        original_probe = self.mod.probe_lane
         self.mod.probe_lane = lambda f, s, o: (reading, 0.0, "/run/agenix/groq-api-key-1")
         self.mod.AGENIX_DIR = self.agenix
         (self.agenix / "groq-api-key-1").write_text("x\n")
@@ -1190,6 +1199,19 @@ class BurndownLedgerTest(unittest.TestCase):
         reading.update({"status": 402})
         seat = self.mod.read_lane(self.mod.lane_spec("hf", 1), opts)
         self.assertEqual(seat["state"], "n/a")
+        # Vercel: the balance in the body decides; grok has no probe at all.
+        reading.update({"status": 200, "headers": {}, "fields": {"balance": 0.0, "total_used": 0.0}})
+        (self.agenix / "vercel-ai-gateway-key-1").write_text("x\n")
+        seat = self.mod.read_lane(self.mod.lane_spec("vercel", 1), opts)
+        self.assertEqual(seat["state"], "n/a")
+        self.assertIn("balance $0.00", seat["detail"])
+        reading["fields"]["balance"] = 5.0
+        self.assertEqual(self.mod.read_lane(self.mod.lane_spec("vercel", 1), opts)["state"], "open")
+        (self.agenix / "grok-api-key-1").write_text("x\n")
+        self.mod.probe_lane = original_probe   # grok has no probe spec, so none is made
+        seat = self.mod.read_lane(self.mod.lane_spec("grok", 1), opts)
+        self.assertEqual(seat["state"], "n/a")
+        self.assertIn("no probe", seat["detail"])
 
     def test_cloud_credit_rows_come_from_the_sibling_payload(self):
         expires = NOW + timedelta(hours=35)

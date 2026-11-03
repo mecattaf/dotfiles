@@ -145,10 +145,14 @@ per row after each lane run, by hand or from any script, no timer here
 seats --no-spend --jsonl --only ledger >> ~/today/ledger.jsonl
 ```
 
-Secret names the script expects beyond this PR's seven: `groq-api-key-N`,
-`mistral-api-key-N`, `cohere-api-key-N`, `nvidia-api-key-1`,
-`cloudflare-workers-ai-token` plus `cloudflare-account-id`, and
-`huggingface-token`; `SEATS_AGENIX_DIR` moves the directory for tests.
+Secret names the script reads beyond this PR's seven, as the batch-2 PR
+declares them: `groq-api-key-N`, `mistral-api-key-N`, `cohere-api-key-N`,
+`nvidia-api-key-1`, `cloudflare-workers-ai-token-1` plus
+`cloudflare-account-id`, `huggingface-inference-token-1` (never
+`huggingface-token`, the Hub download token), `cerebras-api-key-1`,
+`vercel-ai-gateway-key-1` (probe reads `GET /v1/credits` and shows the
+balance) and `grok-api-key-1` (no probe); `SEATS_AGENIX_DIR` moves the
+directory for tests.
 
 | Lane / account | Harness | Models, strongest first | Allowance | How exhaustion shows | How to read it today | Credential |
 |---|---|---|---|---|---|---|

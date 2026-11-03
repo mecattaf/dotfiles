@@ -353,7 +353,7 @@ LANE_FAMILIES = {
         "allowance": "10,000 neurons/day",
         "reset": "utc-midnight",
         "exhaustion": "HTTP 429 once the day's neurons are spent",
-        "key": "cloudflare-workers-ai-token",
+        "key": "cloudflare-workers-ai-token-{slot}",
         "account_id": "cloudflare-account-id",
         "probe": {"url": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/models/search"},
     },
@@ -363,10 +363,46 @@ LANE_FAMILIES = {
         "allowance": "needs credits (402 on Free)",
         "reset": "none",
         "exhaustion": "HTTP 402",
-        "key": "huggingface-token",
+        # NOT huggingface-token: that is the pre-existing Hub download token.
+        "key": "huggingface-inference-token-{slot}",
         "probe": {"url": "https://router.huggingface.co/v1/models"},
         "state": "n/a",
         "note": "needs credits",
+    },
+    "cerebras": {
+        "label": "Cerebras key",
+        "models": ["qwen-3.8-27b", "gpt-oss-120b"],
+        "allowance": "450 req/min, 27k/h, 648k/day; 150k tok/min",
+        "reset": "per-header",
+        "exhaustion": "HTTP 429; x-ratelimit-remaining-requests-day reaches 0",
+        "key": "cerebras-api-key-{slot}",
+        "probe": {"url": "https://api.cerebras.ai/v1/models",
+                  "limit": "x-ratelimit-limit-requests-day",
+                  "remaining": "x-ratelimit-remaining-requests-day",
+                  "reset": "x-ratelimit-reset-requests-day"},
+        "note": "x-ratelimit-*-{minute,hour,day} headers (measured 2026-11-03)",
+    },
+    "vercel": {
+        "label": "Vercel AI Gateway",
+        "models": [],
+        "allowance": "needs credits (balance 0)",
+        "reset": "none",
+        "exhaustion": "balance 0 on GET /v1/credits",
+        "key": "vercel-ai-gateway-key-{slot}",
+        "probe": {"url": "https://ai-gateway.vercel.sh/v1/credits",
+                  "fields": ["balance", "total_used"]},
+        "state": "n/a",
+        "note": "needs credits",
+    },
+    "grok": {
+        "label": "xAI Grok key",
+        "models": [],
+        "allowance": "0 USD account; key unverified",
+        "reset": "none",
+        "exhaustion": "unverified",
+        "key": "grok-api-key-{slot}",
+        "state": "n/a",
+        "note": "unverified key, 0 USD account; no probe",
     },
 }
 
@@ -433,6 +469,9 @@ DEFAULT_SEATS = [
     lane_spec("nvidia", 1),
     lane_spec("cloudflare", 1),
     lane_spec("hf", 1),
+    lane_spec("cerebras", 1),
+    lane_spec("vercel", 1),
+    lane_spec("grok", 1),
     {"id": "ds4", "provider": "none", "label": "Local GPU (ds4, strix-worker)", "owner": "kernel",
      "reason": "strix-worker is dormant until its replacement arrives; no server behind this row"},
 ]
@@ -1966,8 +2005,12 @@ DURATION = re.compile(r"(\d+(?:\.\d+)?)\s*(h|ms|m|s)")
 
 def parse_duration(text):
     """'1h2m3.5s' or '59.2s' (Groq's x-ratelimit-reset-*) -> seconds, or None."""
-    if not text:
+    if text in (None, ""):
         return None
+    try:
+        return float(text)   # a bare number is seconds
+    except (TypeError, ValueError):
+        pass
     total, seen = 0.0, False
     for amount, unit in DURATION.findall(str(text)):
         seen = True
@@ -2056,25 +2099,35 @@ def rate_headers(headers):
     return out
 
 
-def http_probe(url, headers, timeout=HTTP_TIMEOUT):
-    """(status, rate_headers, error). ONE request, no retry: a probe that
-    retried a 429 would be asking the thing it measures."""
+def http_probe(url, headers, timeout=HTTP_TIMEOUT, fields=()):
+    """(status, rate_headers, error, fields). ONE request, no retry: a probe
+    that retried a 429 would be asking the thing it measures. `fields` names
+    the numeric JSON body fields worth keeping (Vercel's credit balance);
+    the rest of the body is dropped unread."""
     if OFFLINE:
-        return None, {}, "offline: SEATS_NO_NETWORK=1"
+        return None, {}, "offline: SEATS_NO_NETWORK=1", {}
     request = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            response.read(65536)
-            return response.status, rate_headers(response.headers), None
+            body = response.read(65536)
+            kept = {}
+            if fields:
+                try:
+                    payload = json.loads(body.decode("utf-8", "replace"))
+                except ValueError:
+                    payload = {}
+                if isinstance(payload, dict):
+                    kept = {f: _number(payload.get(f)) for f in fields if f in payload}
+            return response.status, rate_headers(response.headers), None, kept
     except urllib.error.HTTPError as error:
         body = ""
         try:
             body = error.read().decode("utf-8", "replace")[:200]
         except Exception:  # noqa: BLE001
             pass
-        return error.code, rate_headers(error.headers), one_line(body, 100)
+        return error.code, rate_headers(error.headers), one_line(body, 100), {}
     except Exception as error:  # noqa: BLE001 — DNS, TLS, timeout, refused
-        return None, {}, f"unreachable: {error}"
+        return None, {}, f"unreachable: {error}", {}
 
 
 def probe_lane(fam, slot, opts):
@@ -2084,6 +2137,8 @@ def probe_lane(fam, slot, opts):
     files. A missing file is reported as such; nothing is probed without one.
     """
     name = fam["key"].format(slot=slot)
+    if not fam.get("probe"):
+        return None, None, "no probe for this lane"
     key, key_path = lane_secret(name)
     if key is None:
         return None, None, f"no key on this host: {name}"
@@ -2098,9 +2153,10 @@ def probe_lane(fam, slot, opts):
         cached, age = cache_read(cache_name, PROBE_TTL)
         if cached is not None:
             return cached, age, key_path
-    status, headers, error = http_probe(url, {"Authorization": f"Bearer {key}",
-                                              "Accept": "application/json"})
-    reading = {"status": status, "headers": headers, "error": error or "",
+    status, headers, error, fields = http_probe(
+        url, {"Authorization": f"Bearer {key}", "Accept": "application/json"},
+        fields=fam["probe"].get("fields", ()))
+    reading = {"status": status, "headers": headers, "error": error or "", "fields": fields,
                "probed_at": iso(now()), "url": url if "{account_id}" not in fam["probe"]["url"]
                else fam["probe"]["url"]}
     if status is not None:
@@ -2142,8 +2198,9 @@ def read_lane(spec, opts):
         notes.append(fam["note"])
 
     # 1. Static posture: a lane the provider has not opened is n/a whatever
-    #    the key file says.
-    if fam.get("state") == "n/a":
+    #    the key file says; only a probe (where one exists) can say more.
+    static_na = fam.get("state") == "n/a"
+    if static_na and not (getattr(opts, "probe", False) and fam.get("probe")):
         seat["state"], seat["usable"] = "n/a", False
         if not seat["ledger"]["key_present"]:
             notes.insert(0, f"no key on this host: {key_name}")
@@ -2152,14 +2209,14 @@ def read_lane(spec, opts):
 
     # 2. The key file: present or not, never read unless probing.
     if not seat["ledger"]["key_present"]:
-        seat["state"], seat["usable"] = "unauth", False
+        seat["state"], seat["usable"] = ("n/a" if static_na else "unauth"), False
         seat["detail"] = "; ".join([f"no key on this host: {key_name}"] + notes[:1])
         return seat
 
     # 3. Local meter: the last call's status inside the window. A refusal on
     #    a per-minute limiter clears within the minute, so it holds only that
     #    long; on a daily lane it holds until the computed reset.
-    seat["state"], seat["usable"] = "open", True
+    seat["state"], seat["usable"] = ("n/a", False) if static_na else ("open", True)
     last = today.get("last") or {}
     if last.get("status", "").startswith(("429", "402")):
         age = (now() - (parse_ts(last["ts"]) or now())).total_seconds()
@@ -2233,6 +2290,15 @@ def read_lane(spec, opts):
                 notes.insert(1, f"{int(remaining)} of {int(limit)} requests left")
             elif headers:
                 notes.insert(1, ", ".join(f"{k}={v}" for k, v in sorted(headers.items())[:3]))
+            fields = reading.get("fields") or {}
+            if fields.get("balance") is not None:
+                # A credit balance stated by the provider (Vercel /v1/credits).
+                balance = fields["balance"]
+                notes.insert(1, f"balance ${balance:,.2f}")
+                if balance <= 0:
+                    seat["state"], seat["usable"] = "n/a", False
+                elif seat["state"] == "n/a":
+                    seat["state"], seat["usable"] = "open", True
     elif seat["grade"] == "UNKNOWN":
         notes.append("unprobed")
     seat["detail"] = "; ".join(notes)
@@ -2278,7 +2344,7 @@ def derive_claude_credit(spec, opts, seats, specs):
                        "allowance": round(limit, 2), "remaining": round(remaining, 2),
                        "resets_at": None, "expires_at": iso(expiry), "counter": "provider",
                        "locked_reason": credit.get("locked_reason"),
-                       "basis": "usage payload iguana_necktie; expires, never resets"}
+                       "basis": "iguana_necktie; expires, never resets"}
     expired = expiry is not None and expiry <= now()
     if expired or remaining <= 0 or credit.get("locked_reason"):
         seat["state"], seat["usable"] = "spent", False
@@ -2623,7 +2689,7 @@ def render_ledger(report, color, width=100):
             families.append((key, models))
     lines.append("models, strongest first:")
     for key, models in families:
-        text = ", ".join(models) if models else "(none: needs credits)"
+        text = ", ".join(models) if models else "(none)"
         lines.append(f"  {key:<11} " + one_line(text, width - 14))
     return lines
 
