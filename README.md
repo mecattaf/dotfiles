@@ -30,40 +30,33 @@ docs/local-ai/  Gufo (:8731) and ds4 (:8732), the model catalogue and per-host w
 docs/old/       archival stub indexing retired docs in Git history
 ```
 
-## ⚠️ Qwen Token Plan — use it or lose it
+## Free model lanes in dsh (Gemini, OpenCode Zen)
 
-> **Bought 2026-08-07 · $51 (from $75) · 92 days · expires 2026-11-07.**
-> **10,000 credits every 7 days. They do NOT roll over.**
+The Qwen token plan that used to sit here is gone: the QwenCloud account was
+closed on 2026-11-01 (`REKEY.md`), so its dsh route was deleted. Since
+2026-11-03 the keyed routes are the free tiers, one agenix ciphertext per
+account (`secrets/gemini-api-key-{1,2,3}.age`, `secrets/opencode-zen-key-{1,2,3,4}.age`,
+NAS brain tier, mode 400):
 
-The budget is a *rolling weekly allowance*, not a quarterly pot: at ~13 weeks
-that is **~130,000 credits total**, and every week you underspend is burned. To
-get the $51 back you need to average **~1,400 credits a day** — spending nothing
-Monday to Friday and then hammering it on Saturday does not recover the week.
+- Gemini through llm-pi-ai's native `google` route, the default
+  (`google/gemini-3.8-flash`); `DSH_KEY_SLOT=<1|2|3>` picks the account.
+- OpenCode Zen's `-free` models through jiesou's provider plugin, in the
+  hand-run `dsh zen` profile only; `DSH_KEY_SLOT=<1..4>` picks the org, a
+  slot past every list sends Zen's anonymous `public` bearer.
+- `DSH_ROUTE=<gemini|gemini-pro|gemini-lite|gufo|zen-deepseek|zen-glm>` picks
+  the model per run; there is no fallback list, a 429 means another slot.
 
-- **Concurrency is the lever.** The plan explicitly allows **3–4 agents at once**.
-  One serial dsh session cannot spend 10,000 credits a week; three or four
-  parallel ones can. Reach for the fleet, not a bigger single prompt.
-- The advertised **3,000 credits / 5 hours** burst cap is *Temporarily removed*
-  by Alibaba as of purchase, so nothing throttles a hard day right now.
-- Models on the plan: `qwen3.8-max`, `qwen3.7-max`, `glm-5.2`,
-  `deepseek-v4-flash-0731` — all four verified live against the endpoint on
-  purchase day. dsh's `qwen-token-plan` route (`pkgs/dsh/config.nix`) narrows
-  that to `deepseek-v4.1-flash` (the default), `deepseek-v4.1-flash-1017`,
-  `qwen3.8-max`, `deepseek-v4-pro` and `qwen3.8-flash`.
-
-Wiring: key at `secrets/qwencloud-token.age` (NAS brain tier; rekey in `REKEY.md`), delivered to
-`/run/agenix/qwencloud-token`. One harness reads it: dsh (`pkgs/dsh`,
-`home/dsh.nix`) gets it as `QWEN_TOKEN_PLAN_API_KEY`, set by its wrapper for
-the dsh process only. dsh strips credential-shaped names from every child it
-spawns, and its sandbox runner masks `/run/agenix`. Its route is
-`qwen-token-plan/deepseek-v4.1-flash`; the reasoning and limits are in the
-comment in `modules/secrets.nix`. In the hand-run `dsh herdr` profile, the
-dsh-herdr plugin starts the `herdr` CLI with a stripped environment that
-does not carry it (`pkgs/dsh-plugins`). pi, the other harness that read it,
-was retired on 2026-10-25.
+Wiring: the dsh wrapper (`pkgs/dsh`, `home/dsh.nix`) reads ONE file per run
+into `GEMINI_API_KEY` / `OPENCODE_ZEN_FREE_API_KEY` for the dsh process only,
+never for a config dump. dsh strips credential-shaped names from every child
+it spawns, and its sandbox runner masks `/run/agenix`. Both tiers may use
+prompts for training and review: nothing sensitive goes through them (Gufo
+is the lane for that). The ledger, the measured facts, the plugin's
+mechanism (it impersonates the OpenCode CLI) and the first commands are in
+`docs/free-lanes.md`.
 
 Dsh follows the fleet's brain role to the NAS with its Nix-pinned plugins.
-Qwen Cloud remains the default. Two explicit local routes read
+Gemini is the default. Two explicit local routes read
 `lib/local-model.nix` for the endpoint and exact served model IDs: `gufo`
 (`http://strix-coordinator:8731`, `qwen3.8-flash-next`; the `qwen3.8-27b`
 alternate needs an operator `gufo-switch` first) and `ds4`

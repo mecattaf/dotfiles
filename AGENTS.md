@@ -161,6 +161,24 @@ Claude/Codex gain no hooks. Mnemon setup/update commands are not the install
 path. QMD was unused and is removed, with no ingestion or migration step.
 See `docs/dsh-mnemon.md`.
 
+**Free lanes in dsh (Tom, 2026-11-03).** The only harnesses are dsh, Claude
+Code and Codex; API providers go through dsh. Gemini's free tier is the
+native pi-ai `google` route and the default (`google/gemini-3.8-flash`; three
+AI Studio keys). OpenCode Zen's free models come through the known workaround
+plugin jiesou/dsh-opencode-zen-free-provider, pinned in `pkgs/dsh-plugins`
+and mounted only by the hand-run `dsh zen` profile, INSTEAD of installing the
+OpenCode CLI (Tom: "it is a known workaround. let's use it"). The plugin
+impersonates the OpenCode CLI toward opencode.ai; Zen's first-call 429 on a
+plain client is a client-fingerprint gate. Four Zen keys and three Gemini
+keys are agenix ciphertexts, one per account; `DSH_KEY_SLOT=<n>` picks one
+per run and `DSH_ROUTE=<name>` picks the model (Tom: "it should be
+straightforward to select the model that we use with each provider. no need
+for round-robin style usage but it IS a nice to have"; round-robin is
+deferred). The QwenCloud route was deleted with the account. Nothing
+sensitive goes through a free lane; Gufo keeps that work. The stock
+`headless` profile that substrate drives mounts no plugin. See
+`docs/free-lanes.md`.
+
 **The NPU path is decommissioned — permanently, 2026-08-29.** FastFlowLM (`flm`)
 is no longer installed on any host, and the XDNA2 NPU is not an inference target
 on Strix. Strix boots with `amd_iommu=off`, which is by

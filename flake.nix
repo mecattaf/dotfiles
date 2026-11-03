@@ -667,6 +667,13 @@
           inherit pkgs;
           dsh = self.nixosConfigurations.nas.pkgs.dsh;
         };
+        # The hand-run `zen` profile: jiesou's OpenCode Zen provider plugin
+        # boots against this dsh's pi-ai; DSH_ROUTE / DSH_KEY_SLOT wrapper
+        # rules (docs/free-lanes.md).
+        dsh-zen = import ./tests/dsh-zen {
+          inherit pkgs;
+          dsh = self.nixosConfigurations.nas.pkgs.dsh;
+        };
         strix-reachability =
           pkgs.runCommand "strix-reachability"
             {
@@ -1969,12 +1976,24 @@
         dsh-config =
           let
             dshPackage = self.nixosConfigurations.nas.pkgs.dsh.override { qwenKeyFile = null; };
-            expect = pkgs.writeText "dsh-config-expect.json" (
-              builtins.toJSON {
-                localProviders = dshPackage.localProviders;
-                disabled = dshPackage.disabledIds;
-                runner = "${dshPackage.runner}/bin/dsh-bwrap";
-              }
+            base = {
+              localProviders = dshPackage.localProviders;
+              cloudProviders = dshPackage.cloudProviders;
+              defaultRoute = dshPackage.defaultRoute;
+              disabled = dshPackage.disabledIds;
+              runner = "${dshPackage.runner}/bin/dsh-bwrap";
+            };
+            expect = pkgs.writeText "dsh-config-expect.json" (builtins.toJSON base);
+            # DSH_ROUTE=gemini-pro: the one-row overlay replaces the default
+            # model after the policy; the acp row keeps the policy default.
+            expectPro = pkgs.writeText "dsh-config-expect-pro.json" (
+              builtins.toJSON (
+                base
+                // {
+                  defaultRoute = dshPackage.routes.gemini-pro;
+                  acpRoute = dshPackage.defaultRoute;
+                }
+              )
             );
           in
           pkgs.runCommand "dsh-config"
@@ -2004,12 +2023,18 @@
                   cat "$TMPDIR/$name.err" >&2
                   exit 1
                 fi
-                python3 -I ${./tests/dsh-config/check_dump.py} "$TMPDIR/$name.yml" ${expect}
+                python3 -I ${./tests/dsh-config/check_dump.py} "$TMPDIR/$name.yml" "''${EXPECT:-${expect}}"
               }
               dump headless headless --dump-config
               dump headless-flag --profile headless --dump-config
               dump sdk sdk --dump-config
               dump acp acp --dump-config
+              # Per-run route and key slot (docs/free-lanes.md): the overlay
+              # lands after the policy; a slot is validated even for a dump
+              # and read only for a real run (this wrapper has no key files).
+              EXPECT=${expectPro} DSH_ROUTE=gemini-pro dump route-pro headless --dump-config
+              EXPECT=${expectPro} DSH_ROUTE=gemini-pro dump route-pro-acp acp --dump-config
+              DSH_ROUTE=gemini DSH_KEY_SLOT=3 dump route-slot headless --dump-config
 
               refused() {
                 set +e
@@ -2036,6 +2061,11 @@
               refused env DSH_HOME="$TMPDIR/dsh-home" "$dsh" headless --dump-config
               refused env DSH_HOME=/tmp/dsh-home "$dsh" headless --dump-config
               refused env DSH_PERMISSION_MODE=danger-full-access "$dsh" headless --dump-config
+              refused env DSH_KEY_SLOT=0 "$dsh" headless --dump-config
+              refused env DSH_KEY_SLOT=-1 "$dsh" headless --dump-config
+              refused env DSH_KEY_SLOT=two "$dsh" headless --dump-config
+              refused env DSH_ROUTE=nope "$dsh" headless --dump-config
+              refused env DSH_ROUTE=qwen-token-plan "$dsh" headless --dump-config
               (cd "$HOME" && refused "$dsh" headless --dump-config)
               (cd "$DSH_HOME" && refused "$dsh" headless --dump-config)
               (cd "$build" && refused "$dsh" headless --dump-config)
@@ -2067,6 +2097,8 @@
             plugins = dshNoKey.plugins;
             base = {
               localProviders = dshNoKey.localProviders;
+              cloudProviders = dshNoKey.cloudProviders;
+              defaultRoute = dshNoKey.defaultRoute;
               disabled = dshNoKey.disabledIds;
               runner = "${dshNoKey.runner}/bin/dsh-bwrap";
             };
@@ -2131,12 +2163,12 @@
               export HOME="$build/home" DSH_HOME="$build/dsh-home" TMPDIR="$build/tmp"
               export HERDR_SOCKET_PATH="$build/no-herdr.sock"
               export PYTHONDONTWRITEBYTECODE=1
-              unset QWEN_TOKEN_PLAN_API_KEY
+              unset QWEN_TOKEN_PLAN_API_KEY GEMINI_API_KEY OPENCODE_ZEN_FREE_API_KEY
               mkdir -p "$HOME" "$build/cwd" "$TMPDIR"
               mkdir -m 700 "$DSH_HOME"
               cd "$build/cwd"
               dsh=${dshNoKey}/bin/dsh
-              if grep -qF qwencloud-token "$dsh"; then
+              if grep -qF qwencloud-token "$dsh" || grep -qF /run/agenix "$dsh"; then
                 echo "dsh-plugins: the check's wrapper reads a key file" >&2
                 exit 1
               fi
@@ -2162,6 +2194,7 @@
               test "$(readlink "$p/node_modules/@mecattaf/herdr-guard")" = ${plugins.herdr-guard}
               test "$(readlink "$p/node_modules/@dsh-external/dsh-herdr-toolkit")" = ${plugins.dsh-herdr}
               test "$(readlink "$p/node_modules/jevcore-dsh")" = ${plugins.jevcore}
+              test ! -e "$p/node_modules/@jiesou"
               test ! -e "$DSH_HOME/profiles/headless/node_modules"
               # A store link no longer declared goes on the next boot; a
               # profile file dsh owns stays.

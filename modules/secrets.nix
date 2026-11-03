@@ -204,6 +204,33 @@ in
         };
       })
 
+      # dsh free-lane provider keys (docs/free-lanes.md): 3 Gemini AI Studio
+      # keys (3 Google accounts) and 4 OpenCode Zen console keys (4 orgs).
+      # Delivered read-only under /run/agenix; the dsh wrapper (pkgs/dsh,
+      # home/dsh.nix) reads ONE per run into GEMINI_API_KEY or
+      # OPENCODE_ZEN_FREE_API_KEY for the exec'd dsh only, selected by
+      # DSH_KEY_SLOT. No unit, no shell export, no seed: nothing else reads
+      # them. Free tiers: prompts may be used for training and review, so
+      # nothing sensitive goes through these lanes.
+      (lib.mkIf (config.myFleet.has "brain") {
+        age.secrets = lib.listToAttrs (
+          map
+            (
+              name:
+              lib.nameValuePair name {
+                file = ../secrets/${name}.age;
+                owner = "tom";
+                group = "users";
+                mode = "400";
+              }
+            )
+            (
+              map (n: "gemini-api-key-${toString n}") (lib.range 1 3)
+              ++ map (n: "opencode-zen-key-${toString n}") (lib.range 1 4)
+            )
+        );
+      })
+
       # codex-auth: the Codex CLI ChatGPT-subscription session (Pro plan,
       # re-logged 2026-10-04). Same shape as claude-credentials above, for the
       # same reason: Codex REWRITES auth.json on every token refresh, so agenix's

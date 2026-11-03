@@ -1,0 +1,188 @@
+# Free model lanes in dsh: Gemini and OpenCode Zen
+
+Issue: [#685](https://github.com/mecattaf/dotfiles/issues/685). Tom's rulings
+(2026-11-03): the only harnesses are dsh, Claude Code and Codex, and API
+providers go through dsh; for Zen's free models the known workaround plugin
+jiesou/dsh-opencode-zen-free-provider replaces installing the OpenCode CLI;
+model selection per provider must be straightforward, round-robin is a
+nice-to-have. The QwenCloud account closed on 2026-11-01, so dsh's
+`qwen-token-plan` route is deleted here.
+
+Everything in this file is either MEASURED (the orchestrator, firsthand, on
+the NAS on 2026-11-03) or a declaration this PR makes. Nothing below claims a
+live smoke that has not run; section 6 lists what is still unverified.
+
+## 1. Measured facts (2026-11-03)
+
+- Gemini: three AI Studio API keys (three Google accounts). All three answer
+  `GET https://generativelanguage.googleapis.com/v1beta/openai/models` with
+  HTTP 200 and 60 models; the ids include gemini-3.8-flash, gemini-3.7-flash,
+  gemini-3.6-flash, gemini-3.5-flash, gemini-3.5-flash-lite,
+  gemini-3.1-pro-preview, gemini-3.1-flash-lite, gemini-3-flash-preview,
+  gemini-2.5-pro, gemini-2.5-flash and gemini-2.5-flash-lite. That proves
+  liveness only, not remaining quota.
+- OpenCode Zen: four console orgs (key 1 GitHub-linked, keys 2–4
+  Google-linked). From a plain OpenAI-compatible client at
+  `https://opencode.ai/inference/openai/v1`: `pulse-alpha-free` answers HTTP
+  403 `RegionError` ("This model is not available in your country", France)
+  on all four keys; `deepseek-v4.1-flash-free` and `glm-5.3-flash-free`
+  answer HTTP 429 `FreeUsageLimitError` ("Free usage limit reached. Free
+  models work in OpenCode; subscribe to OpenCode Go") on all four keys at
+  the FIRST call. The official OpenCode client 1.19.3 with key 2 ran
+  `opencode run -m opencode/deepseek-v4.1-flash-free` and answered "ready".
+  So the 429 is a client-fingerprint gate, not a usage limit, and the keys
+  and models are live.
+- The fleet dsh is 0.2.1-rc.2 (`pkgs.llm-agents.dsh`) and bundles
+  `@earendil-works/pi-ai` 1.3.0. Its catalog ships a native `google`
+  provider (api google-generative-ai, env `GEMINI_API_KEY`) listing all 11
+  ids above; a hand-declared provider name can only use the openai-* or
+  anthropic protocols, so the Gemini route must keep the name `google`. dsh
+  has no multi-key support, no fallback list and no per-run model flag.
+- The plugin's tag 0.1.28 is commit 7e779c73d2127327be529908ffc5a834934e8598
+  (2026-10-22); `main` has the same tree. `fetchFromGitHub` hash
+  `sha256-kH3IYGHA1zGsEYN4dXIR7VnQD5joezKBbxt0Nb0TOmA=` (from the builder's
+  first fakeHash build). Its manifest's dsh peer ranges (`>=0.2.0-rc.2 <0.3`)
+  pass dsh's compatibility preflight, which includes prereleases; the pi-ai
+  peer range (`^0.85.1`) is not checked by dsh and every imported symbol
+  exists in 1.3.0.
+- Ciphertexts: `secrets/gemini-api-key-{1,2,3}.age` and
+  `secrets/opencode-zen-key-{1,2,3,4}.age`, age, recipients admin + NAS host
+  key (the brain-only tier). Delivered by `modules/secrets.nix` as
+  `/run/agenix/<name>`, owner tom, mode 400. No key value appears in any
+  file, log or test of this repository.
+
+## 2. What the Zen plugin does, plainly
+
+`@jiesou/dsh-opencode-zen-free-provider` (MIT, 0.1.28, built `lib/`
+committed upstream and packaged unmodified in `pkgs/dsh-plugins/opencode-zen-free`)
+makes dsh look like the OpenCode CLI toward `https://opencode.ai/inference/v1`:
+
+- it forces `User-Agent: opencode/<version>`, the version read from unpkg's
+  `opencode-ai@latest` at mount (fallback 1.19.0; Zen refuses anything below
+  1.18.0 with HTTP 426), and sends `x-opencode-client: cli`,
+  `x-opencode-project: global` and four `ses_` session-id headers minted in
+  opencode's own id format;
+- it omits `HTTP-Referer` and `x-opencode-request`, pads placeholder
+  `bash`/`read` tools into the request, replays empty `reasoning_content`
+  on assistant messages, and rewrites 401/403 refusals so dsh does not
+  classify them as AUTH errors;
+- it exposes every catalog id ending in `-free` that models.dev does not
+  mark deprecated, as provider `opencode-zen-free-provider` (display
+  "OpenCode Zen Free"), api `openai-completions` (`openai-responses` for
+  muse-spark ids);
+- it resolves its key ONLY through dsh's `credentials` service
+  (`credentialRef('OPENCODE_ZEN_FREE_API_KEY')`) and otherwise sends the
+  anonymous bearer `public`; it never reads `process.env`, and it does not
+  read `OPENCODE_API_KEY`.
+
+Zen's free gating changes with each opencode release and the plugin tracks
+it by code, not by contract. Every prompt sent this way leaves the machine to
+opencode.ai; Zen's data terms were not read. The Chinese README warns that
+free models are rate-limited per IP, so the four orgs probably share one
+bucket from the NAS (inferred, not measured).
+
+## 3. What this PR declares
+
+| Piece | Where | What |
+|---|---|---|
+| Plugin package | `pkgs/dsh-plugins/opencode-zen-free/default.nix` | fetchFromGitHub at tag 0.1.28, no build, installCheck: `node --check`, every import is a declared peer or `node:`, only opencode.ai, unpkg.com and models.dev are named, the credentials ref and `public` fallback are where the profile expects them |
+| `zen` profile | `pkgs/dsh/config.nix`, `pkgs/dsh/default.nix` | stderr-log + the plugin; `credentials` re-enabled (the headless bundle disables it, and the plugin reads its key only through it); default route `opencode-zen-free-provider/deepseek-v4.1-flash-free`; plugin row retry `normal`, 3 retries (the design's `always` mode has no retry bound in this dsh and would retry a 429 forever) |
+| Gemini route | `pkgs/dsh/config.nix` | native `google` provider, `apiKeyEnv = GEMINI_API_KEY`, the 11 catalog ids, default `google/gemini-3.8-flash`; `qwen-token-plan` deleted (function, provider, default route, acp row) |
+| Route overlays | `pkgs/dsh/config.nix` `routes`, wrapper `DSH_ROUTE` | `gemini`, `gemini-pro`, `gemini-lite`, `gufo`, `zen-deepseek`, `zen-glm`: one-row `agent-default-model` overlays after the profile's layers; headless, sdk, acp and zen only; any other name is refused (exit 2) |
+| Key slots | `pkgs/dsh/default.nix` `keyFiles`, `home/dsh.nix` | `DSH_KEY_SLOT=<n>` (default 1) reads the n-th agenix file of each list into `GEMINI_API_KEY` (3) and `OPENCODE_ZEN_FREE_API_KEY` (4) for the exec'd dsh only; never on a config dump, never traced, never printed; the wrapper first unsets those two and `OPENCODE_API_KEY`; a slot past a list says so once on stderr and exports nothing (`DSH_KEY_SLOT=4` is Zen-only, `5` is anonymous Zen); `0`, blank or non-numeric is refused |
+| Secrets | `secrets.nix`, `modules/secrets.nix`, `REKEY.md` | seven brain-only ciphertexts, owner tom, mode 400, like openrouter-token |
+| Checks | `tests/dsh-zen` (new), `tests/dsh-config`, `tests/dsh-plugins`, `lib/update-watch.json` | dsh-zen boots the zen profile from a seeded catalog cache (proves the pi-ai 1.3.0 import, `createProvider` and `registerAdapter`), dumps zen/headless/route overlays, refusals, the slot reader with sandbox-only dummy files; dsh-config checks the google provider and the gemini-pro overlay; dsh-zen is built on every llm-agents bump |
+
+Model selection is explicit per run: `agent-default-model` is the profile
+default, `DSH_ROUTE` overlays it, a caller's own `--patch` still comes last.
+There is no ordered fallback in dsh, so a 429 means re-running with another
+`DSH_KEY_SLOT` or route. Round-robin (`DSH_KEY_SLOT=auto`) is deferred: four
+Zen keys behind one IP are probably one bucket, and nothing measured yet shows
+different limits between slots.
+
+The stock `headless` profile that substrate drives mounts no plugin and keeps
+`credentials` disabled; it gets the Gemini default route and the key slot.
+Nothing here touches `~/.dsh`: the profile manifest and store links under
+`~/.dsh/profiles/zen` are written by the wrapper on the first `dsh zen`.
+
+## 4. The burndown ledger (reading of 2026-11-03, about 21:00Z)
+
+One row per lane and account, strongest model first. The Claude cloud
+credits expire 2026-11-05 07:59Z. The `seats` rows for the free lanes
+(gemini-1..3, zen-1..4, the two credit rows) are NOT in this PR; until they
+land, the reading is the lane's own first call.
+
+| Lane / account | Harness | Models, strongest first | Allowance | How exhaustion shows | How to read it today | Credential |
+|---|---|---|---|---|---|---|
+| Zen org 1 (GitHub-linked) | `dsh zen` | deepseek-v4.1-flash-free, glm-5.3-flash-free (mimo-v2.6-flash-free if the catalog lists it); pulse-alpha-free is 403 RegionError for France | free; per-IP rate limit (Chinese README); daily allowance unpublished | HTTP 429 `FreeUsageLimitError`; only a 429 seen THROUGH the plugin's fingerprint counts, a plain client gets it on the first call | the first `dsh zen` call | `opencode-zen-key-1` (slot 1) |
+| Zen orgs 2–4 (Google-linked) | same | same | same; probably one pool with org 1 from the NAS IP (inferred) | same | same; key 2 is the one the official client proved | `opencode-zen-key-{2,3,4}` (slots 2–4) |
+| Gemini key 1 | `dsh headless` (default route) | gemini-3.8-flash, 3.6-flash, 3.5-flash-lite, 3.1-flash-lite, 3-flash-preview, 2.5-pro/2.5-flash (deprecated 2026-12-01), 2.5-flash-lite; 3.1-pro-preview is paid-only; 3.7-flash and 3.5-flash free status unknown | free tier per PROJECT; RPM/TPM/RPD unpublished on the docs page, visible at aistudio.google.com/rate-limit while logged in; RPD resets midnight Pacific | HTTP 429 with a quota message (text not yet captured) | the models GET (200 = live only) plus our own call count | `gemini-api-key-1` (slot 1) |
+| Gemini keys 2, 3 | same | same | same, if the keys sit in different projects (unverified) | same | same | `gemini-api-key-{2,3}` (slots 2, 3) |
+| cc cloud credit | `claude --cloud` as cc | Opus / Fable | $250.00 left, expires 2026-11-05 07:59Z | credit reaches 0, then the weekly window continues silently; burn 30–87 USD/h measured on cc2 | `/run/user/1000/seats/claude-cc.json`, `data.iguana_necktie.remaining_dollars` | `~/.claude` OAuth |
+| cc2 cloud credit | `claude --cloud` as cc2 | same | $89.27 left, same expiry | same | same field in `claude-cc2.json` | `~/.claude-work` OAuth |
+| cc weekly window | Claude Code, cc | Fable, capped at 50% | 15.0% used; resets Wed 10:00Z | 429 or 100% on the usage endpoint | `seats --only cc` | same |
+| cc2 weekly window | Claude Code, cc2 | same | 4.0% used; resets Thu 05:59Z | same | `seats --only cc2` | same |
+| Codex | `codex exec` | gpt-6.1-sol, gpt terra | weekly window 100% spent, resets Wed 07:50Z; 3 rate-limit reset credits (next expires 11-06, a person spends one) | window exhausted in the rollout | `seats --only codex` | `~/.codex` |
+| Gufo (local) | `DSH_ROUTE=gufo` | qwen3.8-flash-next, qwen3.8-27b | local, no quota | wrong-id 404, cold-load latency | `seats` row `gpu-strix` | none (LAN) |
+| ds4 (local) | route `ds4` | DeepSeek V4.1 Flash 1017 | local | down: strix-worker dormant | no row | none |
+| OpenRouter | parked, no dsh route | — | $27.16 of $40.00 left; free lane parked 0/1000 | — | `seats` rows `openrouter`, `openrouter-free` | agenix openrouter-token |
+| DeepSeek Flash1017 token plan | — | — | exhausted 04:22Z, resets 7 Nov 16:00Z (reported, not re-measured) | — | — | — |
+
+Data posture on both free lanes: the AI Studio terms say submitted content
+may be used to improve products and read by human reviewers, and ask for no
+sensitive, confidential or personal information; Zen's terms were not read.
+So no `references/personal`, estate, CRM, health, credential or proprietary
+material and no private repo contents that matter go through them. Gufo
+stays the lane for anything sensitive.
+
+## 5. First commands, after the merge
+
+All from `/home/tom/mecattaf/dotfiles` on the NAS (builds go to
+strix-coordinator through the SSH builder; check `ssh strix-coordinator 'df -h /'`
+first and stop under 25 GB free). Runtime-sensitive runs go through
+`~/.local/bin/runtime-test -- ...`.
+
+```
+# 1. Deploy the NAS (fast-forward the checkout first, AGENTS.md "Raw dotfiles")
+sudo nixos-rebuild switch --flake .#nas
+ls -l /run/agenix/gemini-api-key-1 /run/agenix/opencode-zen-key-1   # mode 400, tom
+
+# 2. Gemini lane smoke, from a project cwd that is neither $HOME nor DSH_HOME
+DSH_KEY_SLOT=1 DSH_ROUTE=gemini dsh headless "reply with the single word ready"
+DSH_KEY_SLOT=2 DSH_ROUTE=gemini dsh headless "reply with the single word ready"
+DSH_KEY_SLOT=3 DSH_ROUTE=gemini dsh headless "reply with the single word ready"
+DSH_KEY_SLOT=1 DSH_ROUTE=gemini-pro dsh headless "reply with the single word ready"   # expected to refuse: pro is paid-only
+
+# 3. Zen lane smoke: key 2 is the one the official client proved
+DSH_KEY_SLOT=2 dsh zen "reply with the single word ready"
+DSH_KEY_SLOT=2 DSH_ROUTE=zen-glm dsh zen "reply with the single word ready"
+DSH_KEY_SLOT=5 dsh zen "reply with the single word ready"    # past every list: anonymous `public`; record works / 429
+
+# 4. Ledger (until the seats rows exist, note the 429 texts by hand)
+seats --watch 60
+```
+
+If a Zen smoke returns 429 `FreeUsageLimitError` through the plugin, compare
+its request headers against the opencode 1.19.3 client in the NAS store
+(`/nix/store/fmrzvnxdpjijh4vgs53g8lslz1m6ndq5-opencode-1.19.3`) before
+blaming the IP bucket. If the plugin ever fails to mount after a dsh bump,
+`checks.dsh-zen` (built on every llm-agents bump) is where it shows; the
+tonight-only escape hatch the design named, `pkgs.llm-agents.opencode` with
+`OPENCODE_API_KEY`, breaks the three-harness ruling and is not installed.
+
+## 6. Unverified
+
+- Zen's daily allowance, reset time and whether the limiter is per IP, per
+  org or per session; whether orgs 1–4 share one bucket from the NAS.
+- Whether the anonymous `public` bearer works through the plugin, and
+  whether the plugin's fingerprint passes Zen's gate from the NAS at all:
+  only the live smoke shows it.
+- Runtime behaviour of the plugin on pi-ai 1.3.0 beyond mount:
+  `checks.dsh-zen` boots it (import, model build, `createProvider`,
+  `registerAdapter`); streaming a turn is the live smoke.
+- How dsh classifies Zen's 429 under the plugin row's retry policy (bounded
+  to 3 here either way).
+- Which `-free` ids the live catalog lists beyond the two measured ones.
+- Gemini free-tier RPM/TPM/RPD per model; free status of 3.7-flash and
+  3.5-flash; whether the three keys sit in three projects.
+- Zen's data terms.

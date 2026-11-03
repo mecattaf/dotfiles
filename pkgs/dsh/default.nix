@@ -22,10 +22,20 @@
       "stderr-log"
       "mnemon"
     ];
+    zen = [
+      "stderr-log"
+      "opencode-zen-free"
+    ];
   },
   # Retired subscription: no fleet key is delivered. An explicit external
   # override may still supply a credential for another installation.
   qwenKeyFile ? null,
+  # env var name -> ordered agenix files, one per account (home/dsh.nix:
+  # GEMINI_API_KEY x3, OPENCODE_ZEN_FREE_API_KEY x4). DSH_KEY_SLOT=<n>
+  # (default 1) picks the n-th file of EVERY list for the exec'd dsh only; ""
+  # or an unreadable file means no key. Empty here, so a check's wrapper reads
+  # nothing.
+  keyFiles ? { },
   # The stock profiles the wrapper will boot. Everything else, but the
   # Nix-declared profiles below, is refused, so a custom profile cannot carry
   # the web or sdk-minimal bundles past the name check.
@@ -61,16 +71,25 @@
 #      after the profile word, where `--patch` must go, so they are the last
 #      config layer whatever DSH_HOME is. Overlays the caller passes come after
 #      them (the gate's smoke overlay relies on that);
-#   5. for a Nix-declared profile (`herdr`, below): adds its own overlay and
-#      environment, and rewrites $DSH_HOME/profiles/<name>/package.json (0600)
-#      and its node_modules links to the store plugins, every boot, before
-#      dsh reads them. dsh's cordis.yml and cordis.patch.yml there are never
-#      touched, and a store link no longer declared is removed;
-#   6. reads the Qwen key from its agenix file into QWEN_TOKEN_PLAN_API_KEY
-#      for the exec'd dsh only: never on argv, never echoed, never written
-#      under DSH_HOME. dsh drops every *KEY*/*TOKEN* name and every DSH_* name
-#      from the children it spawns, so the model's bash does not inherit it.
-#      A missing file means no key, and the route fails MISSING_CREDENTIAL.
+#   5. for a Nix-declared profile (`herdr`, `mnemon`, `zen`, below): adds its
+#      own overlay and environment, and rewrites
+#      $DSH_HOME/profiles/<name>/package.json (0600) and its node_modules
+#      links to the store plugins, every boot, before dsh reads them. dsh's
+#      cordis.yml and cordis.patch.yml there are never touched, and a store
+#      link no longer declared is removed;
+#   6. DSH_ROUTE=<name> (headless, sdk, acp, zen only) adds the one-row
+#      `agent-default-model` overlay of ./config.nix's `routes` after the
+#      profile's layers; any other name is refused;
+#   7. unsets GEMINI_API_KEY, OPENCODE_ZEN_FREE_API_KEY and OPENCODE_API_KEY
+#      so nothing ambient reaches any profile, then, for a real run (never a
+#      config dump), reads the DSH_KEY_SLOT-th agenix file of each `keyFiles`
+#      list into its variable for the exec'd dsh only: never on argv, never
+#      echoed, never traced, never written under DSH_HOME. dsh drops every
+#      *KEY*/*TOKEN* name and every DSH_* name from the children it spawns,
+#      so the model's bash does not inherit it. A slot past a list's length
+#      leaves that variable unset with one stderr line: the Gemini route then
+#      fails MISSING_CREDENTIAL and the Zen plugin sends the anonymous
+#      `public` bearer. The old Qwen key file (qwenKeyFile) keeps its reader.
 # It never sets DSH_HOME: ~/.dsh by default, an explicit one is respected.
 let
   unwrapped = llm-agents.dsh;
@@ -98,17 +117,20 @@ let
   # Profiles declared here rather than shipped by dsh. `herdr` is the stock
   # headless tuple plus the three plugins of pkgs/dsh-plugins and their
   # stderr log sink, for Tom to run by hand inside a Herdr pane
-  # (`dsh herdr "<task>"`). Substrate drives the stock `headless` profile,
-  # which never mounts them. The guard comes before dsh-herdr, which cannot
-  # load without it either way. The owned plugins carry a private npm scope:
-  # dsh resolves a bundle name from its own installation before the profile,
-  # so a generic name could one day be shadowed by a dependency of a bump.
+  # (`dsh herdr "<task>"`). `zen` is the same tuple plus jiesou's OpenCode
+  # Zen free-model provider and the log sink (`dsh zen "<task>"`). Substrate
+  # drives the stock `headless` profile, which never mounts any of them. The
+  # guard comes before dsh-herdr, which cannot load without it either way.
+  # The owned plugins carry a private npm scope: dsh resolves a bundle name
+  # from its own installation before the profile, so a generic name could one
+  # day be shadowed by a dependency of a bump.
   pluginNames = {
     stderr-log = "@mecattaf/stderr-log";
     herdr-guard = "@mecattaf/herdr-guard";
     dsh-herdr = "@dsh-external/dsh-herdr-toolkit";
     jevcore = "jevcore-dsh";
     mnemon = "dsh-mnemon";
+    opencode-zen-free = "@jiesou/dsh-opencode-zen-free-provider";
   };
   selectedPackages =
     name:
@@ -146,6 +168,10 @@ let
           # independent of inherited cloud/embedding configuration.
           env.MNEMON_EMBED_ENDPOINT = "http://127.0.0.1:11434";
         };
+        zen = {
+          patch = config.zen;
+          env = { };
+        };
       };
   manifest =
     name: p:
@@ -180,6 +206,20 @@ let
 
   allowed = profiles ++ lib.attrNames nixProfiles;
   profileCase = lib.concatStringsSep " | " allowed;
+  # One `case` arm per route overlay, indented for the wrapper text.
+  routeCase = lib.concatStringsSep "\n        " (
+    lib.mapAttrsToList (name: patch: "${name}) overlays+=(--patch ${patch}) ;;") config.routeOverlays
+  );
+  # One slot read per key list, indented for the wrapper text. The paths are
+  # on the wrapper's command lines, never a value.
+  pickKeys = lib.concatStringsSep "\n      " (
+    lib.concatLists (
+      lib.mapAttrsToList (var: files: [
+        "pick_key ${var} \"$slot\" ${lib.escapeShellArgs files}"
+        "if [ -n \"$picked\" ]; then export ${var}=\"$picked\"; fi"
+      ]) keyFiles
+    )
+  );
 in
 assert lib.assertMsg (lib.all
   (
@@ -187,10 +227,19 @@ assert lib.assertMsg (lib.all
     builtins.elem name [
       "herdr"
       "mnemon"
+      "zen"
     ]
   )
   (builtins.attrNames profilePlugins)
-) "DSH plugins can be selected only for the declared herdr and mnemon profiles";
+) "DSH plugins can be selected only for the declared herdr, mnemon and zen profiles";
+assert lib.assertMsg
+  (
+    !(builtins.any (name: builtins.elem "opencode-zen-free" (profilePlugins.${name} or [ ])) [
+      "herdr"
+      "mnemon"
+    ])
+  )
+  "The OpenCode Zen provider belongs in its dedicated zen profile, where credentials are re-enabled for it";
 assert lib.assertMsg (
   !(builtins.elem "mnemon" (profilePlugins.herdr or [ ]))
 ) "Mnemon belongs in its dedicated profile, where the fleet memory policy is applied";
@@ -209,6 +258,7 @@ writeShellApplication {
       runner
       sessions
       qwenKeyFile
+      keyFiles
       nixProfiles
       profilePlugins
       ;
@@ -221,14 +271,21 @@ writeShellApplication {
       herdr
       herdrRows
       localProviders
+      cloudProviders
+      defaultRoute
+      routes
+      routeOverlays
       mnemonRows
+      zen
+      zenRows
+      zenProvider
       smoke
       policyIds
       disabledIds
       ;
   };
   meta = {
-    description = "DeepSeek Harness behind the fleet policy (Qwen Cloud, Gufo and ds4 routes, hardened sandbox)";
+    description = "DeepSeek Harness behind the fleet policy (Gemini, OpenCode Zen, Gufo and ds4 routes, hardened sandbox)";
     mainProgram = "dsh";
     inherit (unwrapped.meta) license platforms;
   };
@@ -242,6 +299,9 @@ writeShellApplication {
     export GUFO_API_KEY=local-no-auth
     export DS4_API_KEY=local-no-auth
     export DSH_TELEMETRY_DISABLED=1
+    # Never inherit the provider keys from the caller's environment: a slot
+    # file below is the only source.
+    unset GEMINI_API_KEY OPENCODE_ZEN_FREE_API_KEY OPENCODE_API_KEY
 
     refuse() {
       echo "dsh: $*; refused by the fleet wrapper" >&2
@@ -402,8 +462,26 @@ writeShellApplication {
       acp) overlays+=(--patch ${config.acp}) ;;
       ${nixProfileCase}
     esac
+    # Per-run route: DSH_ROUTE=<name> adds a Nix-built one-row overlay AFTER
+    # the profile's layers (a caller's --patch still comes after it).
+    route="''${DSH_ROUTE-}"
+    if [ -n "$route" ]; then
+      case "$profile" in
+        headless | sdk | acp | zen) ;;
+        *) refuse "DSH_ROUTE applies only to the headless, sdk, acp and zen profiles" ;;
+      esac
+      case "$route" in
+        ${routeCase}
+        *) refuse "DSH_ROUTE '$route' is not one of: ${lib.concatStringsSep ", " (lib.attrNames config.routeOverlays)}" ;;
+      esac
+    fi
     # --dump-default-config prints the bundle layers only and takes no --patch.
     if [ "$dump_default" = 1 ]; then overlays=(); fi
+    # The key slot is validated for every run, read only for a real one.
+    slot="''${DSH_KEY_SLOT-1}"
+    case "$slot" in
+      "" | *[!0-9]* | 0) refuse "DSH_KEY_SLOT must be a positive integer (got '$slot')" ;;
+    esac
   ''
   # Without a key file nothing reads `dumping`; shellcheck would fail the build.
   + lib.optionalString (qwenKeyFile == null) ''
@@ -419,6 +497,30 @@ writeShellApplication {
       QWEN_TOKEN_PLAN_API_KEY="$(< ${lib.escapeShellArg qwenKeyFile})"
       export QWEN_TOKEN_PLAN_API_KEY
     fi
+  ''
+  + lib.optionalString (keyFiles != { }) ''
+
+    # Not for config dumps, which make no request. Never traced.
+    { set +o xtrace; } 2>/dev/null
+    # pick_key VAR SLOT FILE...: sets `picked` to the SLOT-th file's contents,
+    # or leaves it empty (then VAR stays unset: Gemini fails MISSING_CREDENTIAL,
+    # Zen goes anonymous). Prints no value.
+    pick_key() {
+      local var="$1" n="$2" file
+      shift 2
+      picked=""
+      if [ "$n" -gt "$#" ]; then
+        echo "dsh: DSH_KEY_SLOT=$n but $var has only $# key file(s); no key exported" >&2
+        return 0
+      fi
+      file="''${!n}"
+      if [ -n "$file" ] && [ -r "$file" ]; then picked="$(< "$file")"; fi
+    }
+    picked=""
+    if [ "$dumping" = 0 ]; then
+      ${pickKeys}
+    fi
+    unset picked
   ''
   + ''
 

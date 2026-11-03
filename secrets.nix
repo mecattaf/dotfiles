@@ -69,6 +69,15 @@ in
   # Only the Library/agent host accesses Hugging Face; compute borrows bytes.
   "secrets/huggingface-token.age".publicKeys = editors ++ brainOnly;
   "secrets/openrouter-token.age".publicKeys = editors ++ brainOnly;
+  # Provider API keys for dsh's free lanes, one per account (docs/free-lanes.md);
+  # the wrapper reads one per run (DSH_KEY_SLOT). NAS brain tier only.
+  "secrets/gemini-api-key-1.age".publicKeys = editors ++ brainOnly;
+  "secrets/gemini-api-key-2.age".publicKeys = editors ++ brainOnly;
+  "secrets/gemini-api-key-3.age".publicKeys = editors ++ brainOnly;
+  "secrets/opencode-zen-key-1.age".publicKeys = editors ++ brainOnly;
+  "secrets/opencode-zen-key-2.age".publicKeys = editors ++ brainOnly;
+  "secrets/opencode-zen-key-3.age".publicKeys = editors ++ brainOnly;
+  "secrets/opencode-zen-key-4.age".publicKeys = editors ++ brainOnly;
   # Seed once, never overwrite the live Codex OAuth session on activation.
   "secrets/codex-auth.age".publicKeys = editors ++ brainOnly;
 }
