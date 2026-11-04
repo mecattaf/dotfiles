@@ -3,7 +3,7 @@
     "kind": "model",
     "maker": "mradermacher",
     "quantization": "Q8_0",
-    "notes": "Qwen3.8-27B ARA from trohrbaugh custom Heretic 1.2, Q8 comparison candidate. Standard tensor types appear compatible with Gufo; exact loading and coding quality remain unqualified. Library acquisition only, no automatic borrow or serving.",
+    "notes": "Qwen3.8-27B ARA from trohrbaugh custom Heretic 1.2, Q8 comparison candidate. Qualified on Strix Halo with Gufo 0.22.0 (7b1bf04): 102400-token context, thinking, text generation and structured tool calls, 2026-11-04. Served on demand as qwen3.8-27b-ara; coding benchmark quality remains unmeasured. No qualified matching vision or speculative sidecars.",
     "source": {
       "hfUrl": "https://huggingface.co/mradermacher/Qwen3.8-27B-heretic-ara-GGUF",
       "revision": "f69c978f262c983cb312395d18bbce340260e89f",

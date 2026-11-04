@@ -18,6 +18,23 @@ existing reference voice, ASR and Qwen-Image. The Q8 route is
 This adds a Gufo TTS API choice; the existing production speech queue still
 uses its separately qualified qwentts.cpp voice.
 
+The Heretic ARA Q8 deployment is `qwen3.8-27b-ara`, referencing
+`qwen38-27b-heretic-ara-q8-gguf`. It has one session, 102400 tokens of
+context, thinking enabled, a 16384-token default output limit and a 1 GiB
+prefix-cache budget. It uses the same demand loading and 600-second idle
+unload as the other text models. It has no vision projector or speculative
+draft: the modified checkpoint has no qualified matching sidecars. An API
+request selects it without changing the Flash-Next utility default:
+
+```sh
+curl --fail-with-body http://strix-coordinator:8731/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen3.8-27b-ara","messages":[{"role":"user","content":"Write a Python function that adds two numbers."}],"max_tokens":1024}'
+```
+
+Use a client with a cold-load timeout of at least 1200 seconds. Routine
+health checks still use `/health`, `/running` and `/v1/models`.
+
 `gufo-switch flash|qwen38-27b|qwen38-27b-q8` explicitly warms a model through
 llama-swap. Ordinary API requests select their model without this command.
 `gufo-switch off` stops the endpoint and its children. Direct Gufo units
@@ -88,11 +105,15 @@ The Library also carries approved coding comparison weights in
 | `gpt-oss-120b-mxfp4-gguf` | MXFP4 | 63,387,346,208 |
 | `glm53-flash-iq2-xxs-gguf` | UD-IQ2_XXS, four shards | 101,844,951,904 |
 
-These entries add no Gufo route or compute wanted-set requirement. The 27B
-ARA artifact uses standard encodings but still needs a load check. GPT-OSS
-and GLM need a separately integrated compatible backend. Download size does
-not qualify runtime memory or coding quality. The Flash-Next `hcq8-ssmf32`
-candidate remains deferred.
+The 27B ARA artifact is deployed through the Gufo route described above. On
+2026-11-04, installed Gufo 0.22.0 (`7b1bf04`) loaded it on Strix Halo in
+33.4 seconds with a 102400-token context and one session, reporting
+44852 MiB GPU use. It returned the requested Python function with separate
+reasoning text and a valid structured tool call. Those short requests
+decoded at 6.6–6.7 tokens/second without a speculative draft; this is a
+compatibility check, not a coding benchmark. GPT-OSS and GLM add no Gufo
+route and need a separately integrated compatible backend. The Flash-Next
+`hcq8-ssmf32` candidate remains deferred.
 
 For an explicit acquisition from a reviewed worktree, the installed NAS
 `library-fetch` executable accepts `LIBRARY_FETCH_MANIFEST` pointing to a
