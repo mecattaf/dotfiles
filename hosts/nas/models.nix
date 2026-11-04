@@ -103,7 +103,8 @@ let
       pkgs.coreutils
     ];
     text = ''
-      weights=${lib.escapeShellArg "${modelsRoot}/weights"}
+      # Explicit staging on compute is allowed without changing the NAS default.
+      weights="''${LIBRARY_FETCH_WEIGHTS:-${modelsRoot}/weights}"
       # Optional scoped manifest for an explicit acquisition from a worktree.
       # The nightly job retains the complete catalog as its default.
       manifest="''${LIBRARY_FETCH_MANIFEST:-${libraryManifest}}"
@@ -157,9 +158,11 @@ let
         case "$url" in
           https://huggingface.co/*) request_auth=("''${auth[@]}") ;;
         esac
-        if ! curl -fL --retry 3 --retry-delay 10 "''${request_auth[@]}" -o "$dest.part" "$url"; then
+        # Keep partial bytes across CDN disconnects and explicit retries. HTTP/1.1
+        # avoids the HTTP/2 stream resets seen during large GGUF acquisitions.
+        if ! curl --http1.1 -fL --retry 3 --retry-all-errors --retry-delay 10 \
+          --continue-at - "''${request_auth[@]}" -o "$dest.part" "$url"; then
           echo "library-fetch: DOWNLOAD FAILED: $url" >&2
-          rm -f "$dest.part"
           fail=1
           continue
         fi

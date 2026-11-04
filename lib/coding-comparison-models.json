@@ -1,0 +1,105 @@
+{
+  "qwen38-27b-heretic-ara-q8-gguf": {
+    "kind": "model",
+    "maker": "mradermacher",
+    "quantization": "Q8_0",
+    "notes": "Qwen3.8-27B ARA from trohrbaugh custom Heretic 1.2, Q8 comparison candidate. Qualified on Strix Halo with Gufo 0.22.0 (7b1bf04): 102400-token context, thinking, text generation and structured tool calls, 2026-11-04. Served on demand as qwen3.8-27b-ara; coding benchmark quality remains unmeasured. No qualified matching vision or speculative sidecars.",
+    "source": {
+      "hfUrl": "https://huggingface.co/mradermacher/Qwen3.8-27B-heretic-ara-GGUF",
+      "revision": "f69c978f262c983cb312395d18bbce340260e89f",
+      "layout": "flat",
+      "primary": "Qwen3.8-27B-heretic-ara.Q8_0.gguf",
+      "files": [
+        {
+          "path": "Qwen3.8-27B-heretic-ara.Q8_0.gguf",
+          "bytes": 29047084928,
+          "oid": "73069bece82a7c30f94bc208ab20e81ad43e35a2c980b9cdfc0d1d4f3f9dd00b",
+          "hash": "sha256-cwab7OgqfDD5S8IIqyDoGtQ+NaLJgLnN/A0dTz+d0As="
+        }
+      ]
+    }
+  },
+  "glm53-flash-iq2-xxs-gguf": {
+    "kind": "model",
+    "maker": "unsloth",
+    "quantization": "UD-IQ2_XXS",
+    "notes": "GLM-5.3-Flash IQ2 four-shard single-host comparison candidate. Needs a recent compatible llama.cpp backend; 128GB runtime fit and quantized coding quality remain unqualified. Library acquisition only, no automatic borrow or serving.",
+    "source": {
+      "hfUrl": "https://huggingface.co/unsloth/GLM-5.3-Flash-GGUF",
+      "revision": "a38483c8cd5df544f53d70fb281afe97369d5ab6",
+      "layout": "flat",
+      "primary": "UD-IQ2_XXS/GLM-5.3-Flash-UD-IQ2_XXS-00001-of-00004.gguf",
+      "files": [
+        {
+          "path": "UD-IQ2_XXS/GLM-5.3-Flash-UD-IQ2_XXS-00001-of-00004.gguf",
+          "bytes": 9429984,
+          "oid": "337870cefce5fb34b2aa3ade54a0fbf61676697f7f9a906670c20edde74561f4",
+          "hash": "sha256-M3hwzvzl+zSyqjreVKD79hZ2aX9/mpBmcMIO3edFYfQ="
+        },
+        {
+          "path": "UD-IQ2_XXS/GLM-5.3-Flash-UD-IQ2_XXS-00002-of-00004.gguf",
+          "bytes": 49896298080,
+          "oid": "d51a3d9ca05022d53e71753df75ee64ed5fd4e47655650ae023e9717b3ec158d",
+          "hash": "sha256-1Ro9nKBQItU+cXU9917mTtX9TkdlVlCuAj6XF7PsFY0="
+        },
+        {
+          "path": "UD-IQ2_XXS/GLM-5.3-Flash-UD-IQ2_XXS-00003-of-00004.gguf",
+          "bytes": 49248507840,
+          "oid": "89180f13784dc1128586b98adf1ca876279881a20bc4f01747703ce352563372",
+          "hash": "sha256-iRgPE3hNwRKFhrmK3xyodieYgaILxPAXR3A841JWM3I="
+        },
+        {
+          "path": "UD-IQ2_XXS/GLM-5.3-Flash-UD-IQ2_XXS-00004-of-00004.gguf",
+          "bytes": 2690716000,
+          "oid": "9e0ef47daa1fdffce3cf2ac1594ce4634d176ad018be6e692729757f38d5fbf6",
+          "hash": "sha256-ng70faof3/zjzyrBWUzkY00XatAYvm5pJyl1fzjV+/Y="
+        }
+      ]
+    }
+  },
+  "qwen38-flash-next-abliterated-rocmfp4-gguf": {
+    "kind": "model",
+    "maker": "kingjones777",
+    "quantization": "ROCmFP4-STRIX_LEAN-imatrix-hcq8-ssmf32",
+    "notes": "OrcaRouter refusal-direction edit, custom ROCmFP4 types 100/101. Served by the separate SuperROC backend, not current Gufo. Qualified on single 128GB Strix Halo on 2026-11-04 with one reserved 32K session, thinking and Q8 MTP depth three: short reasoning, coding, and required tool-call requests passed. PLE stays mmap-backed.",
+    "source": {
+      "hfUrl": "https://huggingface.co/kingjones777/Qwen3.8-Flash-Next-Uncensored-ROCmFP4-STRIX_LEAN-imatrix-GGUF",
+      "revision": "737fae2f5ab92c55fde2f4e1da94ad3d17d3d5bb",
+      "layout": "flat",
+      "primary": "Qwen3.8-Flash-Next-Uncensored-Q4_0-ROCmFP4-STRIX_LEAN-imatrix-hcq8-ssmf32-00001-of-00003.gguf",
+      "files": [
+        {
+          "path": "Qwen3.8-Flash-Next-Uncensored-Q4_0-ROCmFP4-STRIX_LEAN-imatrix-hcq8-ssmf32-00001-of-00003.gguf",
+          "bytes": 42647362816,
+          "oid": "c1b3f6069efbb1b948574b9cc50c1ded102bf6f1c978aaf456e6639b9b4c0193",
+          "hash": "sha256-wbP2Bp77sblIV0ucxQwd7RAr9vHJeKr0VuZjm5tMAZM="
+        },
+        {
+          "path": "Qwen3.8-Flash-Next-Uncensored-Q4_0-ROCmFP4-STRIX_LEAN-imatrix-hcq8-ssmf32-00002-of-00003.gguf",
+          "bytes": 42655951520,
+          "oid": "2bf7dc29d9676e99993186e4b8435c524b2328948c38f5ae7d687ac407700dd2",
+          "hash": "sha256-K/fcKdlnbpmZMYbkuENcUksjKJSMOPWufWh6xAdwDdI="
+        },
+        {
+          "path": "Qwen3.8-Flash-Next-Uncensored-Q4_0-ROCmFP4-STRIX_LEAN-imatrix-hcq8-ssmf32-00003-of-00003.gguf",
+          "bytes": 20832261344,
+          "oid": "ee3eed42260d681fed253ef5d1cc8d37c9d9197ec35ddaa5e339a245abb02cb3",
+          "hash": "sha256-7j7tQiYNaB/tJT710cyNN8nZGX7DXdql4zmiRauwLLM="
+        },
+        {
+          "path": "mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+          "bytes": 4135934112,
+          "oid": "25565dac32005bf4b9582cf81c58ef3c1a59d4225a2240821fc30459d7154a4d",
+          "hash": "sha256-JVZdrDIAW/S5WCz4HFjvPBpZ1CJaIkCCH8MEWdcVSk0=",
+          "url": "https://huggingface.co/kingjones777/Qwen3.8-Flash-Next-MTP-Heads-GGUF/resolve/72805b661c4af3ef63f0ed11e6dafcfdaba33982/mtp-Qwen3.8-Flash-Next-Q8_0.gguf"
+        },
+        {
+          "path": "mmproj-Qwen3.8-Flash-Next-Uncensored-BF16.gguf",
+          "bytes": 907543264,
+          "oid": "f9d4d77ceca31c4057715de9dc667087cacb8b9f24f4d48db3f57cbdd0519c9a",
+          "hash": "sha256-+dTXfOyjHEBXcV3p3GZwh8rLi58k9NSNs/V8vdBRnJo="
+        }
+      ]
+    }
+  }
+}

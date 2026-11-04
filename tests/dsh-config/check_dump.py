@@ -63,6 +63,8 @@ def main(dump_path, expect_path):
     model = (by_id.get("agent-default-model") or {}).get("config") or {}
     check(model.get("provider") == route["provider"], f"agent-default-model provider is {model.get('provider')!r}")
     check(model.get("model") == route["model"], f"agent-default-model model is {model.get('model')!r}")
+    if "reasoningEffort" in route:
+        check(model.get("reasoningEffort") == route["reasoningEffort"], "agent-default-model reasoning effort differs")
 
     providers = ((by_id.get("llm-pi-ai") or {}).get("config") or {}).get("providers") or {}
     local = expect["localProviders"]
@@ -112,6 +114,28 @@ def main(dump_path, expect_path):
     check(workflow.get("maxConcurrentAgents") == 3, "workflow-ptc maxConcurrentAgents is not 3")
     web = (by_id.get("tool-web") or {}).get("config") or {}
     check(web.get("search") is False and web.get("fetch") is True, f"tool-web is {web!r}")
+
+    # Web presets mount their plugin lists only when a Session opens. Every
+    # shipped preset must retain the fleet policy, including presets other
+    # than the default one selected by the UI.
+    for preset_id in ("preset-standard", "preset-ptc", "preset-minimal", "preset-cordis"):
+        if preset_id not in by_id:
+            continue
+        plugins = by_id[preset_id]["config"]["plugins"]
+        for child in rows(plugins):
+            child_id = child["id"]
+            child_config = child.get("config") or {}
+            if child_id in ("tool-plugin-manager", "tool-plugin-market", "tool-schedule"):
+                check(child.get("disabled") is True, f"{preset_id}/{child_id}: enabled")
+            if child_id == "tool-web":
+                check(
+                    child_config.get("search") is False and child_config.get("fetch") is True,
+                    f"{preset_id}/tool-web: fetch-only policy missing",
+                )
+            if child_id == "workflow-ptc":
+                check(child_config.get("maxConcurrentAgents") == 3, f"{preset_id}/workflow-ptc: limit missing")
+        for row_id in ("schedule", "ui-schedule"):
+            check((by_id.get(row_id) or {}).get("disabled") is True, f"{row_id}: enabled")
 
     if "acp" in by_id:
         acp = by_id["acp"].get("config") or {}

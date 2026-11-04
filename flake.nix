@@ -579,6 +579,7 @@
             ;
           # `nix build .#gufo` — the engine modules/gufo.nix runs (#525).
           gufo = inputs.gufo.packages.${system}.default;
+          superroc = pkgs.callPackage ./pkgs/superroc { };
           d3-torch-rocm = strixAi.torch-rocm.override {
             wheelSources = builtins.fromJSON (builtins.readFile ./pkgs/vllm-srun/rocm10-wheels.json);
           };
@@ -1998,9 +1999,11 @@
                 )
               );
             expectPro = expectRoute "gemini-pro";
-            # The batch-2 lanes (issue 687): every route of docs/free-lanes.md
-            # composes in headless with empty stderr.
+            # Local comparison routes and the batch-2 lanes (issue 687)
+            # compose in headless with empty stderr.
             batch2Routes = [
+              "qwen-ara"
+              "qwen-flash-abliterated"
               "groq"
               "groq-oss"
               "mistral"
@@ -2052,11 +2055,13 @@
               dump headless-flag --profile headless --dump-config
               dump sdk sdk --dump-config
               dump acp acp --dump-config
+              dump web web --dump-config
               # Per-run route and key slot (docs/free-lanes.md): the overlay
               # lands after the policy; a slot is validated even for a dump
               # and read only for a real run (this wrapper has no key files).
               EXPECT=${expectPro} DSH_ROUTE=gemini-pro dump route-pro headless --dump-config
               EXPECT=${expectPro} DSH_ROUTE=gemini-pro dump route-pro-acp acp --dump-config
+              EXPECT=${expectRoute "qwen-ara"} DSH_ROUTE=qwen-ara dump route-ara-web web --dump-config
               DSH_ROUTE=gemini DSH_KEY_SLOT=3 dump route-slot headless --dump-config
               ${batch2Dumps}
               # A slot past every list is still a valid dump (the keys of the
@@ -2074,15 +2079,13 @@
                   exit 1
                 fi
               }
-              refused "$dsh" web --help
-              refused "$dsh" --profile=web --help
               refused "$dsh" sdk-minimal --help
-              refused "$dsh" headless --from-default-profile web --dump-config
+              refused "$dsh" headless --from-default-profile sdk-minimal --dump-config
               refused "$dsh" plugin --profile headless add left-pad
               # An empty profile token must not fall through to unwrapped dsh.
               refused "$dsh" --profile= headless --dump-config
               refused "$dsh" --profile "" headless --dump-config
-              refused "$dsh" "" web --help
+              refused "$dsh" "" headless --help
               refused "$dsh" --dump-config
               # A DSH_HOME the in-process write tool can reach (/tmp, $TMPDIR).
               refused env DSH_HOME="$TMPDIR/dsh-home" "$dsh" headless --dump-config
@@ -2748,6 +2751,8 @@
             == nixpkgs.lib.sort builtins.lessThan [
               "d3-ultra-bf16"
               "qwen38-flash-next-gguf"
+              "qwen38-flash-next-abliterated-rocmfp4-gguf"
+              "qwen38-27b-heretic-ara-q8-gguf"
               "qwen38-27b-gguf"
               "qwen38-27b-q8-gguf"
               "qwen38-27b-dflash2-gguf"
@@ -2762,7 +2767,11 @@
           assert
             nixpkgs.lib.sort builtins.lessThan strixWorker.services.local-models.artifacts
             == nixpkgs.lib.sort builtins.lessThan (
-              nixpkgs.lib.remove "d3-ultra-bf16" strix.services.local-models.artifacts
+              nixpkgs.lib.subtractLists [
+                "d3-ultra-bf16"
+                "qwen38-27b-heretic-ara-q8-gguf"
+                "qwen38-flash-next-abliterated-rocmfp4-gguf"
+              ] strix.services.local-models.artifacts
               ++ [
                 "deepseek-v41-flash-1017-q2-gguf"
                 "qwen38-flash-next-q8-gguf"
@@ -2774,13 +2783,15 @@
           # no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           # Plus Gufo's collection (lib/gufo-models.json), as gufo-org/gufo
-          # v0.22.0 plus Q8 and the separately pinned ds4 V4.1 model.
+          # v0.22.0 plus Q8, the separately pinned ds4 V4.1 model and Tom's
+          # Library-only coding comparison acquisitions (2026-11-04).
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "d3-ultra-bf16"
               "deepseek-v41-flash-1017-q2-gguf"
               "deepseek-v41-flash-dspark-gguf"
               "deepseek-v41-flash-vision-gguf"
+              "glm53-flash-iq2-xxs-gguf"
               "minimax-h3-fl2va"
               "qwen-image-2.1"
               "qwen-k2so-midway-b"
@@ -2790,7 +2801,9 @@
               "qwen3-tts-tokenizer-f32"
               "qwen38-27b-dflash2-gguf"
               "qwen38-27b-gguf"
+              "qwen38-27b-heretic-ara-q8-gguf"
               "qwen38-27b-q8-gguf"
+              "qwen38-flash-next-abliterated-rocmfp4-gguf"
               "qwen38-flash-next-gguf"
               "qwen38-flash-next-q8-gguf"
               "vibevoice-asr-streaming-7b-bf16"

@@ -18,6 +18,23 @@ existing reference voice, ASR and Qwen-Image. The Q8 route is
 This adds a Gufo TTS API choice; the existing production speech queue still
 uses its separately qualified qwentts.cpp voice.
 
+The Heretic ARA Q8 deployment is `qwen3.8-27b-ara`, referencing
+`qwen38-27b-heretic-ara-q8-gguf`. It has one session, 102400 tokens of
+context, thinking enabled, a 16384-token default output limit and a 1 GiB
+prefix-cache budget. It uses the same demand loading and 600-second idle
+unload as the other text models. It has no vision projector or speculative
+draft: the modified checkpoint has no qualified matching sidecars. An API
+request selects it without changing the Flash-Next utility default:
+
+```sh
+curl --fail-with-body http://strix-coordinator:8731/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen3.8-27b-ara","messages":[{"role":"user","content":"Write a Python function that adds two numbers."}],"max_tokens":1024}'
+```
+
+Use a client with a cold-load timeout of at least 1200 seconds. Routine
+health checks still use `/health`, `/running` and `/v1/models`.
+
 `gufo-switch flash|qwen38-27b|qwen38-27b-q8` explicitly warms a model through
 llama-swap. Ordinary API requests select their model without this command.
 `gufo-switch off` stops the endpoint and its children. Direct Gufo units
@@ -78,6 +95,55 @@ Their artifacts are included in the wanted set automatically. `extraArtifacts`
 is for any additional required bundles.
 
 ## Add new model bytes
+
+The Library also carries approved coding comparison weights in
+`lib/coding-comparison-models.json` (Tom, 2026-11-04):
+
+| Catalog artifact | Precision | Weight bytes |
+|---|---|---:|
+| `qwen38-27b-heretic-ara-q8-gguf` | Q8_0 | 29,047,084,928 |
+| `glm53-flash-iq2-xxs-gguf` | UD-IQ2_XXS, four shards | 101,844,951,904 |
+| `qwen38-flash-next-abliterated-rocmfp4-gguf` | ROCmFP4 hcq8-ssmf32 + Q8 MTP + projector | 111,179,053,056 |
+
+The 27B ARA artifact is deployed through the Gufo route described above. On
+2026-11-04, installed Gufo 0.22.0 (`7b1bf04`) loaded it on Strix Halo in
+33.4 seconds with a 102400-token context and one session, reporting
+44852 MiB GPU use. It returned the requested Python function with separate
+reasoning text and a valid structured tool call. Those short requests
+decoded at 6.6–6.7 tokens/second without a speculative draft; this is a
+compatibility check, not a coding benchmark. GLM remains Library-only with
+no route. The selected modified Flash-Next requires the separate
+[SuperROC backend](superroc-flash-next.md); stock Gufo cannot load its custom
+ROCmFP4 tensor types. GPT-OSS is dropped from the active catalog; its verified
+NAS archive is retained, and its redundant Strix staging copy was removed.
+
+The first live qualification uses a scoped runtime proxy configuration at
+`/var/lib/llama-swap-local-models/config.yaml`, selected by
+`/run/systemd/system/llama-swap.service.d/40-local-qwens.conf`. It preserves
+all prior routes and the installed D3 launcher. Named GC roots retain the
+new launchers. The exact Nix-generated wanted manifest was projected to
+`/etc/local-models/wanted.json` after verifying all twelve existing rows were
+unchanged and only the two selected Qwens were added. Activation and rollback
+receipts live beside the runtime configuration.
+
+These are targeted live changes, not a whole NixOS activation. After the
+merged declarations are activated, remove the runtime drop-in, reload systemd,
+and restart only an idle llama-swap. Rebooting before that activation loses
+the runtime drop-in. Retain the named GC roots until the activated system
+closure contains their replacements. See [the Web chat runbook](dsh-local-qwen-chat.md)
+for the separately hand-run NAS UI and private Tailscale entrance.
+
+For an explicit acquisition from a reviewed worktree, the installed NAS
+`library-fetch` executable accepts `LIBRARY_FETCH_MANIFEST` pointing to a
+scoped `lib/model-store.nix` `manifestFor` result. This acquires only those
+artifact IDs without rebuilding or activating the NAS. Each downloaded file
+is SHA-256 verified before being renamed into
+`/mnt/nas/models/weights/<artifact-id>/`; partial files keep the `.part` suffix.
+Transfers resume partial files and retry connection failures over HTTP/1.1.
+For the explicitly requested parallel acquisition, `LIBRARY_FETCH_WEIGHTS`
+can select a staging directory on Strix. Only public URLs and manifests go
+there; credentials stay on NAS. Copy verified staged files back into the NAS
+Library and verify their hashes before treating acquisition as complete.
 
 First add the artifact to `lib/gufo-models.json`, following a neighboring
 entry's pinned source revision, files, sizes and hashes. That catalog is
