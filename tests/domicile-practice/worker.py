@@ -230,6 +230,13 @@ class Harness:
             value = Path(getattr(self.a, key)).resolve()
             assert value.is_file() and os.access(value, os.X_OK), str(value)
             self.receipt["files"][key] = {"path": str(value), "sha256": digest(value)}
+        if self.a.engine:
+            engine = Path(self.a.engine).resolve()
+            assert (engine / "chrome").is_file(), "engine override must contain chrome"
+            self.env["DOMICILE_ENGINE"] = str(engine)
+            self.receipt["files"]["engine_override"] = {
+                "path": str(engine), "chrome_sha256": digest(engine / "chrome"),
+                "library_sha256": digest(engine / "libdomicile_engine.so")}
         settings = {"kitty": self.a.kitty, "chrome": self.a.chrome, "nautilus": self.a.nautilus,
                     "commands": {}}
         if self.a.commands:
@@ -526,10 +533,15 @@ class Harness:
         # The CLI treats interruption as status 1 by design (supervise.rs).
         assert rc in (0, 1), "unexpected shutdown status " + str(rc)
         remaining = until(lambda: not [r for pid, r in before.items() if pid != self.desk.pid and living(r)], 8)
-        leftovers = [r for pid, r in before.items() if pid != self.desk.pid and living(r)]
+        current = processes()
+        survivors = [current[r["pid"]] for pid, r in before.items() if pid != self.desk.pid
+                     and r["pid"] in current and current[r["pid"]]["start"] == r["start"]]
+        zombies = [r for r in survivors if r["state"] == "Z"]
+        leftovers = [r for r in survivors if r["state"] != "Z"]
+        atomic(self.work / (self.desktop_name + "-shutdown-zombies.json"), zombies)
         atomic(self.work / (self.desktop_name + "-shutdown-leftovers.json"), leftovers)
-        receipt_row.update(exit=rc, leftover_processes=leftovers)
-        self.event("shutdown-observed", desktop=self.desktop_name, exit=rc, leftovers=leftovers)
+        receipt_row.update(exit=rc, leftover_processes=leftovers, zombie_processes=zombies)
+        self.event("shutdown-observed", desktop=self.desktop_name, exit=rc, leftovers=leftovers, zombies=zombies)
         assert remaining, "owned desktop descendants survived shutdown; evidence preserved"
         return {"exit": rc, "remaining": len(leftovers), "note": "SIGTERM status 1 is the CLI's intentional interruption result"}
 
@@ -682,6 +694,7 @@ def main():
     entry.add_argument("--inside", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--domicile", default=BASE)
+    p.add_argument("--engine", help="engine directory, passed as DOMICILE_ENGINE inside the private environment")
     p.add_argument("--config", help="trusted absolute module path (read only); omit for safe fixture")
     p.add_argument("--apps-helper", help="trusted domicile-apps script copied to fake ~/.local/bin")
     p.add_argument("--commands", help="JSON action -> disposable argv override for fixture launcher")

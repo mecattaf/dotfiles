@@ -112,7 +112,9 @@ a snapshot and hash are saved. The helper is copied only into the fake HOME's
 arrays to the **fixture helper**; it does not rewrite a supplied domain helper.
 Actions are `terminal`, `rescue`, `browser`, `files`. The helper's `start` verb
 is outside this minimum harness. `--kitty`, `--chrome`, `--nautilus` and
-`--recorder` accept executable paths. Use worker `--help` for timeouts.
+`--recorder` accept executable paths. `--engine /absolute/engine-directory`
+sets `DOMICILE_ENGINE` inside the private environment and records its chrome
+and library hashes. It must contain `chrome` and `libdomicile_engine.so`. Use worker `--help` for timeouts.
 
 A chord JSON maps actions to evdev code arrays. Defaults are `[125,28]`,
 `[125,42,28]`, `[125,48]`, `[125,18]`, respectively. Expectations map each action
@@ -146,3 +148,7 @@ Headless proof does not cover greetd/PAM login, passwords, VT return, physical
 keyboard/input feel, natural scrolling, Intel/i915, real panel modes/brightness
 or per-panel warmth. No Zenbook action, deploy, reboot or activation is part of
 this runner. It never reads `~/pass` and never starts an interactive agent.
+
+Shutdown receipts separately list live survivors and zombies from current `/proc`
+metadata, with start-time identity checks. A zombie is recorded as exited; any
+live owned survivor still fails the unchanged shutdown requirement.
