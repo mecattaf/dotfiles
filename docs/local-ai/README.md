@@ -133,7 +133,14 @@ route per run; the QwenCloud route was removed with the account (2026-11-01).
 
 Both local routes use a public dummy bearer. Session-log and plugin-inventory
 upload to DeepSeek, DeepSeek sign-in and telemetry are disabled rows in the
-policy, and `dsh web` is refused by the wrapper.
+policy. The stock `dsh web` profile is available for interactive conversation;
+Tom's 2026-11-03 decision supersedes the earlier web-profile ban.
+
+Start on the NAS with `DSH_ROUTE=qwen-ara dsh web --no-open`. The model picker
+also offers `gufo/qwen3.8-flash-next-abliterated`; selecting it demand-loads
+the Flash-Next backend through the same llama-swap endpoint. Both modified
+models are text-only. Their default routes leave request-level reasoning
+effort unset so the server's qualified thinking settings apply.
 
 ## How an artifact reaches a host
 

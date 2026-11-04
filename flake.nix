@@ -1999,9 +1999,11 @@
                 )
               );
             expectPro = expectRoute "gemini-pro";
-            # The batch-2 lanes (issue 687): every route of docs/free-lanes.md
-            # composes in headless with empty stderr.
+            # Local comparison routes and the batch-2 lanes (issue 687)
+            # compose in headless with empty stderr.
             batch2Routes = [
+              "qwen-ara"
+              "qwen-flash-abliterated"
               "groq"
               "groq-oss"
               "mistral"
@@ -2053,11 +2055,13 @@
               dump headless-flag --profile headless --dump-config
               dump sdk sdk --dump-config
               dump acp acp --dump-config
+              dump web web --dump-config
               # Per-run route and key slot (docs/free-lanes.md): the overlay
               # lands after the policy; a slot is validated even for a dump
               # and read only for a real run (this wrapper has no key files).
               EXPECT=${expectPro} DSH_ROUTE=gemini-pro dump route-pro headless --dump-config
               EXPECT=${expectPro} DSH_ROUTE=gemini-pro dump route-pro-acp acp --dump-config
+              EXPECT=${expectRoute "qwen-ara"} DSH_ROUTE=qwen-ara dump route-ara-web web --dump-config
               DSH_ROUTE=gemini DSH_KEY_SLOT=3 dump route-slot headless --dump-config
               ${batch2Dumps}
               # A slot past every list is still a valid dump (the keys of the
@@ -2075,15 +2079,13 @@
                   exit 1
                 fi
               }
-              refused "$dsh" web --help
-              refused "$dsh" --profile=web --help
               refused "$dsh" sdk-minimal --help
-              refused "$dsh" headless --from-default-profile web --dump-config
+              refused "$dsh" headless --from-default-profile sdk-minimal --dump-config
               refused "$dsh" plugin --profile headless add left-pad
               # An empty profile token must not fall through to unwrapped dsh.
               refused "$dsh" --profile= headless --dump-config
               refused "$dsh" --profile "" headless --dump-config
-              refused "$dsh" "" web --help
+              refused "$dsh" "" headless --help
               refused "$dsh" --dump-config
               # A DSH_HOME the in-process write tool can reach (/tmp, $TMPDIR).
               refused env DSH_HOME="$TMPDIR/dsh-home" "$dsh" headless --dump-config
