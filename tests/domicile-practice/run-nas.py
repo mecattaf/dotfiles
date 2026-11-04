@@ -56,7 +56,8 @@ finally:
                                     stdout=out, stderr=err)
         receipt["archive_exit"] = copied.returncode
         if copied.returncode == 0:
-            receipt["archive_sha256"] = hashlib.file_digest(archive.open("rb"), "sha256").hexdigest()
+            with archive.open("rb") as source_archive:
+                receipt["archive_sha256"] = hashlib.file_digest(source_archive, "sha256").hexdigest()
             dest = a.out / "artifacts"
             dest.mkdir()
             with tarfile.open(archive) as tf:

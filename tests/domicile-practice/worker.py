@@ -250,6 +250,7 @@ class Harness:
             helper.write_text("#!/bin/sh\nexec " + shlex.quote(str(Path(sys.executable).resolve())) + " "
                               + shlex.quote(str(self.source / "practice-app.py")) + ' "$@"\n')
         helper.chmod(0o700)
+        shutil.copyfile(helper, self.work / "tested-apps-helper")
         # Relative ~/ launch paths cannot accidentally attach to a real workspace.
         for name in ("herdr", "herdr-sway-projector", "herdr-picker", "ssh"):
             trap = self.work / "home/.local/bin" / name

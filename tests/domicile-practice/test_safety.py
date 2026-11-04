@@ -5,6 +5,10 @@ from pathlib import Path
 import signal
 import subprocess
 import tempfile
+import runpy
+from unittest import mock
+import io
+from contextlib import redirect_stdout
 from types import SimpleNamespace
 import unittest
 
@@ -14,6 +18,28 @@ spec.loader.exec_module(worker)
 
 
 class SafetyTests(unittest.TestCase):
+    def test_nas_receipt_survives_corrupt_archive_after_failed_transport(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            calls = []
+            def remote(argv, **kwargs):
+                self.assertEqual(argv[:2], ["fleet-exec", "strix-coordinator"])
+                calls.append(argv)
+                return subprocess.CompletedProcess(argv, 1 if "worker.py" in " ".join(argv) else 0)
+            script = str(Path(__file__).with_name("run-nas.py"))
+            with mock.patch("sys.argv", [script, "--out", scratch]), \
+                 mock.patch("socket.gethostname", return_value="nas"), \
+                 mock.patch("subprocess.run", side_effect=remote), redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as exited:
+                    runpy.run_path(script, run_name="__main__")
+            self.assertEqual(exited.exception.code, 1)
+            self.assertEqual(len(calls), 2)
+            receipt_path = next(Path(scratch).glob("*/nas-receipt.json"))
+            receipt = json.loads(receipt_path.read_text())
+            self.assertEqual(receipt["transport_exit"], 1)
+            self.assertEqual(receipt["archive_exit"], 0)
+            self.assertIn("copy-or-validation-failed", receipt["artifact_status"])
+            self.assertIn("artifact_error", receipt)
+
     def test_host_namespace_rejected_before_creating_home_or_starting_bus(self):
         with tempfile.TemporaryDirectory() as scratch:
             output = Path(scratch)
