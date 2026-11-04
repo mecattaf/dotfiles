@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Always create a Kitty OS window; never send text or reuse a control socket.
+set -euo pipefail
+here=$(dirname -- "$0")
+case "${1:-terminal}" in
+  terminal)
+    [[ $# -le 1 ]] || exit 2
+    exec kitty --class domicile-terminal --title "Terminal control (local)" -e "$here/domicile-terminal"
+    ;;
+  rescue)
+    [[ $# == 1 ]] || exit 2
+    exec kitty --class domicile-rescue --title "Local rescue" -e "$here/domicile-terminal" --local
+    ;;
+  chrome)
+    shift
+    exec google-chrome-stable --ozone-platform=wayland "$@"
+    ;;
+  files)
+    shift
+    export GDK_BACKEND=wayland
+    exec nautilus --new-window "$@"
+    ;;
+  *) echo 'usage: domicile-apps [terminal|rescue|chrome [URL...]|files [PATH...]]' >&2; exit 2 ;;
+esac
