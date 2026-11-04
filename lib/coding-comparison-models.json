@@ -76,5 +76,50 @@
         }
       ]
     }
+  },
+  "qwen38-flash-next-abliterated-rocmfp4-gguf": {
+    "kind": "model",
+    "maker": "kingjones777",
+    "quantization": "ROCmFP4-STRIX_LEAN-imatrix-hcq8-ssmf32",
+    "notes": "OrcaRouter refusal-direction edit, custom ROCmFP4 types 100/101. Requires separate SuperROC backend; not loadable by current Gufo. Selected for single-host Strix Halo; runtime qualification pending. PLE streams through mmap.",
+    "source": {
+      "hfUrl": "https://huggingface.co/kingjones777/Qwen3.8-Flash-Next-Uncensored-ROCmFP4-STRIX_LEAN-imatrix-GGUF",
+      "revision": "737fae2f5ab92c55fde2f4e1da94ad3d17d3d5bb",
+      "layout": "flat",
+      "primary": "Qwen3.8-Flash-Next-Uncensored-Q4_0-ROCmFP4-STRIX_LEAN-imatrix-hcq8-ssmf32-00001-of-00003.gguf",
+      "files": [
+        {
+          "path": "Qwen3.8-Flash-Next-Uncensored-Q4_0-ROCmFP4-STRIX_LEAN-imatrix-hcq8-ssmf32-00001-of-00003.gguf",
+          "bytes": 42647362816,
+          "oid": "c1b3f6069efbb1b948574b9cc50c1ded102bf6f1c978aaf456e6639b9b4c0193",
+          "hash": "sha256-wbP2Bp77sblIV0ucxQwd7RAr9vHJeKr0VuZjm5tMAZM="
+        },
+        {
+          "path": "Qwen3.8-Flash-Next-Uncensored-Q4_0-ROCmFP4-STRIX_LEAN-imatrix-hcq8-ssmf32-00002-of-00003.gguf",
+          "bytes": 42655951520,
+          "oid": "2bf7dc29d9676e99993186e4b8435c524b2328948c38f5ae7d687ac407700dd2",
+          "hash": "sha256-K/fcKdlnbpmZMYbkuENcUksjKJSMOPWufWh6xAdwDdI="
+        },
+        {
+          "path": "Qwen3.8-Flash-Next-Uncensored-Q4_0-ROCmFP4-STRIX_LEAN-imatrix-hcq8-ssmf32-00003-of-00003.gguf",
+          "bytes": 20832261344,
+          "oid": "ee3eed42260d681fed253ef5d1cc8d37c9d9197ec35ddaa5e339a245abb02cb3",
+          "hash": "sha256-7j7tQiYNaB/tJT710cyNN8nZGX7DXdql4zmiRauwLLM="
+        },
+        {
+          "path": "mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+          "bytes": 4135934112,
+          "oid": "25565dac32005bf4b9582cf81c58ef3c1a59d4225a2240821fc30459d7154a4d",
+          "hash": "sha256-JVZdrDIAW/S5WCz4HFjvPBpZ1CJaIkCCH8MEWdcVSk0=",
+          "url": "https://huggingface.co/kingjones777/Qwen3.8-Flash-Next-MTP-Heads-GGUF/resolve/72805b661c4af3ef63f0ed11e6dafcfdaba33982/mtp-Qwen3.8-Flash-Next-Q8_0.gguf"
+        },
+        {
+          "path": "mmproj-Qwen3.8-Flash-Next-Uncensored-BF16.gguf",
+          "bytes": 907543264,
+          "oid": "f9d4d77ceca31c4057715de9dc667087cacb8b9f24f4d48db3f57cbdd0519c9a",
+          "hash": "sha256-+dTXfOyjHEBXcV3p3GZwh8rLi58k9NSNs/V8vdBRnJo="
+        }
+      ]
+    }
   }
 }
