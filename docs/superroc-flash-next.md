@@ -33,6 +33,11 @@ smoke requests, not a coding benchmark. The cold arithmetic request took
 21.1 seconds including model loading. GTT use was 71.94 GiB with about
 48 GiB of host memory available, with the 32K session reserved.
 
+The full DSH Web harness also passed two conversation turns. The first
+processed 16,275 prompt tokens in 11.14 seconds end to end. The continuation
+reused 16,300 tokens, prefilled only 23, and completed in 0.52 seconds.
+Both turns retained separate reasoning output and correct final responses.
+
 The retained request/response evidence is under
 `~/.local/state/model-acquisitions/2026-11-04-flash-abliterated/qualification-*.json`
 on NAS. The scoped runtime activation preserves all previous routes,
