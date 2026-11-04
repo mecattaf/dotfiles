@@ -1,9 +1,5 @@
-// The key table for the first Domicile desk: stock Manganese with two chords
-// changed, item per item from here on. Domicile reads this file directly from
-// ~/.config/domicile/domicile.tsx, and an edit reloads the running desk. Deployed
-// as one file link by modules/domicile.nix, after a check at build time. Sections
-// of the config go here too, as exports beside Shell.
-
+// Starter Domicile desk. Kept as one checked TSX config: Home Manager's
+// upstream settings module stays off so it cannot add a second JSON config.
 import { runManganese } from "@domicile-desktop/manganese";
 import {
   DEFAULT_KEYBINDINGS,
@@ -11,22 +7,67 @@ import {
 } from "@domicile-desktop/manganese-window-management/keyboard/commands";
 import { ownedChords } from "@domicile-desktop/sdk/own-keybindings";
 
-// Lock leaves the table here, so deleting the rescue line below leaves the chord
-// unbound and does not bring Lock back.
+// Removing the rescue binding later must not restore the stock lock action.
 const { "Meta+Shift+Return": _lock, ...kept } = DEFAULT_KEYBINDINGS;
-
-// Each desktop entry point has one name for keys, the launcher, and recovery.
-// The terminal starts at a local control shell before an explicit NAS attach.
 const keybindings = {
   ...kept,
   "Meta+Return": exec("domicile-apps", "terminal"),
-  // A local shell that needs neither NAS nor Herdr. This chord never locks.
   "Meta+Shift+Return": exec("domicile-apps", "rescue"),
+  // Keep the stock Meta+b split and Meta+e layout actions.
+  "Meta+Control+b": exec("domicile-apps", "chrome"),
+  "Meta+Control+e": exec("domicile-apps", "files"),
 };
-
-// Keep this line. The shell only checks chords when it draws, so a chord written
-// two ways passes the build and replaces the whole desk with an error page with
-// no keys. Checked here, the edit is refused and the desk stays as it was.
+// Normalized duplicate chords must fail before replacing the running shell.
 ownedChords({ keybindings });
 
-export const Shell = runManganese({ keybindings: { keybindings } });
+const manganese = runManganese({
+  keybindings: { keybindings },
+  applications: {
+    // These inherited desktop entries invoke Sway IPC or its Mako service.
+    // Omit them only in this launcher, preserving Sway's rescue environment.
+    omit: [
+      "herdr-picker.desktop",
+      "sway-workspace-new.desktop",
+      "sway-workspace-rename.desktop",
+      "sway-workspace-restore.desktop",
+      "notifications-dismiss.desktop",
+      "notifications-history.desktop",
+    ],
+  },
+});
+
+// The pinned upstream night-light-override.ts owns this versioned storage key.
+// Every starter shell load explicitly turns global night light off: the panel
+// baselines below are the only tint. This does not change panel brightness.
+export const Shell: typeof manganese = (root, domicile) => {
+  globalThis.localStorage.setItem("night-light:v1", JSON.stringify({ on: false }));
+  return manganese(root, domicile);
+};
+export const shell_options = { nightLight: { schedule: "off" } };
+
+// Connector names, mode and placement match the reviewed Zenbook candidate.
+// A packaged native engine with the matching white-point ABI is required;
+// these values are not physical panel qualification on their own.
+export const output = {
+  profiles: [
+    {
+      name: "zenbook-two-panels",
+      displays: [
+        {
+          display: "eDP-1",
+          mode: [2880, 1800],
+          position: [0, 0],
+          scale: 2,
+          color_temperature: 3850,
+        },
+        {
+          display: "eDP-2",
+          mode: [2880, 1800],
+          position: [0, 900],
+          scale: 2,
+          color_temperature: 3350,
+        },
+      ],
+    },
+  ],
+};

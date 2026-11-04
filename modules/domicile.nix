@@ -164,7 +164,10 @@ let
   '';
 in
 {
-  imports = [ inputs.domicile.nixosModules.default ./domicile-apps.nix ];
+  imports = [
+    inputs.domicile.nixosModules.default
+    ./domicile-apps.nix
+  ];
 
   options.programs.domicilePhysical = {
     sessionPackage = lib.mkOption {
