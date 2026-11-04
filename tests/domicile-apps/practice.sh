@@ -23,6 +23,14 @@ export XDG_DATA_HOME="$OUT/data" XDG_STATE_HOME="$OUT/state"
 export XDG_DATA_DIRS="/nix/store/cwaxgdj59phlv6hc6rfqfd7m3hdxvjly-gsettings-desktop-schemas-50.1/share/gsettings-schemas/gsettings-desktop-schemas-50.1:$N/../share"
 export PATH="$ROOT/home/dot_local/bin:$K:$C:$N:$PATH" GSK_RENDERER=cairo
 unset HERDR_ENV HERDR_CONFIG_PATH HERDR_SOCKET_PATH HERDR_SESSION HERDR_PANE_ID
+
+# Read-only readiness probes are confined to these fixture Kitty sockets in the
+# runtime-test namespace. Production launchers enable no remote-control socket.
+mkdir -p "$XDG_CONFIG_HOME/kitty"
+cat > "$XDG_CONFIG_HOME/kitty/kitty.conf" <<KITTY
+allow_remote_control socket-only
+listen_on unix:$XDG_RUNTIME_DIR/apps-kitty-{kitty_pid}
+KITTY
 printf 'Fixture notes only. No personal files.\n' > "$HOME/Documents/fixture-notes.txt"
 printf 'A second fixture document.\n' > "$HOME/Documents/fixture-tasks.txt"
 cat > "$OUT/browser-fixture.html" <<'HTML'
@@ -134,6 +142,39 @@ timeout 20 busctl --user call "$B" "$P" "$I" Start 'oossa{sv}' /r/3 "$S" drive.a
 key() { busctl --user call "$B" "$P" "$I" NotifyKeyboardKeycode 'oa{sv}iu' "$S" 0 "$1" "$2" >/dev/null; sleep .08; }
 chord() { local i; for i in "$@"; do key "$i" 1; done; for ((i=$#;i>0;i--)); do key "${!i}" 0; done; }
 shot() { "$D" screenshot "$OUT/$1.png"; }
+
+CONTROL_SOCKET=''
+wait_new_menu() {
+  local n socket
+  for ((n=0;n<120;n++)); do
+    for socket in "$XDG_RUNTIME_DIR"/apps-kitty-*; do
+      [[ -S "$socket" && "$socket" != "$CONTROL_SOCKET" ]] || continue
+      if timeout 2 "$K/kitty" @ --to "unix:$socket" get-text \
+        > "$OUT/$1.txt" 2>> "$OUT/kitty-readiness.log"; then
+        if grep -Fq 'local / nas / quit >' "$OUT/$1.txt"; then
+          CONTROL_SOCKET="$socket"
+          sleep .3
+          return 0
+        fi
+      fi
+    done
+    sleep .1
+  done
+  echo 'Fixture terminal menu did not become ready' >&2
+  return 1
+}
+wait_first_key_result() {
+  local n
+  for ((n=0;n<120;n++)); do
+    if timeout 2 "$K/kitty" @ --to "unix:$CONTROL_SOCKET" get-text \
+      > "$OUT/local-first-keys.txt" 2>> "$OUT/kitty-readiness.log"; then
+      grep -Fq 'No action. Enter local, nas or quit.' "$OUT/local-first-keys.txt" && return 0
+    fi
+    sleep .1
+  done
+  echo 'Fixture first keys were not observed in the LOCAL menu' >&2
+  return 1
+}
 (
   n=0
   while [[ ! -e "$OUT/stop-frames" ]]; do
@@ -147,11 +188,12 @@ shot() { "$D" screenshot "$OUT/$1.png"; }
 FR=$!
 sleep 1
 chord 125 28
-sleep 3
+wait_new_menu local-first-menu
 shot 01-local-control
 for code in 30 48 46 28; do key "$code" 1; key "$code" 0; done
-sleep 1
+wait_first_key_result
 shot 02-first-keys-local
+[[ ! -e "$OUT/fake-ssh.log" && ! -e "$OUT/herdr-remote-argv.json" ]]
 chord 125 42 28
 sleep 3
 shot 03-local-rescue
@@ -169,14 +211,9 @@ shot 06-nautilus
 # New terminal defaults local. A human's explicit selection is simulated here
 # only on private fixture windows. No production launcher generates keystrokes.
 chord 125 28
-sleep 2
-for code in 49 30 31 28; do key "$code" 1; key "$code" 0; done # nas
-sleep 2
-shot 07-explicit-nas-gate
-key 42 1
-for code in 30 20 20 30 46 35; do key "$code" 1; key "$code" 0; done
-key 42 0
-for code in 57 49 30 31 28; do key "$code" 1; key "$code" 0; done # ATTACH nas
+wait_new_menu local-nas-menu
+shot 07-local-nas-selection
+for code in 49 30 31 28; do key "$code" 1; key "$code" 0; done # nas: the only attach action
 sleep 4
 shot 08-herdr-existing-fixture
 chord 29 48 # native Ctrl+B prefix
@@ -217,7 +254,9 @@ receipt={"kind":"real Domicile headless and Herdr server/client; fake SSH/remote
  "domicile":json.loads((out/"domicile-build.json").read_text()),
  "artifacts":{p.name:{"bytes":p.stat().st_size,"sha256":hashlib.sha256(p.read_bytes()).hexdigest()} for p in files},
  "recording":"sampled screenshots at nominal 2 fps; frame-times.txt records actual capture times",
- "checks":{"native_fresh_shell_executed_command":True,"old_fixture_pane_did_not_receive_command":True},
+ "projector_policy":{"change":"herdr-projector gained HERDR_PROJECTOR_RECONNECT=0 for one attach attempt",
+ "legacy_default":"automatic reconnect remains enabled by default; covered by test_existing_projector_callers_still_reconnect_by_default"},
+ "checks":{"ordinary_first_keys_stayed_local":True,"native_fresh_shell_executed_command":True,"old_fixture_pane_did_not_receive_command":True},
  "visual_review":"pending","hardware":"Zenbook untested; no deployment"}
 (out/"receipt.json").write_text(json.dumps(receipt,indent=2)+"\n")
 PY

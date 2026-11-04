@@ -25,18 +25,21 @@ No shared `modules/domicile.nix` or `domicile.tsx` was edited in this slice.
 ## First-key destination
 
 Meta+Return opens a fresh Kitty OS window at **local terminal control**.
+The window title stays "Terminal control" when Herdr is attached; the LOCAL
+surface and native Herdr UI identify the current destination.
 Ordinary text stays in this menu. `local` opens a local fish shell with
 `--no-config`, without NAS or inherited Herdr pane context. The rescue chord
 opens that shell directly. Each Kitty is a new process, with no single-instance
 socket, Kitty remote control, Sway IPC, pane input API or synthetic typing.
 
-`nas` requests remote attachment. After the projector's unit preflight, the
-user must type `ATTACH nas` at a warning that the destination is an **existing
-remote workspace** and ordinary keys will reach its displayed pane. Any other
-answer declines attachment. The gate discards terminal type-ahead before
-executing Herdr. A lost link asks for that explicit choice again before each
-new attachment; Ctrl+C on unavailable NAS returns to local control.
-Detach returns to local control. After explicit attachment, Herdr's native
+`nas` is the single explicit attach action. Before selection, the LOCAL
+surface says NAS opens an **existing workspace/pane**, which may be Claude,
+and ordinary keys after attachment go to that pane. No second confirmation
+is required. Input is read without Python line buffering, and queued text is
+discarded on selection, after the SSH preflight, and on return to local control.
+A failed preflight, lost link or detach returns to the LOCAL surface. Later
+ordinary keys stay local; another attachment requires a new `nas` selection.
+Ctrl+C can cancel a pending connection. After explicit attachment, Herdr's native
 Ctrl+B then Shift+N creates a fresh workspace/shell; Ctrl+B then W selects
 a workspace; Ctrl+B then Q detaches. These are human UI actions.
 
@@ -54,9 +57,13 @@ No Herdr features were added.
 
 ## Transport and live-session preservation
 
-The existing `herdr-projector` is byte-for-byte unchanged. The gate is its
-`HERDR_BIN` child, so unit preflight, backoff, reconnect and child cleanup
-remain in place. The final production child is exactly:
+The existing `herdr-projector` gains an opt-in
+`HERDR_PROJECTOR_RECONNECT=0` policy: make one unit-preflight/attachment attempt
+and return failures to the caller. Domicile sets this policy so a lost link
+returns to LOCAL control. Existing callers retain automatic backoff/reconnect
+by default. The `HERDR_BIN` adapter execs Herdr in the same child PID, preserving
+native transport, unit preflight and per-child SSH/socket cleanup. The final
+production child is exactly:
 
 ```
 herdr --remote nas --remote-keybindings server
@@ -84,7 +91,8 @@ from the NAS harness. Use fresh absolute output directories.
 
 The routing suite uses fake Kitty/SSH/Herdr endpoints and real PTYs, including
 type-safe argv, local ordinary input, missing neutral config, noninteractive
-refusal, unreachable NAS, cancellation, explicit attachment and reconnect.
+refusal, unreachable NAS, single-selection attachment, queued text at both
+connection boundaries, lost-link return to local, and legacy projector reconnect.
 The isolated proof runs a real Herdr server, two native clients and a fixture
 shell that records actual received bytes by pane ID. Fake SSH and remote
 dispatch then route an explicit projector attachment to that same real
@@ -96,7 +104,11 @@ private Chrome profile is never a personal browser profile. The recording is
 a sampled screenshot sequence encoded at nominal 2 fps; `frame-times.txt`
 gives actual capture times. Keyboard events in that runner are test stimuli
 to the isolated fixture desktop, never production launcher behavior.
-The runner records the explicit NAS gate, real Herdr UI on the fixture
+The runner waits for menu text using read-only queries against private fixture
+Kitty sockets before sending the first keys. It reads back the resulting local
+"No action" message as well as capturing it. Production launchers enable no
+remote-control socket. The runner records the initial NAS destination warning,
+real Herdr UI on the fixture
 server, and native new-workspace creation, as well as Chrome, Files and local
 rescue. `receipt.json` contains artifact hashes and `video.json` the encoded
 frame count and duration.
@@ -124,7 +136,7 @@ Replace only the supplied binary and fresh output path. The runner still
 creates a fixture HOME, private Chrome profile and private Herdr server inside
 runtime-test and a private D-Bus; no personal HOME or profile becomes the
 desktop's configuration. It retains the local first-key sequence and explicit
-NAS gate. This command uses mocked transport, with no actual NAS attachment.
+NAS selection. This command uses mocked transport, with no actual NAS attachment.
 
 `domicile-build.json` records the selection before any desktop starts.
 The same object appears at `receipt.json.domicile` on success:
@@ -164,3 +176,36 @@ Private-bus logs retain the unavailable user-manager scope, missing FUSE,
 portal backend and GPU warnings; these runs establish window paint and the
 tested keyboard destinations, not a complete portal or physical-seat pass.
 No unexpected failures or coredumps were hidden or cleared.
+
+## Follow-up evidence: selected binary and one NAS selection
+
+The follow-up uses `DOMICILE_BIN=/home/tom/compute/domicile-apps-evidence/selected-stock/bin/domicile`,
+a supplied symlink resolved to the available stock Nix package, without editing
+the runner or using a personal HOME. The paired native package is still
+unqualified; run the exact supplied-binary command above when it is available.
+
+- `single-selection-selected-stock-03/`: successful real headless practice,
+  94 sampled frames at 1024×768. Read-only fixture Kitty probes established
+  readiness before initial input. The still and readback show `abc` consumed
+  locally; only one `nas` selection attaches. The title is "Terminal control"
+  throughout. `echo fresh` appears in the new native Herdr workspace and
+  its readback, absent from the old fixture pane.
+- `herdr-single-selection-01/receipt.json`: six real private Herdr checks,
+  including queued-text exclusion and unchanged existing client destination.
+- `followup-checks/routing.txt`: 15 passing routing tests. This includes
+  lost-link return to local and the legacy default reconnect test.
+  `followup-checks/existing-launchers.txt`: eight passing existing tests.
+- `selected-binary-checks/receipt.json`: explicit empty, missing, relative and
+  non-executable selections fail before creating an output directory.
+
+`herdr-projector` changed: it gained the reconnect opt-out described above.
+Legacy callers retain their previous reconnect behavior by default, proven by
+`test_existing_projector_callers_still_reconnect_by_default`. The final practice
+receipt records both facts explicitly.
+
+Failed readiness attempts remain on Strix: `single-selection-selected-stock-01`
+sent initial keys before Kitty painted, and `single-selection-selected-stock-02`
+rejected a spaced Kitty match expression. The successful runner probes each
+private socket directly. Their logs remain intact and are not copied as
+successful proof to NAS notes. Actual NAS authentication/clipboard, physical
+Zenbook behavior and portal/keyring commissioning remain unrun.

@@ -5,7 +5,7 @@ here=$(dirname -- "$0")
 case "${1:-terminal}" in
   terminal)
     [[ $# -le 1 ]] || exit 2
-    exec kitty --class domicile-terminal --title "Terminal control (local)" -e "$here/domicile-terminal"
+    exec kitty --class domicile-terminal --title "Terminal control" -e "$here/domicile-terminal"
     ;;
   rescue)
     [[ $# == 1 ]] || exit 2

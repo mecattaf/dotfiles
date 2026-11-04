@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-# Invoked once per projector attempt, including reconnect. No UI keystrokes.
+# Invoked by the projector's one selected attach attempt. No UI keystrokes.
 set -euo pipefail
 exec "$(dirname -- "$0")/domicile-terminal" --remote-attempt "$@"

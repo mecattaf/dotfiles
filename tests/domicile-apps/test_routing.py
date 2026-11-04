@@ -65,16 +65,21 @@ from pathlib import Path
 name = Path(sys.argv[0]).name
 with open(os.environ["CALLS"], "a") as f:
  f.write(json.dumps({"name":name,"args":sys.argv[1:],"config":os.environ.get("HERDR_CONFIG_PATH"),
-  "context":os.environ.get("HERDR_PANE_ID"),"gdk":os.environ.get("GDK_BACKEND")})+"\\n")
+  "context":os.environ.get("HERDR_PANE_ID"),"gdk":os.environ.get("GDK_BACKEND"),
+  "attach_intent":os.environ.get("DOMICILE_HERDR_ATTACH"),"reconnect":os.environ.get("HERDR_PROJECTOR_RECONNECT")})+"\\n")
 if name=="herdr":
  if os.environ.get("READ_HERDR_INPUT"):
-  import select, tty
+  import select, termios, tty
+  old=termios.tcgetattr(0)
   tty.setraw(0)
   data=os.read(0,4096) if select.select([0],[],[],0.3)[0] else b""
+  termios.tcsetattr(0,termios.TCSANOW,old)
   Path(os.environ["CALLS"]+".input").write_bytes(data)
  print("MOCK REMOTE ATTACHED",flush=True)
  sys.exit(int(os.environ.get("MOCK_HERDR_EXIT","0")))
 elif name=="ssh":
+ import time
+ time.sleep(float(os.environ.get("MOCK_SSH_DELAY","0")))
  sys.exit(int(os.environ.get("MOCK_SSH_EXIT","0")))
 '''
 
@@ -118,6 +123,7 @@ class Routing(unittest.TestCase):
         call, = self.recorded()
         self.assertEqual(call["name"], "kitty")
         self.assertIn("--class", call["args"])
+        self.assertEqual(call["args"][call["args"].index("--title")+1], "Terminal control")
         self.assertEqual(call["args"][-2:], ["-e", str(self.bin / "domicile-terminal")])
         self.assertNotIn("--single-instance", call["args"])
 
@@ -148,81 +154,120 @@ class Routing(unittest.TestCase):
         call, = self.recorded()
         self.assertEqual((call["name"], call["args"], call["context"]), ("fish", ["--no-config"], None))
 
-    def test_piped_remote_consent_is_refused(self):
+    def test_piped_remote_selection_is_refused(self):
         p = subprocess.run([str(self.bin / "domicile-terminal"), "--remote-attempt",
                             "--remote", "nas", "--remote-keybindings", "server"],
-                            input="ATTACH nas\n", text=True, env=self.env, capture_output=True)
+                            input="nas\n", text=True, env=self.env, capture_output=True)
         self.assertEqual(p.returncode, 2)
         self.assertEqual(self.recorded(), [])
 
-    def test_gate_rejects_other_targets_and_cancel(self):
-        t = self.term("--remote-attempt", "--remote", "other", "--remote-keybindings", "server")
+    def test_adapter_requires_menu_selection_and_rejects_other_targets(self):
+        t = self.term("--remote-attempt", "--remote", "nas", "--remote-keybindings", "server")
         self.assertEqual(t.process.wait(timeout=3), 2)
-        u = self.term("--remote-attempt", "--remote", "nas", "--remote-keybindings", "server")
-        u.expect("Type ATTACH nas")
-        u.send("no\n")
-        self.assertEqual(u.process.wait(timeout=3), 0)
+        self.env["DOMICILE_HERDR_ATTACH"] = "1"
+        u = self.term("--remote-attempt", "--remote", "other", "--remote-keybindings", "server")
+        self.assertEqual(u.process.wait(timeout=3), 2)
         self.assertEqual(self.recorded(), [])
 
-    def test_explicit_attachment_keeps_transport_and_neutral_config(self):
+    def test_one_selection_keeps_transport_and_neutral_config(self):
         t = self.term()
+        t.expect("EXISTING workspace/pane, which may be Claude.")
         t.expect("local / nas / quit >")
+        self.assertEqual(self.recorded(), [])
         t.send("nas\n")
-        t.expect("Type ATTACH nas")
-        self.assertEqual([x["name"] for x in self.recorded()], ["ssh"])
-        t.send("ATTACH nas\n")
         t.expect("Remote view ended")
+        self.assertNotIn(b"ATTACH nas", t.output)
         ssh, remote = self.recorded()
         self.assertIn("systemctl --user is-active", ssh["args"][-1])
         self.assertEqual(remote["args"], ["--remote", "nas", "--remote-keybindings", "server"])
         self.assertTrue(remote["config"].endswith("/herdr/desktop-client.toml"))
         self.assertIsNone(remote["context"])
+        self.assertIsNone(remote["attach_intent"])
+        self.assertEqual(remote["reconnect"], "0")
         t.send("quit\n")
         self.assertEqual(t.process.wait(timeout=3), 0)
 
-    def test_typeahead_is_discarded_at_remote_boundary(self):
+    def test_queued_lines_are_discarded_without_reattachment(self):
         self.env["READ_HERDR_INPUT"] = "1"
-        t = self.term("--remote-attempt", "--remote", "nas", "--remote-keybindings", "server")
-        t.expect("Type ATTACH nas")
-        t.send(b"ATTACH nas\nSTRAY-ORDINARY-KEYS\n")
-        self.assertEqual(t.process.wait(timeout=3), 0)
+        t = self.term()
+        t.expect("local / nas / quit >")
+        t.send(b"nas\nSTRAY-ORDINARY-KEYS\nnas\n")
+        t.expect("back at LOCAL control")
         self.assertEqual(Path(str(self.calls)+".input").read_bytes(), b"")
+        self.assertEqual(sum(c["name"] == "herdr" for c in self.recorded()), 1)
+        t.send("quit\n")
+        self.assertEqual(t.process.wait(timeout=3), 0)
 
-    def test_unreachable_nas_can_return_to_local_control(self):
+    def test_keys_typed_during_preflight_do_not_reach_remote(self):
+        self.env.update(READ_HERDR_INPUT="1", MOCK_SSH_DELAY="0.3")
+        t = self.term()
+        t.expect("local / nas / quit >")
+        t.send("nas\n")
+        t.expect("Checking NAS.")
+        t.send("TYPED-WHILE-CONNECTING\n")
+        t.expect("back at LOCAL control")
+        self.assertEqual(Path(str(self.calls)+".input").read_bytes(), b"")
+        t.send("quit\n")
+        self.assertEqual(t.process.wait(timeout=3), 0)
+
+    def test_unreachable_nas_returns_to_local_without_retries(self):
         self.env["MOCK_SSH_EXIT"] = "255"
         t = self.term()
         t.expect("local / nas / quit >")
         t.send("nas\n")
-        t.expect("reconnecting in")
-        self.assertFalse(any(c["name"] == "herdr" for c in self.recorded()))
-        t.send(b"\x03")
         t.expect("back at LOCAL control")
+        self.assertEqual([c["name"] for c in self.recorded()], ["ssh"])
         t.send("local\n")
         self.assertEqual(t.process.wait(timeout=4), 0)
         self.assertEqual(self.recorded()[-1]["name"], "fish")
 
     def test_missing_neutral_config_refuses_attachment(self):
         (self.work / "config/herdr/desktop-client.toml").unlink()
-        t = self.term("--remote-attempt", "--remote", "nas", "--remote-keybindings", "server")
-        t.expect("Type ATTACH nas")
-        t.send("ATTACH nas\n")
-        self.assertEqual(t.process.wait(timeout=3), 2)
+        t = self.term()
+        t.expect("local / nas / quit >")
+        t.send("nas\n")
+        t.expect("Missing desktop-client.toml")
+        t.expect("back at LOCAL control")
         self.assertFalse(any(c["name"] == "herdr" for c in self.recorded()))
+        t.send("quit\n")
+        self.assertEqual(t.process.wait(timeout=3), 0)
 
-    def test_reconnect_asks_again_before_exposing_any_pane(self):
+    def test_lost_link_requires_a_new_local_selection(self):
         self.env["MOCK_HERDR_EXIT"] = "1"
         t = self.term()
         t.expect("local / nas / quit >")
         t.send("nas\n")
-        t.expect("Type ATTACH nas")
-        t.send("ATTACH nas\n")
-        t.expect("MOCK REMOTE ATTACHED")
+        t.expect("back at LOCAL control")
+        self.assertNotIn(b"reconnecting in", t.output)
+        self.assertEqual(sum(c["name"] == "herdr" for c in self.recorded()), 1)
+        t.send("ordinary keys after a lost link\n")
+        t.expect("No action.")
+        self.assertEqual(sum(c["name"] == "herdr" for c in self.recorded()), 1)
         t.output = b""
-        t.expect("Type ATTACH nas")
-        self.assertEqual(sum(c["name"] == "herdr" for c in self.recorded()), 1)
-        t.send("cancel\n")
-        t.expect("Remote view ended")
-        self.assertEqual(sum(c["name"] == "herdr" for c in self.recorded()), 1)
+        t.send("nas\n")
+        t.expect("back at LOCAL control")
+        self.assertEqual(sum(c["name"] == "herdr" for c in self.recorded()), 2)
+        t.send("quit\n")
+        self.assertEqual(t.process.wait(timeout=3), 0)
+
+    def test_existing_projector_callers_still_reconnect_by_default(self):
+        env = self.env | {"MOCK_HERDR_EXIT": "1", "HERDR_BIN": "herdr"}
+        env.pop("HERDR_PROJECTOR_RECONNECT", None)
+        t = Terminal([str(self.bin / "herdr-projector")], env)
+        self.addCleanup(t.close)
+        t.expect("reconnecting in")
+        for _ in range(50):
+            t.read()
+            if sum(c["name"] == "herdr" for c in self.recorded()) >= 2:
+                break
+        self.assertGreaterEqual(sum(c["name"] == "herdr" for c in self.recorded()), 2)
+
+    def test_invalid_reconnect_policy_is_rejected_before_ssh(self):
+        p = subprocess.run(["bash", str(BIN / "herdr-projector")],
+                           env=self.env | {"HERDR_PROJECTOR_RECONNECT": "bad"},
+                           capture_output=True, text=True)
+        self.assertEqual(p.returncode, 2)
+        self.assertEqual(self.recorded(), [])
 
 
 if __name__ == "__main__":

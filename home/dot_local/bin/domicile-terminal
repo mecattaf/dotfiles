@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local control; explicit consent before each existing remote view.
+"""Local control; one explicit NAS selection before each remote view.
 
 Herdr's pinned public API cannot target a new client. Never create/focus a
 workspace over that API to guess where a later client will attach.
@@ -26,33 +26,42 @@ def local_shell():
     os.execvpe("fish", ["fish", "--no-config"], clean_environment())
 
 
+def discard_typeahead():
+    termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+
+
 def prompt(text):
     print(text, end="", flush=True)
-    line = sys.stdin.readline()
-    return None if not line else line.rstrip("\r\n")
+    # Do not buffer additional lines in Python: they must stay in the terminal
+    # queue so tcflush can discard them at each local/remote boundary.
+    line = bytearray()
+    while True:
+        byte = os.read(sys.stdin.fileno(), 1)
+        if not byte:
+            return None
+        if byte == b"\n":
+            return line.decode("utf-8", errors="replace").rstrip("\r")
+        line.extend(byte)
 
 
 def gate(args):
-    # HERDR_BIN for the unchanged projector; validate its complete argv.
+    # HERDR_BIN child: validate the menu's destination before exec, preserving
+    # the projector child's PID for its existing SSH/socket cleanup.
     if args != ["--remote", "nas", "--remote-keybindings", "server"]:
         print("Refusing unexpected Herdr arguments.", file=sys.stderr)
         return 2
-    print("\nNAS attachment: opens an EXISTING remote workspace.\n"
-          "Ordinary keys after attachment go to its displayed pane, which may run Claude.\n"
-          "To make a fresh shell, use Herdr's own Ctrl+B then Shift+N;\n"
-          "Ctrl+B then W selects a workspace; Ctrl+B then Q detaches.\n"
-          "This launcher cannot safely choose a fresh remote workspace for you.\n"
-          "Reconnects ask again. Any other answer returns to local control.", flush=True)
-    if prompt("Type ATTACH nas to open that remote view: ") != "ATTACH nas":
-        return 0  # deliberate end; projector must not retry a declined view
-    # Discard type-ahead. Herdr then reads the terminal directly.
-    termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+    if os.environ.get("DOMICILE_HERDR_ATTACH") != "1":
+        print("Open terminal control and select nas before attaching.", file=sys.stderr)
+        return 2
     env = clean_environment()
+    env.pop("DOMICILE_HERDR_ATTACH", None)
     env["HERDR_CONFIG_PATH"] = str(Path(env.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
                                    / "herdr/desktop-client.toml")
     if not Path(env["HERDR_CONFIG_PATH"]).is_file():
         print("Missing desktop-client.toml; import modules/domicile-apps.nix first.", file=sys.stderr)
         return 2
+    # Also discard anything typed while the SSH unit preflight was in progress.
+    discard_typeahead()
     os.execvpe("herdr", ["herdr", *args], env)
 
 
@@ -70,8 +79,12 @@ def main():
     while True:
         print("\nTerminal control — LOCAL\n"
               "local  Open a local rescue shell (works without NAS)\n"
-              "nas    Request a NAS Herdr view (existing workspace; asks first)\n"
-              "quit   Close this window\n"
+              "nas    Attach to NAS Herdr\n"
+              "quit   Close this window\n\n"
+              "NAS opens an EXISTING workspace/pane, which may be Claude.\n"
+              "After selecting nas, ordinary keys go to that displayed remote pane.\n"
+              "Herdr: Ctrl+B then Shift+N creates a fresh shell; Ctrl+B then Q detaches.\n"
+              "A lost link returns here for a new selection.\n"
               "Ordinary text here stays in this local menu.", flush=True)
         answer = prompt("local / nas / quit > ")
         if answer in (None, "quit"):
@@ -81,17 +94,21 @@ def main():
         if answer != "nas":
             print("No action. Enter local, nas or quit.", flush=True)
             continue
+        discard_typeahead()
         env = clean_environment()
         env["HERDR_PROJECTOR_TARGET"] = "nas"
         env.pop("HERDR_PROJECTOR_UNIT", None)  # retain production unit preflight
         env["HERDR_BIN"] = str(HERE / "herdr-domicile-client")
-        print("Checking NAS. Ctrl+C returns to this local menu if the link is unavailable.", flush=True)
+        env["DOMICILE_HERDR_ATTACH"] = "1"
+        env["HERDR_PROJECTOR_RECONNECT"] = "0"
+        print("Checking NAS. Ctrl+C returns to this local menu.", flush=True)
         child = subprocess.Popen([str(HERE / "herdr-projector")], env=env)
         try:
             status = child.wait()
         except KeyboardInterrupt:
             child.send_signal(signal.SIGTERM)
             status = child.wait()
+        discard_typeahead()
         print(f"Remote view ended (status {status}); back at LOCAL control.", flush=True)
 
 
