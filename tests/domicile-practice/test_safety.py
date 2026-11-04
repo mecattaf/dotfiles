@@ -76,6 +76,19 @@ class SafetyTests(unittest.TestCase):
                 child.terminate()
                 child.wait(3)
 
+    def test_unreaped_zombie_is_recorded_as_exited(self):
+        child = subprocess.Popen(["true"])
+        try:
+            def zombie():
+                row = worker.processes().get(child.pid)
+                return row if row is not None and row["state"] == "Z" else None
+            identity = worker.until(zombie, 5, 0.01)
+            self.assertIsNotNone(identity, "our exited child remains unreaped for this assertion")
+            self.assertFalse(worker.living(identity))
+            self.assertEqual(identity["state"], "Z")
+        finally:
+            child.wait(3)
+
     def test_failed_check_keeps_failure_and_traceback_in_receipt(self):
         with tempfile.TemporaryDirectory() as scratch:
             h = worker.Harness(SimpleNamespace(output=Path(scratch)))
