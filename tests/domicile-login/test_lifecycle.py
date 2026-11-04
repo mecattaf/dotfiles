@@ -242,6 +242,11 @@ class ConsoleTrial(unittest.TestCase):
         self.assertIn("/run/current-system/sw/bin", candidate_path.split(":"))
         package_share = str(Path(candidate_path.split(":")[2]).parent / "share")
         self.assertIn(package_share, final["env"]["XDG_DATA_DIRS"].split(":"))
+        data_dirs = [Path(value) for value in final["env"]["XDG_DATA_DIRS"].split(":")]
+        for name in ("domicile-terminal", "domicile-rescue", "domicile-chrome", "domicile-files"):
+            self.assertTrue(any((directory / "applications" / (name + ".desktop")).is_file()
+                                for directory in data_dirs),
+                            f"candidate launcher entry missing from effective XDG_DATA_DIRS: {name}")
         client_config = Path(final["env"]["DOMICILE_DESKTOP_CLIENT_CONFIG"])
         self.assertTrue(str(client_config).startswith("/nix/store/"))
         self.assertIn("prompt_new_workspace_name = true", client_config.read_text())

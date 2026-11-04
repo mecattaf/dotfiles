@@ -167,7 +167,7 @@ let
     fi
     export XDG_DATA_DIRS="${schemaDirs}:''${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
     if [ -n "''${DOMICILE_CONSOLE_TRIAL_PATH:-}" ]; then
-      export XDG_DATA_DIRS="${domicile}/share:$XDG_DATA_DIRS"
+      export XDG_DATA_DIRS="${domicile}/share:${home.home.path}/share:$XDG_DATA_DIRS"
     fi
     # XDG_VTNR alone must choose the drm platform, and a stale desktop name would
     # route the portal frontend wrongly.

@@ -32,8 +32,9 @@ fleet-exec strix-coordinator --cwd <compute-checkout> -- bash -lc '
 The third path contains `bin/domicile-console-trial`. It depends on the checked
 TSX, candidate helper directory and neutral desktop-client config. It puts the candidate's immutable Home Manager profile and fish ahead of the
 seat's installed profile, so Kitty, Chrome and Nautilus use the reviewed package
-versions even without activation. The candidate package's share directory is
-also visible through XDG_DATA_DIRS. It carries candidate `DOMICILE_*` native
+versions even without activation. Both the candidate Domicile share and immutable Home Manager profile share
+are visible through XDG_DATA_DIRS, so the new launcher entries are available
+without Home Manager activation. It carries candidate `DOMICILE_*` native
 flags directly from declared system/home session variables.
 
 After the matched candidate is reviewed, stage its closure from NAS as a
