@@ -22,9 +22,9 @@
 
     programs.domicile = {
       enable = true;
-      # Not "${manganese}/shell.js" as upstream's docs say: that output holds
-      # only bin/manganese, the build passes, and login fails.
-      settings.shell = "@domicile-desktop/manganese";
+      # The key table. Its built Shell becomes the shell, so set neither `shell`
+      # nor `settings.shell` beside it.
+      configDirectory = ../home/domicile;
       # Leave settings.idle.lock_after_seconds unset. Blanking does not lock
       # without it.
     };
