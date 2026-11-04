@@ -160,6 +160,14 @@
     # Keep upstream's nixpkgs so its signed binary cache remains usable.
     vicinae.url = "github:vicinaehq/vicinae/v0.29.1";
 
+    # Domicile, under trial on the client beside Sway (modules/domicile.nix).
+    # `release` moves only through an upstream release and runs the official
+    # prebuilt engine. flake.lock freezes it, so the pin moves only by a lock
+    # change; keep it out of rollingInputOverrides. No follows: its hand-set
+    # fixed-output hashes and its Mesa belong to its own nixpkgs, and following
+    # ours would test something upstream's release CI did not.
+    domicile.url = "github:cprussin/domicile/release";
+
     # herdr — the terminal workspace manager for AI coding agents
     # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
     # replaces everything this repo used to invent for itself: the home-grown
