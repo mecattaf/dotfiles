@@ -9,8 +9,10 @@
 # and the boot default; nothing here starts Domicile on an ordinary boot. This
 # adds upstream's NixOS module, the key table and one boot entry,
 # specialisation.domicile, that differs from the base only in greetd's first
-# session. `bootctl set-oneshot` picks it for one boot, so the next boot, or a
-# held power button, is Sway again. The rest sits in the base because a deploy
+# session. A one-shot trial returns to the base default on the following boot.
+# The separately prepared booted-kernel rescue entry is the hardware fallback;
+# a session specialisation does not prove a newer kernel boots this machine.
+# The rest sits in the base because a deploy
 # activates the base: under a running Domicile, its PAM file and units stay.
 #
 # Do not copy upstream's services.displayManager or gdm lines. greetd runs a
@@ -162,7 +164,7 @@ let
   '';
 in
 {
-  imports = [ inputs.domicile.nixosModules.default ];
+  imports = [ inputs.domicile.nixosModules.default ./domicile-apps.nix ];
 
   options.programs.domicilePhysical = {
     sessionPackage = lib.mkOption {

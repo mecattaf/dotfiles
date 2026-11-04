@@ -11,21 +11,17 @@ import {
 } from "@domicile-desktop/manganese-window-management/keyboard/commands";
 import { ownedChords } from "@domicile-desktop/sdk/own-keybindings";
 
-// Lock leaves the table here, so deleting the fish line below leaves the chord
+// Lock leaves the table here, so deleting the rescue line below leaves the chord
 // unbound and does not bring Lock back.
 const { "Meta+Shift+Return": _lock, ...kept } = DEFAULT_KEYBINDINGS;
 
-// What herdr-picker asks Sway to run, without the picker, which stops when
-// SWAYSOCK is unset. `exec` takes an argv with no shell, and `~` needs one.
-const projector =
-  "exec env HERDR_PROJECTOR_TARGET=nas HERDR_PICKER_HOSTNAME=nas HERDR_SWAY_LOCAL=0 kitty --class herdr-projector -e ~/.local/bin/herdr-sway-projector";
-
+// Each desktop entry point has one name for keys, the launcher, and recovery.
+// The terminal starts at a local control shell before an explicit NAS attach.
 const keybindings = {
   ...kept,
-  // Kitty > Herdr to nas, as dot_config/sway/binds.conf reaches it.
-  "Meta+Return": exec("sh", "-c", projector),
-  // A local shell, as binds.conf has it. Needs no nas and no Herdr.
-  "Meta+Shift+Return": exec("kitty", "-e", "fish"),
+  "Meta+Return": exec("domicile-apps", "terminal"),
+  // A local shell that needs neither NAS nor Herdr. This chord never locks.
+  "Meta+Shift+Return": exec("domicile-apps", "rescue"),
 };
 
 // Keep this line. The shell only checks chords when it draws, so a chord written
