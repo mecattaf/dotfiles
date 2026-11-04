@@ -7,16 +7,41 @@
 }:
 # Domicile under trial on the client, beside Sway. Sway stays the base config
 # and the boot default; nothing here starts Domicile on an ordinary boot. This
-# adds both of upstream's modules and one boot entry, specialisation.domicile,
-# that differs from the base only in greetd's first session. `bootctl
-# set-oneshot` picks it for one boot, so the next boot, or a held power button,
-# is Sway again. A deploy activates the base, and the entry differs only in that
-# one command, so a deploy under a running Domicile takes nothing away from it.
+# adds upstream's NixOS module, the key table and one boot entry,
+# specialisation.domicile, that differs from the base only in greetd's first
+# session. `bootctl set-oneshot` picks it for one boot, so the next boot, or a
+# held power button, is Sway again. The rest sits in the base because a deploy
+# activates the base: under a running Domicile, its PAM file and units stay.
 #
 # Do not copy upstream's services.displayManager or gdm lines. greetd runs a
 # command and reads no .desktop file, and gdm would be a second greeter.
+#
+# Upstream's Home Manager module stays off. It writes domicile.json whenever it
+# is enabled, and a second config beside domicile.tsx is a hard stop at start.
 let
   home = config.home-manager.users.tom;
+  domicile = config.programs.domicile.package;
+  keyTable = ../home/dot_config/domicile/domicile.tsx;
+  # A broken file at start means no desk, so it must not deploy. `check-config`
+  # refuses a module, so run the builder as upstream's configDirectory does, then
+  # `check-config` on the JSON it evaluates. The file deployed is the file checked.
+  checkedKeyTable = pkgs.runCommand "domicile.tsx" { nativeBuildInputs = [ pkgs.jq ]; } ''
+    set -o pipefail
+    export HOME="$TMPDIR"
+    mkdir config
+    cp ${keyTable} config/domicile.tsx
+    chmod -R u+w config
+    # Runs the builder and prints `field` of its `step` line.
+    run() { # step field builder-arguments...
+      ${domicile}/libexec/domicile/builder "''${@:3}" --cache "$TMPDIR/cache" \
+        | tee /dev/stderr \
+        | jq -rR "fromjson? | select(.step == \"$1\") | $2"
+    }
+    evaluated=$(run evaluated .config --evaluate config/domicile.tsx)
+    ${domicile}/bin/domicile check-config "$evaluated"
+    run built .root --entry config/domicile.tsx
+    cp ${keyTable} "$out"
+  '';
   # As modules/sway.nix: Nix keeps these schemas outside the profile's share.
   schemaDirs = lib.concatMapStringsSep ":" (p: "${p}/share/gsettings-schemas/${p.name}") [
     pkgs.gsettings-desktop-schemas
@@ -77,7 +102,7 @@ let
     # `exec` keeps the launcher in the session scope. No shell argument: the
     # config names it.
     exec ${pkgs.systemd}/bin/systemd-cat --identifier=domicile-session \
-      ${home.programs.domicile.finalPackage}/bin/domicile
+      ${domicile}/bin/domicile
   '';
 in
 {
@@ -92,18 +117,9 @@ in
   # The group carries upstream's nice and rtprio limits, from the next login.
   users.users.tom.extraGroups = [ "domicile" ];
 
-  home-manager.users.tom = {
-    imports = [ inputs.domicile.homeManagerModules.default ];
-
-    programs.domicile = {
-      enable = true;
-      # The key table. Its built Shell becomes the shell, so set neither `shell`
-      # nor `settings.shell` beside it.
-      configDirectory = ../home/domicile;
-      # Leave settings.idle.lock_after_seconds unset. Blanking does not lock
-      # without it.
-    };
-  };
+  # The key table, as one file link and not a whole-folder link. It sets no idle
+  # section, so blanking does not lock.
+  home-manager.users.tom.xdg.configFile."domicile/domicile.tsx".source = checkedKeyTable;
 
   # Only greetd's first session changes. default_session stays agreety with
   # Sway's command, so a Domicile that exits lands on a login that offers Sway.
