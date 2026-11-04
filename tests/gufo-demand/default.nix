@@ -26,11 +26,21 @@ let
     "qwen3-asr-1.7b"
     "qwen3-tts-12hz-1.7b-base"
     "qwen3.8-27b"
+    "qwen3.8-27b-ara"
     "qwen3.8-27b-q8"
     "qwen3.8-flash-next"
+    "qwen3.8-flash-next-abliterated"
   ];
 in
 assert proxy.enable && proxy.port == 8731;
+# The modified Qwens serialize through the same supervisor on the active
+# compute host. The dormant worker gains neither a backend nor a loan.
+assert c.services.superroc.enable;
+assert !self.nixosConfigurations.strix-worker.config.services.superroc.enable;
+assert !(builtins.elem "qwen38-27b-heretic-ara-q8-gguf" self.nixosConfigurations.strix-worker.config.services.local-models.artifacts);
+assert models."qwen3.8-27b-ara".capabilities.context == 102400;
+assert models."qwen3.8-flash-next-abliterated".capabilities.context == 32768;
+assert builtins.all (id: models.${id}.capabilities.tools) [ "qwen3.8-27b-ara" "qwen3.8-flash-next-abliterated" ];
 # Gufo and the production qwentts.cpp voice share one loan, not duplicate IDs.
 assert
   builtins.length (builtins.filter (id: id == "qwen-k2so-midway-b") c.services.local-models.artifacts)
