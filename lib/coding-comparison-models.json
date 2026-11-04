@@ -19,26 +19,6 @@
       ]
     }
   },
-  "gpt-oss-120b-mxfp4-gguf": {
-    "kind": "model",
-    "maker": "ggml-org",
-    "quantization": "MXFP4",
-    "notes": "OpenAI gpt-oss-120b in native MXFP4 GGUF. Requires a separate compatible backend and Harmony/tool formatting; not a Gufo deployment. Library acquisition only.",
-    "source": {
-      "hfUrl": "https://huggingface.co/ggml-org/gpt-oss-120b-GGUF",
-      "revision": "7200b74bea78b0a2964ef9f3897eefa401e890ff",
-      "layout": "flat",
-      "primary": "gpt-oss-120b-MXFP4.gguf",
-      "files": [
-        {
-          "path": "gpt-oss-120b-MXFP4.gguf",
-          "bytes": 63387346208,
-          "oid": "582bd40f6886200101f4c4ed9f25f3fe80cc14c86e9e2b37746cd8904a0c622d",
-          "hash": "sha256-WCvUD2iGIAEB9MTtnyXz/oDMFMhunis3dGzYkEoMYi0="
-        }
-      ]
-    }
-  },
   "glm53-flash-iq2-xxs-gguf": {
     "kind": "model",
     "maker": "unsloth",

@@ -579,6 +579,7 @@
             ;
           # `nix build .#gufo` — the engine modules/gufo.nix runs (#525).
           gufo = inputs.gufo.packages.${system}.default;
+          superroc = pkgs.callPackage ./pkgs/superroc { };
           d3-torch-rocm = strixAi.torch-rocm.override {
             wheelSources = builtins.fromJSON (builtins.readFile ./pkgs/vllm-srun/rocm10-wheels.json);
           };
@@ -2748,6 +2749,8 @@
             == nixpkgs.lib.sort builtins.lessThan [
               "d3-ultra-bf16"
               "qwen38-flash-next-gguf"
+              "qwen38-flash-next-abliterated-rocmfp4-gguf"
+              "qwen38-27b-heretic-ara-q8-gguf"
               "qwen38-27b-gguf"
               "qwen38-27b-q8-gguf"
               "qwen38-27b-dflash2-gguf"
@@ -2762,7 +2765,11 @@
           assert
             nixpkgs.lib.sort builtins.lessThan strixWorker.services.local-models.artifacts
             == nixpkgs.lib.sort builtins.lessThan (
-              nixpkgs.lib.remove "d3-ultra-bf16" strix.services.local-models.artifacts
+              nixpkgs.lib.subtractLists [
+                "d3-ultra-bf16"
+                "qwen38-27b-heretic-ara-q8-gguf"
+                "qwen38-flash-next-abliterated-rocmfp4-gguf"
+              ] strix.services.local-models.artifacts
               ++ [
                 "deepseek-v41-flash-1017-q2-gguf"
                 "qwen38-flash-next-q8-gguf"
@@ -2783,7 +2790,6 @@
               "deepseek-v41-flash-dspark-gguf"
               "deepseek-v41-flash-vision-gguf"
               "glm53-flash-iq2-xxs-gguf"
-              "gpt-oss-120b-mxfp4-gguf"
               "minimax-h3-fl2va"
               "qwen-image-2.1"
               "qwen-k2so-midway-b"
@@ -2795,6 +2801,7 @@
               "qwen38-27b-gguf"
               "qwen38-27b-heretic-ara-q8-gguf"
               "qwen38-27b-q8-gguf"
+              "qwen38-flash-next-abliterated-rocmfp4-gguf"
               "qwen38-flash-next-gguf"
               "qwen38-flash-next-q8-gguf"
               "vibevoice-asr-streaming-7b-bf16"

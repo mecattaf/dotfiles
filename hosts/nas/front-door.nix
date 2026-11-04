@@ -22,6 +22,9 @@
   # (hosts/nas/media.nix). AdGuard answers 10.42.0.1 for each of them
   # (modules/adguardhome.nix); the port URLs stay available beside them.
   services.caddy.virtualHosts = {
+    "http://dsh.internal, http://10.42.0.1".extraConfig = ''
+      reverse_proxy 127.0.0.1:3080
+    '';
     "http://photos.internal".extraConfig = ''
       reverse_proxy 127.0.0.1:2283
     '';

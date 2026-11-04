@@ -15,6 +15,7 @@ let
     "music.internal"
     "videos.internal"
     "handwriting.internal"
+    "dsh.internal"
   ];
 
   # The artifact namespace, read from the one edit point rather than spelled

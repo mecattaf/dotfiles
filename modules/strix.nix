@@ -17,6 +17,7 @@
     # Typed model catalog, guarded store materialization, and host projections.
     ./local-models.nix
     ./gufo.nix
+    ./superroc.nix
     ./d3-decision.nix
     # The utility-model seam (/drain, /print), independent of the engine.
     ./utility-model.nix
@@ -54,27 +55,6 @@
         # Flash 0731 with kyuz0's V4.1 Flash 1017, which only ds4 loads
         # (modules/ds4.nix, :8732). The 0731 catalog rows and Library bytes
         # stay until an explicit Library retirement.
-      };
-      models."qwen3.8-27b-ara" = {
-        artifact = "qwen38-27b-heretic-ara-q8-gguf";
-        # The ARA checkpoint has no matching vision or speculative sidecar.
-        # Keep one session and a bounded prefix cache for the shared GPU.
-        serve = {
-          sessions = 1;
-          context = 102400;
-          think = "on";
-          maxTokens = 16384;
-          extraArgs = [
-            "--cache-ram-bytes"
-            "1073741824"
-            "--max-pending"
-            "8"
-            "--request-timeout-ms"
-            "1200000"
-            "--stall-timeout-ms"
-            "180000"
-          ];
-        };
       };
       # The one voice (Tom, 2026-09-14): the K-2SO midway-B matched prefix and
       # its transcript. qwentts.cpp stays the live voice until Tom has listened

@@ -262,15 +262,19 @@ the uncensored candidates (Tom, 2026-09-11 and 2026-09-16; Gufo's collection,
 Qwen3.8-27B, Flash-Next as GGUF, the BF16 TTS Base). A new engine is a new
 server module beside `modules/gufo.nix`, or it does not serve.
 
-**Coding comparison acquisition (Tom, 2026-11-04).** Acquire Qwen3.8-27B
-Heretic ARA Q8_0, gpt-oss-120b MXFP4 and GLM-5.3-Flash UD-IQ2_XXS into the
-NAS Library, pinned in `lib/coding-comparison-models.json`. This permits that
-specific ARA artifact despite the earlier uncensored-candidate exclusion.
-These are Library acquisitions, not qualified deployments or host loans.
-Flash-Next `hcq8-ssmf32` remains deferred. Existing Gufo routes stay as declared.
-Tom explicitly authorizes parallel direct acquisition on Strix for these
-larger files, followed by verified copies to the NAS Library; 27B downloads
-to the NAS HDD. Credentials remain on NAS.
+**Modified Qwen comparison (Tom, 2026-11-04).** Serve both Qwen3.8-27B
+Heretic ARA Q8_0 through Gufo and the exact kingjones777 Flash-Next Uncensored
+ROCmFP4 STRIX_LEAN imatrix `hcq8-ssmf32` through the separate SuperROC module,
+on strix-coordinator. Both are pinned in `lib/coding-comparison-models.json`
+and share llama-swap's single-backend group. This supersedes the earlier
+uncensored exclusion and the hcq deferral for these specific artifacts.
+Expose both in dsh, including its standard web profile. GPT-OSS is dropped
+from the active catalog and Strix; its verified NAS archive is retained.
+GLM-5.3-Flash UD-IQ2_XXS remains Library-only and unqualified.
+Tom explicitly authorizes parallel direct acquisition of Flash on Strix,
+followed by verified copies to the NAS Library; 27B downloads to the NAS HDD.
+Credentials remain on NAS. Acquisitions, loans, backend qualification and
+activation are separate; startup never fetches weights.
 
 The weight plane lives outside Nix. `hosts/nas/models.nix`'s `library-fetch`
 is the only thing that talks to Hugging Face; it fills the canonical NAS

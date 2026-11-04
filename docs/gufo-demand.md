@@ -102,8 +102,8 @@ The Library also carries approved coding comparison weights in
 | Catalog artifact | Precision | Weight bytes |
 |---|---|---:|
 | `qwen38-27b-heretic-ara-q8-gguf` | Q8_0 | 29,047,084,928 |
-| `gpt-oss-120b-mxfp4-gguf` | MXFP4 | 63,387,346,208 |
 | `glm53-flash-iq2-xxs-gguf` | UD-IQ2_XXS, four shards | 101,844,951,904 |
+| `qwen38-flash-next-abliterated-rocmfp4-gguf` | ROCmFP4 hcq8-ssmf32 + Q8 MTP + projector | 111,179,053,056 |
 
 The 27B ARA artifact is deployed through the Gufo route described above. On
 2026-11-04, installed Gufo 0.22.0 (`7b1bf04`) loaded it on Strix Halo in
@@ -111,9 +111,11 @@ The 27B ARA artifact is deployed through the Gufo route described above. On
 44852 MiB GPU use. It returned the requested Python function with separate
 reasoning text and a valid structured tool call. Those short requests
 decoded at 6.6–6.7 tokens/second without a speculative draft; this is a
-compatibility check, not a coding benchmark. GPT-OSS and GLM add no Gufo
-route and need a separately integrated compatible backend. The Flash-Next
-`hcq8-ssmf32` candidate remains deferred.
+compatibility check, not a coding benchmark. GLM remains Library-only with
+no route. The selected modified Flash-Next requires the separate
+[SuperROC backend](superroc-flash-next.md); stock Gufo cannot load its custom
+ROCmFP4 tensor types. GPT-OSS is dropped from the active catalog; its verified
+NAS archive is retained, and its redundant Strix staging copy was removed.
 
 For an explicit acquisition from a reviewed worktree, the installed NAS
 `library-fetch` executable accepts `LIBRARY_FETCH_MANIFEST` pointing to a
