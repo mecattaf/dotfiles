@@ -61,7 +61,7 @@
     "kind": "model",
     "maker": "kingjones777",
     "quantization": "ROCmFP4-STRIX_LEAN-imatrix-hcq8-ssmf32",
-    "notes": "OrcaRouter refusal-direction edit, custom ROCmFP4 types 100/101. Requires separate SuperROC backend; not loadable by current Gufo. Selected for single-host Strix Halo; runtime qualification pending. PLE streams through mmap.",
+    "notes": "OrcaRouter refusal-direction edit, custom ROCmFP4 types 100/101. Served by the separate SuperROC backend, not current Gufo. Qualified on single 128GB Strix Halo on 2026-11-04 with one reserved 32K session, thinking and Q8 MTP depth three: short reasoning, coding, and required tool-call requests passed. PLE stays mmap-backed.",
     "source": {
       "hfUrl": "https://huggingface.co/kingjones777/Qwen3.8-Flash-Next-Uncensored-ROCmFP4-STRIX_LEAN-imatrix-GGUF",
       "revision": "737fae2f5ab92c55fde2f4e1da94ad3d17d3d5bb",

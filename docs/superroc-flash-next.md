@@ -22,8 +22,24 @@ The initial deployment is text only: one session, 32,768 context, thinking
 enabled with low effort, MTP depth three, a fixed 1 GiB retained cache,
 and a ten-minute idle timeout. The projector is retained in the Library;
 this route does not advertise vision. PLE stays mmap-backed rather than
-being forced into anonymous RAM. Hardware inference qualification is required
-before calling the deployment usable.
+being forced into anonymous RAM.
+
+Hardware qualification passed on the single 128 GB Strix Halo on 2026-11-04,
+through the public supervisor route. The model returned correct arithmetic
+with a separate reasoning field, a correct `stable_unique` Python function,
+and an exact required function call with JSON arguments. Reported decode
+rates were 46.69, 58.04 and 56.42 tokens/s respectively; these are short
+smoke requests, not a coding benchmark. The cold arithmetic request took
+21.1 seconds including model loading. GTT use was 71.94 GiB with about
+48 GiB of host memory available, with the 32K session reserved.
+
+The retained request/response evidence is under
+`~/.local/state/model-acquisitions/2026-11-04-flash-abliterated/qualification-*.json`
+on NAS. The scoped runtime activation preserves all previous routes,
+including ARA and D3, and records the previous configuration, content hashes,
+and idle-before-restart evidence in
+`/var/lib/llama-swap-local-models/flash-route-receipt.json` on Strix.
+The launcher has an explicit `local-flash-abliterated` Nix GC root.
 
 Downloads are explicit, never service startup or activation. The user
 authorized direct public acquisition on Strix followed by a SHA-256 verified
