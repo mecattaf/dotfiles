@@ -117,6 +117,22 @@ no route. The selected modified Flash-Next requires the separate
 ROCmFP4 tensor types. GPT-OSS is dropped from the active catalog; its verified
 NAS archive is retained, and its redundant Strix staging copy was removed.
 
+The first live qualification uses a scoped runtime proxy configuration at
+`/var/lib/llama-swap-local-models/config.yaml`, selected by
+`/run/systemd/system/llama-swap.service.d/40-local-qwens.conf`. It preserves
+all prior routes and the installed D3 launcher. Named GC roots retain the
+new launchers. The exact Nix-generated wanted manifest was projected to
+`/etc/local-models/wanted.json` after verifying all twelve existing rows were
+unchanged and only the two selected Qwens were added. Activation and rollback
+receipts live beside the runtime configuration.
+
+These are targeted live changes, not a whole NixOS activation. After the
+merged declarations are activated, remove the runtime drop-in, reload systemd,
+and restart only an idle llama-swap. Rebooting before that activation loses
+the runtime drop-in. Retain the named GC roots until the activated system
+closure contains their replacements. See [the Web chat runbook](dsh-local-qwen-chat.md)
+for the separately hand-run NAS UI and private Tailscale entrance.
+
 For an explicit acquisition from a reviewed worktree, the installed NAS
 `library-fetch` executable accepts `LIBRARY_FETCH_MANIFEST` pointing to a
 scoped `lib/model-store.nix` `manifestFor` result. This acquires only those
