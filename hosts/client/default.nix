@@ -90,6 +90,7 @@
     inputs.nixos-hardware.nixosModules.common-pc-laptop-ssd
     ../../modules/zenbook-duo-daemon.nix
     ../../modules/keyring-autounlock.nix # TPM-sealed keyring unlock; greetd autologin types no password
+    ../../modules/domicile.nix # under trial; Sway stays the base config and boot default
   ];
 
   networking.hostName = "client";
