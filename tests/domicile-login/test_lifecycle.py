@@ -226,7 +226,7 @@ class ConsoleTrial(unittest.TestCase):
         self.assertNotEqual(Path(config).parent, Path("/nix/store"),
                             "recursive config watch must have a bounded parent directory")
         self.assertEqual(Path(config).read_bytes(),
-                         (ROOT / "home/dot_config/domicile/domicile.tsx").read_bytes())
+                         ARGS.expected_config.read_bytes())
         self.assertEqual(final["argv"], ["--config", config])
         check = next(c for c in calls if c["tool"] == "domicile-recover")
         self.assertEqual(check["env"]["DOMICILE_CONFIG_FILE"], config)
@@ -471,6 +471,8 @@ if __name__ == "__main__":
     parser.add_argument("--recovery", type=Path, required=True)
     parser.add_argument("--trial", type=Path, required=True)
     parser.add_argument("--native-session", type=Path, required=True)
+    parser.add_argument("--expected-config", type=Path,
+                        default=ROOT / "home/dot_config/domicile/domicile.tsx")
     parser.add_argument("--receipts", type=Path, required=True)
     ARGS, extra = parser.parse_known_args()
     if Path("/proc/1/comm").read_text().strip() != "bwrap":

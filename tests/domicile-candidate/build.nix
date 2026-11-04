@@ -8,7 +8,6 @@
 let
   dotfiles = builtins.getFlake "git+file://${dotfilesCheckout}?rev=${dotfilesRevision}";
   domicile = builtins.getFlake "git+file://${domicileCheckout}?rev=${domicileRevision}";
-  lib = dotfiles.inputs.nixpkgs.lib;
   pkgs = domicile.inputs.nixpkgs.legacyPackages.x86_64-linux;
   packages = domicile.packages.x86_64-linux;
   engine = packages.engine.overrideAttrs (old: {
@@ -25,7 +24,8 @@ let
   originalLink = ''ln -s ${packages.engine} "$out/libexec/domicile/engine"'';
   package = packages.domicile.overrideAttrs (old: {
     buildCommand =
-      assert lib.hasInfix originalLink old.buildCommand;
+      # A literal replacement check preserves store string contexts; regex matching does not.
+      assert builtins.replaceStrings [ originalLink ] [ "" ] old.buildCommand != old.buildCommand;
       builtins.replaceStrings [ originalLink ] [ ''ln -s ${engine} "$out/libexec/domicile/engine"'' ]
         old.buildCommand;
   });
