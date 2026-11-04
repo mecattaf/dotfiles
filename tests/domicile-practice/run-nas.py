@@ -47,41 +47,48 @@ try:
         receipt["transport_exit"] = result.returncode
 finally:
     save()
-    archive = a.out / "remote.tar.gz"
-    with archive.open("wb") as out, (a.out / "archive.log").open("wb") as err:
-        copied = subprocess.run(base + ["tar", "-C", remote, "--exclude=./cache", "--exclude=./home",
-                         "--exclude=./chrome", "--exclude=./data", "--exclude=./state",
-                         "--exclude=./config", "-czf", "-", "."],
-                                stdout=out, stderr=err)
-    receipt["archive_exit"] = copied.returncode
-    if copied.returncode == 0:
-        receipt["archive_sha256"] = hashlib.file_digest(archive.open("rb"), "sha256").hexdigest()
-        dest = a.out / "artifacts"
-        dest.mkdir()
-        with tarfile.open(archive) as tf:
-            # A fake HOME can contain links: data filter rejects escaping links
-            # and device files rather than following them into the NAS home.
-            tf.extractall(dest, filter="data")
-        manifest = dest / "manifest.json"
-        verified = 0
-        if manifest.exists():
-            for relative, expected in json.loads(manifest.read_text()).items():
-                path = (dest / relative).resolve()
-                if not path.is_relative_to(dest.resolve()):
-                    raise ValueError("manifest path escapes artifact directory")
-                with path.open("rb") as f:
-                    actual = hashlib.file_digest(f, "sha256").hexdigest()
-                if actual != expected["sha256"] or path.stat().st_size != expected["size"]:
-                    raise ValueError("artifact integrity failed: " + relative)
-                verified += 1
-        receipt["verified_files"] = verified
-        receipt["artifact_status"] = "copied" if verified else "incomplete-no-manifest"
-        outcome = dest / "receipt.json"
-        if outcome.exists():
-            receipt["result"] = json.loads(outcome.read_text())["result"]
-    else:
-        receipt["artifact_status"] = "copy-failed; remote data retained"
-    save()
+    try:
+        archive = a.out / "remote.tar.gz"
+        with archive.open("wb") as out, (a.out / "archive.log").open("wb") as err:
+            copied = subprocess.run(base + ["tar", "-C", remote, "--exclude=./cache", "--exclude=./home",
+                             "--exclude=./chrome", "--exclude=./data", "--exclude=./state",
+                             "--exclude=./config", "-czf", "-", "."],
+                                    stdout=out, stderr=err)
+        receipt["archive_exit"] = copied.returncode
+        if copied.returncode == 0:
+            receipt["archive_sha256"] = hashlib.file_digest(archive.open("rb"), "sha256").hexdigest()
+            dest = a.out / "artifacts"
+            dest.mkdir()
+            with tarfile.open(archive) as tf:
+                # A fake HOME can contain links: data filter rejects escaping links
+                # and device files rather than following them into the NAS home.
+                tf.extractall(dest, filter="data")
+            manifest = dest / "manifest.json"
+            verified = 0
+            if manifest.exists():
+                for relative, expected in json.loads(manifest.read_text()).items():
+                    path = (dest / relative).resolve()
+                    if not path.is_relative_to(dest.resolve()):
+                        raise ValueError("manifest path escapes artifact directory")
+                    with path.open("rb") as f:
+                        actual = hashlib.file_digest(f, "sha256").hexdigest()
+                    if actual != expected["sha256"] or path.stat().st_size != expected["size"]:
+                        raise ValueError("artifact integrity failed: " + relative)
+                    verified += 1
+            receipt["verified_files"] = verified
+            receipt["artifact_status"] = "copied" if verified else "incomplete-no-manifest"
+            outcome = dest / "receipt.json"
+            if outcome.exists():
+                receipt["result"] = json.loads(outcome.read_text())["result"]
+        else:
+            receipt["artifact_status"] = "copy-failed; remote data retained"
+        save()
+    except Exception as error:
+        receipt["artifact_status"] = "copy-or-validation-failed; evidence retained"
+        receipt["artifact_error"] = repr(error)
+    finally:
+        save()
+
 print(json.dumps(receipt, indent=2))
 raise SystemExit(0 if receipt.get("result") == "pass" and receipt["transport_exit"] == 0
                  and receipt["artifact_status"] == "copied" else 1)

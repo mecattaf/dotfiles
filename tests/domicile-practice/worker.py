@@ -642,7 +642,8 @@ class Harness:
                 pass
         atomic(self.work / "cleanup.json", {"owned_before": alive,
                "remaining": [r for r in alive if living(r)]})
-        failed = any(r["status"] != "pass" for r in self.receipt["checks"])
+        self.receipt["cleanup_remaining"] = [r for r in alive if living(r)]
+        failed = bool(self.receipt["cleanup_remaining"]) or any(r["status"] != "pass" for r in self.receipt["checks"])
         expected = {"isolation-and-inputs", "broken-startup-actionable", "clean-startup", "launch-terminal",
                     "disabled-lock-chord-rescue-kitty", "launch-browser", "launch-files", "engine-crash-recovery",
                     "clean-shutdown", "re-entry", "second-shutdown"}
