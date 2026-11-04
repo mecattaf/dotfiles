@@ -78,7 +78,7 @@ let
   ) config.environment.sessionVariables;
   helperDirectory = home.home.file.".local/bin".source;
   desktopClientConfig = home.xdg.configFile."herdr/desktop-client.toml".source;
-  trialPath = "${helperDirectory}:${recovery}/bin:${domicile}/bin:/etc/profiles/per-user/tom/bin:/run/current-system/sw/bin";
+  trialPath = "${helperDirectory}:${recovery}/bin:${domicile}/bin:${home.home.path}/bin:${pkgs.fish}/bin:/etc/profiles/per-user/tom/bin:/run/current-system/sw/bin";
   # A separately checked store file remains usable when the live config is broken.
   rescue = pkgs.runCommand "domicile-rescue.tsx" { nativeBuildInputs = [ pkgs.jq ]; } ''
     set -o pipefail

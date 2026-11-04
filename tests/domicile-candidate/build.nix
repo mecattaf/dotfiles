@@ -40,6 +40,7 @@ let
             + builtins.readFile "${dotfiles}/tests/domicile-candidate/native-output.ts"
           )
         );
+        environment.sessionVariables.DOMICILE_ENGINE = toString engine;
         environment.sessionVariables.DOMICILE_ENGINE_ARGS = "--domicile-touchpad-natural-scroll --domicile-mouse-flat-acceleration";
       })
     ];
@@ -57,6 +58,8 @@ in
     engineSource = toString engine.src;
     nativeEngine = engine.outPath;
     compositor = package.outPath;
+    keyTable = toString config.home-manager.users.tom.xdg.configFile."domicile/domicile.tsx".source;
+    configSource = toString config.programs.domicilePhysical.configSource;
     system = config.system.build.toplevel.outPath;
     trialSpecialisation = config.system.build.toplevel.outPath + "/specialisation/domicile";
     consoleTrial = config.programs.domicilePhysical.trialPackage or null;

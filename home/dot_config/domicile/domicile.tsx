@@ -44,3 +44,13 @@ export const Shell: typeof manganese = (root, domicile) => {
   return manganese(root, domicile);
 };
 export const shell_options = { nightLight: { schedule: "off" } };
+
+// Upstream runs these once per compositor, not on shell reload or engine rejoin.
+// The terminal opens LOCAL control; no NAS view attaches automatically.
+export const startup = {
+  commands: [
+    ["domicile-apps", "chrome"],
+    ["domicile-apps", "terminal"],
+    ["domicile-apps", "files"],
+  ],
+};

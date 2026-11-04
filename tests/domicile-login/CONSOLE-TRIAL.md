@@ -30,9 +30,9 @@ fleet-exec strix-coordinator --cwd <compute-checkout> -- bash -lc '
 ```
 
 The third path contains `bin/domicile-console-trial`. It depends on the checked
-TSX, candidate helper directory and neutral desktop-client config. It uses
-the seat's installed Home Manager profile and system tools for Kitty, Chrome,
-fish and other ordinary programs. The candidate package's share directory is
+TSX, candidate helper directory and neutral desktop-client config. It puts the candidate's immutable Home Manager profile and fish ahead of the
+seat's installed profile, so Kitty, Chrome and Nautilus use the reviewed package
+versions even without activation. The candidate package's share directory is
 also visible through XDG_DATA_DIRS. It carries candidate `DOMICILE_*` native
 flags directly from declared system/home session variables.
 
@@ -47,7 +47,15 @@ No client copy was performed by this implementation task.
 
 ## Human physical sequence
 
-1. Save desktop work. On the Zenbook, press Meta+Shift+Return for its local
+With Tom present, first confirm a fresh physical console login and the password
+that will be used for getty/agreety. Verify that login while Sway is still
+available, then return to Sway; do not log out into an unverified login path.
+Password setup is deferred to that attended step; this run never read ~/pass.
+The current-kernel console trial requires no rescue-entry installation or EFI
+write. The separate named rescue entry protects a later boot-based transition.
+
+1. Save desktop work and close the old Chrome windows/profile before logging out
+   of Sway; a surviving same-profile Chrome process could receive the new launch. On the Zenbook, press Meta+Shift+Return for its local
    Kitty/fish terminal. Run `hostname` and `uname -r`. Expect `client`
    and `7.2.10`; stop if they differ from the intended trial kernel.
 2. From that local terminal, run `swaymsg exit` to log out of Sway.
