@@ -513,13 +513,13 @@ class Harness:
     def launch(self, action):
         before = {r["pid"] for r in self.app_rows(action)}
         self.chord(self.chords[action])
-        rows = until(lambda: [r for r in self.app_rows(action) if r["pid"] not in before], 15)
+        rows = until(lambda: [r for r in self.app_rows(action) if r["pid"] not in before], self.a.app_timeout)
         assert rows, "no new owned " + action + " process; inspect application logs/launches"
         if action in ("terminal", "rescue") and not self.a.apps_helper and action not in self.command_overrides:
             def ticking():
                 tree = descendants(processes(), [r["pid"] for r in rows])
                 return any(c["pid"] in tree and c["time"] > time.time() - 3 for c in self.counter())
-            assert until(ticking, 5), "new Kitty's own child is not ticking"
+            assert until(ticking, self.a.app_timeout), "new Kitty's own child is not ticking"
         self.observe(action)
         return {"pids": [r["pid"] for r in rows], "argv": rows[0]["argv"]}
 
@@ -707,6 +707,7 @@ def main():
     p.add_argument("--startup-timeout", type=float, default=120)
     p.add_argument("--recovery-timeout", type=float, default=30)
     p.add_argument("--settle", type=float, default=6)
+    p.add_argument("--app-timeout", type=float, default=20, help="bounded process/counter readiness deadline under compute load")
     a = p.parse_args()
     if a.enter:
         assert socket.gethostname() == "strix-coordinator", "compute host must be strix-coordinator"

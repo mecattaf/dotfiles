@@ -114,7 +114,8 @@ Actions are `terminal`, `rescue`, `browser`, `files`. The helper's `start` verb
 is outside this minimum harness. `--kitty`, `--chrome`, `--nautilus` and
 `--recorder` accept executable paths. `--engine /absolute/engine-directory`
 sets `DOMICILE_ENGINE` inside the private environment and records its chrome
-and library hashes. It must contain `chrome` and `libdomicile_engine.so`. Use worker `--help` for timeouts.
+and library hashes. It must contain `chrome` and `libdomicile_engine.so`. Use worker `--help` for timeouts. `--app-timeout` bounds app and counter readiness (default
+20 seconds), including first-use font/cache work under concurrent builds.
 
 A chord JSON maps actions to evdev code arrays. Defaults are `[125,28]`,
 `[125,42,28]`, `[125,48]`, `[125,18]`, respectively. Expectations map each action
