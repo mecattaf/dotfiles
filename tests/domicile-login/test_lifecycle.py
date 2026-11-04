@@ -223,6 +223,8 @@ class ConsoleTrial(unittest.TestCase):
         self.assertEqual(final["pid"], pid)
         config = final["env"]["DOMICILE_CONFIG_FILE"]
         self.assertTrue(config.startswith("/nix/store/"))
+        self.assertNotEqual(Path(config).parent, Path("/nix/store"),
+                            "recursive config watch must have a bounded parent directory")
         self.assertEqual(Path(config).read_bytes(),
                          (ROOT / "home/dot_config/domicile/domicile.tsx").read_bytes())
         self.assertEqual(final["argv"], ["--config", config])

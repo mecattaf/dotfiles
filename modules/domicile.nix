@@ -27,7 +27,10 @@ let
   # A broken file at start means no desk, so it must not deploy. `check-config`
   # refuses a module, so run the builder as upstream's configDirectory does, then
   # `check-config` on the JSON it evaluates. The file deployed is the file checked.
-  checkedKeyTable = pkgs.runCommand "domicile.tsx" { nativeBuildInputs = [ pkgs.jq ]; } ''
+  # Upstream watches config.parent recursively before starting the engine.
+  # A top-level store file would make that parent all of /nix/store.
+  checkedKeyTable = "${checkedKeyTableDirectory}/domicile.tsx";
+  checkedKeyTableDirectory = pkgs.runCommand "domicile-config" { nativeBuildInputs = [ pkgs.jq ]; } ''
     set -o pipefail
     export HOME="$TMPDIR"
     mkdir config
@@ -42,7 +45,8 @@ let
     evaluated=$(run evaluated .config --evaluate config/domicile.tsx)
     ${domicile}/bin/domicile check-config "$evaluated"
     run built .root --entry config/domicile.tsx
-    cp ${keyTable} "$out"
+    mkdir -p "$out"
+    cp ${keyTable} "$out/domicile.tsx"
   '';
   # As modules/sway.nix: Nix keeps these schemas outside the profile's share.
   schemaDirs = lib.concatMapStringsSep ":" (p: "${p}/share/gsettings-schemas/${p.name}") [
@@ -80,7 +84,8 @@ let
   desktopClientConfig = home.xdg.configFile."herdr/desktop-client.toml".source;
   trialPath = "${helperDirectory}:${recovery}/bin:${domicile}/bin:${home.home.path}/bin:${pkgs.fish}/bin:/etc/profiles/per-user/tom/bin:/run/current-system/sw/bin";
   # A separately checked store file remains usable when the live config is broken.
-  rescue = pkgs.runCommand "domicile-rescue.tsx" { nativeBuildInputs = [ pkgs.jq ]; } ''
+  rescue = "${rescueDirectory}/domicile.tsx";
+  rescueDirectory = pkgs.runCommand "domicile-rescue" { nativeBuildInputs = [ pkgs.jq ]; } ''
     set -o pipefail
     export HOME="$TMPDIR"
     ${domicile}/libexec/domicile/builder --evaluate ${./domicile-session/rescue.tsx} --cache "$TMPDIR/cache" > evaluated.log
@@ -89,7 +94,8 @@ let
     test -n "$evaluated"
     ${domicile}/bin/domicile check-config "$evaluated"
     ${domicile}/libexec/domicile/builder --entry ${./domicile-session/rescue.tsx} --cache "$TMPDIR/cache"
-    cp ${./domicile-session/rescue.tsx} "$out"
+    mkdir -p "$out"
+    cp ${./domicile-session/rescue.tsx} "$out/domicile.tsx"
   '';
   recovery = pkgs.writeTextFile {
     name = "domicile-recover";
