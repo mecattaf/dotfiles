@@ -1,0 +1,80 @@
+{
+  "qwen38-27b-heretic-ara-q8-gguf": {
+    "kind": "model",
+    "maker": "mradermacher",
+    "quantization": "Q8_0",
+    "notes": "Qwen3.8-27B ARA from trohrbaugh custom Heretic 1.2, Q8 comparison candidate. Standard tensor types appear compatible with Gufo; exact loading and coding quality remain unqualified. Library acquisition only, no automatic borrow or serving.",
+    "source": {
+      "hfUrl": "https://huggingface.co/mradermacher/Qwen3.8-27B-heretic-ara-GGUF",
+      "revision": "f69c978f262c983cb312395d18bbce340260e89f",
+      "layout": "flat",
+      "primary": "Qwen3.8-27B-heretic-ara.Q8_0.gguf",
+      "files": [
+        {
+          "path": "Qwen3.8-27B-heretic-ara.Q8_0.gguf",
+          "bytes": 29047084928,
+          "oid": "73069bece82a7c30f94bc208ab20e81ad43e35a2c980b9cdfc0d1d4f3f9dd00b",
+          "hash": "sha256-cwab7OgqfDD5S8IIqyDoGtQ+NaLJgLnN/A0dTz+d0As="
+        }
+      ]
+    }
+  },
+  "gpt-oss-120b-mxfp4-gguf": {
+    "kind": "model",
+    "maker": "ggml-org",
+    "quantization": "MXFP4",
+    "notes": "OpenAI gpt-oss-120b in native MXFP4 GGUF. Requires a separate compatible backend and Harmony/tool formatting; not a Gufo deployment. Library acquisition only.",
+    "source": {
+      "hfUrl": "https://huggingface.co/ggml-org/gpt-oss-120b-GGUF",
+      "revision": "7200b74bea78b0a2964ef9f3897eefa401e890ff",
+      "layout": "flat",
+      "primary": "gpt-oss-120b-MXFP4.gguf",
+      "files": [
+        {
+          "path": "gpt-oss-120b-MXFP4.gguf",
+          "bytes": 63387346208,
+          "oid": "582bd40f6886200101f4c4ed9f25f3fe80cc14c86e9e2b37746cd8904a0c622d",
+          "hash": "sha256-WCvUD2iGIAEB9MTtnyXz/oDMFMhunis3dGzYkEoMYi0="
+        }
+      ]
+    }
+  },
+  "glm53-flash-iq2-xxs-gguf": {
+    "kind": "model",
+    "maker": "unsloth",
+    "quantization": "UD-IQ2_XXS",
+    "notes": "GLM-5.3-Flash IQ2 four-shard single-host comparison candidate. Needs a recent compatible llama.cpp backend; 128GB runtime fit and quantized coding quality remain unqualified. Library acquisition only, no automatic borrow or serving.",
+    "source": {
+      "hfUrl": "https://huggingface.co/unsloth/GLM-5.3-Flash-GGUF",
+      "revision": "a38483c8cd5df544f53d70fb281afe97369d5ab6",
+      "layout": "flat",
+      "primary": "UD-IQ2_XXS/GLM-5.3-Flash-UD-IQ2_XXS-00001-of-00004.gguf",
+      "files": [
+        {
+          "path": "UD-IQ2_XXS/GLM-5.3-Flash-UD-IQ2_XXS-00001-of-00004.gguf",
+          "bytes": 9429984,
+          "oid": "337870cefce5fb34b2aa3ade54a0fbf61676697f7f9a906670c20edde74561f4",
+          "hash": "sha256-M3hwzvzl+zSyqjreVKD79hZ2aX9/mpBmcMIO3edFYfQ="
+        },
+        {
+          "path": "UD-IQ2_XXS/GLM-5.3-Flash-UD-IQ2_XXS-00002-of-00004.gguf",
+          "bytes": 49896298080,
+          "oid": "d51a3d9ca05022d53e71753df75ee64ed5fd4e47655650ae023e9717b3ec158d",
+          "hash": "sha256-1Ro9nKBQItU+cXU9917mTtX9TkdlVlCuAj6XF7PsFY0="
+        },
+        {
+          "path": "UD-IQ2_XXS/GLM-5.3-Flash-UD-IQ2_XXS-00003-of-00004.gguf",
+          "bytes": 49248507840,
+          "oid": "89180f13784dc1128586b98adf1ca876279881a20bc4f01747703ce352563372",
+          "hash": "sha256-iRgPE3hNwRKFhrmK3xyodieYgaILxPAXR3A841JWM3I="
+        },
+        {
+          "path": "UD-IQ2_XXS/GLM-5.3-Flash-UD-IQ2_XXS-00004-of-00004.gguf",
+          "bytes": 2690716000,
+          "oid": "9e0ef47daa1fdffce3cf2ac1594ce4634d176ad018be6e692729757f38d5fbf6",
+          "hash": "sha256-ng70faof3/zjzyrBWUzkY00XatAYvm5pJyl1fzjV+/Y="
+        }
+      ]
+    }
+  }
+}

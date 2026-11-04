@@ -79,6 +79,33 @@ is for any additional required bundles.
 
 ## Add new model bytes
 
+The Library also carries approved coding comparison weights in
+`lib/coding-comparison-models.json` (Tom, 2026-11-04):
+
+| Catalog artifact | Precision | Weight bytes |
+|---|---|---:|
+| `qwen38-27b-heretic-ara-q8-gguf` | Q8_0 | 29,047,084,928 |
+| `gpt-oss-120b-mxfp4-gguf` | MXFP4 | 63,387,346,208 |
+| `glm53-flash-iq2-xxs-gguf` | UD-IQ2_XXS, four shards | 101,844,951,904 |
+
+These entries add no Gufo route or compute wanted-set requirement. The 27B
+ARA artifact uses standard encodings but still needs a load check. GPT-OSS
+and GLM need a separately integrated compatible backend. Download size does
+not qualify runtime memory or coding quality. The Flash-Next `hcq8-ssmf32`
+candidate remains deferred.
+
+For an explicit acquisition from a reviewed worktree, the installed NAS
+`library-fetch` executable accepts `LIBRARY_FETCH_MANIFEST` pointing to a
+scoped `lib/model-store.nix` `manifestFor` result. This acquires only those
+artifact IDs without rebuilding or activating the NAS. Each downloaded file
+is SHA-256 verified before being renamed into
+`/mnt/nas/models/weights/<artifact-id>/`; partial files keep the `.part` suffix.
+Transfers resume partial files and retry connection failures over HTTP/1.1.
+For the explicitly requested parallel acquisition, `LIBRARY_FETCH_WEIGHTS`
+can select a staging directory on Strix. Only public URLs and manifests go
+there; credentials stay on NAS. Copy verified staged files back into the NAS
+Library and verify their hashes before treating acquisition as complete.
+
 First add the artifact to `lib/gufo-models.json`, following a neighboring
 entry's pinned source revision, files, sizes and hashes. That catalog is
 imported by `lib/local-models.nix`; it is the one byte-level definition shared

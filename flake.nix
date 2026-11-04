@@ -2774,13 +2774,16 @@
           # no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           # Plus Gufo's collection (lib/gufo-models.json), as gufo-org/gufo
-          # v0.22.0 plus Q8 and the separately pinned ds4 V4.1 model.
+          # v0.22.0 plus Q8, the separately pinned ds4 V4.1 model and Tom's
+          # Library-only coding comparison acquisitions (2026-11-04).
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "d3-ultra-bf16"
               "deepseek-v41-flash-1017-q2-gguf"
               "deepseek-v41-flash-dspark-gguf"
               "deepseek-v41-flash-vision-gguf"
+              "glm53-flash-iq2-xxs-gguf"
+              "gpt-oss-120b-mxfp4-gguf"
               "minimax-h3-fl2va"
               "qwen-image-2.1"
               "qwen-k2so-midway-b"
@@ -2790,6 +2793,7 @@
               "qwen3-tts-tokenizer-f32"
               "qwen38-27b-dflash2-gguf"
               "qwen38-27b-gguf"
+              "qwen38-27b-heretic-ara-q8-gguf"
               "qwen38-27b-q8-gguf"
               "qwen38-flash-next-gguf"
               "qwen38-flash-next-q8-gguf"

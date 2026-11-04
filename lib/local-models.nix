@@ -196,11 +196,14 @@ let
           # Separately approved appliances, including D3-Ultra, have their
           # own catalog files and runtime modules beside Gufo. Bytes
           # and sha256 come from the Hugging Face API at the pinned revisions.
+          # Coding comparison weights are Library acquisitions only; no host
+          # or runtime gains a deployment from their catalog entries.
           artifacts =
             (builtins.fromJSON (builtins.readFile ./speech-intake-models.json))
             // (builtins.fromJSON (builtins.readFile ./gufo-models.json))
             // (builtins.fromJSON (builtins.readFile ./ds4-models.json))
             // (builtins.fromJSON (builtins.readFile ./decision-models.json))
+            // (builtins.fromJSON (builtins.readFile ./coding-comparison-models.json))
             // {
               "qwen3-tts-1.7b-base-q8-0" = mkSingleFileArtifact {
                 maker = "Qwen";
