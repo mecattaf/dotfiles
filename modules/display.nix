@@ -4,6 +4,8 @@
 # and the NAS are not. The optional headless browser desktop is a separate
 # capability. modules/common.nix derives programs.swayPhysical and greetd
 # from this option. niri and scroll are retired (Tom, settled 2026-10-13).
+# Sway is the live desktop and boot default. Domicile is under trial on the
+# client (modules/domicile.nix) and Otto is dropped.
 {
   options.myDisplay = {
     enable = lib.mkOption {

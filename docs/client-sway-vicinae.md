@@ -1,5 +1,9 @@
 # Sway, Vicinae and Herdr on both physical seats
 
+> Status, 2026-11-04: this describes the live Sway desktop, which is still the
+> boot default on the client. Domicile is under trial, and Otto is dropped. The
+> rest of this file is unchanged history.
+
 Branch: `desktop/sway-vicinae-client`. Targets: `client` (Zenbook Duo) and
 `coordinator` (Strix). Herdr and agents stay on Strix; the coordinator's
 projectors attach locally, while the Zenbook attaches over SSH. Network
