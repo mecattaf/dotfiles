@@ -101,10 +101,41 @@ server, and native new-workspace creation, as well as Chrome, Files and local
 rescue. `receipt.json` contains artifact hashes and `video.json` the encoded
 frame count and duration.
 
-The current practice script pins the locally available store paths near its
-top. Update those tool paths when reproducing on a different build; never
-silently substitute a live desktop or personal HOME. No build is needed for
-these scripts. Before any future `nix build`, check `df -h /` on the build
+Supply a Domicile build with `DOMICILE_BIN`, an absolute executable path.
+All desktop startup, control and screenshot calls use that selected binary.
+Symlinks such as `result/bin/domicile` are resolved once before execution.
+An explicitly empty, missing, relative or non-executable path fails before
+creating the output directory; it never falls back to the stock build.
+Omitting the variable retains the original stock Domicile default. Other
+application tool paths remain the locally available store paths near the top.
+
+Exact invocation from NAS, with a fresh output directory on Strix:
+
+```sh
+fleet-exec strix-coordinator \
+  --cwd /home/tom/compute/domicile-autonomous-apps -- \
+  /home/tom/.local/bin/runtime-test -- \
+  env DOMICILE_BIN=/absolute/paired-package/bin/domicile \
+  dbus-run-session -- bash tests/domicile-apps/practice.sh \
+  /home/tom/compute/domicile-apps-evidence/paired-native-01
+```
+
+Replace only the supplied binary and fresh output path. The runner still
+creates a fixture HOME, private Chrome profile and private Herdr server inside
+runtime-test and a private D-Bus; no personal HOME or profile becomes the
+desktop's configuration. It retains the local first-key sequence and explicit
+NAS gate. This command uses mocked transport, with no actual NAS attachment.
+
+`domicile-build.json` records the selection before any desktop starts.
+The same object appears at `receipt.json.domicile` on success:
+`selected_by`, `requested_binary`, resolved `binary`, resolved package root
+(parent of `bin/`, or null for another layout), and executable `sha256`.
+The Nix package store path identifies the supplied build and its dependencies.
+The receipt does not claim that a later paired native package passed when
+only the available stock build has run.
+
+Never silently substitute a live desktop or personal HOME. No build is needed
+for these scripts. Before any future `nix build`, check `df -h /` on the build
 host and stop below 25 GB.
 
 ## Measured evidence

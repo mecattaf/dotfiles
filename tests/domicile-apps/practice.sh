@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
-# runtime-test -- dbus-run-session -- bash tests/domicile-apps/practice.sh OUTDIR
+# runtime-test -- env DOMICILE_BIN=/absolute/package/bin/domicile \
+#   dbus-run-session -- bash tests/domicile-apps/practice.sh OUTDIR
+# DOMICILE_BIN is optional; an explicitly supplied invalid path never falls back.
 set -euo pipefail
+[[ $# == 1 ]] || { echo 'usage: [DOMICILE_BIN=/absolute/binary] practice.sh NEW_OUTDIR' >&2; exit 2; }
+D_REQUESTED="${DOMICILE_BIN-/nix/store/sz1pfpfw4wjyxbi6w7ils7nwip8kajy1-domicile/bin/domicile}"
+[[ "$D_REQUESTED" == /* && -f "$D_REQUESTED" && -x "$D_REQUESTED" ]] || {
+  echo 'DOMICILE_BIN must be an absolute path to an executable file' >&2
+  exit 2
+}
+D=$(realpath -e -- "$D_REQUESTED")
+export PRACTICE_DOMICILE_REQUESTED="$D_REQUESTED" PRACTICE_DOMICILE_BINARY="$D"
 OUT=$(realpath -m -- "$1")
 [[ ! -e "$OUT" ]] || { echo 'OUTDIR must be new' >&2; exit 2; }
 mkdir -p "$OUT"/{home/Documents,config/domicile,cache,state/domicile,data,frames}
 ROOT=$(pwd)
-D=/nix/store/sz1pfpfw4wjyxbi6w7ils7nwip8kajy1-domicile/bin/domicile
 K=/nix/store/fp1riv1kn4h0n1zvdan0xd1zk0rx5vxa-kitty-0.48.2/bin
 C=/nix/store/3gnf9mp296kf6k3dckvlwjxmgwcaadr1-google-chrome-156.0.8078.47/bin
 N=/nix/store/ns08k5ay3dz235mm9g1hahirx72zhyc1-nautilus-50.2.2/bin
@@ -24,8 +33,18 @@ cat > "$OUT/browser-fixture.html" <<'HTML'
 HTML
 export OUT ROOT
 python3 - <<'PY'
-import json,os,pathlib
+import hashlib,json,os,pathlib
 out=pathlib.Path(os.environ["OUT"])
+binary=pathlib.Path(os.environ["PRACTICE_DOMICILE_BINARY"])
+build={
+ "selected_by":"DOMICILE_BIN" if "DOMICILE_BIN" in os.environ else "default",
+ "requested_binary":os.environ["PRACTICE_DOMICILE_REQUESTED"],
+ "binary":str(binary),
+ "package":str(binary.parent.parent) if binary.parent.name == "bin" else None,
+ "sha256":hashlib.sha256(binary.read_bytes()).hexdigest(),
+}
+# Persist identity before starting the desktop, including if the practice fails.
+(out/"domicile-build.json").write_text(json.dumps(build,indent=2)+"\n")
 (out/"config/domicile/domicile.tsx").write_text('''
 import { runManganese } from "@domicile-desktop/manganese";
 import { DEFAULT_KEYBINDINGS, exec } from "@domicile-desktop/manganese-window-management/keyboard/commands";
@@ -195,6 +214,7 @@ old=(out/"herdr-old-read.txt").read_text()
 assert "echo fresh" in fresh and "\nfresh\n" in fresh
 assert "echo fresh" not in old
 receipt={"kind":"real Domicile headless and Herdr server/client; fake SSH/remote dispatch; fixture HOME; no NAS connection",
+ "domicile":json.loads((out/"domicile-build.json").read_text()),
  "artifacts":{p.name:{"bytes":p.stat().st_size,"sha256":hashlib.sha256(p.read_bytes()).hexdigest()} for p in files},
  "recording":"sampled screenshots at nominal 2 fps; frame-times.txt records actual capture times",
  "checks":{"native_fresh_shell_executed_command":True,"old_fixture_pane_did_not_receive_command":True},
