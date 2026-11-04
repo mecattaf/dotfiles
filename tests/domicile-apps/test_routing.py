@@ -66,6 +66,7 @@ name = Path(sys.argv[0]).name
 with open(os.environ["CALLS"], "a") as f:
  f.write(json.dumps({"name":name,"args":sys.argv[1:],"config":os.environ.get("HERDR_CONFIG_PATH"),
   "context":os.environ.get("HERDR_PANE_ID"),"gdk":os.environ.get("GDK_BACKEND"),
+  "home":os.environ.get("HOME"),"xdg_config_home":os.environ.get("XDG_CONFIG_HOME"),
   "attach_intent":os.environ.get("DOMICILE_HERDR_ATTACH"),"reconnect":os.environ.get("HERDR_PROJECTOR_RECONNECT")})+"\\n")
 if name=="herdr":
  if os.environ.get("READ_HERDR_INPUT"):
@@ -102,9 +103,10 @@ class Routing(unittest.TestCase):
         (self.work / "config/herdr/desktop-client.toml").write_text("onboarding = false\n")
         self.calls = self.work / "calls"
         self.env = dict(os.environ, PATH=f'{self.bin}:{os.environ["PATH"]}',
-                        CALLS=str(self.calls), TMPDIR=str(self.work),
+                        CALLS=str(self.calls), TMPDIR=str(self.work), HOME=str(self.work / "ordinary-home"),
                         XDG_CONFIG_HOME=str(self.work / "config"), TERM="xterm-256color",
                         HERDR_PANE_ID="foreign:pane", HERDR_ENV="1")
+        self.env.pop("DOMICILE_DESKTOP_CLIENT_CONFIG", None)
 
     def recorded(self):
         return [json.loads(s) for s in self.calls.read_text().splitlines()] if self.calls.exists() else []
@@ -180,7 +182,7 @@ class Routing(unittest.TestCase):
         ssh, remote = self.recorded()
         self.assertIn("systemctl --user is-active", ssh["args"][-1])
         self.assertEqual(remote["args"], ["--remote", "nas", "--remote-keybindings", "server"])
-        self.assertTrue(remote["config"].endswith("/herdr/desktop-client.toml"))
+        self.assertEqual(remote["config"], str(self.work / "config/herdr/desktop-client.toml"))
         self.assertIsNone(remote["context"])
         self.assertIsNone(remote["attach_intent"])
         self.assertEqual(remote["reconnect"], "0")
@@ -226,11 +228,64 @@ class Routing(unittest.TestCase):
         t = self.term()
         t.expect("local / nas / quit >")
         t.send("nas\n")
-        t.expect("Missing desktop-client.toml")
-        t.expect("back at LOCAL control")
-        self.assertFalse(any(c["name"] == "herdr" for c in self.recorded()))
+        t.expect("desktop client config must be a readable regular TOML file")
+        t.expect("staying at LOCAL control.")
+        self.assertEqual(self.recorded(), [])
         t.send("quit\n")
         self.assertEqual(t.process.wait(timeout=3), 0)
+
+    def test_explicit_config_preserves_xdg_home_and_browser_profile(self):
+        explicit = self.work / "candidate ; $HOME [test].toml"
+        content = 'onboarding = false\n[ui]\nprompt_new_workspace_name = true\n'
+        explicit.write_text(content)
+        default = self.work / "config/herdr/desktop-client.toml"
+        default.unlink()  # the console-trial client has no installed neutral config
+        self.env["DOMICILE_DESKTOP_CLIENT_CONFIG"] = str(explicit)
+        t = self.term()
+        t.expect("local / nas / quit >")
+        self.assertEqual(self.recorded(), [])
+        t.send("nas\n")
+        t.expect("back at LOCAL control")
+        ssh, remote = self.recorded()
+        self.assertEqual(remote["config"], str(explicit))
+        self.assertEqual(remote["home"], self.env["HOME"])
+        self.assertEqual(remote["xdg_config_home"], self.env["XDG_CONFIG_HOME"])
+        self.assertEqual(remote["args"], ["--remote", "nas", "--remote-keybindings", "server"])
+        self.assertEqual(explicit.read_text(), content)
+        self.assertFalse(default.exists())
+        self.run_app("chrome", "https://example.invalid/fixture")
+        chrome = self.recorded()[-1]
+        self.assertEqual(chrome["args"], ["--ozone-platform=wayland", "https://example.invalid/fixture"])
+        self.assertEqual(chrome["home"], self.env["HOME"])
+        self.assertEqual(chrome["xdg_config_home"], self.env["XDG_CONFIG_HOME"])
+        t.send("quit\n")
+        self.assertEqual(t.process.wait(timeout=3), 0)
+
+    def test_invalid_explicit_configs_stay_local_without_fallback(self):
+        malformed = self.work / "malformed.toml"
+        malformed.write_text("[ui\n")
+        invalid_utf8 = self.work / "invalid-utf8.toml"
+        invalid_utf8.write_bytes(b"\xff")
+        unreadable = self.work / "unreadable.toml"
+        unreadable.write_text("onboarding = false\n")
+        unreadable.chmod(0)
+        cases = {
+            "empty": "", "relative": "candidate.toml",
+            "missing": str(self.work / "missing.toml"), "directory": str(self.work),
+            "unreadable": str(unreadable), "malformed": str(malformed),
+            "invalid_utf8": str(invalid_utf8),
+        }
+        for name, value in cases.items():
+            with self.subTest(name=name):
+                self.env["DOMICILE_DESKTOP_CLIENT_CONFIG"] = value
+                t = self.term()
+                t.expect("local / nas / quit >")
+                t.send("nas\n")
+                t.expect("staying at LOCAL control.")
+                self.assertIsNone(t.process.poll())
+                self.assertEqual(self.recorded(), [])
+                t.send("quit\n")
+                self.assertEqual(t.process.wait(timeout=3), 0)
 
     def test_lost_link_requires_a_new_local_selection(self):
         self.env["MOCK_HERDR_EXIT"] = "1"

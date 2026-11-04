@@ -209,3 +209,34 @@ rejected a spaced Kitty match expression. The successful runner probes each
 private socket directly. Their logs remain intact and are not copied as
 successful proof to NAS notes. Actual NAS authentication/clipboard, physical
 Zenbook behavior and portal/keyring commissioning remain unrun.
+
+## Store-backed console trial config
+
+A trusted trial launcher can select the desktop Herdr TOML independently of
+all XDG directories and the browser profile:
+
+```sh
+env DOMICILE_DESKTOP_CLIENT_CONFIG=/nix/store/CANDIDATE/desktop-client.toml \
+  domicile-apps terminal
+```
+
+This may also be exported by the trial session launcher. Only the Herdr child
+uses it as `HERDR_CONFIG_PATH`; HOME, XDG_CONFIG_HOME, installed config files
+and Chrome's ordinary profile are not redirected or modified. The one-selection
+LOCAL surface and native workspace UI behave as before.
+
+Without `DOMICILE_DESKTOP_CLIENT_CONFIG`, the path remains
+`XDG_CONFIG_HOME/herdr/desktop-client.toml` when that variable is present,
+otherwise `$HOME/.config/herdr/desktop-client.toml`. An explicit override must
+be an absolute path to a
+readable regular file containing valid TOML. Empty, relative, missing,
+directory, unreadable, malformed and invalid-UTF-8 selections fail locally before SSH and do
+not fall back to installed config. The exec adapter revalidates immediately
+before attachment. Validation checks file readability and TOML syntax; the
+trusted candidate's Herdr settings remain the login owner's configuration.
+
+The pathname is passed as environment data, with no shell evaluation; spaces
+and shell metacharacters stay literal. This option writes no files and reloads
+no server. The existing successful UI recording remains the visual evidence;
+the config-path follow-up is covered by routing tests rather than another
+recording.

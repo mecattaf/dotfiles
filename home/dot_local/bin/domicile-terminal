@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 import termios
+import tomllib
 
 # Resolve siblings beside the invoked link, not its individual Nix store target.
 HERE = Path(os.path.abspath(sys.argv[0])).parent
@@ -24,6 +25,28 @@ def clean_environment():
 def local_shell():
     print("Local rescue shell. This shell does not need NAS. Exit to close it.", flush=True)
     os.execvpe("fish", ["fish", "--no-config"], clean_environment())
+
+
+def desktop_client_config(env):
+    # The trial launcher may supply a trusted store-backed TOML without moving
+    # XDG_CONFIG_HOME (which would also move unrelated application profiles).
+    if "DOMICILE_DESKTOP_CLIENT_CONFIG" in env:
+        selected = env["DOMICILE_DESKTOP_CLIENT_CONFIG"]
+        if not selected or not Path(selected).is_absolute():
+            raise ValueError("DOMICILE_DESKTOP_CLIENT_CONFIG must be an absolute file path")
+        path = Path(selected)
+    else:
+        path = Path(env.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "herdr/desktop-client.toml"
+    try:
+        if not path.is_file():
+            raise ValueError(f"desktop client config must be a readable regular TOML file: {path}")
+        with path.open("rb") as source:
+            tomllib.load(source)
+    except OSError:
+        raise ValueError(f"cannot read desktop client config: {path}") from None
+    except (tomllib.TOMLDecodeError, UnicodeError):
+        raise ValueError(f"desktop client config is not valid TOML: {path}") from None
+    return str(path)
 
 
 def discard_typeahead():
@@ -55,10 +78,10 @@ def gate(args):
         return 2
     env = clean_environment()
     env.pop("DOMICILE_HERDR_ATTACH", None)
-    env["HERDR_CONFIG_PATH"] = str(Path(env.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
-                                   / "herdr/desktop-client.toml")
-    if not Path(env["HERDR_CONFIG_PATH"]).is_file():
-        print("Missing desktop-client.toml; import modules/domicile-apps.nix first.", file=sys.stderr)
+    try:
+        env["HERDR_CONFIG_PATH"] = desktop_client_config(env)
+    except ValueError as error:
+        print(f"domicile-terminal: {error}", file=sys.stderr)
         return 2
     # Also discard anything typed while the SSH unit preflight was in progress.
     discard_typeahead()
@@ -96,6 +119,12 @@ def main():
             continue
         discard_typeahead()
         env = clean_environment()
+        try:
+            # Fail locally before SSH, then revalidate in the exec adapter.
+            env["HERDR_CONFIG_PATH"] = desktop_client_config(env)
+        except ValueError as error:
+            print(f"domicile-terminal: {error}; staying at LOCAL control.", file=sys.stderr)
+            continue
         env["HERDR_PROJECTOR_TARGET"] = "nas"
         env.pop("HERDR_PROJECTOR_UNIT", None)  # retain production unit preflight
         env["HERDR_BIN"] = str(HERE / "herdr-domicile-client")
