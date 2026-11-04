@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 # The custom ROCmFP4 GGUF needs SuperROC's tensor encodings and kernels.
 # Register its separate backend with the existing single-model supervisor.
 let
@@ -40,10 +45,12 @@ in
     };
   };
   config = lib.mkIf cfg.enable {
-    assertions = [{
-      assertion = config.services.gufo.enable;
-      message = "SuperROC shares the Gufo llama-swap supervisor; services.gufo.enable is required.";
-    }];
+    assertions = [
+      {
+        assertion = config.services.gufo.enable;
+        message = "SuperROC shares the Gufo llama-swap supervisor; services.gufo.enable is required.";
+      }
+    ];
     services.local-models.requirements.superroc = [ cfg.artifact ];
     services.llama-swap.settings.models.${cfg.servedModelName} = {
       cmd = "${launcher} \${PORT}";
