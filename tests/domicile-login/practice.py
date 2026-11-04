@@ -50,6 +50,8 @@ def main():
             raise RuntimeError(f"{name}: exit {result.returncode}: {result.stdout}")
         return result.stdout
 
+    event("engine-abi", status="UNSUPPORTED",
+          note="Cached-engine behavior is not matched-native-engine qualification.")
     desk = monitor = terminal = None
     handles = []
 

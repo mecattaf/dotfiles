@@ -46,7 +46,10 @@ from pathlib import Path
 name = Path(sys.argv[0]).name
 keys = ("SWAYSOCK", "I3SOCK", "WAYLAND_DISPLAY", "DISPLAY", "DOMICILE_SOCK",
         "OZONE", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "XDG_SESSION_DESKTOP",
-        "XDG_VTNR", "XDG_SESSION_ID", "XDG_DATA_DIRS", "TEST_DECLARED")
+        "XDG_VTNR", "XDG_SESSION_ID", "XDG_DATA_DIRS", "TEST_DECLARED",
+        "HOME", "XDG_CONFIG_HOME", "PATH", "DOMICILE_CONFIG_FILE",
+        "DOMICILE_CONSOLE_TRIAL_PATH", "DOMICILE_DESKTOP_CLIENT_CONFIG")
+keys = (*keys, *[key for key in os.environ if key.startswith("DOMICILE_")])
 with open(os.environ["CALLS"], "a") as out:
     out.write(json.dumps(dict(tool=name, argv=sys.argv[1:], pid=os.getpid(),
                              env={k: os.environ[k] for k in keys if k in os.environ})) + "\\n")
@@ -175,6 +178,140 @@ if name == "systemd-cat":
         _, calls, _ = self.launch(2, ("--config", "surprise"))
         self.assertEqual(calls, [])
 
+    def test_explicit_config_forwarded_without_shell_interpolation(self):
+        path = str(self.directory / "candidate $(false) 'two words'.tsx")
+        self.env["DOMICILE_CONFIG_FILE"] = path
+        _, calls, _ = self.launch()
+        self.assertEqual(calls[-1]["argv"], ["--config", path])
+        check = next(c for c in calls if c["tool"] == "domicile-recover")
+        self.assertEqual(check["env"]["DOMICILE_CONFIG_FILE"], path)
+
+    def test_ssh_refused_even_with_vt_variables(self):
+        self.env["SSH_CONNECTION"] = "practice-only"
+        _, calls, output = self.launch(1)
+        self.assertEqual(calls, [])
+        self.assertIn("outside SSH", output)
+
+
+class ConsoleTrial(unittest.TestCase):
+    setUp = Launcher.setUp
+    launch = Launcher.launch
+
+    def entry(self):
+        entry = self.directory / "trial"
+        source, count = re.subn(
+            r"/nix/store/[^/\s]+/bin/domicile-physical-session",
+            str(self.script), ARGS.trial.read_text())
+        self.assertEqual(count, 1)
+        entry.write_text(source)
+        entry.chmod(0o755)
+        return entry
+
+    def launch_trial(self, expected=0, arguments=()):
+        script = self.script
+        self.script = self.entry()
+        try:
+            return self.launch(expected, arguments)
+        finally:
+            self.script = script
+
+    def test_trial_config_helpers_and_personal_profile(self):
+        # The dedicated entry always chooses its own checked file.
+        self.env["DOMICILE_CONFIG_FILE"] = "/unselected-inherited.json"
+        pid, calls, _ = self.launch_trial()
+        final = calls[-1]
+        self.assertEqual(final["pid"], pid)
+        config = final["env"]["DOMICILE_CONFIG_FILE"]
+        self.assertTrue(config.startswith("/nix/store/"))
+        self.assertEqual(Path(config).read_bytes(),
+                         (ROOT / "home/dot_config/domicile/domicile.tsx").read_bytes())
+        self.assertEqual(final["argv"], ["--config", config])
+        check = next(c for c in calls if c["tool"] == "domicile-recover")
+        self.assertEqual(check["env"]["DOMICILE_CONFIG_FILE"], config)
+        self.assertEqual(final["env"]["HOME"], self.env["HOME"])
+        self.assertEqual(final["env"]["XDG_CONFIG_HOME"], self.env["XDG_CONFIG_HOME"])
+        candidate_path = final["env"]["PATH"]
+        self.assertEqual(candidate_path, final["env"]["DOMICILE_CONSOLE_TRIAL_PATH"])
+        helper = Path(candidate_path.split(":")[0])
+        self.assertTrue(str(helper).startswith("/nix/store/"))
+        import shutil
+        for name in ("domicile-apps", "domicile-terminal", "herdr-domicile-client", "herdr-projector"):
+            self.assertEqual(shutil.which(name, path=candidate_path), str(helper / name))
+            self.assertEqual((helper / name).read_bytes(), (ROOT / "home/dot_local/bin" / name).read_bytes())
+        self.assertIn("/etc/profiles/per-user/tom/bin", candidate_path.split(":"))
+        self.assertIn("/run/current-system/sw/bin", candidate_path.split(":"))
+        package_share = str(Path(candidate_path.split(":")[2]).parent / "share")
+        self.assertIn(package_share, final["env"]["XDG_DATA_DIRS"].split(":"))
+        client_config = Path(final["env"]["DOMICILE_DESKTOP_CLIENT_CONFIG"])
+        self.assertTrue(str(client_config).startswith("/nix/store/"))
+        self.assertIn("prompt_new_workspace_name = true", client_config.read_text())
+
+    def test_trial_real_checked_config_validation(self):
+        _, calls, _ = self.launch_trial()
+        env = dict(self.env, DOMICILE_CONFIG_FILE=calls[-1]["env"]["DOMICILE_CONFIG_FILE"])
+        result = subprocess.run([str(ARGS.recovery), "check"], env=env, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
+        (self.directory / "real-preflight.log").write_text(result.stdout)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn(env["DOMICILE_CONFIG_FILE"], result.stdout)
+
+    def test_trial_login_reexec_preserves_config_and_reapplies_helper_path(self):
+        import shutil
+        shell = self.directory / "login-shell"
+        bash = shutil.which("bash")
+        shell.write_text("#!" + bash + "\nprintf 'login\\n' >> " +
+                         shlex.quote(str(self.directory / "login-count")) +
+                         "\nexport PATH=" + shlex.quote("/stale-login-helper:" + self.env["PATH"]) +
+                         '\nexec ' + shlex.quote(bash) + ' -c "$3"\n')
+        shell.chmod(0o755)
+        shells = self.directory / "shells"
+        shells.write_text(str(shell) + "\n")
+        self.script.write_text(self.source.replace("/etc/shells", shlex.quote(str(shells))))
+        self.env["SHELL"] = str(shell)
+        pid, calls, _ = self.launch_trial()
+        self.assertEqual((self.directory / "login-count").read_text(), "login\n")
+        self.assertEqual(calls[-1]["pid"], pid)
+        env = calls[-1]["env"]
+        self.assertEqual(calls[-1]["argv"], ["--config", env["DOMICILE_CONFIG_FILE"]])
+        self.assertEqual(env["PATH"], env["DOMICILE_CONSOLE_TRIAL_PATH"])
+        self.assertNotIn("/stale-login-helper", env["PATH"])
+
+    def test_trial_native_flags_from_candidate(self):
+        source = ARGS.native_session.read_text()
+        for name in ("systemctl", "domicile-recover", "dbus-update-activation-environment",
+                     "systemd-cat", "domicile"):
+            source, count = re.subn(r"/nix/store/[^/\s]+/bin/" + name + r"(?=[\s\\])",
+                                    str(self.tools / name), source)
+            self.assertGreater(count, 0)
+        self.script.write_text(source)
+        self.env["DOMICILE_LOGIN_NATIVE_PROBE"] = "stale"
+        _, calls, _ = self.launch_trial()
+        self.assertEqual(calls[-1]["env"]["DOMICILE_LOGIN_NATIVE_PROBE"], "native-from-candidate")
+        self.assertEqual(calls[-1]["env"]["HOME"], self.env["HOME"])
+        self.assertEqual(calls[-1]["env"]["XDG_CONFIG_HOME"], self.env["XDG_CONFIG_HOME"])
+        self.assertEqual(calls[-1]["argv"][1], calls[-1]["env"]["DOMICILE_CONFIG_FILE"])
+        self.assertNotEqual(calls[-1]["argv"][1], "/unselected-probe.json")
+        exports = next(c for c in calls if c["tool"] == "dbus-update-activation-environment")
+        self.assertIn("DOMICILE_LOGIN_NATIVE_PROBE", exports["argv"])
+        for name in ("DOMICILE_CONFIG_FILE", "DOMICILE_CONSOLE_TRIAL_PATH",
+                     "DOMICILE_DESKTOP_CLIENT_CONFIG"):
+            self.assertNotIn(name, exports["argv"])
+
+    def test_trial_refuses_ssh(self):
+        self.env["SSH_CONNECTION"] = "practice-only"
+        _, calls, _ = self.launch_trial(1)
+        self.assertEqual(calls, [])
+
+    def test_trial_refuses_running_sway(self):
+        self.env["ACTIVE_UNIT"] = "sway-physical.service"
+        _, calls, output = self.launch_trial(1)
+        self.assertNotIn("domicile-recover", [c["tool"] for c in calls])
+        self.assertIn("sway-physical.service", output)
+
+    def test_trial_rejects_arguments(self):
+        _, calls, _ = self.launch_trial(2, ("--config", "/not-selected.tsx"))
+        self.assertEqual(calls, [])
+
 
 class Config(unittest.TestCase):
     def setUp(self):
@@ -240,6 +377,33 @@ class Config(unittest.TestCase):
         (self.config / "domicile.tsx").symlink_to(self.config / "missing")
         self.assertIn("not a regular file", self.check(1))
 
+    def test_explicit_file_ignores_other_startup_configs(self):
+        explicit = self.directory / "checked candidate 'quoted'.tsx"
+        explicit.write_text(self.candidate())
+        self.env["DOMICILE_CONFIG_FILE"] = str(explicit)
+        (self.config / "domicile.tsx").write_text("broken")
+        (self.config / "domicile.json").write_text("also broken")
+        self.assertIn(str(explicit), self.check(0))
+
+    def test_bad_explicit_file_is_not_replaced_by_default(self):
+        (self.config / "domicile.tsx").write_text(self.candidate())
+        explicit = self.directory / "bad.tsx"
+        explicit.write_text("export const Shell = ( ;")
+        self.env["DOMICILE_CONFIG_FILE"] = str(explicit)
+        self.assertIn("Unexpected", self.check(1))
+
+    def test_relative_explicit_file_refused(self):
+        self.env["DOMICILE_CONFIG_FILE"] = "relative.tsx"
+        self.assertIn("absolute", self.check(1))
+
+    def test_empty_explicit_file_refused(self):
+        self.env["DOMICILE_CONFIG_FILE"] = ""
+        self.assertIn("absolute", self.check(1))
+
+    def test_missing_explicit_file_refused(self):
+        self.env["DOMICILE_CONFIG_FILE"] = str(self.directory / "missing.tsx")
+        self.assertIn("not a regular file", self.check(1))
+
     def test_login_check_refuses_live_socket(self):
         import socket
         path = Path(self.env["XDG_RUNTIME_DIR"]) / f"domicile-ipc.{os.getpid()}.sock"
@@ -277,21 +441,29 @@ class Config(unittest.TestCase):
     def test_exit_refuses_non_domicile_peer(self):
         import socket
         listener = socket.socket(socket.AF_UNIX)
-        path = self.directory / "unrelated.sock"
-        with listener:
-            listener.bind(str(path))
-            listener.listen()
-            result = subprocess.run([str(ARGS.recovery), "--socket", str(path), "exit"],
-                                    env=self.env, text=True, stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT)
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("not this installation", result.stdout)
+        # AF_UNIX has a short path limit; receipt roots can be arbitrarily deep.
+        path = Path(self.env["XDG_RUNTIME_DIR"]) / f"unrelated-peer-{os.getpid()}.sock"
+        self.env["DOMICILE_CONFIG_FILE"] = "/irrelevant-to-socket-ownership.tsx"
+        try:
+            with listener:
+                listener.bind(str(path))
+                listener.listen()
+                result = subprocess.run([str(ARGS.recovery), "--socket", str(path), "exit"],
+                                        env=self.env, text=True, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT)
+            (self.directory / "peer-refused.log").write_text(result.stdout)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("not this installation", result.stdout)
+        finally:
+            path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--session", type=Path, required=True)
     parser.add_argument("--recovery", type=Path, required=True)
+    parser.add_argument("--trial", type=Path, required=True)
+    parser.add_argument("--native-session", type=Path, required=True)
     parser.add_argument("--receipts", type=Path, required=True)
     ARGS, extra = parser.parse_known_args()
     if Path("/proc/1/comm").read_text().strip() != "bwrap":

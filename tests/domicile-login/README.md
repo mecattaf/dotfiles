@@ -1,5 +1,11 @@
 # Domicile login and recovery practice
 
+For the unactivated trial on the running kernel, use
+[the console trial sequence](CONSOLE-TRIAL.md). The cached engine's ABI is
+**unsupported** against the unfinished native integration. Historical headless
+receipts are development evidence; they do not qualify this physical candidate.
+
+
 The physical launcher stays greetd's child. It loads the login shell once,
 requires a real console login, refuses a running Sway or Domicile desktop,
 checks the actual startup config, imports the declared login environment,
@@ -76,17 +82,21 @@ df -h /
 test "$(df -Pk / | awk 'NR == 2 { print $4 }')" -ge 26214400
 nix build --no-link --print-out-paths \
   .#nixosConfigurations.client.config.programs.domicilePhysical.sessionPackage \
-  .#nixosConfigurations.client.config.programs.domicilePhysical.recoveryPackage
+  .#nixosConfigurations.client.config.programs.domicilePhysical.recoveryPackage \
+  .#nixosConfigurations.client.config.programs.domicilePhysical.trialPackage
 nix eval --impure --json --file tests/domicile-login/evaluate.nix
 ```
 
-Use the two package paths returned above in these commands. Each receipt
+Use the three package paths returned above in these commands. Each receipt
 directory must be new; the harness retains earlier runs and their failures.
 
 ```sh
+nix eval --raw --impure --file tests/domicile-login/native-probe.nix > <new-native-probe-script>
 ~/.local/bin/runtime-test -- python3 tests/domicile-login/test_lifecycle.py \
   --session <session-package>/bin/domicile-physical-session \
   --recovery <recovery-package>/bin/domicile-recover \
+  --trial <trial-package>/bin/domicile-console-trial \
+  --native-session <new-native-probe-script> \
   --receipts <new-matrix-receipt-directory>
 
 ~/.local/bin/runtime-test -- dbus-run-session -- \

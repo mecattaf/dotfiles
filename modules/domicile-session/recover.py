@@ -27,6 +27,12 @@ def xdg(name, fallback):
 
 
 def config_file():
+    if "DOMICILE_CONFIG_FILE" in os.environ:
+        explicit = Path(os.environ["DOMICILE_CONFIG_FILE"])
+        if not explicit.is_absolute() or explicit.suffix.removeprefix(".") not in EXTENSIONS:
+            raise RuntimeError("DOMICILE_CONFIG_FILE must name an absolute "
+                               "domicile .ts/.tsx/.js/.mjs/.json file")
+        return explicit
     directory = xdg("XDG_CONFIG_HOME", ".config") / "domicile"
     # Include broken symlinks: these must report a failure, not run defaults.
     found = [directory / ("domicile." + ext) for ext in EXTENSIONS
@@ -209,9 +215,9 @@ def recover(path, action):
                 raise RuntimeError(f"Launcher {pid} has not exited after SIGTERM. "
                                    "Inspect its journal; no force kill was sent.")
             print("Domicile launcher exited after SIGTERM. Upstream logs this as an interruption.\n"
-                  "At the physical login, greetd offers Sway.\n"
-                  "For re-entry, fix the config, run domicile-recover check, log out of Sway,\n"
-                  "then start domicile-physical-session from a fresh physical console login.")
+                  "A getty console trial returns to its console/login. At greetd, Sway stays default.\n"
+                  "For re-entry, validate the intended config and obtain a fresh physical console login.\n"
+                  "Retry the exact store trial command, or the regular domicile-physical-session route.")
     finally:
         client.close()
         os.close(pidfd)
@@ -237,7 +243,7 @@ def main():
         print(f"Domicile recovery: {error}", file=sys.stderr)
         print("From a physical seat, Ctrl+Alt+F2 opens the recovery console.\n"
               "Run domicile-recover status for desktop sockets and log commands.\n"
-              "A failed login returns to greetd; its default desktop is Sway.",
+              "A greetd session returns to its Sway greeter; a console trial returns to its console.",
               file=sys.stderr)
         return 1
 

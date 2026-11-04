@@ -51,19 +51,34 @@ let
   ];
   # As modules/sway.nix, without the variables that name a desktop. The launcher
   # sets those on the user manager itself, before any component starts.
-  loginVars = lib.unique (
-    [
-      "PATH"
-      "SHELL"
-      "XDG_DATA_DIRS"
-      "XDG_CONFIG_DIRS"
-      "XDG_SESSION_ID"
-      "XDG_SEAT"
-      "XDG_VTNR"
-    ]
-    ++ builtins.attrNames config.environment.sessionVariables
-    ++ builtins.attrNames home.home.sessionVariables
+  trialVars = [
+    "DOMICILE_CONFIG_FILE"
+    "DOMICILE_CONSOLE_TRIAL_PATH"
+    "DOMICILE_DESKTOP_CLIENT_CONFIG"
+  ];
+  loginVars = lib.subtractLists trialVars (
+    lib.unique (
+      [
+        "PATH"
+        "SHELL"
+        "XDG_DATA_DIRS"
+        "XDG_CONFIG_DIRS"
+        "XDG_SESSION_ID"
+        "XDG_SEAT"
+        "XDG_VTNR"
+      ]
+      ++ builtins.attrNames config.environment.sessionVariables
+      ++ builtins.attrNames home.home.sessionVariables
+    )
   );
+  # These normally arrive through the installed login environment. A console
+  # trial must also carry native-input flags from the candidate without activation.
+  nativeVars = lib.filterAttrs (
+    name: _: lib.hasPrefix "DOMICILE_" name
+  ) config.environment.sessionVariables;
+  helperDirectory = home.home.file.".local/bin".source;
+  desktopClientConfig = home.xdg.configFile."herdr/desktop-client.toml".source;
+  trialPath = "${helperDirectory}:${recovery}/bin:${domicile}/bin:/etc/profiles/per-user/tom/bin:/run/current-system/sw/bin";
   # A separately checked store file remains usable when the live config is broken.
   rescue = pkgs.runCommand "domicile-rescue.tsx" { nativeBuildInputs = [ pkgs.jq ]; } ''
     set -o pipefail
@@ -116,6 +131,10 @@ let
 
     phase="checking the physical login and user bus"
     # Refuse an SSH/nested invocation before touching the user's environment.
+    if [ -n "''${SSH_CONNECTION:-}''${SSH_CLIENT:-}''${SSH_TTY:-}" ]; then
+      echo "Start this from a fresh physical console login, outside SSH." >&2
+      false
+    fi
     if [[ ! "''${XDG_VTNR:-}" =~ ^[1-9][0-9]*$ ]] || [ -z "''${XDG_SESSION_ID:-}" ]; then
       echo "A physical console login with XDG_VTNR and XDG_SESSION_ID is required." >&2
       false
@@ -131,11 +150,25 @@ let
     # sockets, leaves dead ones intact and lets upstream reclaim its own target.
 
     ${lib.concatStringsSep "\n" (
-      lib.mapAttrsToList (
-        name: value: "export ${name}=${lib.escapeShellArg value}"
-      ) home.home.sessionVariables
+      lib.mapAttrsToList (name: value: "export ${name}=${lib.escapeShellArg value}") (
+        lib.removeAttrs (nativeVars // home.home.sessionVariables) (
+          [
+            "HOME"
+            "XDG_CONFIG_HOME"
+          ]
+          ++ trialVars
+        )
+      )
     )}
+    # A login shell may prepend live ~/.local/bin. Reapply the candidate's
+    # immutable helper directory only for the dedicated console trial.
+    if [ -n "''${DOMICILE_CONSOLE_TRIAL_PATH:-}" ]; then
+      export PATH="$DOMICILE_CONSOLE_TRIAL_PATH"
+    fi
     export XDG_DATA_DIRS="${schemaDirs}:''${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+    if [ -n "''${DOMICILE_CONSOLE_TRIAL_PATH:-}" ]; then
+      export XDG_DATA_DIRS="${domicile}/share:$XDG_DATA_DIRS"
+    fi
     # XDG_VTNR alone must choose the drm platform, and a stale desktop name would
     # route the portal frontend wrongly.
     unset SWAYSOCK I3SOCK WAYLAND_DISPLAY DISPLAY OZONE DOMICILE_SOCK DOMICILE_PAGE
@@ -159,8 +192,28 @@ let
     phase="starting the upstream launcher"
     # `exec` keeps the launcher in the session scope. No shell argument: the
     # config names it. No EXIT trap competes with upstream's session cleanup.
+    configArgs=()
+    if [ "''${DOMICILE_CONFIG_FILE+x}" = x ]; then
+      configArgs=(--config "$DOMICILE_CONFIG_FILE")
+    fi
     exec ${pkgs.systemd}/bin/systemd-cat --identifier=domicile-session \
-      ${domicile}/bin/domicile
+      ${domicile}/bin/domicile "''${configArgs[@]}"
+  '';
+  # Runs on the currently booted kernel from a real console login. No HOME or
+  # XDG_CONFIG_HOME replacement: Chrome retains its ordinary personal profile.
+  # The environment survives the login-shell re-exec without shell interpolation.
+  trial = pkgs.writeShellScriptBin "domicile-console-trial" ''
+    set -eu
+    if [ "$#" -ne 0 ]; then
+      echo "usage: domicile-console-trial (from a fresh physical console login)" >&2
+      exit 2
+    fi
+    export DOMICILE_CONFIG_FILE=${lib.escapeShellArg (toString checkedKeyTable)}
+    export DOMICILE_CONSOLE_TRIAL_PATH=${lib.escapeShellArg trialPath}
+    export DOMICILE_DESKTOP_CLIENT_CONFIG=${lib.escapeShellArg (toString desktopClientConfig)}
+    echo "Domicile console trial: config $DOMICILE_CONFIG_FILE"
+    echo "No activation or kernel change. Logs: journalctl -t domicile-session -b"
+    exec ${session}/bin/domicile-physical-session
   '';
 in
 {
@@ -181,6 +234,12 @@ in
       default = session;
       description = "greetd child launcher for the physical Domicile trial.";
     };
+    trialPackage = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+      default = trial;
+      description = "Store-backed console trial on the running kernel, without activation.";
+    };
     recoveryPackage = lib.mkOption {
       type = lib.types.package;
       readOnly = true;
@@ -193,6 +252,7 @@ in
     environment.systemPackages = [
       session
       recovery
+      trial
     ];
 
     programs.domicile = {
