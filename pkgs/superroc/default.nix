@@ -1,7 +1,6 @@
 {
   callPackage,
   fetchFromGitHub,
-  symlinkJoin,
 }:
 let
   revision = "5c2b07abd7c432e81180ed70edfa62ed7be4c105";
@@ -18,10 +17,16 @@ let
     # This revision's production filter omits the quantizer sources referenced
     # unconditionally by CMake. Retain the pinned source tree for configuration.
     src = source;
+    # The fork installs aliases for its former name, including a dangling
+    # quantizer alias. Remove them before fixup; Gufo remains a separate package.
+    postInstall = ''
+      rm -f "$out/bin/gufo" "$out/bin/gufo-server" "$out/bin/gufo-quant"
+    '';
     installCheckPhase = ''
       runHook preInstallCheck
       "$out/bin/superroc" --version | grep -F "Super ROC development (5c2b07a)"
       "$out/bin/superroc" --help >/dev/null
+      test ! -e "$out/bin/gufo"
       test -f "$out/share/licenses/superroc/LICENSE"
       runHook postInstallCheck
     '';
@@ -30,16 +35,4 @@ let
     };
   });
 in
-symlinkJoin {
-  name = "superroc-fleet-${builtins.substring 0 7 revision}";
-  paths = [ engine ];
-  # Upstream preserves Gufo executable aliases during its rename. The fleet
-  # installs both engines, so expose only SuperROC's own names in the profile.
-  postBuild = ''
-    rm -f "$out/bin/gufo" "$out/bin/gufo-server" "$out/bin/gufo-quant"
-    test -x "$out/bin/superroc"
-    test ! -e "$out/bin/gufo"
-  '';
-  passthru = { inherit engine; };
-  meta = engine.meta;
-}
+engine
