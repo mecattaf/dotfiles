@@ -282,7 +282,7 @@ let
 
   # Gufo's keyless LAN route. The wrapper supplies a public dummy bearer:
   # pi-ai still requires a nonempty credential for a custom provider.
-  # The alternate shares the endpoint and must be selected with gufo-switch first.
+  # llama-swap demand-loads the exact wire model ID on this shared endpoint.
   gufoModels = {
     ${localModel.modelId} = {
       name = "Qwen3.8 Flash-Next (Gufo)";
@@ -306,6 +306,20 @@ let
         max = "max";
       };
     };
+    "qwen3.8-27b-ara" = {
+      name = "Qwen3.8 27B Heretic ARA Q8 (local)";
+      contextWindow = 102400;
+      input = [ "text" ];
+      # Thinking is selected by the server. The route below leaves the
+      # optional request-level effort unset instead of overriding it.
+      reasoningEfforts = false;
+    };
+    "qwen3.8-flash-next-abliterated" = {
+      name = "Qwen3.8 Flash-Next Uncensored ROCmFP4 (local)";
+      contextWindow = 32768;
+      input = [ "text" ];
+      reasoningEfforts = false;
+    };
   };
   gufo = {
     displayName = "Gufo (local)";
@@ -324,7 +338,14 @@ let
         inherit id;
         maxTokens = 16384;
       }
-    ) ([ localModel.modelId ] ++ localModel.alternates);
+    ) (
+      [ localModel.modelId ]
+      ++ localModel.alternates
+      ++ [
+        "qwen3.8-27b-ara"
+        "qwen3.8-flash-next-abliterated"
+      ]
+    );
   };
   # ds4's keyless LAN route: DeepSeek V4.1 Flash 1017 on strix-worker
   # (modules/ds4.nix, single host with SSD expert streaming), at the contract
@@ -403,6 +424,16 @@ let
     gufo = {
       provider = "gufo";
       model = localModel.modelId;
+    };
+    qwen-ara = {
+      provider = "gufo";
+      model = "qwen3.8-27b-ara";
+      reasoningEffort = null;
+    };
+    qwen-flash-abliterated = {
+      provider = "gufo";
+      model = "qwen3.8-flash-next-abliterated";
+      reasoningEffort = null;
     };
     groq = {
       provider = "groq";

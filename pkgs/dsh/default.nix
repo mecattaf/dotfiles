@@ -6,6 +6,8 @@
   coreutils,
   findutils,
   writeText,
+  runCommand,
+  python3,
   llm-agents,
   dsh-plugins,
   mnemon,
@@ -41,11 +43,12 @@
   keyFiles ? { },
   # The stock profiles the wrapper will boot. Everything else, but the
   # Nix-declared profiles below, is refused, so a custom profile cannot carry
-  # the web or sdk-minimal bundles past the name check.
+  # the sdk-minimal bundle past the name check.
   profiles ? [
     "headless"
     "sdk"
     "acp"
+    "web"
   ],
 }:
 # dsh: DeepSeek Harness from llm-agents.nix (Tom's ruling, 2026-10-22: "use
@@ -61,8 +64,8 @@
 #      adapter, which attaches the whole session log to any base URL;
 #   2. DSH_TELEMETRY_DISABLED=1, the only full OTel opt-out;
 #   3. refuses (exit 2, one stderr line): `dsh plugin` (plugins come from Nix
-#      only), any profile but `profiles` (Tom, 2026-10-22: "no dsh web,
-#      ever"; sdk-minimal pins danger-full-access), --from-default-profile
+#      only), any profile but `profiles` (sdk-minimal pins
+#      danger-full-access), --from-default-profile
 #      outside `profiles`, an empty profile word or `--profile` value, any
 #      argv without a profile except a lone --version/-V/--help/-h,
 #      DSH_PERMISSION_MODE=danger-full-access, a DSH_HOME under /tmp or
@@ -80,7 +83,7 @@
 #      links to the store plugins, every boot, before dsh reads them. dsh's
 #      cordis.yml and cordis.patch.yml there are never touched, and a store
 #      link no longer declared is removed;
-#   6. DSH_ROUTE=<name> (headless, sdk, acp, zen only) adds the one-row
+#   6. DSH_ROUTE=<name> (headless, sdk, acp, web, zen only) adds the one-row
 #      `agent-default-model` overlay of ./config.nix's `routes` after the
 #      profile's layers; any other name is refused;
 #   7. unsets every free-lane variable (GEMINI_API_KEY, the Zen pair, GROQ,
@@ -123,6 +126,18 @@ let
       ;
   };
   sessions = ./sessions.patch.yml;
+  # Preset plugins are data until a Web Session mounts them; ordinary Cordis
+  # row patches cannot reach them. Keep the shipped presets while applying
+  # the same tool policy as the other profiles, without copying their source.
+  webPolicy =
+    runCommand "dsh-web-policy.patch.yml"
+      {
+        nativeBuildInputs = [ (python3.withPackages (ps: [ ps.pyyaml ])) ];
+      }
+      ''
+        python3 -I ${./web-policy.py} \
+          ${unwrapped}/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-web-app > "$out"
+      '';
 
   # Profiles declared here rather than shipped by dsh. `herdr` is the stock
   # headless tuple plus the three plugins of pkgs/dsh-plugins and their
@@ -267,6 +282,7 @@ writeShellApplication {
       unwrapped
       runner
       sessions
+      webPolicy
       qwenKeyFile
       keyFiles
       nixProfiles
@@ -476,6 +492,7 @@ writeShellApplication {
     overlays=(--patch ${config.policy} --patch ${sessions})
     case "$profile" in
       acp) overlays+=(--patch ${config.acp}) ;;
+      web) overlays+=(--patch ${webPolicy}) ;;
       ${nixProfileCase}
     esac
     # Per-run route: DSH_ROUTE=<name> adds a Nix-built one-row overlay AFTER
@@ -483,8 +500,8 @@ writeShellApplication {
     route="''${DSH_ROUTE-}"
     if [ -n "$route" ]; then
       case "$profile" in
-        headless | sdk | acp | zen) ;;
-        *) refuse "DSH_ROUTE applies only to the headless, sdk, acp and zen profiles" ;;
+        headless | sdk | acp | web | zen) ;;
+        *) refuse "DSH_ROUTE applies only to the headless, sdk, acp, web and zen profiles" ;;
       esac
       case "$route" in
         ${routeCase}
