@@ -90,8 +90,25 @@ inference: 16,284 harness prompt tokens, 392 generated tokens, about 7
 generated tokens per second. These are a connectivity and conversation
 check, not a coding benchmark.
 
+The separate **Qwen Flash-Next Abliterated** conversation is
+`session-4af3f699-9d6d-48bc-9915-9566b24c6122`, also using `standard`.
+Its first full-harness prompt returned `Hello Tom, Flash-Next is ready.`;
+the follow-up returned `Tom`. Both turns completed with separate reasoning
+blocks, retaining the existing 16,384-token output limit. No UI restart or
+global settings mutation was required, and the ARA conversation was untouched.
+The catalog default remained `gufo/qwen3.8-27b-ara`.
+
+Flash's first full-harness request took 11.14 seconds for 16,275 prompt
+tokens and 25 generated tokens: about 1,537 prefill tokens per second and
+47.3 generated tokens per second.
+The second request took 0.518 seconds, with a 155 ms first-token latency:
+16,300 of 16,323 prompt tokens came from the live prefix cache, and 17 output
+tokens were generated at about 48 tokens per second. This verifies the actual
+DSH conversation path and prefix reuse, rather than only a short server probe.
+
 Non-secret receipts are under `~/.local/state/dsh-qwen-chat/`:
-`conversation.json`, `model-picker.json` and `tailscale-receipt.json`. The
+`conversation.json`, `flash-web-receipt.json`, `model-picker.json` and
+`tailscale-receipt.json`. The
 tailnet receipt records verified TLS, the startup-cookie exchange, HTTP 200
 for the frontend and model-catalog RPC, and the two completed conversation
 turns. The `launch-url` and stdout log are private credentials and must not be
