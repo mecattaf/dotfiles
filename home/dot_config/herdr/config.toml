@@ -1,4 +1,4 @@
-# herdr — github.com/herdrdev/herdr, pinned at 0.9.0 in flake.lock.
+# herdr — github.com/herdrdev/herdr, pinned by rev in flake.nix.
 #
 # THIS FILE IS WRITABLE AND LIVE. home/herdr.nix delivers it as a SINGLE-FILE
 # out-of-store symlink (~/.config/herdr/config.toml → this path in the git
