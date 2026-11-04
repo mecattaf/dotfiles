@@ -147,6 +147,12 @@ the SuperROC Flash-Next backend through the same llama-swap endpoint. Both modif
 models are text-only. Their default routes leave request-level reasoning
 effort unset so the server's qualified thinking settings apply.
 
+The current hand-run chat is at <https://nas.tail8dd1.ts.net:8444/>, through
+Tailscale Serve to NAS loopback. The browser first opens DSH's private launch
+URL to establish its normal signed cookie. See
+[the chat runbook](../dsh-local-qwen-chat.md) for the launcher, authentication,
+verification receipts and removal of this single Serve listener.
+
 ## How an artifact reaches a host
 
 The weight plane lives outside Nix. A catalogue row in
