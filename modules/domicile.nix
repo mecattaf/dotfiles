@@ -23,7 +23,7 @@
 let
   home = config.home-manager.users.tom;
   domicile = config.programs.domicile.package;
-  keyTable = ../home/dot_config/domicile/domicile.tsx;
+  keyTable = config.programs.domicilePhysical.configSource;
   # A broken file at start means no desk, so it must not deploy. `check-config`
   # refuses a module, so run the builder as upstream's configDirectory does, then
   # `check-config` on the JSON it evaluates. The file deployed is the file checked.
@@ -170,6 +170,11 @@ in
   ];
 
   options.programs.domicilePhysical = {
+    configSource = lib.mkOption {
+      type = lib.types.path;
+      default = ../home/dot_config/domicile/domicile.tsx;
+      description = "The one checked TSX config; native candidates select their explicit composed source.";
+    };
     sessionPackage = lib.mkOption {
       type = lib.types.package;
       readOnly = true;

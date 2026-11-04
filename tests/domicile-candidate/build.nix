@@ -33,6 +33,13 @@ let
     modules = [
       ({ lib, ... }: {
         programs.domicile.package = lib.mkForce package;
+        programs.domicilePhysical.configSource = lib.mkForce (
+          pkgs.writeText "domicile-native.tsx" (
+            builtins.readFile "${dotfiles}/home/dot_config/domicile/domicile.tsx"
+            + "\n"
+            + builtins.readFile "${dotfiles}/tests/domicile-candidate/native-output.ts"
+          )
+        );
         environment.sessionVariables.DOMICILE_ENGINE_ARGS = "--domicile-touchpad-natural-scroll --domicile-mouse-flat-acceleration";
       })
     ];

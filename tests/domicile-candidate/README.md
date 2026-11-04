@@ -7,7 +7,12 @@ commits. The native package also requires the per-panel white-point ABI symbol.
 It builds the Domicile binaries and shell from that source,
 packages the tarball with upstream's Nix runtime dependencies, and replaces the
 package's default engine link. The client module receives this matched package
-and the two native input switches. The ordinary Sway greetd command remains the
+and the two native input switches. Only this recipe selects the native display profile: it appends the reviewed
+`native-output.ts` export to the regular starter source and builds one standalone
+checked TSX. The normal locked dotfiles build retains its compatible config and
+is not a claim that native panel warmth/input are ready.
+
+The ordinary Sway greetd command remains the
 base; Domicile remains a trial specialisation. Source paths are command inputs,
 not committed machine defaults. The helper does not activate either system.
 
