@@ -11,7 +11,7 @@ import { Effect, Layer, Schema, Scope } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { RpcClient, RpcSerialization } from "effect/unstable/rpc"
 import { Complete, FloorLinkClient, Grant } from "./contract.ts"
-import type { Usage, Result } from "./contract.ts"
+import type { SessionScope, Usage, Result } from "./contract.ts"
 
 /** A grant the link could not decode. `leaseId` and `attempt` are set when they alone decode, so the lease can be
  *  failed back to the floor as pre-start/invalid-spec; otherwise the floor's own expiry is the only way out. */
@@ -56,7 +56,7 @@ export class CompleteRefused {
 
 export interface CompletePayload { leaseId: string; attempt: number; result: Result; output?: unknown; usage?: Usage }
 export interface FloorApi {
-  readonly lease: (p: { holderIdentity: string; capacity: number; requestKey: string }) => Effect.Effect<LeaseReply, FloorError>
+  readonly lease: (p: { holderIdentity: string; capacity: number; requestKey: string; sessionScope?: SessionScope }) => Effect.Effect<LeaseReply, FloorError>
   readonly heartbeat: (p: { holderIdentity: string; leaseIds: ReadonlyArray<string>; pendingRequestKey?: string }) => Effect.Effect<HeartbeatReply, FloorError>
   readonly complete: (p: CompletePayload) => Effect.Effect<CompleteReply, FloorError | CompleteRefused>
 }
@@ -145,7 +145,7 @@ export const rpcFloor = (o: FloorOptions): Effect.Effect<FloorApi, never, Scope.
     e.pipe(Effect.timeoutOrElse({ duration: ms, orElse: () => Effect.fail(new FloorError("transient", `${what} timed out after ${ms} ms`)) }))
   return {
     // Round 1: a reply that does not decode is a typed transient failure, never a defect that kills the link.
-    lease: (p) => client.Lease(p).pipe(Effect.catchDefect((d) => Effect.fail(new FloorError("server-error", `Lease reply undecodable: ${String(d).slice(0, 300)}`))),
+    lease: (p) => (p.sessionScope === undefined ? client.Lease(p) : client.LeaseScoped({ ...p, sessionScope: p.sessionScope })).pipe(Effect.catchDefect((d) => Effect.fail(new FloorError("server-error", `Lease reply undecodable: ${String(d).slice(0, 300)}`))),
       Effect.mapError((e) => e instanceof FloorError ? e : classifyFloorError(e)), Effect.map(leaseReply), within(t.lease, "Lease")),
     // Round 4: lenient like Lease and Complete; a reply that still does not decode is the server's (server-error).
     heartbeat: (p) => client.Heartbeat({ holderIdentity: p.holderIdentity, leaseIds: p.leaseIds, ...(p.pendingRequestKey !== undefined ? { pendingRequestKey: p.pendingRequestKey } : {}) }).pipe(

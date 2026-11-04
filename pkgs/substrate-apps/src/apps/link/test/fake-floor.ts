@@ -266,6 +266,7 @@ export class FakeFloor {
       RpcServer.layerHttp({ group: FloorLinkClient, path: "/rpc", protocol: "http" }).pipe(
         Layer.provide(FloorLinkClient.toLayer({
           Lease: (p) => Effect.sync(() => this.lease(p)),
+          LeaseScoped: () => Effect.die(new Error("scoped leasing unsupported by this test floor")),
           Heartbeat: (p) => Effect.sync(() => this.heartbeat(p)),
           Complete: (p, o) => Effect.suspend(() => {
             const r = this.complete(p, String((o.headers as Record<string, string>)["x-link-holder"] ?? ""))
@@ -278,6 +279,7 @@ export class FakeFloor {
     RpcServer.layerHttp({ group: FloorLink, path: "/rpc", protocol: "http" }).pipe(
       Layer.provide(FloorLink.toLayer({
         Lease: (p) => Effect.sync(() => this.lease(p)),
+          LeaseScoped: () => Effect.die(new Error("scoped leasing unsupported by this test floor")),
         Heartbeat: (p) => Effect.sync(() => this.heartbeat(p)),
         Complete: (p, o) => Effect.suspend(() => {
           const r = this.complete(p, String((o.headers as Record<string, string>)["x-link-holder"] ?? ""))

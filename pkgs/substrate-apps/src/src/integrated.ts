@@ -82,6 +82,8 @@ export function runnerFromBackend(backend: CallBackend): Runner {
 export interface IntegratedOptions {
   /** The workflow script's path. */
   readonly scriptPath: string;
+  /** Immutable Floor turn provenance, captured by the executor outside the script realm. */
+  readonly sessionProvenance?: { readonly id: string; readonly project: string; readonly thread: string; readonly role: string };
   readonly args?: unknown;
   /** The run directory; if its journal exists the run resumes from it. */
   readonly dir: string;
@@ -321,6 +323,7 @@ async function runLocked(
     start: meta.starts.length,
     defaultSeat: o.seat,
     workflow: basename(scriptPath),
+    ...(o.sessionProvenance === undefined ? {} : { sessionProvenance: { ...o.sessionProvenance } }),
     phaseIndexOf: (title: string) => {
       const i = phaseTitles.indexOf(title);
       return i >= 0 ? i + 1 : undefined;

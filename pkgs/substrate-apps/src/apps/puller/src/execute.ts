@@ -120,12 +120,27 @@ export const localExecutor = (o: LocalOptions): Executor => async (t) => {
   try { return await runLocal(o, t) } finally { if (demand !== undefined) clearInterval(demand) }
 }
 
+/** Provenance is snapshotted from authenticated Floor turn args before the workflow runs.
+ * Only the exact embedded turn program can receive it. The workflow's agent({session})
+ * fields and prompt/envelopes cannot set this executor capability.
+ */
+export function floorSessionProvenance(workflow: string, args: unknown, source = ""): { id: string; project: string; thread: string; role: string } | undefined {
+  if (workflow !== "turn" || createHash("sha256").update(source).digest("hex") !== "9db3f8c6ceb0f5200808646a75ce85638192a43a1faea9408518830a9f7ec8be" || args === null || typeof args !== "object") return undefined;
+  const o = args as { session?: { id?: unknown; role?: unknown }; session_provenance?: unknown };
+  const p = o.session_provenance;
+  if (p === null || typeof p !== "object") return undefined;
+  const v = p as Record<string, unknown>;
+  if (!["id", "project", "thread", "role"].every(k => typeof v[k] === "string") || v.id !== o.session?.id || v.role !== o.session?.role) return undefined;
+  return { id: v.id as string, project: v.project as string, thread: v.thread as string, role: v.role as string };
+}
+
 const runLocal = async (o: LocalOptions, t: Parameters<Executor>[0]): ReturnType<Executor> => {
   const axNames = Object.entries(o.runtimes.runtimes).filter(([, r]) => r.type === "ax").map(([n]) => n)
   const up = axNames.length > 0 && o.axServer !== undefined ? await reachable(o.axServer) : undefined
   const why = axRefusal(o.axServer, up)
   const axRunners = Object.fromEntries(axNames.map((n): [string, Runner] => [n, { name: n, type: "ax", refuses: () => why, run: async (job) => refusal(n, job, why) }]))
   const run = await runIntegrated({
+    sessionProvenance: floorSessionProvenance(t.workflowName, t.args, t.script),
     scriptPath: t.scriptPath, dir: t.dir, runtimes: o.runtimes, seat: o.seat, defaultModel: o.defaultModel, cap: o.cap,
     ...(t.args !== undefined ? { args: t.args } : {}),
     ...(o.capacity ? { capacity: o.capacity } : {}),

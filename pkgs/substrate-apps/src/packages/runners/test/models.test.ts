@@ -3,7 +3,7 @@ import { RunnerBackend, TEST_SEAT_ENV } from "../src/backend.ts";
 import { parseRuntimesToml } from "../src/config.ts";
 import { claudeInvocation, codexInvocation, parseCodex } from "../src/harness.ts";
 import type { Job, ProcessJob, Runner } from "../src/job.ts";
-import { DEFAULT_MODEL_ALLOWLIST, resolveModel } from "../src/models.ts";
+import { DEFAULT_MODEL_ALLOWLIST, effortFor, parseModelsToml, resolveModel } from "../src/models.ts";
 import { tmp } from "./helpers.ts";
 
 describe("model allowlist (replaces opusOnly)", () => {
@@ -19,6 +19,13 @@ describe("model allowlist (replaces opusOnly)", () => {
     const c = parseRuntimesToml(`[[models]]\nid = "gpt-x"\nharness = "codex"\ndefault = true\nceilings = { seven_day = 80 }\n`, "t");
     expect(resolveModel(c.models!, "codex", undefined)).toEqual({ id: "gpt-x", ceilings: { seven_day: 80 } });
     expect(() => parseRuntimesToml(`[[models]]\nid = "a"\nharness = "claude"\nceilings = { five_hour = 150 }\n`, "t")).toThrow(/ceiling five_hour/);
+  });
+
+  it("parses reasoning as a model capability and leaves other harnesses' effort unchanged", () => {
+    const [entry] = parseModelsToml('[[models]]\nid="a"\nharness="claude"\nreasoning=false\n', "models");
+    expect(entry?.reasoning).toBe(false);
+    expect(effortFor(entry, "high")).toEqual({ value: "high" });
+    expect(() => parseModelsToml('[[models]]\nid="a"\nharness="dsh"\nreasoning="false"\n', "models")).toThrow(/reasoning/);
   });
 
   it("the route carries the resolved model, the request and the ceilings", () => {

@@ -4,68 +4,16 @@
   pkgs,
   ...
 }:
-# services.substrate: the strix's two box-side programs of the Cloudflare Substrate, declared ON on the
-# strix since 2026-09-24.
-#
-# CODE: pkgs/substrate-apps (vendored from agency-agency/substrate at the sha in its SYNC.md). ARCHITECTURE:
-# ~/today/wednesday-prep-2026-09-23/03-substrate-ax-conwip.md section 2. RULING: E1 (2026-09-23), the code that
-# wraps ax lives in dotfiles; A2, the NAS link, the strix puller and the capacity pusher are dotfiles
-# packages and modules. The NAS side (hosts/nas/substrate-link.nix, Lane A) was retired with ax on 2026-10-13; this file is the strix side.
-#
-#   pusher  reads `seats --json --no-spend` (the box's one capacity oracle, ~/.local/bin/seats) under the gentle
-#           policy (120 s floor, 900 s idle, 300 s active, 180 s above 85 percent, one read at reset + 90 s) and
-#           posts seat-capacity/2 snapshots to the floor's POST /capacity/snapshots. A dead pusher fails closed
-#           at the floor: readings grade STALE after 1200 s and admission stops.
-#   puller  the interpreter host: leases runs (runtime:interpreter) from the floor with its per-link token, runs
-#           each workflow's agent() calls on the runtimes this module renders into runtimes.toml (opus, gufo,
-#           codex, codex-rw: all host runtimes, the shape proven live on 2026-09-24; plus one type = "ssh" table
-#           per puller.sshRuntimes entry, e.g. ssh:strix since 2026-09-25), each claude seat spending
-#           its own config dir by path ([credentials.seats], RG-1), heartbeats, completes, resumes from the run's
-#           journal. Its config is the [puller] table of a client config.toml (packages/api/src/config.ts),
-#           rendered here with placeholders for the two credential paths and filled at unit start. Model ids
-#           are NOT nix data (Tom, 2026-10-10: "i dnt think it s a g ood idea to have things like that tied to
-#           nixos dotfiles"): runtimes.toml names `models_file`, the mutable catalog puller.modelsFile
-#           (~/.config/substrate/models.toml) that the runners read on every call; the unit seeds it from
-#           puller.modelsSeed only when the file is absent and never rewrites it, so a model edit needs no rebuild.
-#
-# WHY USER UNITS. Both programs speak for Tom's logins: `seats` reads each Claude seat's OAuth usage from its
-# config dir, and the puller runs claude, herdr and ssh as Tom. A system unit with User=tom would carry none of
-# the session (herdr socket, ssh agent, XDG dirs). ConditionUser pins each unit to that one user's manager.
-#
-# NO runtime-test WRAPPER. The hand-started proof (2026-09-23/24) ran both programs inside ~/.local/bin/runtime-test,
-# which is a test harness: a private /run/user and PID/IPC namespaces. A unit is not a test. The puller runs on the
-# user manager with the real /run/user so herdr's socket and the ssh agent stay reachable, and the host runtimes
-# see the same session a login shell does (runtimeTestWrapper stays available, off, for the microvm runtime).
-#
-# THE PULLER'S PIDFILE LIVES IN ITS RuntimeDirectory ($RUNTIME_DIRECTORY/puller.pid, placeholder @RUNTIME_DIRECTORY@
-# filled at start), not on persistent disk. apps/puller/src/pidfile.ts counts any pid it cannot signal (EPERM) as a
-# live puller, so a pidfile left on disk by a crash, SIGKILL, OOM kill or power loss, whose pid is later taken by a
-# root or other-user process, would make every start exit 3. systemd clears the RuntimeDirectory on unit stop and
-# at boot, and the unit already guarantees one instance, so that trap cannot arise; 3 is also no longer in
-# RestartPreventExitStatus, so a transient hold is retried every RestartSec.
-#
-# CUTOVER from the hand-started processes: they wrote ~/.local/state/substrate/{puller,pusher}.pid from inside the
-# runtime-test namespace, so both hold namespace pid 2 (a kernel thread on the host). The unit puller no longer
-# reads that path; the unit pusher treats pid 2 as stale and REPLACES it, so a unit pusher started beside a live
-# nohup pusher runs as a second pusher on one gentle-state.json. Order: (1) SIGTERM both nohup processes by their
-# HOST pids (RUN.md) and confirm they exited; (2) rm -f ~/.local/state/substrate/{puller.pid,pusher.pid,
-# puller.host.pid,puller.supervisor.pid}; (3) only then switch / start the units.
-#
-# THE TOKENS ARE PATHS, NEVER VALUES. The floor's operator bearer (FLOOR_TOKEN) and the puller's per-link token
-# (one entry of the floor's LINK_TOKENS, bound to `holder`) are agenix secrets, decrypted at /run/agenix/<name>
-# for the user (owner = user, 0400), and handed to each unit as private copies by LoadCredential; the pusher gets
-# `--token-file %d/floor-token`, the puller a config.toml and a substrate.json written into its RuntimeDirectory
-# at start with `$CREDENTIALS_DIRECTORY/floor-token` and `.../link-token` as token_file, link_token_file and
-# capacityFloorTokenFile. Nothing here reads, prints or interpolates a value; every rendered file carries paths.
-# Minting (wrangler secret put FLOOR_TOKEN and LINK_TOKENS, the two age files) is Tom's hand.
-#
-# THE GATE. Both `enable`s default to false. hosts/strix sets both true as of 2026-09-24, replacing the
-# hand-started processes of ~/today/wednesday-prep-2026-09-23/substrate (RUN.md), with the floor live at floorUrl
-# and the two tokens sealed as secrets/substrate-floor-token.age and secrets/substrate-link-token-strix.age
-# (secrets.nix, editors ++ strixOnly). The rendered files match that proven deployment: prove/runtimes.toml,
-# prove/client.config.toml, tom.pusher.config.json and tom.substrate.config.json (axProtoFallbackPath excepted:
-# null here, the vendored ax.proto). tests/substrate-modules renders both units armed with fixtures, so the shape is
-# proven at evaluation time without a token on disk.
+# The NAS runs the Cloudflare scheduler's capacity pusher and interpreter.
+# Agent processes, credentials and session history stay on NAS; explicit
+# fleet-exec commands send build/test work to strix-coordinator.
+# Gufo is a DSH provider on the host, not a Pi installation. Model choices
+# remain runtime data in the private models.toml catalog, seeded only if absent.
+# Both units use Tom's profile and credential paths; no token enters the store.
+# The puller drains before stopping, and a changed unit never restarts live work.
+# Before commissioning a replacement executor, audit queued sessions and rebind
+# the nightly routine to DSH. A Pi-bound session cannot be resumed as DSH.
+
 let
   cfg = config.services.substrate;
   inherit (lib)
@@ -81,9 +29,9 @@ let
   credentialPath = config.age.secrets.${cfg.tokenSecret}.path;
 
   # NixOS renders a unit's `path` as Environment=PATH=..., which REPLACES the user manager's PATH rather than
-  # extending it. The runners spawn bare `claude`, `pi` and `codex` (packages/runners/src/harness.ts) and `seats`
+  # extending it. The runners spawn bare `claude`, `dsh` and `codex` (packages/runners/src/harness.ts) and `seats`
   # spawns bare `codex` for the codex seat, so both units carry the user's own profile explicitly (each entry
-  # gets /bin appended), in the manager's order: ~/.local/bin (seats), the per-user profile (claude, codex, pi,
+  # gets /bin appended), in the manager's order: ~/.local/bin (seats), the per-user profile (claude, codex, dsh,
   # herdr), then the system profile.
   userProfilePath = [
     "${home}/.local"
@@ -165,6 +113,7 @@ let
       drain_timeout_s = cfg.puller.drainTimeoutS;
       capacity_wait_s = cfg.puller.capacityWaitS;
     }
+    // lib.optionalAttrs (cfg.puller.sessionScope != null) { session_scope = cfg.puller.sessionScope; }
     // lib.optionalAttrs (cfg.puller.axServer != null) { ax_server = cfg.puller.axServer; }
     // lib.optionalAttrs (cfg.puller.healthAddr != null) { health_addr = cfg.puller.healthAddr; };
   });
@@ -200,6 +149,8 @@ let
       ${pkgs.coreutils}/bin/install -m 600 ${modelsSeedFile} "$models"
       echo "substrate-puller: seeded $models" >&2
     fi
+    command -v dsh >/dev/null || { echo "substrate-puller: DSH is absent from the NAS profile" >&2; exit 78; }
+    ${lib.getExe substrateApps.catalogMigrate} --check --file "$models"
     # Review 2026-09-24 (low): hostHarnessEnv passes CREDENTIALS_DIRECTORY through to every host agent. The token
     # paths are already in the rendered files, so the variable is dropped here; the directory stays readable.
     unset CREDENTIALS_DIRECTORY
@@ -240,11 +191,11 @@ in
       type = types.path;
       default = ../secrets/substrate-floor-token.age;
       defaultText = lib.literalExpression "../secrets/substrate-floor-token.age";
-      description = "The sealed bearer (secrets.nix: editors ++ the strix key). Evaluated only when a unit is enabled.";
+      description = "The sealed bearer (secrets.nix: editors and the NAS brain key). Evaluated only when a unit is enabled.";
     };
 
     pusher = {
-      enable = mkEnableOption "the gentle capacity pusher (seats --json to the floor). ON on the strix; see this file's header";
+      enable = mkEnableOption "the NAS capacity pusher (seats --json to the floor)";
 
       package = mkOption {
         type = types.package;
@@ -280,11 +231,8 @@ in
           "cc"
           "cc2"
           "codex"
-          "pi-qwencloud"
           "gufo"
           # 2026-09-30: credit-metered seats read by `seats` from OpenRouter's /credits and /key endpoints.
-          "openrouter"
-          "openrouter-free"
         ];
         description = "Seats published to the floor (runs-on seat ids).";
       };
@@ -322,21 +270,16 @@ in
 
       slots = mkOption {
         type = types.attrsOf types.int;
-        # 2026-09-30 (Tom's budget rulings): the Qwen token plan allows at most 4 concurrent agents; OpenRouter paid 4
-        # and the free model 8 are the chosen parallelism. Slots on a credit seat need substrate >= the providers
-        # change (pusher: slots on any configured seat; floor/puller: the credit branch of admitSeat).
+        # The resident Gufo execution slot is shared by local utility calls.
         default = {
           gufo = 1;
-          pi-qwencloud = 4;
-          openrouter = 4;
-          openrouter-free = 8;
         };
         description = "Slot capacity per seat (rule 15: the floor and the puller subtract their own WIP). Gufo is a slot row whenever it is up (1 unless set here); any other seat is one only when it is named here.";
       };
 
       estimatedProviders = mkOption {
         type = types.listOf types.str;
-        default = [ "qwen" ];
+        default = [ ];
         description = "Providers whose readings grade ESTIMATED (never admitted unless the floor ungates them).";
       };
 
@@ -354,7 +297,7 @@ in
     };
 
     puller = {
-      enable = mkEnableOption "the strix puller (the interpreter host). ON on the strix; see this file's header";
+      enable = mkEnableOption "the NAS interpreter host for the Cloudflare scheduler";
 
       package = mkOption {
         type = types.package;
@@ -414,7 +357,7 @@ in
 
       defaultModel = mkOption {
         type = types.str;
-        default = "claude-opus-5-5";
+        default = "qwen3.8-flash-next";
         description = "[puller].default_model.";
       };
 
@@ -473,14 +416,14 @@ in
 
       claudeSeat = mkOption {
         type = types.str;
-        default = "cc2";
+        default = "cc";
         description = "The Claude seat this host's claude harness spends ([seats].claude and TALLY_SEAT).";
       };
 
       claudeConfigDir = mkOption {
         type = types.str;
-        default = "${home}/.claude-work";
-        defaultText = lib.literalExpression ''"''${home}/.claude-work"'';
+        default = "${home}/.claude";
+        defaultText = lib.literalExpression ''"''${home}/.claude"'';
         description = "CLAUDE_CONFIG_DIR for that seat, by path (cc2 = ~/.claude-work, the seats oracle's table). Mounted, never copied, into sandboxed runtimes.";
       };
 
@@ -503,10 +446,10 @@ in
               harness = mkOption {
                 type = types.enum [
                   "claude"
-                  "pi"
+                  "dsh"
                   "codex"
                 ];
-                default = "pi";
+                default = "dsh";
                 description = "The harness CLI the runner starts on the remote host (it must be on the remote non-interactive ssh PATH).";
               };
               seat = mkOption {
@@ -522,7 +465,7 @@ in
           {
             "ssh:strix" = {
               host = "strix";
-              harness = "pi";
+              harness = "dsh";
               seat = "gufo";
             };
           }
@@ -530,10 +473,38 @@ in
         description = "Extra type = \"ssh\" runtimes, one [runtime.\"<name>\"] table each (name ^ssh:[A-Za-z0-9][A-Za-z0-9_.@-]*$), MERGED into the default `runtimes` and appended to its allow list; timeoutMs is callTimeoutMs.<name>, else callTimeoutMs.gufo. The runner (packages/runners/src/ssh.ts) runs the job in its own remote session, kills that process group on timeout or abort over a second ssh, and reaps leftover groups after a runner crash. Setting `runtimes` by hand drops these (an assertion says so).";
       };
 
+      sessionScope = mkOption {
+        type = types.nullOr (
+          types.listOf (
+            types.submodule {
+              options = {
+                project = mkOption { type = types.str; };
+                thread = mkOption { type = types.str; };
+              };
+            }
+          )
+        );
+        default = null;
+        description = "Optional project/thread admission pairs. Null keeps unscoped admission; an explicit empty list denies all. Uses LeaseScoped so an older Floor fails closed instead of replaying unrelated queued work.";
+      };
+      maintenance = mkOption {
+        type = types.listOf (
+          types.submodule {
+            options = {
+              project = mkOption { type = types.str; };
+              thread = mkOption { type = types.str; };
+              command = mkOption { type = types.listOf types.str; };
+              status_command = mkOption { type = types.listOf types.str; };
+            };
+          }
+        );
+        default = [ ];
+        description = "Trusted fixed maintenance argv exposed only to the exact Floor-generated thread provenance; never a model shell command.";
+      };
       runtimes = mkOption {
         type = tomlFormat.type;
         default = {
-          default = "opus";
+          default = "gufo";
           # The model catalog lives outside the store (puller.modelsFile); the runners re-read it on every call.
           models_file = cfg.puller.modelsFile;
           # The project MCP for substrate sessions (projects build 2026-10-12, EXCHANGE.md section 8): the runner
@@ -544,20 +515,18 @@ in
             project_bin = "${home}/.local/state/agency/project/cli/bin/project";
             project_url = "https://project.mecattaf.dev";
             project_token_file = "${home}/.config/project/token";
+            maintenance = cfg.puller.maintenance;
           };
           allow = [
             "opus"
             "gufo"
             "codex"
             "codex-rw"
-            "qwen"
-            "openrouter"
-            "openrouter-free"
           ]
           ++ builtins.attrNames cfg.puller.sshRuntimes;
           seats = {
             claude = cfg.puller.claudeSeat;
-            pi = "gufo";
+            dsh = "gufo";
             codex = "codex";
           };
           credentials = {
@@ -584,7 +553,8 @@ in
             # an explicit SSH runtime with its own configured seat.
             gufo = {
               type = "host";
-              harness = "pi";
+              harness = "dsh";
+              provider = "gufo";
               seat = "gufo";
               timeoutMs = cfg.puller.callTimeoutMs."gufo";
             };
@@ -603,41 +573,11 @@ in
               timeoutMs = cfg.puller.callTimeoutMs."codex-rw";
               codexSandbox = "workspace-write";
             };
-            # 2026-09-30, pi against the cloud providers of ~/.pi/agent/models.json (substrate D-S14): the runtime
-            # table names the pi provider, the model is agent({model}) resolved against that provider's entries in
-            # the models_file catalog (packages/runners/src/models.ts; since 2026-10-10 the mutable puller.modelsFile,
-            # not nix), and each spends its own credit-metered seat. pi reads each key itself (`!cat /run/agenix/...`
-            # in models.json); nothing here names a credential or a model id.
-            #   qwen             pi --provider qwen-token-plan   seat pi-qwencloud (4 slots)
-            #   openrouter       pi --provider openrouter        seat openrouter ($12 soft cap, 4)
-            #   openrouter-free  pi --provider openrouter        seat openrouter-free (8); PARKED while models.toml has no entry
-            # A puller older than that substrate change drops `provider` and runs pi against Gufo: the gate then
-            # refuses the call as a seat-provider mismatch (fail closed), so land the re-vendor with this.
-            qwen = {
-              type = "host";
-              harness = "pi";
-              provider = "qwen-token-plan";
-              seat = "pi-qwencloud";
-              timeoutMs = cfg.puller.callTimeoutMs."qwen";
-            };
-            openrouter = {
-              type = "host";
-              harness = "pi";
-              provider = "openrouter";
-              seat = "openrouter";
-              timeoutMs = cfg.puller.callTimeoutMs."openrouter";
-            };
-            openrouter-free = {
-              type = "host";
-              harness = "pi";
-              provider = "openrouter-free";
-              seat = "openrouter-free";
-              timeoutMs = cfg.puller.callTimeoutMs."openrouter-free";
-            };
+
           }
           // sshRuntimeTables;
         };
-        description = "The runtimes file (packages/runners/src/config.ts), rendered to TOML and named by [puller].runtimes (and AX_CONWIP_RUNTIMES). Default: the shape proven live on 2026-09-24, plus models_file = puller.modelsFile (2026-10-10), plus [sessions], the project MCP for substrate sessions (project_bin, project_url, project_token_file) (2026-10-13). opus (host, claude on claudeSeat), gufo (host, pi against the local Gufo server), codex (read-only) and codex-rw (workspace-write), default opus, each claude seat bound to its config dir in [credentials.seats], plus one ssh table per puller.sshRuntimes entry (on allow too). herdr and gvisor tables are not declared by default (never exercised); override this option to add them, and restate the ssh tables when you do.";
+        description = "Host runtimes for Claude, DSH against Gufo, and Codex. The mutable model catalog is read per call. Extra SSH runtimes must be explicit; compute hosts do not receive agent credentials.";
       };
 
       runtimesFile = mkOption {
@@ -657,25 +597,7 @@ in
       modelsSeed = mkOption {
         type = types.lines;
         default = ''
-          # ~/.config/substrate/models.toml: the model catalog substrate's runners read on EVERY call (no restart, no rebuild).
-          # Seeded once by the substrate-puller unit (dotfiles modules/substrate.nix) when this file is absent; edits here are
-          # yours and survive every switch. Shape: packages/runners/src/models.ts in agency-agency/substrate.
-          #
-          #   [[models]]
-          #   id = "<full model id>"          # what goes on the wire, never an alias
-          #   harness = "claude" | "pi" | "codex"
-          #   provider = "gufo" | "qwen-token-plan" | "openrouter" | "openrouter-free"   # pi only; absent means gufo
-          #   aliases = ["short"]             # optional
-          #   default = true                  # at most one per harness (per provider for pi); the model a call gets when it names none
-          #   ceilings = { model_scoped = 90 } # optional utilization ceilings in percent
-          #   [models.pi]                     # optional, pi only: declares a model pi's own catalog does not know (a stealth model)
-          #   name = "..."; reasoning = true; input = ["text", "image"]; context_window = 1000000; max_tokens = 524288
-          #
-          # A pi provider with NO entry here is PARKED: substrate refuses its runtime at once with "no model configured", and
-          # route policies fall through to the next runtime. The openrouter-free lane is parked since 2026-10-10 (Tom: "i know
-          # they will release a new one soon so let s keep the mechanics for it"). To activate it, uncomment the last table and
-          # set the new stealth id; the change is live on the next call.
-
+          # Seed only. The existing private catalog is never overwritten.
           [[models]]
           id = "claude-opus-5-5"
           harness = "claude"
@@ -690,53 +612,13 @@ in
 
           [[models]]
           id = "qwen3.8-flash-next"
-          harness = "pi"
+          harness = "dsh"
+          provider = "gufo"
+          aliases = ["local", "nightly"]
+          reasoning = false
           default = true
-
-          [[models]]
-          id = "qwen3.8-max"
-          harness = "pi"
-          provider = "qwen-token-plan"
-          default = true
-
-          [[models]]
-          id = "deepseek/deepseek-v4-pro"
-          harness = "pi"
-          provider = "openrouter"
-          aliases = ["deepseek"]
-          default = true
-
-          [[models]]
-          id = "minimax/minimax-m3"
-          harness = "pi"
-          provider = "openrouter"
-          aliases = ["minimax"]
-
-          [[models]]
-          id = "qwen/qwen3.8-max-0902"
-          harness = "pi"
-          provider = "openrouter"
-          aliases = ["qwen-max"]
-
-          [[models]]
-          id = "anthropic/claude-sonnet-5.5"
-          harness = "pi"
-          provider = "openrouter"
-
-          # openrouter-free: PARKED. Uncomment and set the id when OpenRouter releases a new stealth model.
-          # [[models]]
-          # id = "stealth/<new-model>"
-          # harness = "pi"
-          # provider = "openrouter-free"
-          # default = true
-          # [models.pi]
-          # name = "<display name> (stealth, free)"
-          # reasoning = true
-          # input = ["text", "image"]
-          # context_window = 1000000
-          # max_tokens = 524288
         '';
-        description = "The TOML text installed at modelsFile when that file is absent at unit start (mode 600). Mirrors the compiled default list of packages/runners/src/models.ts with the openrouter-free lane parked. Changing this option changes only what a FRESH box gets; an existing file is never touched.";
+        description = "The TOML text installed at modelsFile when that file is absent at unit start (mode 600). Fresh catalogs contain the local DSH/Gufo route and the existing Claude models. Changing this option changes only what a FRESH box gets; an existing file is never touched.";
       };
 
       deployConfig = mkOption {
@@ -758,9 +640,6 @@ in
             "cc3"
             "gufo"
             "codex"
-            "pi-qwencloud"
-            "openrouter"
-            "openrouter-free"
           ];
           codexWorkdir = "~/mecattaf/substrate";
         };
@@ -774,9 +653,6 @@ in
           gufo = 1800000;
           codex = 1800000;
           codex-rw = 2700000;
-          qwen = 3600000;
-          openrouter = 3600000;
-          openrouter-free = 3600000;
         };
         description = "Per-runtime wall-clock ceiling for one agent() call (timeoutMs in runtimes.toml). A call may shorten it, never extend it. Raised from 15 min on 2026-09-24 17:35: three codex-rw implement nodes of the crm and email builds hit exit 124 at 900000 ms while still executing commands. A puller.sshRuntimes entry with no key here gets the gufo value. A host that sets this option replaces the whole default, so it names every runtime it declares.";
       };
@@ -786,6 +662,16 @@ in
         defaultText = lib.literalExpression ''"''${home}/mecattaf/substrate"'';
         description = "The unit's WorkingDirectory. The live puller ran from the substrate checkout: the runners derive a worktree from process.cwd() for agent({isolation = \"worktree\"}) calls and the interpreter's fallback resolver looks in cwd/.claude/workflows, so a git checkout keeps parity with the proof (review 2026-09-24).";
       };
+      memoryHigh = mkOption {
+        type = types.str;
+        default = "1G";
+        description = "Soft memory limit for the NAS executor and its children.";
+      };
+      memoryMax = mkOption {
+        type = types.str;
+        default = "2G";
+        description = "Hard memory limit for the NAS executor; compute work runs remotely.";
+      };
       extraPath = mkOption {
         type = types.listOf types.package;
         default = [
@@ -793,12 +679,13 @@ in
           pkgs.pnpm_11_17
         ];
         defaultText = lib.literalExpression "[ pkgs.nodejs_24 pkgs.pnpm_11_17 ]";
-        description = "Packages on the unit's PATH besides openssh, coreutils and the user's profile directories (~/.local/bin, /etc/profiles/per-user/<user>/bin, /run/current-system/sw/bin), which supply claude, pi, codex and herdr. Default: the gate toolchain of stack v1 (Node 24, pnpm 11.17.0; overlays/default.nix pnpm_11_17) so a spec-task gate runs `node` and `pnpm` bare in a worktree (factory defect 6, 2026-10-10); git and gh come from the user profile as before. Overridable.";
+        description = "Packages on the unit's PATH besides openssh, coreutils and the user's profile directories (~/.local/bin, /etc/profiles/per-user/<user>/bin, /run/current-system/sw/bin), which supply claude, dsh, codex and herdr. Default: the gate toolchain of stack v1 (Node 24, pnpm 11.17.0; overlays/default.nix pnpm_11_17) so a spec-task gate runs `node` and `pnpm` bare in a worktree (factory defect 6, 2026-10-10); git and gh come from the user profile as before. Overridable.";
       };
     };
   };
 
   config = mkIf (anyEnabled && config.myFleet.has "brain") {
+    environment.systemPackages = [ substrateApps.catalogMigrate ];
     assertions = [
       {
         assertion = lib.hasPrefix "https://" cfg.floorUrl;
@@ -898,18 +785,14 @@ in
         ];
         # Above drain_timeout_s, so the first SIGTERM's drain can finish before systemd escalates.
         TimeoutStopSec = "${toString (cfg.puller.drainTimeoutS + 30)}s";
-        # Review 2026-09-24 (medium): the default KillMode=control-group would SIGTERM every claude, codex and pi
+        # Review 2026-09-24 (medium): the default KillMode=control-group would SIGTERM every claude, codex and dsh
         # child at once and defeat the puller's own drain ladder; mixed signals only the puller, which drains its
         # nodes (drain_timeout_s) and kills its live groups itself. One OOM-killed node must not stop the puller.
         KillMode = "mixed";
         OOMPolicy = "continue";
         WorkingDirectory = cfg.puller.workingDirectory;
-        # Two claude agents at ~400 MB each plus the puller and tool builds approach 2G; 2G was the reclaim line,
-        # 4G the hard limit (review 2026-09-24, low). 2026-09-30: the strix's cap rises to 12 for the credit
-        # seats (up to 4 qwen + 4 openrouter + 8 openrouter-free pi agents, a few hundred MB each, beside claude),
-        # so the lines move to 6G and 10G (the strix has 125 GiB).
-        MemoryHigh = "6G";
-        MemoryMax = "10G";
+        MemoryHigh = cfg.puller.memoryHigh;
+        MemoryMax = cfg.puller.memoryMax;
         # The proof ran inside runtime-test with a private /run/user. The unit keeps the real one (herdr and ssh
         # stay reachable) but the desktop session's sockets are not something a headless agent should inherit.
         UnsetEnvironment = [

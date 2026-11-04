@@ -37,10 +37,10 @@ import { homedir } from "node:os";
 import { Schema } from "effect";
 import { parse as parseToml } from "smol-toml";
 import { catalogEntry, loadModelsFile, modelAllowlistProblems, ModelEntrySchema, ModelsFileError, type ModelAllowlist } from "./models.ts";
-import { PI_PROVIDER_NAMES, PI_PROVIDERS, type PiProvider } from "./harness.ts";
+import { MODEL_PROVIDER_NAMES, PI_PROVIDERS, type HarnessName, type ModelProvider, type PiProvider } from "./harness.ts";
 
-const Harness = Schema.Literals(["claude", "pi", "codex"]);
-const PiProviderSchema = Schema.Literals(PI_PROVIDER_NAMES as unknown as readonly [PiProvider, ...PiProvider[]]);
+const Harness = Schema.Literals(["claude", "pi", "dsh", "codex"]);
+const PiProviderSchema = Schema.Literals(MODEL_PROVIDER_NAMES as unknown as readonly [ModelProvider, ...ModelProvider[]]);
 
 /** Fields every runtime table may carry. */
 const common = {
@@ -255,6 +255,12 @@ export const RuntimesFile = Schema.Struct({
     project_bin: Schema.optionalKey(Schema.String),
     project_url: Schema.String,
     project_token_file: Schema.String,
+    maintenance: Schema.optionalKey(Schema.Array(Schema.Struct({
+      project: Schema.String,
+      thread: Schema.String,
+      command: Schema.Array(Schema.String),
+      status_command: Schema.Array(Schema.String),
+    }))),
   })),
 });
 export type RuntimesFile = typeof RuntimesFile.Type;
@@ -292,7 +298,15 @@ export interface RuntimesConfig {
   /** G-BK8: operator lifecycle hooks. */
   readonly hooks?: { readonly preStart?: readonly string[]; readonly preExit?: readonly string[]; readonly timeoutMs?: number };
   /** `[sessions]`: the project MCP of agent({session}) calls; absent, such a call is refused. */
-  readonly sessions?: { readonly projectBin: string; readonly projectUrl: string; readonly projectTokenFile: string };
+  readonly sessions?: { readonly projectBin: string; readonly projectUrl: string; readonly projectTokenFile: string; readonly maintenance?: readonly MaintenanceBinding[] };
+}
+
+/** Operator-owned fixed commands exposed only to one explicitly authorized thread's DSH session. */
+export interface MaintenanceBinding {
+  readonly project: string;
+  readonly thread: string;
+  readonly command: readonly string[];
+  readonly statusCommand: readonly string[];
 }
 
 export const DEFAULT_PATH = "~/.config/substrate/runtimes.toml";
@@ -373,8 +387,21 @@ export function decodeRuntimes(doc: unknown, source: string, home = homedir()): 
       projectBin: expandHome(file.sessions.project_bin ?? "project", home),
       projectUrl: file.sessions.project_url,
       projectTokenFile: expandHome(file.sessions.project_token_file, home),
+      ...(file.sessions.maintenance === undefined ? {} : { maintenance: file.sessions.maintenance.map(b => ({
+        project: b.project, thread: b.thread, command: b.command, statusCommand: b.status_command,
+      })) }),
     } } : {}),
   };
+  const bindings = new Set<string>();
+  for (const b of config.sessions?.maintenance ?? []) {
+    const key = `${b.project}/${b.thread}`;
+    if (!/^[a-z][a-z0-9-]*$/.test(b.project) || !/^T-[1-9][0-9]*$/.test(b.thread)) throw new RuntimesConfigError(`${source}: sessions.maintenance must name a project and explicit T-N thread`);
+    if (bindings.has(key)) throw new RuntimesConfigError(`${source}: duplicate maintenance binding ${key}`);
+    bindings.add(key);
+    for (const argv of [b.command, b.statusCommand]) {
+      if (!argv.length || !argv[0]?.startsWith("/") || argv.some(a => !a || a.includes("\0"))) throw new RuntimesConfigError(`${source}: maintenance commands need fixed argv and an absolute executable`);
+    }
+  }
   const problems: string[] = [...(file.models !== undefined ? modelAllowlistProblems(file.models) : [])];
   if (config.modelsFile !== undefined) {
     if (!config.modelsFile.startsWith("/")) problems.push(`models_file must be absolute (or ~/...), got ${file.models_file}`);
@@ -411,7 +438,7 @@ export function decodeRuntimes(doc: unknown, source: string, home = homedir()): 
     }
   }
   for (const n of config.allow ?? []) if (!known(n)) problems.push(`allow names ${JSON.stringify(n)}, which is no runtime`);
-  for (const h of Object.keys(config.seats)) if (!["claude", "pi", "codex"].includes(h)) problems.push(`seats.${h}: no such harness`);
+  for (const h of Object.keys(config.seats)) if (!["claude", "pi", "dsh", "codex"].includes(h)) problems.push(`seats.${h}: no such harness`);
   if (!config.credentials.claude.startsWith("/")) problems.push(`credentials.claude must be absolute`);
   problems.push(...guardrailProblems(config));
   for (const s of config.credentials.seatSpellingConflicts ?? []) problems.push(`credentials: seat ${s} has one dir in [credentials.seats] and another in seat_dirs`);
@@ -530,10 +557,13 @@ function baseSelection(config: RuntimesConfig, phase: string | undefined): Selec
 export const LOCAL_CREDENTIAL = new Set<Runtime["type"]>(["host", "runtime-test", "herdr", "gvisor", "microvm"]);
 
 /** The harness a runtime runs an agent() call with. */
-export const harnessOf = (r: Runtime): "claude" | "pi" | "codex" => r.harness ?? "claude";
+export const harnessOf = (r: Runtime): HarnessName => r.harness ?? "claude";
 
 /** The pi provider a runtime's pi calls run against (default gufo); undefined for another harness. */
-export const piProviderOf = (r: Runtime): PiProvider | undefined => (harnessOf(r) === "pi" ? (r.provider ?? "gufo") : undefined);
+export const piProviderOf = (r: Runtime): PiProvider | undefined => (harnessOf(r) === "pi" ? (r.provider as PiProvider | undefined ?? "gufo") : undefined);
+
+/** Provider selection is separate from the harness; DSH reads a generated Cordis patch. */
+export const modelProviderOf = (r: Runtime): ModelProvider | undefined => harnessOf(r) === "dsh" ? "gufo" : piProviderOf(r);
 
 /** Runtime types that read the HOST's pi models.json (and so every provider in it). */
 const HOST_PI_CONFIG = new Set<Runtime["type"]>(["host", "runtime-test", "herdr", "ssh"]);
@@ -609,8 +639,10 @@ function guardrailProblems(config: RuntimesConfig): string[] {
   for (const [name, r] of reachable) {
     const h = harnessOf(r);
     if (r.codexSandbox !== undefined && h !== "codex") problems.push(`runtime.${name}.codexSandbox applies to the codex harness only (harness is ${h})`);
-    if (r.provider !== undefined && h !== "pi") problems.push(`runtime.${name}.provider applies to the pi harness only (harness is ${h})`);
-    if (r.provider !== undefined && r.provider !== "gufo" && !HOST_PI_CONFIG.has(r.type)) {
+    if (h === "dsh" && r.provider !== undefined && r.provider !== "gufo") problems.push(`runtime.${name}: dsh currently serves provider gufo only`);
+    if (h === "dsh" && r.type !== "host" && r.type !== "runtime-test") problems.push(`runtime.${name}: dsh needs host or runtime-test so its fleet wrapper and private home are honoured`);
+    if (r.provider !== undefined && h !== "pi" && h !== "dsh") problems.push(`runtime.${name}.provider applies to the pi or dsh harness only (harness is ${h})`);
+    if (h === "pi" && r.provider !== undefined && r.provider !== "gufo" && !HOST_PI_CONFIG.has(r.type)) {
       problems.push(`runtime.${name}: provider ${r.provider} needs the host's pi models.json (host, runtime-test, herdr, ssh); a ${r.type} job gets a Gufo-only one`);
     }
     if (!carriesCredential(r) && h === "claude") problems.push(`runtime.${name}: credential = false with the claude harness, which cannot run without a seat credential`);
@@ -738,7 +770,7 @@ export function sessionRuntime(config: RuntimesConfig, catalog: ModelAllowlist, 
   const entry = catalogEntry(catalog, model) ?? refuse(`model ${model} has no catalog entry, so no harness is known to serve it`);
   if (entry.harness === "codex") refuse(`model ${model} is served by the codex harness, which runs no session`);
   if (typeof harness === "string" && harness !== entry.harness) refuse(`model ${model} is served by the ${entry.harness} harness; this session runs on ${harness}`);
-  const provider = entry.harness === "pi" ? (entry.provider ?? "gufo") : undefined;
+  const provider = entry.harness === "dsh" ? (entry.provider ?? "gufo") : entry.harness === "pi" ? (entry.provider ?? "gufo") : undefined;
   for (const n of new Set([config.default, ...Object.keys(config.runtimes), ...(config.allow ?? [])])) {
     let sel: Selection;
     try {
@@ -746,7 +778,7 @@ export function sessionRuntime(config: RuntimesConfig, catalog: ModelAllowlist, 
     } catch {
       continue; // not permitted to this call
     }
-    if (sel.runtime.type === "host" && harnessOf(sel.runtime) === entry.harness && piProviderOf(sel.runtime) === provider) return { ...sel, via: "model" };
+    if (sel.runtime.type === "host" && harnessOf(sel.runtime) === entry.harness && modelProviderOf(sel.runtime) === provider) return { ...sel, via: "model" };
   }
   return refuse(`no host runtime this file permits serves model ${model} (harness ${entry.harness}${provider !== undefined ? `, pi provider ${provider}` : ""})`);
 }

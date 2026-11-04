@@ -36,6 +36,14 @@ call with the error. Precedence: `models_file`, inline `[[models]]`, the compile
 Host-side pi jobs save their session in the job's shadow (`--session-dir`), archived with the
 transcripts so the seats oracle counts factory spend.
 
+**DSH and Gufo** (2026-10-28). The fleet's local runtime is `type="host"`,
+`harness="dsh"`, `provider="gufo"`, `seat="gufo"`. DSH runs locally and its
+fleet launcher calls Gufo on compute. The runner generates a native headless composition,
+keeps a private `dsh-home/` alongside the session cwd, requires its project MCP before
+starting inference, and limits coordinator tools to read plus project operations. DSH
+reports its own first id; `--session-id` adopts it on later turns. A missing pinned
+history or an old session pinned to pi is refused. See [rollout](../../docs/dsh-rollout.md).
+
 **Agent sessions** (2026-10-12). `agent(prompt, { session: {id, harnessSessionId, cwd?, role, harness?} })`
 is one turn of an agent session: the harness session is resumed by id (claude `--session-id`, then
 `--resume`; pi `--session-id`; codex `exec resume`, built and tested with a fake only) in

@@ -6,9 +6,12 @@
 
 default = "host"
 
+[seats]
+dsh = "gufo"
+
 [phases]
 "Review" = "gvisor"          # every agent() in the "Review" phase
-"Scout" = "ssh:worker"       # ssh:<host> needs no table unless you want to change its harness
+"Scout" = "gufo"             # harness stays on NAS; Gufo inference runs on strix-coordinator
 
 [credentials]
 claude = "~/.claude"          # the seat config dir; MOUNTED into sandboxes, never copied
@@ -49,10 +52,11 @@ type = "microvm"              # builds a microvm.nix declaredRunner; boots only 
 # vcpu = 2
 # memMiB = 2048
 
-[runtime."ssh:worker"]
-type = "ssh"
-host = "worker"
-harness = "pi"                # pi against Gufo, which runs on the worker
+[runtime.gufo]
+type = "host"
+harness = "dsh"
+provider = "gufo"
+seat = "gufo"
 
 [runtime.edge]
 type = "workerd"              # Worker-shaped jobs only; agent() calls are refused
@@ -61,6 +65,14 @@ type = "workerd"              # Worker-shaped jobs only; agent() calls are refus
 [runtime.ax]
 type = "ax"                   # spec only: writes the Task an ax dispatch would send, dispatches nothing
 
+# Native DSH local model; the fleet launcher owns endpoint and model metadata.
+# [[models]]
+# id = "qwen3.8-flash-next"
+# harness = "dsh"
+# provider = "gufo"
+# aliases = ["local", "nightly"]
+# default = true
+#
 # The model catalog (src/models.ts) is RUNTIME DATA (2026-10-10): name a plain TOML file of
 # [[models]] tables and the runners re-read it on every call (an edit is live at once, no
 # restart, no rebuild). It must exist at load. It outranks the inline [[models]] below; absent
@@ -100,6 +112,7 @@ type = "ax"                   # spec only: writes the Task an ax dispatch would 
 # seat = "codex"
 # codexSandbox = "workspace-write"   # default "read-only"
 
+# Legacy pi examples below are retained for historical configurations; the fleet no longer installs pi.
 # pi against another provider of ~/.pi/agent/models.json (2026-09-30). `provider` is pi-only:
 # gufo (default), qwen-token-plan, openrouter, openrouter-free. Without `seat`, each spends its
 # provider's own seat (pi-qwencloud, openrouter, openrouter-free), never [seats].pi. Host-side
