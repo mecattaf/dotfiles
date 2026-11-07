@@ -316,6 +316,10 @@
           # own nixpkgs — no second eval of ours). home/home.nix pulls an
           # allowlisted set out of this namespace. See the input comment above.
           llm-agents = inputs.llm-agents.packages.${system};
+          # Native terminal consolidation: advance only Kitty, preserving the
+          # host nixpkgs/Mesa/kernel pins. The recipe uses the prior package as
+          # its build definition, avoiding an overlay self-reference.
+          kitty = import ./pkgs/kitty-0.50.nix { pkgs = _prev; };
           sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { };
           sf-pro = final.callPackage ./pkgs/sf-pro.nix { };
           anthropic-mono-nerd = final.callPackage ./pkgs/anthropic-mono-nerd.nix { };

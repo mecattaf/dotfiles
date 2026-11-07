@@ -1,4 +1,4 @@
-# Qualified candidate only; no host or global nixpkgs override.
+# Source-pinned Kitty leaf update; host nixpkgs/Mesa/kernel stay unchanged.
 { pkgs }:
 let
   version = "0.50.0";
