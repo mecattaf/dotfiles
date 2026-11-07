@@ -70,6 +70,17 @@ class KittyEditorIdentityTests(unittest.TestCase):
     def tearDown(self):
         EDITOR._version = self.old_version
 
+    def test_native_osc7_restores_current_directory_after_session_resume(self):
+        self.window.screen.last_reported_cwd = 'file://nas/home/tom/nested%20directory'
+        self.window.child.root_pid = self.window.child.pid + 100
+        identity = EDITOR._identity(self.window)
+        self.assertEqual(identity['directory'], '/home/tom/nested directory')
+        self.assertEqual(self.window.user_vars['agency_directory'], identity['directory'])
+        self.assertEqual(identity['child_pid'], self.window.child.root_pid)
+        self.window.screen.last_reported_cwd = 'file://unrelated-host/private/path'
+        with self.assertRaises(ValueError):
+            EDITOR._identity(self.window)
+
     def test_one_press_is_forwarded_to_remote_nvim_without_creating_sidebar(self):
         self.window.user_vars['nvim'] = '1'
         EDITOR.sidebar(self.boss, self.window)

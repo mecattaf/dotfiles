@@ -8,6 +8,7 @@ import os
 from pathlib import Path, PurePosixPath
 import sys
 import uuid
+from urllib.parse import unquote, urlsplit
 
 
 def main(args):
@@ -37,8 +38,22 @@ def _identity(window):
     session = variables.get('agency_session', '')
     if variables.get('agency_host') != 'nas' or str(uuid.UUID(session)) != session:
         raise ValueError('editor gestures require an explicitly bound NAS session')
-    return {'window_id': window.id, 'child_pid': window.child.pid,
-            'session': session, 'directory': _clean_path(variables.get('agency_directory'))}
+    directory = variables.get('agency_directory')
+    reported = getattr(window.screen, 'last_reported_cwd', '')
+    if reported:
+        uri = urlsplit(reported)
+        if (uri.scheme != 'file' or uri.hostname not in ('nas', '100.65.85.114')
+                or uri.username is not None or uri.password is not None or uri.port is not None
+                or uri.query or uri.fragment):
+            raise ValueError('editor cwd must be an explicit NAS file URI')
+        directory = unquote(uri.path, errors='strict')
+    directory = _clean_path(directory)
+    if directory != variables.get('agency_directory'):
+        # Reattach restores native OSC7 even when the retained fish has not
+        # changed PWD again. Refresh metadata only on this explicit gesture.
+        window.set_user_var('agency_directory', directory)
+    return {'window_id': window.id, 'child_pid': getattr(window.child, 'root_pid', window.child.pid),
+            'session': session, 'directory': directory}
 
 
 def _version():
