@@ -64,7 +64,7 @@ class EditorIntegration(unittest.TestCase):
     def lua(self, server, source):
         body = source if ';' in source or source.startswith('return ') else 'return ' + source
         expression = "json_encode(luaeval(" + json.dumps('(function() ' + body + ' end)()') + "))"
-        out = subprocess.run([NVIM, "--server", server["socket"], "--remote-expr", expression],
+        out = subprocess.run([NVIM, "--headless", "-u", "NONE", "--server", server["socket"], "--remote-expr", expression],
                              check=False, env=self.env, text=True, capture_output=True, timeout=5)
         self.assertEqual(out.returncode, 0, out.stderr)
         return json.loads(out.stdout)
@@ -173,6 +173,32 @@ class EditorIntegration(unittest.TestCase):
         messages = self.lua(server, "local ok,err=pcall(vim.cmd,'DshCheckpoint'); return err or vim.fn.execute('messages')")
         self.assertIn('Editor recovery checkpoint failed', messages)
         (state / 'recovery.json.tmp').rmdir()
+
+    def test_renamed_unsaved_buffer_recovers_under_its_new_destination(self):
+        saved = self.project / 'before.md'
+        saved.write_text('on disk\n')
+        renamed = self.project / 'after.md'
+        server = self.launch(self.project, 'before.md')
+        self.lua(server, "vim.api.nvim_buf_set_lines(0,0,-1,false,{'renamed unsaved work'}); "
+                 "vim.cmd('DshCheckpoint'); return true")
+        tick = self.lua(server, 'vim.api.nvim_buf_get_changedtick(0)')
+        self.lua(server, 'vim.api.nvim_buf_set_name(0,' + json.dumps(str(renamed)) + '); return true')
+        self.assertEqual(self.lua(server, 'vim.api.nvim_buf_get_changedtick(0)'), tick)
+        self.lua(server, "vim.cmd('DshCheckpoint'); return true")
+        manifest = Path(server['state']) / 'recovery.json'
+        index = json.loads(manifest.read_text())
+        self.assertEqual(len(index['buffers']), 1)
+        snapshot = json.loads((manifest.parent / index['buffers'][0]).read_text())
+        self.assertEqual(snapshot['name'], str(renamed))
+        os.kill(server['pid'], signal.SIGKILL)
+        time.sleep(0.1)
+        restarted = self.launch()
+        recovered = self.lua(restarted, "(function() for _,b in ipairs(vim.api.nvim_list_bufs()) do "
+                             "if vim.b[b].dsh_recovery_original ~= nil then return {"
+                             "name=vim.b[b].dsh_recovery_original,lines=vim.api.nvim_buf_get_lines(b,0,-1,false)} end end end)()")
+        self.assertEqual(recovered, {'name': str(renamed), 'lines': ['renamed unsaved work']})
+        self.assertEqual(saved.read_text(), 'on disk\n')
+        self.assertFalse(renamed.exists())
 
 
 if __name__ == "__main__":

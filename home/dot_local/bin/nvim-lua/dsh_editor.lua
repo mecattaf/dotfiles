@@ -51,13 +51,14 @@ function M.checkpoint()
       local key = vim.b[buf].dsh_recovery_key or vim.fn.sha256(name ~= '' and name or ('unnamed:' .. buf))
       local tick = api.nvim_buf_get_changedtick(buf)
       local filename = key .. '.json'
-      if snapshots[buf] ~= tick then
+      local previous = snapshots[buf]
+      if not previous or previous.tick ~= tick or previous.key ~= key then
         write_atomic(state .. '/' .. filename, vim.json.encode({
           name = name, lines = api.nvim_buf_get_lines(buf, 0, -1, false),
           filetype = vim.bo[buf].filetype, endofline = vim.bo[buf].endofline,
           fileformat = vim.bo[buf].fileformat, saved_at = os.time(),
         }))
-        snapshots[buf] = tick
+        snapshots[buf] = { tick = tick, key = key }
       end
       records[#records + 1] = filename
     end
