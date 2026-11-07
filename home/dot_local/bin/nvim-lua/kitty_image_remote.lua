@@ -10,6 +10,7 @@ local fingerprints = {
   ['lua/image/backends/kitty/helpers.lua'] = '27430b1d95d7a1ad417fb709c4f8e38eeac7b0487d4933fe372931d5e89ea3c1',
   ['lua/image/utils/term.lua'] = '35a9feffded501a429e321c5b2455b30a26a2e7d00293be257ccc7faf6324c27',
   ['lua/image/backends/kitty/init.lua'] = '2ce48270ddd78ef881d0e4a0435ceb21bf0ab6139b94ef32c979819bfc074c7c',
+  ['lua/image/utils/document.lua'] = '3a610de8b326f2a95d0eda4d5c52d8bc1a372b95fe49f1a216575d84d8f63aa9',
 }
 
 local function size()
@@ -32,12 +33,29 @@ local function refresh()
   if not size() or not package.loaded.image then return end
   local image = require('image')
   local images = image.get_images()
-  if #images == 0 then return end
-  -- The stock backend's private transmit cache must be invalidated when a
-  -- different terminal attaches, even when its rows/columns match the old UI.
-  require('image/backends/kitty').clear(nil, false)
-  for _, item in ipairs(images) do item:render() end
-  M.retransmissions = (M.retransmissions or 0) + 1
+  if #images > 0 then
+    -- The stock backend's private transmit cache must be invalidated when a
+    -- different terminal attaches, even when its rows/columns match the old UI.
+    require('image/backends/kitty').clear(nil, false)
+    for _, item in ipairs(images) do item:render() end
+    M.retransmissions = (M.retransmissions or 0) + 1
+  end
+  -- The initial document scan can run before any UI/geometry exists. Upstream
+  -- does not retain those unrendered images, so retry its own document hooks
+  -- after the exact geometry reply. Keep this inside image integration groups;
+  -- replaying every plugin's BufWinEnter would duplicate unrelated work.
+  local groups, buffers = {}, {}
+  for _, command in ipairs(api.nvim_get_autocmds({ event = 'BufWinEnter' })) do
+    if command.group_name and command.group_name:match('^image%.nvim:') then groups[command.group] = true end
+  end
+  for _, window in ipairs(api.nvim_tabpage_list_wins(0)) do
+    buffers[api.nvim_win_get_buf(window)] = true
+  end
+  for group in pairs(groups) do
+    for buffer in pairs(buffers) do
+      api.nvim_exec_autocmds('BufWinEnter', { group = group, buffer = buffer, modeline = false })
+    end
+  end
 end
 
 function M.query()
