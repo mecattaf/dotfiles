@@ -18,7 +18,13 @@ status is-interactive || exit
 
 printf '\033[?1h\033=' >/dev/tty
 
-alias vi='nvim'
+if set -q DSH_EDITOR_VI; and test "$DSH_EDITOR_VI" = 1; and test (hostname) = nas
+    function vi --description 'Attach this directory to its native persistent Neovim editor'
+        dsh-editor --directory $PWD -- $argv
+    end
+else
+    alias vi='nvim'
+end
 
 set -x STARSHIP_CONFIG ~/.config/starship/starship.toml
 starship init fish | source

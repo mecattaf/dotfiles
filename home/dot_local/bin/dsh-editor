@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+"""Attach a native Neovim UI to the persistent editor for one directory.
+
+Run on the machine that owns the files, normally NAS inside Kitty SSH. No
+terminal parser or renderer sits between Neovim's TUI and Kitty.
+"""
+
+import argparse
+import errno
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import socket
+import stat
+import subprocess
+import sys
+import time
+
+
+class EditorError(RuntimeError):
+    pass
+
+
+def private_directory(path):
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+        raise EditorError(f"not an owned directory: {path}")
+    if info.st_mode & 0o077:
+        path.chmod(0o700)
+    return path
+
+
+def paths_for(directory):
+    identity = hashlib.sha256(os.fsencode(str(directory))).hexdigest()[:24]
+    state_base = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "dsh/editor"
+    state = private_directory(state_base / identity)
+    runtime_base = Path(os.environ.get("XDG_RUNTIME_DIR", str(state_base / "run")))
+    runtime = private_directory(runtime_base / "dsh-editor")
+    address = runtime / f"{identity}.sock"
+    if len(os.fsencode(str(address))) > 103:
+        raise EditorError(f"Unix socket path is too long: {address}")
+    return identity, state, address
+
+
+def remote(nvim, address, expression, timeout=3):
+    return subprocess.run(
+        [nvim, "--headless", "-u", "NONE", "--server", str(address), "--remote-expr", expression],
+        check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        timeout=timeout,
+    )
+
+
+def probe(nvim, address):
+    if not address.exists():
+        return None
+    try:
+        result = remote(nvim, address, "json_encode({'pid': getpid(), 'cwd': getcwd(), 'uis': len(nvim_list_uis()), 'ready': get(g:, 'dsh_editor_ready', 0)})")
+        probe.last_error = f'exit={result.returncode} stdout={result.stdout!r} stderr={result.stderr!r}'
+        status = json.loads(result.stdout) if result.returncode == 0 else None
+        return status if status and status.get('ready') else None
+    except (subprocess.TimeoutExpired, ValueError) as error:
+        probe.last_error = str(error) + '; ' + getattr(probe, 'last_error', '')
+        return None
+
+
+def remove_stale_socket(address):
+    if not address.exists():
+        return
+    info = address.lstat()
+    if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.getuid():
+        raise EditorError(f"refusing to replace unowned/non-socket path: {address}")
+    with socket.socket(socket.AF_UNIX) as client:
+        client.settimeout(1)
+        try:
+            client.connect(str(address))
+        except OSError as error:
+            if error.errno not in (errno.ECONNREFUSED, errno.ENOENT):
+                raise EditorError(f"cannot inspect editor socket: {error}") from error
+        else:
+            raise EditorError("editor socket accepts connections but Nvim did not answer; leaving it intact")
+    address.unlink(missing_ok=True)
+
+
+def ensure(nvim, directory, state, address, init):
+    lock = state / "launch.lock"
+    with lock.open("a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        existing = probe(nvim, address)
+        if existing:
+            return existing
+        remove_stale_socket(address)
+        module = Path(__file__).resolve().parent / "nvim-lua"
+        if not (module / "dsh_editor.lua").is_file():
+            raise EditorError(f"editor recovery module is absent: {module}")
+        env = dict(os.environ, DSH_EDITOR_ROOT=str(directory), DSH_EDITOR_STATE=str(state),
+                   DSH_EDITOR_LUA=str(module))
+        # The independent server has no tty, inherited pipes or SSH lifetime.
+        # --remote-ui is a separate native Nvim TUI, not a terminal multiplexer.
+        command = [nvim, "--headless", "--listen", str(address), "--startuptime", str(state / 'startup.log')]
+        if init:
+            command += ["-u", init]
+        command += ["--cmd", "lua package.path = package.path .. ';' .. vim.env.DSH_EDITOR_LUA .. '/?.lua'",
+                    "-c", "lua require('dsh_editor').setup()"]
+        with (state / "server.log").open("ab", buffering=0) as log:
+            child = subprocess.Popen(command, cwd=directory, env=env, stdin=subprocess.DEVNULL,
+                                     stdout=log, stderr=log, start_new_session=True, close_fds=True)
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            status = probe(nvim, address)
+            if status:
+                metadata = {"directory": str(directory), "socket": str(address), **status}
+                temporary = state / "server.json.tmp"
+                temporary.write_text(json.dumps(metadata) + "\n")
+                temporary.replace(state / "server.json")
+                return status
+            if child.poll() is not None:
+                raise EditorError(f"Nvim exited with {child.returncode}; inspect {state / 'server.log'}")
+            time.sleep(0.05)
+        # Never kill an editor on a startup timeout: plugins may still be loading.
+        raise EditorError(f"Nvim has not answered in 15s; left running, inspect {state / 'server.log'}; "
+                          f"last probe: {getattr(probe, 'last_error', 'no socket')[:500]}")
+
+
+def list_editors(nvim):
+    base = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "dsh/editor"
+    result = []
+    for metadata in sorted(base.glob("*/server.json")):
+        if metadata.is_symlink():
+            continue
+        try:
+            record = json.loads(metadata.read_text())
+            status = probe(nvim, Path(record["socket"]))
+            result.append({**record, "running": status is not None, **(status or {})})
+        except (OSError, ValueError, KeyError):
+            continue
+    return result
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--directory", type=Path, default=Path.cwd(), help="Editor identity; canonical cwd, not all git worktrees combined")
+    parser.add_argument("--socket-only", action="store_true", help="Ensure the editor and print its socket; do not attach")
+    parser.add_argument("--no-attach", action="store_true", help="Ensure editor and open files without attaching")
+    parser.add_argument("--list", action="store_true", help="List known editor identities without starting them")
+    parser.add_argument("--json", action="store_true", help="Machine-readable result for DSH/Kitty")
+    parser.add_argument("--nvim", default=shutil.which("nvim"), help="Nvim binary (also useful for isolated tests)")
+    parser.add_argument("--init", help="Explicit init file, e.g. NONE for an isolated experiment")
+    parser.add_argument("files", nargs="*")
+    args = parser.parse_args(argv)
+    if not args.nvim:
+        parser.error("nvim is not installed")
+    os.umask(0o077)
+    if args.list:
+        editors = list_editors(args.nvim)
+        if args.json:
+            print(json.dumps(editors))
+        else:
+            for editor in editors:
+                print(f"{'running' if editor['running'] else 'stopped'}\t{editor['directory']}\t{editor['socket']}")
+        return 0
+    directory = args.directory.expanduser().resolve(strict=True)
+    if not directory.is_dir():
+        parser.error(f"not a directory: {directory}")
+    identity, state, address = paths_for(directory)
+    status = ensure(args.nvim, directory, state, address, args.init)
+    files = [str((directory / name).absolute()) for name in args.files]
+    if files:
+        result = subprocess.run([args.nvim, "--headless", "-u", "NONE", "--server", str(address), "--remote", *files], check=False)
+        if result.returncode:
+            return result.returncode
+    record = {"identity": identity, "directory": str(directory), "socket": str(address), "state": str(state), **status}
+    if args.json:
+        print(json.dumps(record), flush=True)
+    elif args.socket_only:
+        print(address)
+    if args.socket_only or args.no_attach:
+        return 0
+    # Attach markers belong to this terminal client, not to a background daemon
+    # or every terminal attached to that daemon. The finally clears stale marks.
+    marked = bool(os.environ.get("KITTY_WINDOW_ID")) and sys.stdout.isatty()
+    if marked:
+        print("\033]1337;SetUserVar=nvim=MQ==\033\\", end="", flush=True)
+    try:
+        return subprocess.run([args.nvim, "-u", "NONE", "--server", str(address), "--remote-ui"], check=False).returncode
+    finally:
+        if marked:
+            print("\033]1337;SetUserVar=nvim=\033\\", end="", flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (EditorError, OSError, subprocess.TimeoutExpired) as error:
+        print(f"dsh-editor: {error}", file=sys.stderr)
+        sys.exit(1)

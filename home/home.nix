@@ -97,6 +97,7 @@ in
     ./browser-trust.nix
     ./agent-tools.nix
     ./agent-helpers.nix
+    ./agency-editor.nix
     ./ai-memory.nix
     ./dsh.nix
     ./downloads-mirror.nix
