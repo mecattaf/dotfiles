@@ -1,5 +1,5 @@
 # Source-pinned Kitty leaf update; host nixpkgs/Mesa/kernel stay unchanged.
-{ pkgs, go ? pkgs.go_1_26 }:
+{ pkgs, go ? pkgs.go_1_26, shaderSlang ? pkgs.shader-slang }:
 let
   version = "0.50.0";
   src = pkgs.fetchFromGitHub {
@@ -17,8 +17,8 @@ in (pkgs.kitty.override { go_1_26 = go; }).overrideAttrs (old: {
   inherit version src;
   patches = old.patches ++ [ ./kitty-memory-procfs-fallback.patch ];
   goModules = modules.goModules;
-  nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.shader-slang pkgs.python3Packages.sphinx-design ];
+  nativeBuildInputs = old.nativeBuildInputs ++ [ shaderSlang pkgs.python3Packages.sphinx-design ];
   postFixup = (old.postFixup or "") + ''
-    wrapProgram $out/bin/kitty --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.shader-slang ]}
+    wrapProgram $out/bin/kitty --suffix PATH : ${pkgs.lib.makeBinPath [ shaderSlang ]}
   '';
 })

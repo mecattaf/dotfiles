@@ -325,6 +325,7 @@
             # still supplies 1.26.5; borrow only this build tool from the
             # existing fresh input, keeping its runtime libraries on NAS's pin.
             go = inputs.nixpkgs-fresh.legacyPackages.${system}.go_1_26;
+            shaderSlang = inputs.nixpkgs-fresh.legacyPackages.${system}.shader-slang;
           };
           sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { };
           sf-pro = final.callPackage ./pkgs/sf-pro.nix { };
