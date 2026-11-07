@@ -4,8 +4,8 @@ Research and candidate implementation, 2026-11-07. Nothing here activates a
 generation, changes a live Kitty instance, or restarts an editor or Herdr.
 
 The useful Neovim boundary is already available in installed Neovim 0.12.4:
-one NAS editor server per canonical directory, with a native terminal UI that
-can close and reattach. The candidate adds no terminal emulator, rendering
+one NAS editor server per canonical directory, with a **local** native terminal
+UI that connects over SSH/RPC and can close and reattach. The candidate adds no terminal emulator, rendering
 frame interval, multiplexer prefix or browser terminal. Fish waits while its
 editor runs; it does not parse and redraw the editor's keystrokes.
 
@@ -30,11 +30,11 @@ that copy step. See the pinned
 [current GUI lifecycle documentation](https://github.com/neovim/neovim/blob/864f78836499f8b1c7317a1b8d3762c5c4935141/runtime/doc/gui.txt#L143).
 
 This is useful for an unfamiliar remote host or a local UI that changes remote
-targets. The daily workflow already starts in a NAS shell through Kitty SSH,
-with NAS files, tools and editor configuration present. Replacing that with a
-second local Nvim server and an autoinstalling SSH tunnel does not itself solve
-WIP persistence. No global Neovim upgrade or auto-installing `vi` redirect is
-needed for this candidate. The release page currently presents 0.13 as a
+targets. The daily workflow already has NAS files, tools and editor
+configuration present. Its useful local UI/RPC boundary can be combined with
+an independent retained NAS editor rather than that demo's connection-scoped
+server. Installed 0.12.4 already supports this boundary; no second local
+editing server or auto-install is required. The release page currently presents 0.13 as a
 [development build](https://github.com/neovim/neovim/releases); NAS and compute
 were measured running 0.12.4.
 
@@ -45,8 +45,17 @@ new terminal UI avoids replaying a terminal recording to reconstruct Nvim.
 
 ## Candidate commands and state
 
-Run `dsh-editor --directory /absolute/NAS/directory -- file.md` inside the NAS
-shell. The default directory is the current directory. Canonical directories
+The primary local frontend is `agency-kitty editor-local-attach --directory
+/absolute/NAS/directory -- file.md`. It asks the NAS `dsh-editor` to ensure its
+server, opens a private stock SSH Unix-socket forward, verifies the actual NAS
+PID/API version through that forward, and starts a local `nvim --remote-ui`.
+Only the UI and that private tunnel end on disconnect. This is the same native
+UI/RPC boundary as the 0.13 demo, with independent server persistence and
+directory identity.
+
+`dsh-editor --directory /absolute/NAS/directory -- file.md` remains the explicit
+NAS-side TUI frontend. It runs the UI on NAS and carries ANSI output over SSH;
+that variant is distinct from the primary local UI. Canonical directories
 are separate identities, including separate git worktrees. A symlink to an
 existing directory resolves to the same identity.
 
@@ -82,11 +91,23 @@ write failures produce an error notification and remain in the server log.
 The existing OSC 52 copy-only clipboard provider also applies when a durable
 server has no SSH TTY. Clipboard reads retain the existing Kitty ask policy.
 
-`programs.agencyEditor.enable` is an inactive Home Manager option.
-`viAlias` defaults to false. Opting in on the NAS maps `vi` to its directory
-editor. `$EDITOR` and ordinary `nvim` keep their transient command behavior;
+The integration is staged as a Home Manager option; no live generation was
+activated by these tests. The intended `vi` integration opens the local RPC UI
+for NAS files from either the local fish or an exact managed NAS terminal.
+The NAS terminal callback must remain bounded and validate the exact parent
+window, process, session and directory. `$EDITOR` and ordinary `nvim` keep their transient command behavior;
 commit-message and harness `$EDITOR` subprocesses must still wait for editing
-to finish. No default alias redirects a local terminal into remote installs.
+to finish.
+
+The retained headless server cannot use image.nvim's ordinary stdout/ioctl
+terminal assumptions. `kitty_image_remote.lua` qualifies the exact installed
+image.nvim 1.5.1 module hashes, keeps its original backend and document
+integration, and sends graphics through `nvim_ui_send`. A native Kitty DCS
+query returns the real cell width/height; there is no guessed 8x16 geometry.
+The first geometry response retries only image.nvim's own document discovery,
+which may have run before any UI existed. A fresh UI invalidates the upstream
+transmit cache and receives the retained image again. Changed upstream hashes
+fail with an explicit qualification error rather than silently hiding images.
 
 ## Ctrl+B and the left file tree
 
