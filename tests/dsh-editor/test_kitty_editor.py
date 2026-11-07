@@ -83,7 +83,8 @@ class KittyEditorIdentityTests(unittest.TestCase):
         command = self.boss.commands[-1][1]
         self.assertIn('--location=before', command)
         self.assertNotIn('--type=window-dock', command)
-        self.assertIn("'/home/tom/a project'", command[-1])
+        self.assertIn('/home/tom/a project', command)
+        self.assertIn('editor-tree-attach', command)
         EDITOR._version = lambda: (0, 50, 0)
         EDITOR.sidebar(self.boss, self.window)
         command = self.boss.commands[-1][1]
@@ -144,7 +145,7 @@ class KittyEditorIdentityTests(unittest.TestCase):
         encoded = base64.b64encode(json.dumps(payload).encode()).decode()
         EDITOR.handle_result(['editor.py', 'sidebar', encoded], None, 1, self.boss)
         self.assertEqual(len(self.boss.commands), 1)
-        self.assertIn('-tt', self.boss.commands[0][1])
+        self.assertIn('editor-tree-attach', self.boss.commands[0][1])
 
     def test_control_character_or_oversized_callback_is_rejected(self):
         picker = self.pick_window()

@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
-import shlex
 import sys
 import uuid
 
@@ -54,12 +53,13 @@ def _socket(boss):
     return value
 
 
-def _ssh(program, directory, files=()):
-    command = [f'/home/tom/.local/bin/{program}', '--directory', directory]
-    if files:
-        command += ['--', *files]
-    return ['kitten', 'ssh', '-tt', '-oBatchMode=yes', '-oStrictHostKeyChecking=yes',
-            '-oForwardAgent=no', 'nas', shlex.join(command)]
+def _frontend(program, directory, files=()):
+    # The ordinary local CLI owns SSH host/PTY/connection policy. Kitty only
+    # launches the native UI; it never waits for SSH or embeds another copy of
+    # transport policy in its render loop.
+    action = 'editor-tree-attach' if program == 'dsh-editor-tree' else 'editor-attach'
+    return [os.environ.get('AGENCY_KITTY_COMMAND', 'agency-kitty'), action,
+            '--directory', directory, '--', *files]
 
 
 def sidebar(boss, window, args=()):
@@ -108,7 +108,7 @@ def sidebar(boss, window, args=()):
     }
     for key, value in tags.items():
         command += ['--var', f'{key}={value}']
-    boss.call_remote_control(window, tuple(command + ['--', *_ssh('dsh-editor-tree', target['directory'])]))
+    boss.call_remote_control(window, tuple(command + ['--', *_frontend('dsh-editor-tree', target['directory'])]))
 
 
 def open_editor(boss, window, payload):
@@ -129,7 +129,7 @@ def open_editor(boss, window, payload):
                '--var', 'agency_host=nas', '--var', 'agency_session=' + target['session'],
                '--var', 'agency_directory=' + directory, '--var', 'agency_editor_window=1',
                '--var', 'agency_editor_identity=' + identity]
-    boss.call_remote_control(window, tuple(command + ['--', *_ssh('dsh-editor', directory, files)]))
+    boss.call_remote_control(window, tuple(command + ['--', *_frontend('dsh-editor', directory, files)]))
 
 
 def handle_result(args, answer, target_window_id, boss):
