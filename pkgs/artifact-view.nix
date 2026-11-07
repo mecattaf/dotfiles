@@ -12,16 +12,15 @@
 # publish-artifact skill chains on top only to broadcast. `namespace` is
 # injected from modules/artifacts-defaults.nix via overlays/default.nix.
 #
-# RUNG 0 IS THE SEAT'S RUNG (2026-09-11). Agents run on the strix, which
-# is headless; the only display in the fleet belongs to the client. So on a host
+# RUNG 0 IS THE SEAT'S RUNG. Agents run on a headless host;
+# the display belongs to the client. So on a host
 # with no Wayland or X display this command does not fail obscurely inside
 # Chrome — it refuses, explains that rung 0 does not exist there, and prints the
-# rung that DOES: the publish-artifact drop-file recipe plus the URL to open on
-# the seat. An agent that reads that stderr has everything it needs to finish
-# the job without a second round trip.
+# rung that DOES: the publish-artifact skill. Keep the serving recipe there;
+# duplicating it here repeatedly recreated HTTP-only .dev sites (#678).
 writeShellApplication {
   name = "artifact-view";
-  # coreutils is explicit now that the no-display branch spends `uname`, `date`,
+  # coreutils is explicit now that the no-display branch spends `uname`,
   # `basename` and `realpath` rather than leaving them to the ambient PATH.
   runtimeInputs = [
     google-chrome
@@ -41,8 +40,13 @@ writeShellApplication {
     else
       case "$target" in
         http://* | https://*) url="$target" ;;
-        # tailnet rung is plain HTTP in v1 (TLS = DNS-01 follow-up)
-        *) url="http://$target.${namespace}" ;;
+        *)
+          if ! command -v artifact-publish >/dev/null 2>&1; then
+            echo "artifact-view: install the external artifact-publish utility to resolve a private artifact slug." >&2
+            exit 1
+          fi
+          url="$(artifact-publish url "$target")"
+          ;;
       esac
     fi
 
@@ -50,17 +54,14 @@ writeShellApplication {
     # of dying inside Chrome. See the header.
     if [ -z "''${WAYLAND_DISPLAY:-}" ] && [ -z "''${DISPLAY:-}" ]; then
       {
-        echo "artifact-view: $(uname -n) has no display: rung 0 does not exist here (the strix is headless since 2026-09-11)."
+        echo "artifact-view: $(uname -n) has no display: open the artifact on the viewing client."
         echo "The seat (client) is the only host with a screen. Give the artifact a URL and open it there."
         if [ -n "$slug" ]; then
-          until_date="$(date -d '+7 days' +%Y%m%d 2>/dev/null || echo YYYYMMDD)"
           echo
-          echo "Publish rung (publish-artifact skill, tailnet, TTL in the filename) — run here:"
-          echo "  cp -r $(realpath "$target") /var/lib/artifacts/$slug"
-          echo "  write /var/lib/artifacts/$slug.until-$until_date.caddy  ->  http://$slug.${namespace}:80 { root * /var/lib/artifacts/$slug ; file_server }"
-          echo "  sudo systemctl reload caddy"
-          echo
-          echo "Then open on the client:  http://$slug.${namespace}"
+          echo "Publish privately: artifact-publish publish $(realpath "$target") --slug $slug"
+          echo "The external publish-artifact skill covers Tailscale-local URLs and explicit Cloudflare publication."
+          echo "${namespace} is reserved for public publication. Private artifacts use Tailscale Serve."
+          echo "Verify the exact published URL and its assets from that client before handing it over."
         else
           echo
           echo "Open on the client:  $url"

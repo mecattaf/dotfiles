@@ -4,28 +4,22 @@
   pkgs,
   ...
 }:
-# Artifact serving plane — NAS only (D48 moved here 2026-10-31). Static
-# snapshots live in the drop-dir and optional live origins bind to NAS
-# loopback or LAN, so Caddy never depends on a remote origin. Realizes the publish-artifact skill's
-# tailnet rung:
+# Legacy artifact serving plane — NAS only (D48 moved here 2026-10-31).
+# New private artifacts use the external artifact-publish utility and
+# Tailscale Serve; public artifacts go through Cloudflare. Keep old drop-files
+# reachable through their remaining TTL while their authors migrate.
 #
 #   /var/lib/artifacts/<slug>.until-YYYYMMDD.caddy   TTL in the FILENAME
 #   /var/lib/artifacts/<slug>/                       static snapshot (if static)
 #
-# Ephemerality lives ONLY here + CF metadata; everything else is declarative.
-# v1 posture:
-#   - auto_https disable_redirects, plain HTTP :80 on the LAN and tailnet (WireGuard already encrypts
-#     transport; off-tailnet resolvers get an unroutable 100.x). TLS via a
-#     caddy-dns/cloudflare DNS-01 wildcard is the documented follow-up.
-#   - PUBLIC live artifacts need the cloudflared tunnel back — re-minting that
-#     credential is a DELIBERATE reversal of the 2026-07-05 removal (Tom ruled
-#     2026-07-11 that publish-from-microvm stays available on Cloudflare too);
-#     wire it as ONE static wildcard ingress *.<namespace> -> localhost Caddy
-#     ("dumb pipe, smart Caddy") when the credential is minted.
-#   - Reaper sweeps the LOCAL surface (drop-dir + snapshots). The CF-side sweep
-#     (expired Pages projects, DNS records by comment) lands with the tunnel/API
-#     wiring — until then, transient PUBLIC artifacts are torn down by hand per
-#     the skill's Teardown section.
+# Legacy serving:
+#   - .dev is HSTS-preloaded; HTTP-only drop-files fail in browsers (#678).
+#     Do not create new private artifacts here. Tailscale Serve handles their
+#     HTTPS independently of Caddy and public DNS.
+#   - Public publication and its cleanup belong to the external Cloudflare
+#     workflow. This legacy module does not provision a public tunnel.
+#   - D48 sweeps legacy local files, then asks the independently installed
+#     private publisher to expire its own Serve handlers and snapshots.
 let
   cfg = config.myArtifacts;
 
@@ -78,10 +72,17 @@ in
   # module opens no port.
 
   systemd.services.artifact-reaper = {
-    description = "Reap expired artifacts (drop-dir TTL sweep)";
+    description = "Reap expired artifacts (legacy drop-dir and private Serve paths)";
+    path = [
+      pkgs.python3
+      pkgs.tailscale
+    ];
     serviceConfig = {
       Type = "oneshot";
       ExecStart = lib.getExe artifact-reaper;
+      # Reuse D48's clock. The independently installed utility owns private
+      # snapshot metadata and removes its exact Serve route before its files.
+      ExecStartPost = "${pkgs.util-linux}/bin/runuser -u tom -- /home/tom/.local/bin/artifact-publish reap";
     };
   };
   systemd.timers.artifact-reaper = {
