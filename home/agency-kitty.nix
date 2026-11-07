@@ -18,7 +18,7 @@ in
     };
     editorKitten = lib.mkOption {
       type = lib.types.str;
-      default = "${config.xdg.configHome}/kitty/agency_editor.py";
+      default = "${assets}/agency_editor.py";
       description = "Absolute path to the independently qualified native Neovim sidebar helper.";
     };
   };
@@ -27,9 +27,37 @@ in
     assertions = [
       { assertion = lib.hasPrefix "/" cfg.editorKitten;
         message = "Agency editor kitten must be installed at an absolute path."; }
+      { assertion = !(cfg.package ? kittyPackage) || cfg.package.kittyPackage.outPath == cfg.kittyPackage.outPath;
+        message = "Build agency-kitty against the same Kitty package selected for the native desktop."; }
     ];
     home.packages = [ cfg.package ] ++ lib.optionals isSeat [ (lib.hiPrio cfg.kittyPackage) ];
-    home.sessionVariables = { AGENCY_KITTY_EDITOR_KITTEN = cfg.editorKitten; };
+    home.sessionVariables = {
+      AGENCY_KITTY_EDITOR_KITTEN = cfg.editorKitten;
+      AGENCY_KITTY_COMMAND = "${cfg.package}/bin/agency-kitty";
+    };
+    xdg.desktopEntries = lib.mkIf isSeat {
+      agency-native-terminal = {
+        name = "NAS terminal";
+        exec = "${cfg.package}/bin/agency-kitty desktop terminal";
+        icon = "utilities-terminal";
+        categories = [ "System" "TerminalEmulator" ];
+        terminal = false;
+      };
+      agency-durable-terminal = {
+        name = "Resumable NAS terminal";
+        exec = "${cfg.package}/bin/agency-kitty open";
+        icon = "utilities-terminal";
+        categories = [ "System" "TerminalEmulator" ];
+        terminal = false;
+      };
+      agency-session-menu = {
+        name = "NAS sessions";
+        exec = "${cfg.package}/bin/agency-kitty menu";
+        icon = "utilities-terminal";
+        categories = [ "System" ];
+        terminal = false;
+      };
+    };
     # Kitty's raw configuration is a whole-directory link. Keep generated store
     # paths at a neutral destination, consumed by its optional globinclude.
     xdg.configFile."agency-kitty/kitty.conf" = lib.mkIf isSeat {

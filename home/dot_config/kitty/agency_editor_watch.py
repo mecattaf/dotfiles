@@ -1,5 +1,6 @@
 """Close-time picker result delivery; all identity checks precede launch."""
 import json
+import os
 from pathlib import PurePosixPath
 import uuid
 
@@ -36,8 +37,8 @@ def on_close(boss, window, data):
             or parent.user_vars.get('agency_session') != session
             or parent.user_vars.get('agency_directory') != directory):
         return
-    argv = ['agency-kitty', 'edit', '--kitty-socket', tags['agency_editor_socket'],
-            '--window-id', str(parent_id), '--session', session,
+    argv = [os.environ.get('AGENCY_KITTY_COMMAND', 'agency-kitty'), 'edit', '--kitty-socket', tags['agency_editor_socket'],
+            '--window-id', str(parent_id), '--child-pid', str(parent.child.pid), '--session', session,
             '--directory', directory, '--', path]
     # No SSH, subprocess wait or output parsing occurs in Kitty's render loop.
     boss.run_background_process(argv)

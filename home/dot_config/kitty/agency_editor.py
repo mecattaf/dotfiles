@@ -47,7 +47,7 @@ def _version():
 
 
 def _socket(boss):
-    value = os.environ.get('KITTY_LISTEN_ON') or getattr(boss, 'listening_on', '')
+    value = getattr(boss, 'listening_on', '') or os.environ.get('KITTY_LISTEN_ON')
     if not isinstance(value, str) or not value:
         raise ValueError('Kitty control socket is unavailable')
     return value
@@ -116,7 +116,8 @@ def open_editor(boss, window, payload):
     if not isinstance(payload, dict):
         raise ValueError('editor callback must be an object')
     target = _identity(window)
-    if (type(payload.get('window_id')) is not int or payload.get('window_id') != target['window_id'] or payload.get('session') != target['session']
+    if (type(payload.get('window_id')) is not int or payload.get('window_id') != target['window_id']
+            or type(payload.get('child_pid')) is not int or payload.get('child_pid') != target['child_pid'] or payload.get('session') != target['session']
             or payload.get('directory') != target['directory']):
         return  # stale response, closed/reused window, or rebound directory
     files = payload.get('files', [])
@@ -147,6 +148,7 @@ def handle_result(args, answer, target_window_id, boss):
                 raise ValueError('sidebar callback must be an object')
             target = _identity(window)
             if (type(payload.get('window_id')) is not int or payload.get('window_id') != target['window_id']
+                    or type(payload.get('child_pid')) is not int or payload.get('child_pid') != target['child_pid']
                     or payload.get('session') != target['session'] or payload.get('directory') != target['directory']):
                 return
             extra = []

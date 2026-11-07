@@ -126,9 +126,9 @@ class KittyEditorIdentityTests(unittest.TestCase):
         self.assertEqual(self.boss.background[0][-1], '/home/tom/a project/notes.md')
 
     def test_changed_session_or_directory_blocks_editor_launch(self):
-        payload = {'window_id': 1, 'session': self.window.user_vars['agency_session'],
+        payload = {'window_id': 1, 'child_pid': self.window.child.pid, 'session': self.window.user_vars['agency_session'],
                    'directory': '/home/tom/a project', 'files': ['/home/tom/a project/file.md']}
-        for key, value in [('session', str(uuid.uuid4())), ('directory', '/home/tom/other')]:
+        for key, value in [('child_pid', self.window.child.pid + 1), ('session', str(uuid.uuid4())), ('directory', '/home/tom/other')]:
             EDITOR.open_editor(self.boss, self.window, {**payload, key: value})
         self.assertEqual(self.boss.commands, [])
         EDITOR.open_editor(self.boss, self.window, payload)
@@ -136,7 +136,7 @@ class KittyEditorIdentityTests(unittest.TestCase):
 
     def test_stale_async_sidebar_envelope_cannot_use_new_window_binding(self):
         EDITOR._version = lambda: (0, 50, 0)
-        payload = {'window_id': 1, 'session': str(uuid.uuid4()),
+        payload = {'window_id': 1, 'child_pid': self.window.child.pid, 'session': str(uuid.uuid4()),
                    'directory': '/home/tom/a project', 'files': []}
         encoded = base64.b64encode(json.dumps(payload).encode()).decode()
         EDITOR.handle_result(['editor.py', 'sidebar', encoded], None, 1, self.boss)

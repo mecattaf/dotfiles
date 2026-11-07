@@ -61,8 +61,8 @@ def main():
         " command=[" + repr(str(ROOT / 'home/dot_local/bin')) + "+('/dsh-editor-tree' if sys.argv[1]=='editor-tree-attach' else '/dsh-editor'),*sys.argv[2:]]\n"
         " with open(" + repr(str(proof / 'ssh-fixture.jsonl')) + ",'a') as f:f.write(json.dumps(command)+'\\n')\n"
         " os.execvpe(command[0],command,os.environ)\n"
-        "p=argparse.ArgumentParser();p.add_argument('action');p.add_argument('--kitty-socket');p.add_argument('--window-id',type=int);p.add_argument('--session');p.add_argument('--directory');p.add_argument('files',nargs='*');a=p.parse_args()\n"
-        "payload={k:getattr(a,k) for k in ('window_id','session','directory','files')}\n"
+        "p=argparse.ArgumentParser();p.add_argument('action');p.add_argument('--kitty-socket');p.add_argument('--window-id',type=int);p.add_argument('--child-pid',type=int);p.add_argument('--session');p.add_argument('--directory');p.add_argument('files',nargs='*');a=p.parse_args()\n"
+        "payload={k:getattr(a,k) for k in ('window_id','child_pid','session','directory','files')}\n"
         "with open(" + repr(str(proof / 'bridge.jsonl')) + ",'a') as f:f.write(json.dumps(payload)+'\\n')\n"
         "token=base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()\n"
         "sys.exit(subprocess.call([" + repr(KITTEN) + ",'@','--to',a.kitty_socket,'kitten','--match','id:'+str(a.window_id)," + repr(str(HELPER)) + ",'open-editor',token]))\n")
@@ -177,7 +177,7 @@ def main():
         receipt['editorServerPid'] = serverpid
         remote('close-window', '--match', 'id:' + str(editorid))
         wait(lambda: len(windows()) == 1, 'editor UI closes, parent remains')
-        payload = {'window_id': parentid, 'session': session, 'directory': str(project), 'files': [str(original)]}
+        payload = {'window_id': parentid, 'child_pid': next(w['pid'] for w in windows() if w['id'] == parentid), 'session': session, 'directory': str(project), 'files': [str(original)]}
         token = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
         remote('kitten', '--match', 'id:' + str(parentid), str(HELPER), 'open-editor', token)
         editor = wait(lambda: next((w for w in windows() if w.get('user_vars', {}).get('agency_editor_window') == '1'), None), 'editor UI reopens')

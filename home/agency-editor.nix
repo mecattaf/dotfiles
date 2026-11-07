@@ -29,7 +29,8 @@ in
         message = "Agency editor vi alias belongs on the NAS brain; use Kitty SSH from the seat.";
       }
     ];
-    home.packages = [ pkgs.python3 ];
+    # home/home.nix already provides the fleet Python-with-packages. Adding a
+    # second bare python3 would collide with that environment during activation.
     home.sessionVariables = lib.optionalAttrs cfg.viAlias { DSH_EDITOR_VI = "1"; };
   };
 }

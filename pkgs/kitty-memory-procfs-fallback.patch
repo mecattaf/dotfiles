@@ -1,0 +1,62 @@
+--- a/kitty/child.py
++++ b/kitty/child.py
+@@ -189,37 +189,36 @@
+ 
+     def memory_used_by_process_tree_rooted_at(pid: int, check_if_cgroup_root: bool = False) -> int:
+         with suppress(Exception):
+-            with open(f'/proc/{pid}/cgroup') as f:
+-                cgroup_line = f.readline().strip()
+-            cgroup_path = cgroup_line.split(':')[2].lstrip('/')
+-            cgroup_dir = os.path.join('/sys/fs/cgroup', cgroup_path)
+-
+-            use_cgroup = True
++            # A Nix build or a container can expose procfs while withholding
++            # cgroupfs. Use PSS in that case, just as for a shared cgroup.
+             descendants: set[int] | None = None
+-            if check_if_cgroup_root:
+-                with suppress(OSError):
++            with suppress(OSError, ValueError, IndexError):
++                with open(f'/proc/{pid}/cgroup') as f:
++                    cgroup_line = f.readline().strip()
++                cgroup_path = cgroup_line.split(':')[2].lstrip('/')
++                cgroup_dir = os.path.join('/sys/fs/cgroup', cgroup_path)
++                use_cgroup = True
++                if check_if_cgroup_root:
+                     with open(os.path.join(cgroup_dir, 'cgroup.procs')) as f:
+                         cgroup_pids = {int(x) for x in f.read().split() if x}
+                     descendants = _get_descendants_of(pid)
+                     descendants.add(pid)
+                     use_cgroup = cgroup_pids <= descendants
+-
+-            if use_cgroup:
+-                target_keys = {'anon', 'shmem', 'kernel', 'sock', 'zswap'}
+-                mem_bytes = 0
+-                with open(os.path.join(cgroup_dir, 'memory.stat')) as f:
+-                    for line in f:
+-                        parts = line.split()
+-                        if parts[0] in target_keys:
+-                            mem_bytes += int(parts[1])
+-                return mem_bytes
+-
+-            # cgroup contains processes outside our tree; sum PSS per process
++                if use_cgroup:
++                    target_keys = {'anon', 'shmem', 'kernel', 'sock', 'zswap'}
++                    mem_bytes = 0
++                    with open(os.path.join(cgroup_dir, 'memory.stat')) as f:
++                        for line in f:
++                            parts = line.split()
++                            if parts[0] in target_keys:
++                                mem_bytes += int(parts[1])
++                    return mem_bytes
++
++            # Reading the root first preserves -1 for a nonexistent process.
++            mem_bytes = _memory_from_smaps_rollup(pid)
+             if descendants is None:
+                 descendants = _get_descendants_of(pid)
+-                descendants.add(pid)
+-            mem_bytes = 0
+-            for p in descendants:
++            for p in descendants - {pid}:
+                 with suppress(OSError):
+                     mem_bytes += _memory_from_smaps_rollup(p)
+             return mem_bytes
