@@ -22,7 +22,6 @@ def main():
     (root/'transcript.txt').write_text(text+'\n');os.chmod(root/'transcript.txt',0o600)
     system_file=Path(__file__).with_name('system.md')
     system_prompt=' '.join(system_file.read_text().split())
-    system_prompt += f' This session uses the {a.seat} seat. Prefix every published speech filename with {a.seat}-- so replies play at the originating seat.'
     (root/'system-prompt.txt').write_text(system_prompt+'\n')
     receipt=dict(seat=a.seat,session_id=ident,status='creating',cwd=str(a.cwd),transcript=str(root/'transcript.txt'),system_prompt_source=str(system_file),system_prompt_sha256=hashlib.sha256(system_prompt.encode()).hexdigest())
     def save(): (root/'session.json').write_text(json.dumps(receipt,indent=2)+'\n')

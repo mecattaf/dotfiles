@@ -48,8 +48,10 @@ the mirror also copies deletions.
 
 ## Speech output
 
-The shared `/speak` skill asks the assistant to atomically publish Markdown in
-`${speech_root}/intake`. The daemon owns synthesis and playback. Hidden temporary names
+Tom retired the global `/speak` skill on 2026-11-07. Speech controls belong to
+Domicile; its TTS control has not been established by this review. The retained
+backend consumes Markdown submitted atomically to `${speech_root}/intake`.
+The daemon owns synthesis and playback. Hidden temporary names
 must become visible `.md` names when finalized. Working hours are 06:00–24:00,
 matching the paper workflow. Outside those hours jobs wait for the 06:05 release.
 Receipts, rather than an assistant's queue-write claim, establish whether
@@ -75,8 +77,11 @@ diarization model.
 
 ## Commands
 
-Operational commands: `speech-session`, `speech-projector`, `speech-play`,
-`speech-queue`. Superseded NAS speech models were deleted on 2026-09-16, with a
+Backend commands: `speech-play`, `speech-queue`. The retained `speech-session`
+and `speech-projector` are legacy Claude/Herdr launchers, not Domicile controls.
+The session launcher still names obsolete host `strix` and is not an active
+NAS entry point; its prompt no longer enables speech or publishes answers.
+Superseded NAS speech models were deleted on 2026-09-16, with a
 receipt in `/mnt/nas/models/weights/RETIRED-2026-09-16.tsv`; the Parakeet and
 openWakeWord rows left the catalogue on 2026-09-30, and the openWakeWord Library
 bytes were deleted on 2026-10-03 (receipt `RETIRED-2026-10-03.tsv`). The accepted K-2SO voice has a second verified copy in

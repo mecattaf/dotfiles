@@ -307,9 +307,13 @@ ASR are retired (2026-09-16). No service startup downloads models. Use the NAS
 manifests and explicit `local-models-borrow` transactions documented in
 `docs/speech-operations.md`.
 
-The shared `/speak` skill publishes visible Markdown files in `$(utility-path speech)/intake`;
-the daemon synthesizes and plays through a seat during 06:00–24:00, matching
-paper working hours, with a 06:05 release for anything held overnight.
+**Speech control ownership (Tom, 2026-11-07).** The global `/speak` skill is
+retired; speech controls belong to Domicile. This is an ownership decision,
+not a claim that Domicile's TTS integration has shipped. Preserve the existing
+speech queue, compute synthesis, accepted voice, playback and receipts.
+The daemon consumes visible Markdown files in `$(utility-path speech)/intake`
+and plays through a seat during 06:00–24:00, matching paper working hours,
+with a 06:05 release for anything held overnight.
 Publishing a queue file is not evidence it was heard: consult playback receipts.
 
 Keep the Herdr server's `X-SwitchMethod=keep-old` protection: deployment must
