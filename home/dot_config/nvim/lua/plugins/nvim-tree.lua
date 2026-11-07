@@ -7,7 +7,7 @@ end
 nvim_tree.setup {
   view = {
     width = 25,
-    side = "right",
+    side = "left",
   },
   disable_netrw = true,
   hijack_cursor = true,

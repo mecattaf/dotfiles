@@ -13,6 +13,7 @@ package.path = package.path .. ";" .. vim.env.HOME .. "/.local/bin/nvim-lua/?.lu
 
 local modules = {
   'options',
+  'kitty_editor', -- native Ctrl+B pass-through, including Nvim behind SSH
   'mappings',
   'plugins',
   'claude_slash_highlight', -- see claude_slash_highlight.lua's own header

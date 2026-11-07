@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Ephemeral NAS file-tree payload for a Kitty left dock.
+
+Selection emits the agency_editor_pick Kitty user variable and exits. The local
+Kitty watcher opens the durable editor; no local/remote shared pick-file exists.
+"""
+import argparse
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--directory", type=Path, default=Path.cwd())
+    parser.add_argument("--nvim", default=shutil.which("nvim"))
+    parser.add_argument("--init", help="Explicit init file, for isolated integration tests")
+    args = parser.parse_args()
+    if not args.nvim:
+        parser.error("nvim is not installed")
+    directory = args.directory.expanduser().resolve(strict=True)
+    if not directory.is_dir():
+        parser.error(f"not a directory: {directory}")
+    module = Path(__file__).resolve().parent / "nvim-lua"
+    env = dict(os.environ, DSH_EDITOR_TREE_ROOT=str(directory), DSH_EDITOR_LUA=str(module))
+    # Clear a previous result before launch; dismissal must never select an old
+    # file if the same Kitty window is reused by an external caller.
+    print("\033]1337;SetUserVar=agency_editor_pick=\033\\", end="", flush=True)
+    command = [args.nvim]
+    if args.init:
+        command += ["-u", args.init]
+    command += ["--cmd", "lua package.path = package.path .. ';' .. vim.env.DSH_EDITOR_LUA .. '/?.lua'",
+                "-c", "lua require('dsh_editor_tree').setup()"]
+    return subprocess.run(command, cwd=directory, env=env, check=False).returncode
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except OSError as error:
+        print(f"dsh-editor-tree: {error}", file=sys.stderr)
+        sys.exit(1)

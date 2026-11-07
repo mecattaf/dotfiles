@@ -32,7 +32,9 @@ opt.titlestring = 'nvim %f'
 -- dropped. `require('vim.ui.clipboard.osc52')` is internal to nvim 0.12 — the
 -- pcall leaves g:clipboard unset (and `unnamedplus` back on its own providers)
 -- rather than erroring out if a future nvim moves it.
-if vim.env.HERDR_ENV or vim.env.SSH_TTY then
+-- A durable editor can outlive its first SSH TTY; its native attached UIs own
+-- the terminal clipboard transport even while the server has no terminal.
+if vim.env.HERDR_ENV or vim.env.SSH_TTY or vim.env.DSH_EDITOR_ROOT then
   local ok, osc52 = pcall(require, 'vim.ui.clipboard.osc52')
   if ok then
     local cache = {}
