@@ -16,7 +16,7 @@ import uuid
 
 
 ROOT = Path(__file__).resolve().parents[2]
-KITTY = '/nix/store/jvhn8sy84klkfkd4az26m5nkjbma7ni3-kitty-0.48.0/bin/kitty'
+KITTY = os.environ.get('KITTY_EDITOR_KITTY', '/nix/store/jvhn8sy84klkfkd4az26m5nkjbma7ni3-kitty-0.48.0/bin/kitty')
 KITTEN = str(Path(KITTY).with_name('kitten'))
 DOMICILE = os.environ.get('KITTY_EDITOR_DOMICILE', '/nix/store/qvjsa1g98hhwllzhyhflafi9cmh74n4k-domicile/bin/domicile')
 HELPER = ROOT / 'home/dot_config/kitty/agency_editor.py'
@@ -58,7 +58,8 @@ def main():
     bridge.write_text(
         '#!/usr/bin/env python3\nimport argparse,base64,json,os,subprocess,sys\n'
         "if len(sys.argv)>1 and sys.argv[1] in ('editor-attach','editor-tree-attach'):\n"
-        " command=[" + repr(str(ROOT / 'home/dot_local/bin')) + "+('/dsh-editor-tree' if sys.argv[1]=='editor-tree-attach' else '/dsh-editor'),*sys.argv[2:]]\n"
+        " tail=sys.argv[2:];tail=tail[:-1] if sys.argv[1]=='editor-tree-attach' and tail[-1:]==['--'] else tail\n"
+        " command=[" + repr(str(ROOT / 'home/dot_local/bin')) + "+('/dsh-editor-tree' if sys.argv[1]=='editor-tree-attach' else '/dsh-editor'),*tail]\n"
         " with open(" + repr(str(proof / 'ssh-fixture.jsonl')) + ",'a') as f:f.write(json.dumps(command)+'\\n')\n"
         " os.execvpe(command[0],command,os.environ)\n"
         "p=argparse.ArgumentParser();p.add_argument('action');p.add_argument('--kitty-socket');p.add_argument('--window-id',type=int);p.add_argument('--child-pid',type=int);p.add_argument('--session');p.add_argument('--directory');p.add_argument('files',nargs='*');a=p.parse_args()\n"
