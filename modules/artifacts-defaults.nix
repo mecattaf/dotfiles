@@ -11,15 +11,14 @@
   # authenticated against — see secrets/wrangler-config.age, strix-only).
   zone = "mecattaf.dev";
 
-  # Every artifact is <slug>.<namespace>. Stable across rungs (split-horizon):
-  # tailnet rung = unproxied DNS record -> strix tailnet IP; public rung =
-  # same name, proxied (Pages custom domain / tunnel). URL never changes.
+  # Public publication namespace. New private artifacts use Tailscale Serve
+  # URLs from the external artifact-publish utility, independently of this DNS.
   namespace = "art.mecattaf.dev";
 
-  # The ONLY mutable surface of the whole system: <slug>.until-YYYYMMDD.caddy
-  # site blocks + <slug>/ snapshot dirs. No side registry anywhere.
+  # Legacy Caddy drop-files and snapshots, retained until their expiry.
+  # The external private publisher owns its own state independently.
   stateDir = "/var/lib/artifacts";
 
-  # "In doubt: 7 days." Never publish without a TTL — durable = git.
+  # Default duration for legacy entries.
   defaultTtlDays = 7;
 }

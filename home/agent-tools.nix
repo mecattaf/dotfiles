@@ -9,6 +9,43 @@
 # physical seat. Compute retains the shell and browser plumbing only.
 let
   link = config.lib.rawDotfiles.link;
+  # The brain links retained fleet skills separately so portable tools can
+  # supply their own skills. Thin seats keep their existing whole-root links.
+  skillRoots = [
+    ".claude/skills"
+    ".claude-work/skills"
+    ".agents/skills"
+  ];
+  fleetSkills = lib.filter (name: name != "synced") (
+    builtins.attrNames (builtins.readDir ./dot_claude/skills)
+  );
+  skillFiles =
+    if !(osConfig.myFleet.has "brain") then
+      lib.genAttrs skillRoots (_: {
+        source = link "dot_claude/skills";
+      })
+    else
+      lib.listToAttrs (
+        lib.concatMap (
+          root:
+          map (
+            name:
+            lib.nameValuePair "${root}/${name}" {
+              source = link "dot_claude/skills/${name}";
+            }
+          ) fleetSkills
+          ++ lib.optionals (!config.rawDotfiles.inStore) [
+            (lib.nameValuePair "${root}/synced" {
+              source = link "dot_claude/skills/synced";
+            })
+          ]
+          ++ lib.optionals (osConfig.myFleet.has "brain") [
+            (lib.nameValuePair "${root}/publish-artifact" {
+              source = config.lib.file.mkOutOfStoreSymlink "${config.xdg.dataHome}/artifact-publish/current/skills/publish-artifact";
+            })
+          ]
+        ) skillRoots
+      );
   # Curated llm-agents.nix install. `pkgs.llm-agents` (from the flake input's
   # overlay) is the entire ~139-agent catalog, prebuilt against upstream's own
   # nixpkgs. The maximalist "install every buildable member" sweep (write-up
@@ -53,10 +90,13 @@ lib.mkIf (osConfig.myFleet.has "brain" || osConfig.myFleet.has "seat") {
   # ~/.claude stays a real, writable directory that modules/secrets.nix can seed
   # .credentials.json into (a whole-dir symlink would push the credential into the
   # PUBLIC repo tree). Without this, a fresh box has zero skills/settings.
-  home.file.".claude/skills".source = link "dot_claude/skills";
-  home.file.".claude/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
-  home.file.".claude/rules/ultracode-workflows.md".source = link "agent-workflow-rules.md";
-  home.file.".codex/AGENTS.md".source = link "agent-runtime-rules.md";
+  home.file = skillFiles // {
+    ".claude/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
+    ".claude/rules/ultracode-workflows.md".source = link "agent-workflow-rules.md";
+    ".codex/AGENTS.md".source = link "agent-runtime-rules.md";
+    ".claude-work/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
+    ".claude-work/rules/ultracode-workflows.md".source = link "agent-workflow-rules.md";
+  };
 
   # NO hook is delivered here any more. The SessionEnd harvest hook (MEM-2,
   # dotfiles#339) was removed 2026-09-23: it blocked session exit for up to 57 s
@@ -72,9 +112,6 @@ lib.mkIf (osConfig.myFleet.has "brain" || osConfig.myFleet.has "seat") {
 
   # Second Claude account (work): `cc2`/`cac2` in fish set CLAUDE_CONFIG_DIR to
   # ~/.claude-work. Same skills + settings, separate .credentials.json/.claude.json.
-  home.file.".claude-work/skills".source = link "dot_claude/skills";
-  home.file.".claude-work/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
-  home.file.".claude-work/rules/ultracode-workflows.md".source = link "agent-workflow-rules.md";
 
   # Claude owns mutable preferences. One direct symlink hop reaches writable
   # shared state, never the Nix store or Git checkout. Activation seeds only
@@ -88,7 +125,6 @@ lib.mkIf (osConfig.myFleet.has "brain" || osConfig.myFleet.has "seat") {
   # the vendor-neutral, always-trusted Agent-Skills directory (~/.agents/skills).
   # Both read the same agentskills.io SKILL.md format (name/description
   # frontmatter, symlinks followed), so ONE tree feeds every harness.
-  home.file.".agents/skills".source = link "dot_claude/skills";
 
   # OpenCode CLI config for the Zen free lane (docs/free-lanes.md, last
   # section): default and small model, sharing off, only the `opencode`
@@ -101,5 +137,4 @@ lib.mkIf (osConfig.myFleet.has "brain" || osConfig.myFleet.has "seat") {
   # file's keys all survive the merge. Delivering as opencode.jsonc would have
   # collided with his file at activation.
   xdg.configFile."opencode/opencode.json".source = link "dot_config/opencode/opencode.json";
-
 }
