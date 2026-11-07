@@ -148,7 +148,7 @@ the target's `runtime-test`. HOME was unchanged in the passing native proof;
 private XDG config/data/cache/state and a test command PATH were used. No live
 runtime, editor, physical display or credentials were accessed.
 
-The ten-test integration/identity suite uses real installed Nvim for daemon
+The eleven-test integration/identity suite uses real installed Nvim for daemon
 launches, concurrent canonical-directory identity, literal path arguments,
 native UI death and reattachment, named and unnamed WIP after daemon SIGKILL,
 explicit recovery save, and failure reporting. Identity checks and both Kitty
@@ -166,14 +166,19 @@ this does not claim an end-to-end SSH deployment or physical key-to-photon
 latency measurement. Kitty 0.50 docking is source-checked and unit-tested,
 not native-tested on this installed 0.48 binary.
 
-Passing native receipt and screenshot on compute:
-`/home/tom/agent-work/kitty-consolidation/nvim-editor/native-proof-20261107-231113/`.
+Passing native receipt and screenshot on compute (repeated after final
+checkpoint and selection validation):
+`/home/tom/agent-work/kitty-consolidation/nvim-editor/native-proof-20261107-231554/`.
 The fixture's Domicile teardown return code 1 is retained in its receipt, as
 the private desktop is deliberately interrupted at the end. Initial fixture
 failures and logs remain alongside it; they exposed actual unsupported
 launch flags, temporary `sys.path` restoration, and interactive Nvim control
 client startup. The fixed RPC clients are explicitly headless with no init;
 the native UI attaches with `-u NONE` because the server already owns config.
+Remote editor/picker commands explicitly request an SSH PTY (`-tt`); a remote
+command otherwise does not guarantee the interactive terminal required for
+single-key input. Async sidebar callbacks also validate their identity
+envelope, just as editor-open callbacks do.
 
 Reproduction from the staged directory:
 

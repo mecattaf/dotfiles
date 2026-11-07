@@ -58,7 +58,7 @@ def _ssh(program, directory, files=()):
     command = [f'/home/tom/.local/bin/{program}', '--directory', directory]
     if files:
         command += ['--', *files]
-    return ['kitten', 'ssh', '-oBatchMode=yes', '-oStrictHostKeyChecking=yes',
+    return ['kitten', 'ssh', '-tt', '-oBatchMode=yes', '-oStrictHostKeyChecking=yes',
             '-oForwardAgent=no', 'nas', shlex.join(command)]
 
 
@@ -116,7 +116,7 @@ def open_editor(boss, window, payload):
     if not isinstance(payload, dict):
         raise ValueError('editor callback must be an object')
     target = _identity(window)
-    if (payload.get('window_id') != target['window_id'] or payload.get('session') != target['session']
+    if (type(payload.get('window_id')) is not int or payload.get('window_id') != target['window_id'] or payload.get('session') != target['session']
             or payload.get('directory') != target['directory']):
         return  # stale response, closed/reused window, or rebound directory
     files = payload.get('files', [])
@@ -138,7 +138,19 @@ def handle_result(args, answer, target_window_id, boss):
         return
     action = args[1] if len(args) > 1 else 'sidebar'
     if action in ('sidebar', 'editor-tree'):
-        sidebar(boss, window, args[2:])
+        extra = args[2:]
+        if extra and extra != ['shift']:
+            if len(extra) != 1 or len(extra[0]) > 65536:
+                raise ValueError('sidebar callback exceeds its bound')
+            payload = json.loads(base64.b64decode(extra[0], altchars=b'-_', validate=True))
+            if not isinstance(payload, dict):
+                raise ValueError('sidebar callback must be an object')
+            target = _identity(window)
+            if (type(payload.get('window_id')) is not int or payload.get('window_id') != target['window_id']
+                    or payload.get('session') != target['session'] or payload.get('directory') != target['directory']):
+                return
+            extra = []
+        sidebar(boss, window, extra)
     elif action == 'open-editor':
         if len(args) != 3 or len(args[2]) > 65536:
             raise ValueError('editor callback exceeds its bound')
