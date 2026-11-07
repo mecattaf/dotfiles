@@ -148,6 +148,25 @@ class KittyEditorIdentityTests(unittest.TestCase):
         self.assertEqual(self.boss.commands, [])
         EDITOR.open_editor(self.boss, self.window, payload)
         self.assertIn('--type=os-window', self.boss.commands[-1][1])
+        self.assertIn('editor-local-attach', self.boss.commands[-1][1])
+
+    def test_typed_nas_vi_request_uses_exact_parent_and_only_local_ui(self):
+        payload = {'version': 1, 'session': self.window.user_vars['agency_session'],
+                   'directory': '/home/tom/a project', 'request': str(uuid.uuid4())}
+        for key, value in [('session', str(uuid.uuid4())), ('directory', '/home/tom/another')]:
+            EDITOR.open_request(self.boss, self.window, json.dumps({**payload, key: value}))
+        self.assertEqual(self.boss.commands, [])
+        EDITOR.open_request(self.boss, self.window, json.dumps(payload))
+        command = self.boss.commands[-1][1]
+        self.assertIn('editor-local-attach', command)
+        self.assertIn(payload['request'], command)
+        self.assertIn('--var', command)
+        self.assertNotIn('editor-attach', command)
+        existing = Window(3)
+        existing.user_vars = {'agency_session': payload['session'], 'agency_editor_request_id': payload['request']}
+        self.boss.all_windows.append(existing)
+        EDITOR.open_request(self.boss, self.window, json.dumps(payload))
+        self.assertEqual(self.boss.commands[-1][1], ('focus-window', '--match', 'id:3'))
 
     def test_stale_async_sidebar_envelope_cannot_use_new_window_binding(self):
         EDITOR._version = lambda: (0, 50, 0)

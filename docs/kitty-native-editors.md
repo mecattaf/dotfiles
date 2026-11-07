@@ -99,6 +99,21 @@ window, process, session and directory. `$EDITOR` and ordinary `nvim` keep their
 commit-message and harness `$EDITOR` subprocesses must still wait for editing
 to finish.
 
+`programs.agencyEditor.viAlias` now defaults to true when the editor module is
+enabled, and supports both the NAS brain and desktop seat. Local fish's `vi`
+starts the local native UI in its current terminal. In a managed NAS fish,
+`vi` emits a typed request that native Kitty checks against the exact source
+terminal, then opens the local UI in a separate window. The NAS command still
+waits: `vi file; nextcommand` continues only after that UI exits. `:detach`
+returns 0; explicitly closing the local UI window returns the corresponding
+signal status while leaving NAS buffers alive. An interrupted SSH lifecycle
+connection releases its exclusive client lease, retains the blocked NAS
+request and editor, and re-emits a freshly encoded typed request on a fresh
+persistent-terminal attach. It does not replay arbitrary terminal controls.
+Ctrl+C in the original NAS terminal cancels that request and closes its UI.
+Files remain NAS-owned; local `vi` does not silently choose a different editor
+if the NAS path or required native frontend is unavailable.
+
 The retained headless server cannot use image.nvim's ordinary stdout/ioctl
 terminal assumptions. `kitty_image_remote.lua` qualifies the exact installed
 image.nvim 1.5.1 module hashes, keeps its original backend and document

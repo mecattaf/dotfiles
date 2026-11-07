@@ -7,14 +7,16 @@
 }:
 let
   cfg = config.programs.agencyEditor;
+  isBrain = osConfig.myFleet.has "brain";
+  isSeat = osConfig.myFleet.has "seat";
 in
 {
   options.programs.agencyEditor = {
     enable = lib.mkEnableOption "native per-directory NAS Neovim editors for Agency Kitty";
     viAlias = lib.mkOption {
       type = lib.types.bool;
-      default = false;
-      description = "Opt in to vi using the durable per-directory editor on the NAS; other hosts retain ordinary nvim.";
+      default = true;
+      description = "Use a local native Neovim UI for retained NAS directory editors from both seat and managed NAS fish.";
     };
   };
 
@@ -25,12 +27,15 @@ in
         message = "Agency editors require Neovim >=0.12 for the native detachable TUI.";
       }
       {
-        assertion = !cfg.viAlias || osConfig.myFleet.has "brain";
-        message = "Agency editor vi alias belongs on the NAS brain; use Kitty SSH from the seat.";
+        assertion = !cfg.viAlias || ((isBrain || isSeat) && config.programs.agencyKitty.enable);
+        message = "Agency editor vi requires the native transport on the NAS brain or desktop seat.";
       }
     ];
     # home/home.nix already provides the fleet Python-with-packages. Adding a
     # second bare python3 would collide with that environment during activation.
-    home.sessionVariables = lib.optionalAttrs cfg.viAlias { DSH_EDITOR_VI = "1"; };
+    home.sessionVariables = lib.optionalAttrs cfg.viAlias {
+      DSH_EDITOR_VI = "1";
+      DSH_EDITOR_ROLE = if isBrain then "brain" else "seat";
+    };
   };
 }

@@ -84,7 +84,7 @@ def _frontend(program, directory, files=()):
     # The ordinary local CLI owns SSH host/PTY/connection policy. Kitty only
     # launches the native UI; it never waits for SSH or embeds another copy of
     # transport policy in its render loop.
-    action = 'editor-tree-attach' if program == 'dsh-editor-tree' else 'editor-attach'
+    action = 'editor-tree-attach' if program == 'dsh-editor-tree' else 'editor-local-attach'
     return [os.environ.get('AGENCY_KITTY_COMMAND', 'agency-kitty'), action,
             '--directory', directory, '--', *files]
 
@@ -158,6 +158,38 @@ def open_editor(boss, window, payload):
                '--var', 'agency_directory=' + directory, '--var', 'agency_editor_window=1',
                '--var', 'agency_editor_identity=' + identity]
     boss.call_remote_control(window, tuple(command + ['--', *_frontend('dsh-editor', directory, files)]))
+
+
+def open_request(boss, window, raw):
+    """A typed NAS vi request may open only its exact local native UI."""
+    if not isinstance(raw, str) or len(raw.encode('utf-8')) > 16384:
+        raise ValueError('NAS editor request exceeds its bound')
+    payload = json.loads(raw)
+    if (not isinstance(payload, dict) or set(payload) != {'version', 'session', 'request', 'directory'}
+            or payload['version'] != 1):
+        raise ValueError('invalid NAS editor request')
+    target = _identity(window)
+    if (payload['session'] != target['session'] or payload['directory'] != target['directory']):
+        return  # wrong parent/cwd, stale replay, or a rebound terminal
+    request = payload['request']
+    parsed = uuid.UUID(request)
+    if str(parsed) != request or parsed.version != 4:
+        raise ValueError('NAS editor request must be an exact UUID4')
+    for candidate in list(boss.all_windows):
+        variables = candidate.user_vars
+        if (variables.get('agency_editor_request_id') == request
+                and variables.get('agency_session') == target['session']):
+            boss.call_remote_control(window, ('focus-window', '--match', f'id:{candidate.id}'))
+            return
+    command = ['launch', '--type=os-window', '--title', 'Editor: ' + PurePosixPath(target['directory']).name,
+               '--var', 'agency_host=nas', '--var', 'agency_session=' + target['session'],
+               '--var', 'agency_directory=' + target['directory'], '--var', 'agency_editor_window=1',
+               '--var', 'agency_editor_request_id=' + request,
+               '--var', 'agency_editor_parent=' + str(target['window_id']),
+               '--var', 'agency_editor_parent_pid=' + str(target['child_pid']),
+               '--', os.environ.get('AGENCY_KITTY_COMMAND', 'agency-kitty'), 'editor-local-attach',
+               '--session', target['session'], '--request', request, '--directory', target['directory']]
+    boss.call_remote_control(window, tuple(command))
 
 
 def handle_result(args, answer, target_window_id, boss):
