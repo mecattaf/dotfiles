@@ -162,6 +162,11 @@ function M.setup()
     vim.b[buf].dsh_recovery_original = nil
     vim.b[buf].dsh_recovery_key = nil
     checkpoint()
+    -- A protected virtual draft has become an actual file. Native LSP's
+    -- FileType lifecycle can now attach using that explicit real destination.
+    if vim.bo[buf].filetype ~= '' then
+      api.nvim_exec_autocmds('FileType', { pattern = vim.bo[buf].filetype, modeline = false })
+    end
   end, { nargs = 1, complete = 'file', bang = true, desc = 'Save this recovered buffer to an explicitly chosen destination' })
   M.configured = true
   -- A crash/reboot is distinct from a normal detach: offer the old checkpoint

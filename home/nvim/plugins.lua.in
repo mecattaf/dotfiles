@@ -365,6 +365,10 @@ require("lazy").setup({
       vim.lsp.config("marksman", {
         root_dir = function(bufnr, on_dir)
           local fname = vim.api.nvim_buf_get_name(bufnr)
+          -- Protected crash-recovery drafts are virtual documents, not a
+          -- filesystem workspace. Marksman rejects that URI as a root.
+          -- DshRecoverySave emits FileType again after choosing a real path.
+          if fname:match("^dsh%-recovery://") then return end
           if fname:sub(1, #vault + 1) == vault .. "/" then return end
           on_dir(vim.fs.root(bufnr, { ".marksman.toml", ".git" })
             or vim.fs.dirname(fname))
