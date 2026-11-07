@@ -213,3 +213,23 @@ fleet-exec strix-coordinator --cwd /home/tom/agent-work/kitty-consolidation/nvim
 The branch is a reviewable candidate. Home Manager activation and the
 combined Agency Kitty fragment remain root integration steps; no running
 terminal config was reloaded here.
+
+## Isolated editor transport cost
+
+`tests/dsh-editor/editor_latency.py` compares one native Nvim TUI, native
+`--remote-ui`, and the full `dsh-editor` wrapper with identical minimal config.
+It writes complete UTF-8 glyphs to a private PTY and waits for the same glyphs
+in Nvim's terminal output. Five shuffled rounds gave 400 measured glyphs per
+variant; ten cold glyphs per round are retained separately. Private PTYs do
+not answer terminal capability queries, so the first direct-TUI glyph could
+otherwise include a roughly 50ms startup negotiation delay.
+
+The warm sample recorded median/p95 values of 0.286/1.694ms for direct Nvim,
+0.760/1.680ms for native remote UI, and 0.850/1.549ms for `dsh-editor`. The
+receipt retains every sample at
+`/home/tom/agent-work/kitty-consolidation/nvim-editor/latency-2/receipt.json`.
+This is software-only evidence of the additional local IPC/event-loop work;
+it does not promise zero overhead. It excludes the full plugin config,
+network, SSH, Kitty, compositor, display and physical keyboard, and cannot
+establish the laptop's key-to-photon latency. The ordinary transient editor
+and default `vi` behavior remain available; the durable editor is opt-in.
