@@ -1,5 +1,5 @@
 # Source-pinned Kitty leaf update; host nixpkgs/Mesa/kernel stay unchanged.
-{ pkgs }:
+{ pkgs, go ? pkgs.go_1_26 }:
 let
   version = "0.50.0";
   src = pkgs.fetchFromGitHub {
@@ -8,12 +8,12 @@ let
     tag = "v${version}";
     hash = "sha256-CSSjL931OLZ9wwz9E3rAfMcm+TpczVJzJh9MPfuKmVU=";
   };
-  modules = pkgs.buildGo126Module {
+  modules = (pkgs.buildGo126Module.override { inherit go; }) {
     pname = "kitty-go-modules";
     inherit version src;
     vendorHash = "sha256-Oo5ehjdq4HcTxZcKi/rwz8dDZYGxdSS8cqIkbdLBrb8=";
   };
-in pkgs.kitty.overrideAttrs (old: {
+in (pkgs.kitty.override { go_1_26 = go; }).overrideAttrs (old: {
   inherit version src;
   patches = old.patches ++ [ ./kitty-memory-procfs-fallback.patch ];
   goModules = modules.goModules;

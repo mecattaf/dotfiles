@@ -319,7 +319,13 @@
           # Native terminal consolidation: advance only Kitty, preserving the
           # host nixpkgs/Mesa/kernel pins. The recipe uses the prior package as
           # its build definition, avoiding an overlay self-reference.
-          kitty = import ./pkgs/kitty-0.50.nix { pkgs = _prev; };
+          kitty = import ./pkgs/kitty-0.50.nix {
+            pkgs = _prev;
+            # Kitty 0.50 requests Go1.26.10. NAS's stable package definition
+            # still supplies 1.26.5; borrow only this build tool from the
+            # existing fresh input, keeping its runtime libraries on NAS's pin.
+            go = inputs.nixpkgs-fresh.legacyPackages.${system}.go_1_26;
+          };
           sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { };
           sf-pro = final.callPackage ./pkgs/sf-pro.nix { };
           anthropic-mono-nerd = final.callPackage ./pkgs/anthropic-mono-nerd.nix { };
