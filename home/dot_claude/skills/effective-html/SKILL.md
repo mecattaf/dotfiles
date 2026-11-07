@@ -1,6 +1,6 @@
 ---
 name: effective-html
-description: Build a self-contained HTML artifact — report, explainer, comparison, deck, prototype, plan page, or a full-screen architecture/stack diagram page — in the "effective HTML" style, matching a bundled example corpus for density and tone. Use when the user asks for effective HTML, a single self-contained HTML file/artifact/report/explainer/plan/diagram page, or an HTML output that should look like polished hand-rolled HTML rather than a framework app.
+description: Build a self-contained HTML artifact — report, explainer, comparison, prototype, plan page, or a full-screen architecture/stack diagram page — in the "effective HTML" style, matching a bundled example corpus for density and tone. Use when the user asks for effective HTML, a single self-contained HTML file/artifact/report/explainer/plan/diagram page, or an HTML output that should look like polished hand-rolled HTML rather than a framework app.
 ---
 
 # Effective HTML
@@ -19,7 +19,7 @@ match it rather than inventing a look.
 
 ## Modes
 
-- **html** — general self-contained HTML artifact (report, explainer, comparison, deck,
+- **html** — general self-contained HTML artifact (report, explainer, comparison,
   prototype — anything that isn't specifically a diagram or a plan). Load
   [`references/html/SKILL.md`](references/html/SKILL.md).
 

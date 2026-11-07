@@ -9,8 +9,10 @@
 # physical seat. Compute retains the shell and browser plumbing only.
 let
   link = config.lib.rawDotfiles.link;
-  # The brain links retained fleet skills separately so portable tools can
-  # supply their own skills. Thin seats keep their existing whole-root links.
+  # The brain links retained dotfiles skills separately so product packages
+  # can supply their own skills. The remaining portable entries are migration
+  # work, not fleet utilities; see docs/skills-ownership.md. Thin seats keep
+  # their existing whole-root links until their own discovery is migrated.
   skillRoots = [
     ".claude/skills"
     ".claude-work/skills"
@@ -34,7 +36,9 @@ let
               source = link "dot_claude/skills/${name}";
             }
           ) fleetSkills
-          ++ lib.optionals (!config.rawDotfiles.inStore) [
+          # Claude downloads its account-specific skills here. Keep those
+          # native Claude instructions out of recursive cross-harness discovery.
+          ++ lib.optionals (!config.rawDotfiles.inStore && root != ".agents/skills") [
             (lib.nameValuePair "${root}/synced" {
               source = link "dot_claude/skills/synced";
             })
@@ -121,10 +125,10 @@ lib.mkIf (osConfig.myFleet.has "brain" || osConfig.myFleet.has "seat") {
       --home "$HOME" --template ${./dot_claude/settings.json}
   '';
 
-  # Same canonical skill tree, exposed to Codex and dsh (home/dsh.nix) through
-  # the vendor-neutral, always-trusted Agent-Skills directory (~/.agents/skills).
-  # Both read the same agentskills.io SKILL.md format (name/description
-  # frontmatter, symlinks followed), so ONE tree feeds every harness.
+  # Transitional shared discovery for Codex and dsh (home/dsh.nix). DSH's
+  # filesystem provider reads immediate child SKILL.md files; nested HTML and
+  # design entries need explicit registration by their future owning package.
+  # Product ownership and harness exposure are separate migration steps.
 
   # OpenCode CLI config for the Zen free lane (docs/free-lanes.md, last
   # section): default and small model, sharing off, only the `opencode`

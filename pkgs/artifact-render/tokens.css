@@ -2,7 +2,7 @@
  *
  * What the brand kit IS is undecided; it's an orthogonal design-token layer
  * applied at the very end. Both authoring lanes (md-artifact docs via
- * house.html, presentation-beta decks via the deck template) import this file
+ * house.html, Reveal decks via the deck template) import this file
  * LAST, so anything defined here wins over the neutral structural defaults.
  *
  * When the kit is ruled, it lands here as custom properties, e.g.:

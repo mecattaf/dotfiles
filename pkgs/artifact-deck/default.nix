@@ -1,7 +1,7 @@
 { writeShellApplication
 , fetchzip
 }:
-# artifact-deck-init <dir> — scaffolds a presentation-beta deck: nix-vendored
+# artifact-deck-init <dir> — retained Reveal HTML scaffold: nix-vendored
 # reveal.js (no CDN — the original umbrella deck hot-linked cdnjs; that is the
 # anti-pattern this fixes), the empty brand-kit hook, and a starter index.html
 # Claude then authors directly (full layout freedom — md->slides tools like
