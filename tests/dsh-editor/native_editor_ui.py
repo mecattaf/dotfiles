@@ -9,10 +9,13 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
+import struct
 import subprocess
 import sys
 import time
 import uuid
+import zlib
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,6 +26,18 @@ HELPER = ROOT / 'home/dot_config/kitty/agency_editor.py'
 
 
 def main():
+    assert b'--tmpfs\0/run/user\0' in Path('/proc/1/cmdline').read_bytes(), 'use runtime-test'
+    full_config = os.environ.get('KITTY_EDITOR_FULL_CONFIG') == '1'
+    if full_config and os.environ.get('KITTY_EDITOR_HOME_MASKED') != str(ROOT):
+        masked = ROOT / ('full-config-home-' + time.strftime('%Y%m%d-%H%M%S'))
+        masked.mkdir(mode=0o700)
+        env = dict(os.environ, KITTY_EDITOR_HOME_MASKED=str(ROOT))
+        # Keep passwd home/HOME unchanged, expose only this non-secret staged
+        # checkout there, and block external network/provider/credential access.
+        command = ['bwrap', '--bind', '/', '/', '--dev-bind', '/dev', '/dev', '--unshare-net',
+                   '--bind', str(masked), str(Path.home()), '--bind', str(ROOT), str(ROOT),
+                   '--', sys.executable, str(Path(__file__).resolve())]
+        os.execvpe(command[0], command, env)
     proof = ROOT / ('native-proof-' + time.strftime('%Y%m%d-%H%M%S'))
     proof.mkdir()
     private = proof / 'private'
@@ -32,17 +47,46 @@ def main():
     project = proof / 'project'
     project.mkdir()
     original = project / 'notes.md'
-    original.write_text('Original saved content\n')
+    original_contents = 'Original saved content\n'
+    if full_config:
+        original_contents += '\n# Native editor\n\n- [x] Full native colors\n- [ ] Unsaved work\n\n```yaml\ntransport: kitty\neditor: neovim\n```\n\n![Native image](image.png)\n'
+        def png_chunk(kind, data):
+            return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+        (project / 'image.png').write_bytes(b'\x89PNG\r\n\x1a\n' +
+            png_chunk(b'IHDR', struct.pack('>IIBBBBB', 64, 32, 8, 2, 0, 0, 0)) +
+            png_chunk(b'IDAT', zlib.compress((b'\0' + b'\x30\x80\xd0' * 64) * 32)) + png_chunk(b'IEND', b''))
+    original.write_text(original_contents)
     nvimtree = Path(os.environ['KITTY_EDITOR_NVIM_TREE']).resolve()
     nvimconf = private / 'config/nvim'
     nvimconf.mkdir()
-    (nvimconf / 'init.lua').write_text(
+    if full_config:
+        assert not (Path.home() / '.ssh').exists() and not (Path.home() / '.codex').exists()
+        shutil.copytree(ROOT / 'home/dot_config/nvim', nvimconf, dirs_exist_ok=True)
+        localbin = Path.home() / '.local/bin'; localbin.mkdir(parents=True)
+        (localbin / 'nvim-lua').symlink_to(ROOT / 'home/dot_local/bin/nvim-lua')
+        generated = Path(os.environ['KITTY_EDITOR_PLUGIN_TABLE']).read_text()
+        table = re.search(r'local plugins = \{\n(.*?)\n\}', generated, re.S)
+        helper = re.search(r'local lazy_nix_helper_path = "([^"]+)"', generated)
+        assert table and helper
+        for path in re.findall(r'"(/nix/store/[^"\n]+)"', table.group(1)) + [helper.group(1)]:
+            assert Path(path).is_dir(), 'full plugin closure must exist; no runtime fetch: ' + path
+        template = (ROOT / 'home/nvim/plugins.lua.in').read_text()
+        plugins = template.replace('@pluginTable@', table.group(1)).replace('@lazyNixHelperPath@', helper.group(1))
+        (nvimconf / 'lua/plugins.lua').write_text(plugins)
+        mappings = (ROOT / 'home/nvim/mappings.lua.in').read_text()
+        generated_mappings = Path(os.environ['KITTY_EDITOR_MAPPINGS_TABLE']).read_text()
+        lazygit = re.search(r'(/nix/store/[^\s"\']+/bin/lazygit)', generated_mappings)
+        assert lazygit and Path(lazygit.group(1)).is_file()
+        mappings = mappings.replace('@lazygit@', lazygit.group(1)).replace('@nvim@', str(Path(shutil.which('nvim')).resolve()))
+        (nvimconf / 'lua/mappings.lua').write_text(mappings)
+    else:
+        (nvimconf / 'init.lua').write_text(
         "vim.opt.rtp:append(" + json.dumps(str(nvimtree)) + ")\n"
         "package.path = package.path .. ';' .. vim.env.DSH_EDITOR_LUA .. '/?.lua;" +
         str(ROOT / 'home/dot_config/nvim/lua/?.lua') + "'\n"
         "vim.g.mapleader=' '; require('nvim-tree').setup({view={side='left'}})\n"
         "require('kitty_editor').setup()\n"
-        "dofile(" + json.dumps(str(ROOT / 'home/nvim/mappings.lua.in')) + ")\n")
+            "dofile(" + json.dumps(str(ROOT / 'home/nvim/mappings.lua.in')) + ")\n")
     # Only the SSH command boundary is replaced. Native windows, terminal
     # parsing, keyboard encoding, Nvim TUI, tree and server are all real.
     sshfixture = private / 'bin/kitten'
@@ -86,7 +130,14 @@ def main():
         'from pathlib import Path\n'
         'def on_close(boss,window,data):\n'
         ' Path(' + repr(str(proof)) + ", 'closed-window-'+str(window.id)+'.txt').write_text(window.as_text())\n")
-    env = dict(os.environ, XDG_CONFIG_HOME=str(private / 'config'),
+    image_probe = proof / 'image_probe.py'
+    image_probe.write_text('def main(args):pass\ndef handle_result(args,answer,target_window_id,boss):\n'
+                            ' w=boss.window_id_map[target_window_id]\n'
+                            ' w.set_user_var("agency_proof_image_count",str(w.screen.grman.image_count))\n'
+                            'handle_result.no_ui=True\n')
+    env = {key: value for key, value in os.environ.items()
+           if not any(marker in key.upper() for marker in ('TOKEN', 'PASSWORD', 'SECRET', 'API_KEY', 'AUTH'))}
+    env.update(XDG_CONFIG_HOME=str(private / 'config'),
                XDG_CACHE_HOME=str(private / 'cache'), XDG_DATA_HOME=str(private / 'data'),
                XDG_STATE_HOME=str(private / 'state'), PATH=str(private / 'bin') + ':' + os.environ['PATH'],
                OZONE='headless', DOMICILE_SOFTWARE_COMPOSITING='yes', LIBGL_ALWAYS_SOFTWARE='true',
@@ -98,7 +149,9 @@ def main():
     monitor = None
     viewer = None
     receipt = {'sshTransport': 'local command fixture; no SSH credentials used', 'session': session,
-               'kitty': KITTY, 'nvimTree': str(nvimtree), 'sourceDirectory': str(project)}
+               'kitty': KITTY, 'nvimTree': str(nvimtree), 'sourceDirectory': str(project),
+               'fullUserConfig': full_config, 'externalNetworkBlocked': full_config,
+               'realHomeMasked': full_config}
     logs = []
 
     def wait(callback, label, seconds=30):
@@ -132,6 +185,7 @@ def main():
         kittylog = (proof / 'kitty.log').open('w'); logs.append(kittylog)
         viewer = subprocess.Popen([KITTY, '--config', 'NONE', '--listen-on', control,
                                    '--watcher', str(close_watcher),
+                                   *(['--override', 'watcher=' + os.environ['KITTY_EDITOR_AGENCY_WATCHER']] if full_config else []),
                                    '--override', 'allow_remote_control=yes', '--override', 'enabled_layouts=splits',
                                    '--override', 'confirm_os_window_close=0', '-e', 'python3', str(parent)],
                                   env=env, stdout=kittylog, stderr=subprocess.STDOUT)
@@ -147,6 +201,10 @@ def main():
 
         def windows():
             return [w for oswindow in json.loads(remote('ls')) for tab in oswindow['tabs'] for w in tab['windows']]
+
+        def has_image(window_id):
+            remote('kitten', '--match', f'id:{window_id}', str(image_probe))
+            return int(next(w for w in windows() if w['id'] == window_id)['user_vars'].get('agency_proof_image_count', '0')) > 0
 
         parentwindow = wait(lambda: next((w for w in windows() if w.get('user_vars', {}).get('agency_session') == session), None), 'parent terminal identity')
         parentid = parentwindow['id']
@@ -164,6 +222,28 @@ def main():
         editor = wait(lambda: next((w for w in windows() if w.get('user_vars', {}).get('agency_editor_window') == '1'), None), 'pick opens separate editor')
         editorid = editor['id']
         wait(lambda: 'Original saved content' in remote('get-text', '--match', 'id:' + str(editorid), '--extent=screen'), 'native editor buffer')
+        if full_config:
+            records = json.loads(subprocess.check_output([str(ROOT / 'home/dot_local/bin/dsh-editor'), '--list', '--json'], env=env, text=True))
+            address = records[0]['socket']
+            lua = "(function() local b=vim.fn.bufnr(" + json.dumps(str(original)) + "); local p=vim.treesitter.get_parser(b,'markdown'); local clients={}; for _,c in ipairs(vim.lsp.get_clients({bufnr=b})) do clients[#clients+1]=c.name end; return vim.json.encode({colors=vim.g.colors_name,palette=require('theme').palette().name,plugins=vim.tbl_count(require('lazy.core.config').plugins),treesitter=p:parse()[1]:root():type(),lsp=clients,errmsg=vim.v.errmsg,heading=vim.api.nvim_get_hl(0,{name='RenderMarkdownH1',link=false}),image=require('kitty_image_remote').status()}) end)()"
+            expression = 'luaeval(' + json.dumps(lua) + ')'
+            def inspect_features():
+                result = subprocess.run(['nvim', '--headless', '-u', 'NONE', '--server', address, '--remote-expr', expression],
+                                        env=env, capture_output=True, text=True, check=True, timeout=5)
+                value = json.loads(result.stdout)
+                (proof / 'full-config-features.json').write_text(json.dumps(value, indent=2))
+                return value
+            features = wait(lambda: result if 'marksman' in (result := inspect_features())['lsp'] else None,
+                            'full config Markdown LSP and tree-sitter')
+            assert features['plugins'] >= 30 and features['colors'].startswith('catppuccin')
+            assert features['treesitter'] == 'document' and features['heading'].get('fg')
+            assert features['errmsg'] in ('', 'E31: No such mapping'), features
+            features = wait(lambda: result if (result := inspect_features())['image'].get('cell_width') and
+                            result['image'].get('bytes_sent', 0) > 0 else None, 'actual Kitty image geometry and bytes')
+            log = private / 'state/dsh/editor' / Path(address).stem / 'server.log'
+            assert not re.search(r'Failed to run|Error executing|E5113|failed to open stdout', log.read_text()), log.read_text()
+            wait(lambda: has_image(editorid), 'real Kitty graphics manager received the rendered PNG')
+            receipt['fullConfigFeatures'] = features
         assert next(w for w in windows() if w['id'] == parentid)['pid'] == parentwindow['pid']
         remote('send-key', '--match', 'id:' + str(editorid), 'i')
         remote('send-text', '--match', 'id:' + str(editorid), '--', 'UNFINISHED ')
@@ -188,7 +268,12 @@ def main():
         (proof / 'restored-screen.txt').write_text(screen)
         serverlist = subprocess.check_output([str(ROOT / 'home/dot_local/bin/dsh-editor'), '--list', '--json'], env=env, text=True)
         assert json.loads(serverlist)[0]['pid'] == serverpid
-        assert original.read_text() == 'Original saved content\n'
+        if full_config:
+            refreshed = wait(lambda: result if (result := inspect_features())['image'].get('retransmissions', 0) >
+                             features['image'].get('retransmissions', 0) else None, 'image cache invalidated after fresh native UI')
+            wait(lambda: has_image(editor['id']), 'fresh Kitty window received the retained buffer image again')
+            receipt['imageAfterFreshUi'] = refreshed['image']
+        assert original.read_text() == original_contents
         receipt['sameServerAndUnsavedBufferAfterClose'] = True
         receipt['sourceFileUnchanged'] = True
         receipt['parentRetained'] = True
