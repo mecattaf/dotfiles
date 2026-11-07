@@ -77,6 +77,10 @@ class KittyEditorIdentityTests(unittest.TestCase):
         self.assertEqual(identity['directory'], '/home/tom/nested directory')
         self.assertEqual(self.window.user_vars['agency_directory'], identity['directory'])
         self.assertEqual(identity['child_pid'], self.window.child.root_pid)
+        self.window.screen.last_reported_cwd = b'kitty-shell-cwd://nas/home/tom/a%23literal#name?'
+        self.assertEqual(EDITOR._identity(self.window)['directory'], '/home/tom/a%23literal#name?')
+        self.window.screen.last_reported_cwd = b'file://nas/home/tom/utf8-%CE%BB'
+        self.assertEqual(EDITOR._identity(self.window)['directory'], '/home/tom/utf8-λ')
         self.window.screen.last_reported_cwd = 'file://unrelated-host/private/path'
         with self.assertRaises(ValueError):
             EDITOR._identity(self.window)

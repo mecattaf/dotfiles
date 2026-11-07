@@ -41,12 +41,24 @@ def _identity(window):
     directory = variables.get('agency_directory')
     reported = getattr(window.screen, 'last_reported_cwd', '')
     if reported:
-        uri = urlsplit(reported)
-        if (uri.scheme != 'file' or uri.hostname not in ('nas', '100.65.85.114')
-                or uri.username is not None or uri.password is not None or uri.port is not None
-                or uri.query or uri.fragment):
-            raise ValueError('editor cwd must be an explicit NAS file URI')
-        directory = unquote(uri.path, errors='strict')
+        if not isinstance(reported, (str, bytes)) or len(reported) > 8192:
+            raise ValueError('reported editor cwd exceeds its bound')
+        if isinstance(reported, bytes):
+            reported = reported.decode('utf-8', 'strict')
+        if reported.startswith('kitty-shell-cwd://'):
+            # This native Kitty scheme carries a literal path: #, ? and % are
+            # filenames here, not URI syntax or percent escapes.
+            authority, separator, tail = reported[len('kitty-shell-cwd://'):].partition('/')
+            if authority not in ('nas', '100.65.85.114') or not separator:
+                raise ValueError('editor cwd must name the NAS identity')
+            directory = '/' + tail
+        else:
+            uri = urlsplit(reported)
+            if (uri.scheme != 'file' or uri.hostname not in ('nas', '100.65.85.114')
+                    or uri.username is not None or uri.password is not None or uri.port is not None
+                    or uri.query or uri.fragment):
+                raise ValueError('editor cwd must be an explicit NAS file URI')
+            directory = unquote(uri.path, errors='strict')
     directory = _clean_path(directory)
     if directory != variables.get('agency_directory'):
         # Reattach restores native OSC7 even when the retained fish has not
