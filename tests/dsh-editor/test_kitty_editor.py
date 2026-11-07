@@ -133,6 +133,19 @@ class KittyEditorIdentityTests(unittest.TestCase):
         EDITOR.open_editor(self.boss, self.window, payload)
         self.assertIn('--type=os-window', self.boss.commands[-1][1])
 
+    def test_stale_async_sidebar_envelope_cannot_use_new_window_binding(self):
+        EDITOR._version = lambda: (0, 50, 0)
+        payload = {'window_id': 1, 'session': str(uuid.uuid4()),
+                   'directory': '/home/tom/a project', 'files': []}
+        encoded = base64.b64encode(json.dumps(payload).encode()).decode()
+        EDITOR.handle_result(['editor.py', 'sidebar', encoded], None, 1, self.boss)
+        self.assertEqual(self.boss.commands, [])
+        payload['session'] = self.window.user_vars['agency_session']
+        encoded = base64.b64encode(json.dumps(payload).encode()).decode()
+        EDITOR.handle_result(['editor.py', 'sidebar', encoded], None, 1, self.boss)
+        self.assertEqual(len(self.boss.commands), 1)
+        self.assertIn('-tt', self.boss.commands[0][1])
+
     def test_control_character_or_oversized_callback_is_rejected(self):
         picker = self.pick_window()
         picker.user_vars['agency_editor_pick'] = json.dumps({'directory': '/home/tom/a project', 'path': '/home/tom/x\nattack'})
