@@ -56,7 +56,11 @@ def main():
     sshfixture.chmod(0o755)
     bridge = private / 'bin/agency-kitty'
     bridge.write_text(
-        '#!/usr/bin/env python3\nimport argparse,base64,json,subprocess,sys\n'
+        '#!/usr/bin/env python3\nimport argparse,base64,json,os,subprocess,sys\n'
+        "if len(sys.argv)>1 and sys.argv[1] in ('editor-attach','editor-tree-attach'):\n"
+        " command=[" + repr(str(ROOT / 'home/dot_local/bin')) + "+('/dsh-editor-tree' if sys.argv[1]=='editor-tree-attach' else '/dsh-editor'),*sys.argv[2:]]\n"
+        " with open(" + repr(str(proof / 'ssh-fixture.jsonl')) + ",'a') as f:f.write(json.dumps(command)+'\\n')\n"
+        " os.execvpe(command[0],command,os.environ)\n"
         "p=argparse.ArgumentParser();p.add_argument('action');p.add_argument('--kitty-socket');p.add_argument('--window-id',type=int);p.add_argument('--session');p.add_argument('--directory');p.add_argument('files',nargs='*');a=p.parse_args()\n"
         "payload={k:getattr(a,k) for k in ('window_id','session','directory','files')}\n"
         "with open(" + repr(str(proof / 'bridge.jsonl')) + ",'a') as f:f.write(json.dumps(payload)+'\\n')\n"
