@@ -278,6 +278,10 @@ require("lazy").setup({
     "3rd/image.nvim",
     dir = dir('image.nvim'),
     build = false,
+    config = function(_, opts)
+      require('kitty_image_remote').prepare()
+      require('image').setup(opts)
+    end,
     opts = {
         backend = "kitty",
         processor = "magick_cli",
