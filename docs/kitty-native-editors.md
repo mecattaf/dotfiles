@@ -148,7 +148,7 @@ the target's `runtime-test`. HOME was unchanged in the passing native proof;
 private XDG config/data/cache/state and a test command PATH were used. No live
 runtime, editor, physical display or credentials were accessed.
 
-The eleven-test integration/identity suite uses real installed Nvim for daemon
+The integration/identity suite uses real installed Nvim for daemon
 launches, concurrent canonical-directory identity, literal path arguments,
 native UI death and reattachment, named and unnamed WIP after daemon SIGKILL,
 explicit recovery save, and failure reporting. Identity checks and both Kitty
@@ -163,8 +163,18 @@ Ctrl+B without another Kitty pane, closed and reopened the editor UI, and saw
 the same server pid and unsaved text with the original source file unchanged.
 The SSH command boundary was explicitly replaced by a local command fixture;
 this does not claim an end-to-end SSH deployment or physical key-to-photon
-latency measurement. Kitty 0.50 docking is source-checked and unit-tested,
-not native-tested on this installed 0.48 binary.
+latency measurement.
+
+The built Kitty 0.50 candidate was then run through the same native fixture.
+Its native window dock measured exactly 28 columns to the left of a 127-column
+parent. File selection opened a separate native editor window; one Ctrl+B
+reached Nvim; closing and reopening the UI retained server pid 1031 and the
+unsaved buffer. The source file and parent process were retained. Receipt and
+screenshot are in
+`/home/tom/agent-work/kitty-consolidation/nvim-editor/native-proof-20261107-233819/`.
+This candidate test still replaces the SSH command boundary explicitly; the
+independent stock-SSH fixture in the dedicated Agency Kitty repository covers
+real SSH bootstrap, PTY allocation, shell integration and reconnect.
 
 Passing native receipt and screenshot on compute (repeated after final
 checkpoint and selection validation):
@@ -189,6 +199,13 @@ fleet-exec strix-coordinator --cwd /home/tom/agent-work/kitty-consolidation/nvim
 
 fleet-exec strix-coordinator --cwd /home/tom/agent-work/kitty-consolidation/nvim-editor -- \
   /home/tom/.local/bin/runtime-test -- env \
+  KITTY_EDITOR_NVIM_TREE=/home/tom/agent-work/kitty-consolidation/nvim-editor/nvim-tree.lua \
+  python3 tests/dsh-editor/native_editor_ui.py
+
+# The same native proof against a separately built 0.50 candidate:
+fleet-exec strix-coordinator --cwd /home/tom/agent-work/kitty-consolidation/nvim-editor -- \
+  /home/tom/.local/bin/runtime-test -- env \
+  KITTY_EDITOR_KITTY=/nix/store/rsa87scsxdhcdczvqqmlli13kmf4pclc-kitty-0.50.0/bin/kitty \
   KITTY_EDITOR_NVIM_TREE=/home/tom/agent-work/kitty-consolidation/nvim-editor/nvim-tree.lua \
   python3 tests/dsh-editor/native_editor_ui.py
 ```
