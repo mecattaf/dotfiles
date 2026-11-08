@@ -27,3 +27,9 @@ Recurring scheduling remains external. A scheduler may invoke plain
 `journal-day`, which does not change a seat's saved continuation cwd. No timer,
 cron entry or scheduler migration is part of this change. The one-time historical
 landing and its private receipts are separate from future semantic composition.
+
+## Unknowns and proposed defaults
+
+External scheduler commissioning and semantic memory compilation remain outside
+this helper. Use the original project cwd for a specific older conversation;
+the remembered seat directory is the default for continuing its latest launch.
