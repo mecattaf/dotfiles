@@ -19,7 +19,9 @@ def inventory(session_ids, command=COMMAND):
         if not os.path.isabs(command) or any(ord(c) < 32 for c in command):
             raise ValueError('native metadata helper must be installed')
         child = subprocess.Popen([command, 'desktop-catalogue'], stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                 env={key: value for key, value in os.environ.items()
+                                      if key not in {'PYTHONPATH', 'PYTHONHOME'}})
         chunks, total, deadline = [], 0, time.monotonic() + 5
         while True:
             remaining = deadline - time.monotonic()

@@ -63,7 +63,9 @@ def bound_inventory(values: Iterable[Any]) -> list[Any]:
 def local_inventory(store) -> list[Any]:
     """Read saved identities and live direct owners, without a holder call."""
     from .direct_registry import DirectRegistry
-    return bound_inventory([*store.list(), *DirectRegistry(store).list()])
+    from .capabilities.harness_state import status
+    return bound_inventory([{**as_mapping(value),'agent_status':status(as_mapping(value)['id'],store=store)}
+                            for value in [*store.list(), *DirectRegistry(store).list()]])
 
 
 def project_session(value: Any) -> dict[str, Any]:
@@ -110,10 +112,26 @@ def project_session(value: Any) -> dict[str, Any]:
         "resumable": not direct,
         "windowClass": window_class,
         "kittyWindowId": window_id,
+        "agentStatus": project_agent_status(row.get('agent_status')),
         "resume": None if direct else {"program": "agency-kitty", "args": ["resume", identity]},
         "editor": {"program": "dsh-editor", "args": ["--directory", cwd]},
         "capabilities": {"nativeRendering": True, "contentIncluded": False, "inputAuthority": False},
     }
+
+
+def project_agent_status(value):
+    if value is None:
+        return None
+    if (not isinstance(value,dict) or set(value)!={'version','harness','state','foreground','verified'}
+            or value['version']!=1 or value['harness'] not in {'codex','claude'}
+            or value['state'] not in {'idle','working','done','waiting','background','ended','unverified'}
+            or value['foreground'] is not None and type(value['foreground']) is not bool
+            or type(value['verified']) is not bool
+            or value['state'] in {'idle','working','done','waiting'} and (value['foreground'] is not True or value['verified'] is not True)
+            or value['state'] in {'background','ended'} and (value['foreground'] is not False or value['verified'] is not True)
+            or value['state']=='unverified' and (value['foreground'] is not None or value['verified'] is not False)):
+        raise ValueError('invalid native agent status projection')
+    return dict(value)
 
 
 def project_catalogue(values: Iterable[Any], *, linked_chat: str | None = None) -> dict[str, Any]:

@@ -54,6 +54,17 @@ class DirectRegistry:
         except FileNotFoundError:
             return False
 
+    def context_matches(self, identity: str, context: str) -> bool:
+        """Validate a hook against this direct terminal's original owner only."""
+        validate_id(identity)
+        try:
+            with self._directory() as directory:
+                record = _read(directory, identity)
+        except FileNotFoundError:
+            return False
+        return (record is not None and _alive(record)
+                and json.loads(record['terminal_context']) == json.loads(context))
+
     def get(self, identity: str) -> dict | None:
         validate_id(identity)
         try:

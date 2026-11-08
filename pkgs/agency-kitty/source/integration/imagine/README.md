@@ -16,6 +16,18 @@ existing OS window but never resume, and their metadata is removed when the NAS
 PTY owner ends. See ../agency-chat-window for the NAS metadata patch.
 
 Qualification used the exact pinned SDK workspace dependency donor from the
-native-drag fixture. All130 Imagine tests passed; the full Vite production build
+native-drag fixture. All135 Imagine tests passed; the full Vite production build
 passed (existing large-chunk warning retained). This is source/build evidence;
 no live shell refresh or client engine transition has been performed.
+
+The existing reservation owner now requires exact native classes and a validated
+helper receipt before placement. A pre-receipt appearance preserves previous
+focus; closed previous windows retain the reducer's valid fallback. A newer
+focus choice within the same workspace cancels late reveal too. The production
+TS check has zero new diagnostics versus the exact drag-qualified base: both
+retain18 dependency diagnostics, so a full-project type-check pass is not claimed.
+
+Native terminal resume also works when all numbered chat slots are occupied: it
+can join the chosen chat workspace or the current workspace as an ordinary
+split. This removes a per-slot terminal restriction; it does not redesign the
+existing desktop workspace inventory or change its global numbering policy.

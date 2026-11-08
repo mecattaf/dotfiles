@@ -1,0 +1,36 @@
+--- a/agency_kitty/server.py
++++ b/agency_kitty/server.py
+@@ -21,8 +21,9 @@
+ from .sessions import Session, SessionError, SessionStore, validate_cwd, validate_id
+ from .direct_registry import DirectRegistry
+ 
+-ZMX_VERSION = "1.0.1-agency.3"
++ZMX_VERSION = "1.0.1-agency.5-actor"
+ HOLDER_NAMESPACES = {
++    "1.0.1-agency.5-actor": "zmx-5-actor",
+     "1.0.1-agency.3": "zmx-3",
+     "1.0.1-agency.4": "zmx-4",
+     "1.0.1-agency.4-vt1": "zmx-4-vt1",
+--- a/tests/native_codex_graphics.py
++++ b/tests/native_codex_graphics.py
+@@ -560,17 +560,17 @@
+             # sized observer snapshot; it cannot impose foreground backpressure.
+             observer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+             observer.settimeout(5)
+-            namespace = 'zmx-4-vt1' if ZMX_VERSION.endswith('-vt1') else 'zmx-4'
++            namespace = 'zmx-5-actor'
+             try:
+                 observer.connect(str(Path(runtime) / 'agency-kitty' / namespace / identity))
+-                observer.sendall(struct.pack('<BBHIHHHH', 7, 204, 0, 8, 40, 120, 0, 0))
++                observer.sendall(struct.pack('<BBHIHHHH', 7, 205, 0, 8, 40, 120, 0, 0))
+                 header = b''
+                 while len(header) < 8:
+                     header += observer.recv(8-len(header))
+                 tag, protocol, _, length = struct.unpack('<BBHI', header)
+                 # setLeader's Resize is absent because the live foreground
+                 # already owns the PTY. Only the explicit refusal is expected.
+-                assert tag == 25 and protocol == 204 and length < 256, (tag, protocol, length)
++                assert tag == 25 and protocol == 205 and length < 256, (tag, protocol, length)
+                 error = b''
+                 while len(error) < length:
+                     error += observer.recv(length-len(error))

@@ -1,0 +1,16 @@
+Agency zmx 1.0.1-agency.5-actor is an isolated experimental modification of
+MIT-licensed zmx 1.0.1, upstream commit
+a35f00a2118b15a5e9d522a43035c8d7487df9b7.
+https://github.com/neurosnap/zmx
+
+It includes the separate version 4 stable-libghostty graphics restoration
+changes and adds one exclusive bounded shadow-VT worker, exact asynchronous
+FIFO barriers and independent PTY owner input/raw output. New Agency code is
+MIT-licensed under the same terms as upstream. See agency-actor.patch and
+ACTOR.md for admission evidence and limits. Protocol 205 and namespace
+zmx-5-actor must remain separate from existing holders. No default promotion
+or public API authority is provided by this source candidate.
+
+Pinned Ghostty/libghostty commit:
+0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec (libghostty-vt 1.0 stable).
+The statically linked dependency notices are included under licenses/.

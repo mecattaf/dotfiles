@@ -1,0 +1,1671 @@
+diff --git a/build.zig b/build.zig
+index d4e8e95..20f1601 100644
+--- a/build.zig
++++ b/build.zig
+@@ -62,6 +62,7 @@ pub fn build(b: *std.Build) void {
+         const vt_mod = d.module("ghostty-vt");
+         if (target.result.os.tag == .openbsd) vt_mod.sanitize_c = .off;
+         exe_mod.addImport("ghostty-vt", vt_mod);
++        exe_mod.addImport("wuffs", vt_mod.import_table.get("wuffs").?);
+     }
+ 
+     // zmx module: programmatic interface for embedding or external tools
+@@ -83,6 +84,7 @@ pub fn build(b: *std.Build) void {
+         const vt_mod = d.module("ghostty-vt");
+         if (target.result.os.tag == .openbsd) vt_mod.sanitize_c = .off;
+         zmx_pkg_mod.addImport("ghostty-vt", vt_mod);
++        zmx_pkg_mod.addImport("wuffs", vt_mod.import_table.get("wuffs").?);
+     }
+ 
+     // Examples: build the usage examples in examples/ against the zmx module
+@@ -159,6 +161,7 @@ pub fn build(b: *std.Build) void {
+             "ghostty-vt",
+             test_dep.module("ghostty-vt"),
+         );
++        test_module.addImport("wuffs", test_dep.module("ghostty-vt").import_table.get("wuffs").?);
+         const exe_unit_tests = b.addTest(.{
+             .root_module = test_module,
+             // .use_llvm = true,
+@@ -224,6 +227,7 @@ pub fn build(b: *std.Build) void {
+                 .@"emit-macos-app" = false,
+             })) |release_dep| {
+                 release_mod.addImport("ghostty-vt", release_dep.module("ghostty-vt"));
++                release_mod.addImport("wuffs", release_dep.module("ghostty-vt").import_table.get("wuffs").?);
+             }
+ 
+             // const is_local_macos = resolved.result.os.tag == .macos;
+diff --git a/build.zig.zon b/build.zig.zon
+index 3e5f0be..cb13da8 100644
+--- a/build.zig.zon
++++ b/build.zig.zon
+@@ -1,12 +1,12 @@
+ .{
+     .name = .zmx,
+-    .version = "1.0.1",
++    .version = "1.0.1-agency.5-actor",
+     .fingerprint = 0x28aad87005052b4e, // Changing this has security and trust implications.
+     .minimum_zig_version = "0.17.0",
+     .dependencies = .{
+         .ghostty = .{
+-            .url = "git+https://github.com/ghostty-org/ghostty#53e55147bbbb0157672dac0228aa7744e881f1fa",
+-            .hash = "ghostty-1.4.1-dev-5UdBC-9XmgVchRr0CfxYzSRUiww0EdU1WAR3WwtMsqql",
++            .url = "git+https://github.com/ghostty-org/ghostty#0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
++            .hash = "ghostty-1.4.1-dev-5UdBC58_nQWN3FHzqvvLtKzhOKptGc_uH9t7ejdTBGd3",
+         },
+         .translate_c = .{
+             .url = "git+https://codeberg.org/ziglang/translate-c?ref=zig-0.17.x#cfac21f3199b2b02ce3fd7db652aa456421fe4ab",
+diff --git a/src/cfg.zig b/src/cfg.zig
+index cb33595..db012b6 100644
+--- a/src/cfg.zig
++++ b/src/cfg.zig
+@@ -10,6 +10,7 @@ const cross = @import("cross");
+ socket_dir: []const u8,
+ log_dir: []const u8,
+ max_scrollback_lines: usize = 10_000,
++kitty_image_storage_limit: usize = 320 * 1024 * 1024,
+ dir_mode: u32 = 0o750,
+ log_mode: u32 = 0o640,
+ tracked_envs: []const u8 = "DISPLAY,SSH_AUTH_SOCK,SSH_AGENT_PID,SSH_CONNECTION,WINDOWID,XAUTHORITY,KITTY_LISTEN_ON,KITTY_PID,KITTY_WINDOW_ID",
+@@ -30,11 +31,18 @@ pub fn init(alloc: std.mem.Allocator, io: std.Io) !Cfg {
+     else
+         0o640;
+ 
++    const image_mib = if (lib_posix.getenv("ZMX_IMAGE_STORAGE_MIB")) |value|
++        try std.fmt.parseInt(usize, value, 10)
++    else
++        320;
++    if (image_mib < 1 or image_mib > 512) return error.InvalidImageStorageLimit;
++
+     var cfg = Cfg{
+         .socket_dir = socket_dir,
+         .log_dir = log_dir,
+         .dir_mode = dir_mode,
+         .log_mode = log_mode,
++        .kitty_image_storage_limit = image_mib * 1024 * 1024,
+     };
+ 
+     try cfg.mkdir(io);
+diff --git a/src/client.zig b/src/client.zig
+index 7248aff..3923c9a 100644
+--- a/src/client.zig
++++ b/src/client.zig
+@@ -148,7 +148,8 @@ pub fn attach(alloc: Allocator, io: Io, name: []const u8, opts: AttachOptions) !
+     const socket_path = try socket.getSocketPath(alloc, cfg.socket_dir, sesh);
+     defer alloc.free(socket_path);
+ 
+-    if (has_daemon) {
++    const attach_only = if (lib_posix.getenv("ZMX_ATTACH_ONLY")) |value| std.mem.eql(u8, value, "1") else false;
++    if (has_daemon and !attach_only) {
+         var daemon = Daemon.init(io, &cfg, sesh, socket_path);
+         daemon.command = opts.command;
+         if (opts.cwd) |cwd| daemon.setCwd(cwd);
+diff --git a/src/graphics_restore.zig b/src/graphics_restore.zig
+new file mode 100644
+index 0000000..28eb79d
+--- /dev/null
++++ b/src/graphics_restore.zig
+@@ -0,0 +1,156 @@
++//! Reconstruct static Kitty graphics from the existing VT shadow on attach.
++//! This adds no attached-mode renderer, application input, or raw output log.
++const std = @import("std");
++const vt = @import("ghostty-vt");
++const Graphics = vt.kitty.graphics;
++const Storage = Graphics.ImageStorage;
++
++/// libghostty leaves PNG support disabled for embedders. Reuse its already
++/// linked Wuffs dependency through the documented decoder callback. The caller
++/// wraps this allocator in libghostty's bounded decoder allocator.
++pub fn init() void {
++    vt.sys.decode_png = &decodePng;
++}
++
++fn decodePng(alloc: std.mem.Allocator, data: []const u8) vt.sys.DecodeError!vt.sys.Image {
++    const result = @import("wuffs").png.decode(alloc, data) catch |err| switch (err) {
++        error.WuffsError, error.Overflow => return error.InvalidData,
++        error.OutOfMemory => return error.OutOfMemory,
++    };
++    return .{ .width = result.width, .height = result.height, .data = result.data };
++}
++
++/// Unknown state refuses restoration rather than claiming visual parity.
++pub fn validate(term: *vt.Terminal) !void {
++    var screens = term.screens.all.iterator();
++    while (screens.next()) |entry| {
++        const screen = entry.value.*;
++        if (screen != term.screens.active and
++            (screen.kitty_images.images.count() != 0 or screen.kitty_images.loading != null))
++            return error.GraphicsInactiveScreenUnsupported;
++    }
++    const storage = &term.screens.active.kitty_images;
++    if (storage.loading != null) return error.GraphicsTransmissionInProgress;
++    var images = storage.images.valueIterator();
++    while (images.next()) |image| {
++        if (image.animation != null) return error.GraphicsAnimationUnsupported;
++        if (image.number != 0) return error.GraphicsImageNumberUnsupported;
++        if (image.metadata.transient) return error.GraphicsTransientImageUnsupported;
++        if (image.metadata.implicit_id) return error.GraphicsImplicitIdUnsupported;
++        if (image.data.bytes() == null) return error.GraphicsPendingData;
++        switch (image.format) {
++            .rgb, .rgba => {},
++            else => return error.GraphicsFormatUnsupported,
++        }
++    }
++    var placements = storage.placements.valueIterator();
++    while (placements.next()) |placement| {
++        switch (placement.location) {
++            .pin => |pin| {
++                if (term.screens.active.pages.pointFromPin(.active, pin.*) == null)
++                    return error.GraphicsHistoryPlacementUnsupported;
++            },
++            .virtual, .relative => return error.GraphicsPlacementUnsupported,
++        }
++    }
++}
++
++/// An incremental snapshot iterator holds references to the existing image
++/// state, not another decoded/base64 copy. Its owner MUST pause PTY parsing
++/// and terminal mutations until done. One next() emits at most 4352 bytes.
++pub const State = struct {
++    term: *vt.Terminal,
++    phase: enum { clear, images, placements, finish, done } = .clear,
++    images: std.AutoHashMapUnmanaged(u32, Graphics.Image).ValueIterator,
++    placements: std.AutoHashMapUnmanaged(Storage.PlacementKey, Storage.Placement).Iterator,
++    image: ?*Graphics.Image = null,
++    offset: usize = 0,
++
++    pub fn create(term: *vt.Terminal) !State {
++        try validate(term);
++        return .{
++            .term = term,
++            .images = term.screens.active.kitty_images.images.valueIterator(),
++            .placements = term.screens.active.kitty_images.placements.iterator(),
++        };
++    }
++
++    pub fn next(self: *State, writer: *std.Io.Writer) !bool {
++        switch (self.phase) {
++            .clear => {
++                // The active screen is being replaced by its authoritative
++                // snapshot. Remove data left by a previous client attachment.
++                try writer.writeAll("\x1b_Ga=d,d=A,q=2\x1b\\");
++                if (self.term.screens.active.kitty_images.images.count() == 0) {
++                    self.phase = .done;
++                } else {
++                    try writer.writeAll("\x1b7\x1b[?6l");
++                    self.phase = .images;
++                }
++                return true;
++            },
++            .images => {
++                const image = self.image orelse self.images.next() orelse {
++                    self.phase = .placements;
++                    return self.next(writer);
++                };
++                self.image = image;
++                const data = image.data.bytes().?;
++                const end = @min(self.offset + 3072, data.len);
++                var encoded: [4096]u8 = undefined;
++                const chunk = std.base64.standard.Encoder.encode(&encoded, data[self.offset..end]);
++                if (self.offset == 0) {
++                    try writer.print("\x1b_Ga=t,f={d},s={d},v={d},i={d},I={d},q=2,m={d};", .{
++                        @as(u8, if (image.format == .rgb) 24 else 32),
++                        image.width,
++                        image.height,
++                        image.id,
++                        image.number,
++                        @as(u8, if (end < data.len) 1 else 0),
++                    });
++                } else {
++                    try writer.print("\x1b_Gm={d};", .{@as(u8, if (end < data.len) 1 else 0)});
++                }
++                try writer.writeAll(chunk);
++                try writer.writeAll("\x1b\\");
++                self.offset = end;
++                if (end == data.len) {
++                    self.image = null;
++                    self.offset = 0;
++                }
++                return true;
++            },
++            .placements => {
++                const entry = self.placements.next() orelse {
++                    self.phase = .finish;
++                    return self.next(writer);
++                };
++                const key = entry.key_ptr.*;
++                const placement = entry.value_ptr.*;
++                const point = self.term.screens.active.pages.pointFromPin(.active, placement.location.pin.*).?.active;
++                // p=0 preserves anonymous-placement behavior; private shadow
++                // placement IDs must not become application-controlled IDs.
++                const placement_id = if (key.placement_id.tag == .external) key.placement_id.id else 0;
++                try writer.print("\x1b[{d};{d}H\x1b_Ga=p,i={d},p={d},q=2,C=1,x={d},y={d},w={d},h={d},X={d},Y={d},c={d},r={d},z={d}\x1b\\", .{
++                    point.y + 1,        point.x + 1,        key.image_id,           placement_id,
++                    placement.source_x, placement.source_y, placement.source_width, placement.source_height,
++                    placement.x_offset, placement.y_offset, placement.columns,      placement.rows,
++                    placement.z,
++                });
++                return true;
++            },
++            .finish => {
++                if (self.term.modes.get(.origin)) try writer.writeAll("\x1b[?6h");
++                try writer.writeAll("\x1b8");
++                self.phase = .done;
++                return true;
++            },
++            .done => return false,
++        }
++    }
++};
++
++pub fn write(writer: *std.Io.Writer, term: *vt.Terminal) !void {
++    var state = try State.create(term);
++    while (try state.next(writer)) {}
++}
+diff --git a/src/ipc.zig b/src/ipc.zig
+index ad05c2b..27ac509 100644
+--- a/src/ipc.zig
++++ b/src/ipc.zig
+@@ -3,7 +3,8 @@ const cross = @import("cross");
+ const socket = @import("socket.zig");
+ const lib_posix = @import("posix.zig");
+ 
+-pub const PROTOCOL_VERSION: u8 = 1;
++// Dedicated protocol namespace: stock zmx clients must not drive this holder.
++pub const PROTOCOL_VERSION: u8 = 205;
+ 
+ pub const Tag = enum(u8) {
+     Input = 0,
+@@ -31,6 +32,12 @@ pub const Tag = enum(u8) {
+     /// Scoped history: the active screen plus a bounded number of
+     /// preceding scrollback rows. Request payload is `Capture`.
+     Capture = 22,
++    StreamEnd = 23,
++    /// Explicit image-free recovery; never used by ordinary attach.
++    InitTextOnly = 24,
++    RestoreError = 25,
++    RestoreDone = 26,
++    RestoreReady = 27,
+     Unsupported = 255,
+     // Non-exhaustive: this enum comes off the wire via bytesToValue and
+     // @enumFromInt, so out-of-range values are representable
+@@ -97,7 +104,8 @@ pub fn getTerminalSize(fd: i32) Resize {
+     return .{ .rows = 24, .cols = 120 };
+ }
+ 
+-pub const MAX_PAYLOAD_LEN: usize = 64 * 1024 * 1024;
++pub const MAX_PAYLOAD_LEN: usize = 4 * 1024 * 1024;
++pub const MAX_QUEUE_LEN: usize = 4 * 1024 * 1024;
+ pub const MAX_CMD_LEN = 256;
+ pub const MAX_CWD_LEN = 256;
+ 
+@@ -136,6 +144,8 @@ pub fn appendMessage(
+     tag: Tag,
+     data: []const u8,
+ ) !void {
++    if (data.len > MAX_PAYLOAD_LEN or list.items.len + @sizeOf(Header) + data.len > MAX_QUEUE_LEN)
++        return error.QueueLimitExceeded;
+     const header = Header{
+         .tag = tag,
+         .len = @intCast(data.len),
+diff --git a/src/loop.zig b/src/loop.zig
+index f5d6708..64e87db 100644
+--- a/src/loop.zig
++++ b/src/loop.zig
+@@ -13,6 +13,9 @@ const daemonize = @import("daemonize.zig");
+ const builtin = @import("builtin");
+ const terminal = @import("terminal.zig");
+ const ghostty_vt = terminal.ghostty_vt;
++const graphics_restore = @import("graphics_restore.zig");
++const snapshot_guard = @import("snapshot_guard.zig");
++const ShadowActor = @import("shadow_actor.zig").Actor;
+ 
+ /// clientLoop sends ipc commands to its corresponding daemon.  It uses poll() as its non-blocking
+ /// mechanism. It will send stdin to the daemon and receive stdout from the daemon.
+@@ -20,7 +23,7 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+     std.log.info("client loop fd={d}", .{client_sock_fd});
+     const gpa: std.mem.Allocator = blk: {
+         if (builtin.mode == .debug) {
+-            const GPA = std.heap.DebugAllocator(.{});
++            const GPA = std.heap.DebugAllocator(.{ .thread_safe = true });
+             const Static = struct {
+                 var gpa: GPA = .{};
+             };
+@@ -52,7 +55,14 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+ 
+     // Send init message with terminal size (buffered)
+     const size = ipc.getTerminalSize(lib_posix.STDOUT_FILENO);
+-    try ipc.appendMessage(gpa, &sock_write_buf, .Init, std.mem.asBytes(&size));
++    const text_only = if (lib_posix.getenv("ZMX_RESTORE_TEXT_ONLY")) |value|
++        std.mem.eql(u8, value, "1")
++    else
++        false;
++    if (text_only) {
++        _ = lib_posix.write(lib_posix.STDERR_FILENO, "EXPLICIT TEXT-ONLY RECOVERY: graphics restoration disabled; retained PTY unchanged.\r\n") catch {};
++    }
++    try ipc.appendMessage(gpa, &sock_write_buf, if (text_only) .InitTextOnly else .Init, std.mem.asBytes(&size));
+ 
+     var poll_fds = try std.ArrayList(lib_posix.pollfd).initCapacity(gpa, 4);
+     defer poll_fds.deinit(gpa);
+@@ -74,22 +84,39 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+ 
+     const detach_key_disabled = util.isDetachKeyDisabled();
+ 
++    const stdout_orig_flags = try lib_posix.fcntl(lib_posix.STDOUT_FILENO, lib_posix.F.GETFL, 0);
++    _ = try lib_posix.fcntl(lib_posix.STDOUT_FILENO, lib_posix.F.SETFL, stdout_orig_flags | lib_posix.O_NONBLOCK);
++    defer _ = lib_posix.fcntl(lib_posix.STDOUT_FILENO, lib_posix.F.SETFL, stdout_orig_flags) catch {};
++
++    var stream_closed = false;
++    var normal_end = false;
++    var restore_done = false;
++    var admitted = false;
++
+     while (true) {
++        if (stream_closed and stdout_buf.items.len == 0) {
++            if (normal_end) return ClientResult{ .kind = .detach, .session_name = null };
++            return error.StreamDisconnected;
++        }
++        if (restore_done and !admitted and stdout_buf.items.len == 0) {
++            try ipc.appendMessage(gpa, &sock_write_buf, .RestoreReady, "");
++            admitted = true;
++        }
+         poll_fds.clearRetainingCapacity();
+ 
+         try poll_fds.append(gpa, .{
+-            .fd = stdin_fd,
+-            .events = lib_posix.POLL.IN,
++            .fd = if (stream_closed) -1 else stdin_fd,
++            .events = if (admitted and sock_write_buf.items.len < 256 * 1024) lib_posix.POLL.IN else 0,
+             .revents = 0,
+         });
+ 
+         // Poll socket for read, and also for write if we have pending data
+-        var sock_events: i16 = lib_posix.POLL.IN;
++        var sock_events: i16 = if (stdout_buf.items.len < 8 * 1024 * 1024 - ipc.MAX_PAYLOAD_LEN) lib_posix.POLL.IN else 0;
+         if (sock_write_buf.items.len > 0) {
+             sock_events |= lib_posix.POLL.OUT;
+         }
+         try poll_fds.append(gpa, .{
+-            .fd = client_sock_fd,
++            .fd = if (stream_closed) -1 else client_sock_fd,
+             .events = sock_events,
+             .revents = 0,
+         });
+@@ -108,6 +135,7 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+ 
+         if (poll_fds.items[2].revents & lib_posix.POLL.IN != 0) {
+             try signal.drainSignalPipe();
++            if (stream_closed) continue;
+             const next_size = ipc.getTerminalSize(lib_posix.STDOUT_FILENO);
+             try ipc.appendMessage(
+                 gpa,
+@@ -148,15 +176,15 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+             const n = read_buf.read(client_sock_fd) catch |err| {
+                 if (err == error.WouldBlock) continue;
+                 if (err == error.ConnectionResetByPeer or err == error.BrokenPipe) {
+-                    return ClientResult{ .kind = .detach, .session_name = null };
++                    stream_closed = true;
++                    continue;
+                 }
+                 std.log.err("daemon read err={s}", .{@errorName(err)});
+                 return err;
+             };
+             if (n == 0) {
+                 std.log.info("server closed connection", .{});
+-                // Server closed connection
+-                return ClientResult{ .kind = .detach, .session_name = null };
++                stream_closed = true;
+             }
+ 
+             while (read_buf.next()) |msg| {
+@@ -166,6 +194,19 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+                             try stdout_buf.appendSlice(gpa, msg.payload);
+                         }
+                     },
++                    .RestoreDone => {
++                        restore_done = true;
++                    },
++                    .RestoreError => {
++                        _ = lib_posix.write(lib_posix.STDERR_FILENO, "Restore refused: ") catch {};
++                        _ = lib_posix.write(lib_posix.STDERR_FILENO, msg.payload) catch {};
++                        _ = lib_posix.write(lib_posix.STDERR_FILENO, ". Retained PTY is alive; explicit ZMX_RESTORE_TEXT_ONLY=1 recovers text.\r\n") catch {};
++                        return error.RestoreRefused;
++                    },
++                    .StreamEnd => {
++                        normal_end = true;
++                        stream_closed = true;
++                    },
+                     .Resize => {
+                         // daemon is asking for the client's window size usually in response
+                         // to this client being set as leader.
+@@ -202,7 +243,8 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+                     if (err == error.WouldBlock) break :blk 0;
+                     if (err == error.ConnectionResetByPeer or err == error.BrokenPipe) {
+                         std.log.info("connection reset or broken pipe", .{});
+-                        return ClientResult{ .kind = .detach, .session_name = null };
++                        stream_closed = true;
++                        continue;
+                     }
+                     return err;
+                 };
+@@ -224,17 +266,21 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+ 
+         if (poll_fds.items[1].revents & (lib_posix.POLL.HUP | lib_posix.POLL.ERR | lib_posix.POLL.NVAL) != 0) {
+             std.log.info("poll hup|err|nval", .{});
+-            return ClientResult{ .kind = .detach, .session_name = null };
++            // HUP can arrive together with unread data. Drain the socket to
++            // EOF and then drain stdout; never throw away the final frame.
++            if (poll_fds.items[1].revents & lib_posix.POLL.IN == 0) stream_closed = true;
+         }
+     }
+ }
+ 
+ fn initTerminal(gpa: std.mem.Allocator, io: std.Io, size: ipc.Resize, cfg: *const Cfg) !ghostty_vt.Terminal {
++    @import("graphics_restore.zig").init();
+     return ghostty_vt.Terminal.init(io, gpa, .{
+         .cols = size.cols,
+         .rows = size.rows,
+         .max_scrollback_lines = cfg.max_scrollback_lines,
+-        .max_scrollback_bytes = null, // Let the line limit control scrollback.
++        .max_scrollback_bytes = 64 * 1024 * 1024,
++        .kitty_image_storage_limit = cfg.kitty_image_storage_limit,
+     });
+ }
+ 
+@@ -251,8 +297,10 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+     const init_size = ipc.getTerminalSize(pty_fd);
+     var term = try initTerminal(gpa, io, init_size, daemon.cfg);
+     defer term.deinit(gpa);
+-    var vt_stream = term.vtStream();
+-    defer vt_stream.deinit();
++    var shadow = try ShadowActor.init(gpa, io, &term);
++    defer shadow.deinit();
++    try shadow.start();
++    var focus_pending: ?bool = null;
+ 
+     // Carries the tail of the previous PTY read so the task-exit marker
+     // search below can see across a read() boundary. Sized to comfortably
+@@ -261,17 +309,64 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+     var marker_carry_len: usize = 0;
+ 
+     var had_terminal_client = daemon.hasTerminalClient();
++    var pty_eof = false;
++    var eof_notice_sent = false;
+ 
+     daemon_loop: while (daemon.running) {
+-        // If the program asked for focus reports (DECSET 1004), send focus-out
+-        // when the last attached client leaves and focus-in when one returns,
+-        // as a terminal would when its window loses/gains focus.
+-        const has_terminal_client = daemon.hasTerminalClient();
+-        if (has_terminal_client != had_terminal_client and term.modes.get(.focus_event)) {
+-            daemon.queuePtyInput(gpa, if (has_terminal_client) "\x1b[I" else "\x1b[O");
++        // Never wait for the decoder on the PTY owner. VT control requests
++        // defer until its FIFO barrier completes; ordinary input still polls.
++        const has_terminal_client_now = daemon.hasTerminalClient();
++        if (has_terminal_client_now != had_terminal_client) {
++            focus_pending = has_terminal_client_now;
++            had_terminal_client = has_terminal_client_now;
++            shadow.requestPause();
++        }
++        const borrowed = shadow.isPaused();
++        if (borrowed) {
++            if (focus_pending) |focused| {
++                if (term.modes.get(.focus_event)) daemon.queuePtyInput(gpa, if (focused) "\x1b[I" else "\x1b[O");
++                focus_pending = null;
++            }
++            var graphics_borrowed = false;
++            for (daemon.clients.items) |client| if (client.graphics_restore_state != null) {
++                graphics_borrowed = true;
++            };
++            for (daemon.clients.items) |client| {
++                if (graphics_borrowed) break;
++                if (client.pending_vt) |tag| {
++                    client.pending_vt = null;
++                    try processVtRequest(gpa, daemon, client, pty_fd, &term, tag, client.pending_payload[0..client.pending_len]);
++                    client.resume_buffered = true;
++                    if (client.graphics_restore_state != null) graphics_borrowed = true;
++                }
++            }
++        }
++        var need_pause = focus_pending != null;
++        for (daemon.clients.items) |client| {
++            const holds_vt = client.restore != null or client.graphics_restore_state != null or
++                (daemon.leader_client_fd == client.socket_fd and client.awaiting_restore_ack);
++            if (client.pending_vt != null or holds_vt) need_pause = true;
++            // Graphics iterators reference live VT storage. No mutation until
++            // the full restore/ack lifecycle has released every reference.
++            if (holds_vt) std.debug.assert(borrowed);
++            try client.pumpRestore(gpa);
++        }
++        if (borrowed and !need_pause) shadow.resumeParsing();
++        const restoring_leader = if (daemon.getLeaderClient()) |leader| leader.isRestoring() else false;
++        if (pty_eof) {
++            var pending = false;
++            for (daemon.clients.items) |client| {
++                if (client.write_buf.items.len > 0 or client.isRestoring()) pending = true;
++            }
++            if (!pending) {
++                if (eof_notice_sent or daemon.clients.items.len == 0) break :daemon_loop;
++                for (daemon.clients.items) |client| {
++                    try ipc.appendMessage(gpa, &client.write_buf, .StreamEnd, "");
++                    client.has_pending_output = true;
++                }
++                eof_notice_sent = true;
++            }
+         }
+-        had_terminal_client = has_terminal_client;
+-
+         poll_fds.clearRetainingCapacity();
+ 
+         try poll_fds.append(gpa, .{
+@@ -280,20 +375,33 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+             .revents = 0,
+         });
+ 
+-        var pty_events: i16 = lib_posix.POLL.IN;
++        // A foreground terminal is lossless: when its queue fills, backpressure
++        // the PTY. A nonreading observer must not impose that pause and is
++        // disconnected independently at its own queue limit below.
++        const leader_can_read = shadow.canFeed() and (if (daemon.getLeaderClient()) |leader|
++            !leader.isRestoring() and leader.write_buf.items.len < ipc.MAX_QUEUE_LEN - 65536
++        else
++            true);
++        var pty_events: i16 = if (leader_can_read) lib_posix.POLL.IN else 0;
+         if (daemon.pty_write_buf.items.len > 0) {
+             pty_events |= lib_posix.POLL.OUT;
+         }
+         try poll_fds.append(gpa, .{
+-            .fd = pty_fd,
++            .fd = if (pty_eof or (!leader_can_read and daemon.pty_write_buf.items.len == 0)) -1 else pty_fd,
+             .events = pty_events,
+             .revents = 0,
+         });
+ 
+         try poll_fds.append(gpa, .{ .fd = signal.sig_pipe[0], .events = lib_posix.POLL.IN, .revents = 0 });
+ 
++        var buffered_work = false;
+         for (daemon.clients.items) |client| {
+-            var events: i16 = lib_posix.POLL.IN;
++            if (client.resume_buffered) buffered_work = true;
++            // Reserve a prior partial message plus one 4KiB read per admitted
++            // client, and room for focus reports. Pause reads until the PTY drains; never discard
++            // the tail of a paste because the application stopped reading.
++            const may_read = !restoring_leader or (daemon.leader_client_fd == client.socket_fd and client.restore_done_sent);
++            var events: i16 = if (client.pending_vt == null and !client.close_after_flush and may_read and daemon.pty_write_buf.items.len < Daemon.PTY_WRITE_BUF_MAX - (16 * 8192 + 64)) lib_posix.POLL.IN else 0;
+             if (client.has_pending_output) {
+                 events |= lib_posix.POLL.OUT;
+             }
+@@ -304,7 +412,12 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+             });
+         }
+ 
+-        _ = try lib_posix.poll(poll_fds.items, -1);
++        try poll_fds.append(gpa, .{ .fd = shadow.wake[0], .events = lib_posix.POLL.IN, .revents = 0 });
++        _ = try lib_posix.poll(poll_fds.items, if (buffered_work) 0 else -1);
++        const shadow_events = poll_fds.items[poll_fds.items.len - 1].revents;
++        if (shadow_events & (lib_posix.POLL.ERR | lib_posix.POLL.HUP | lib_posix.POLL.NVAL) != 0)
++            return error.ShadowWorkerWakeFailed;
++        if (shadow_events & lib_posix.POLL.IN != 0) shadow.drainWake();
+ 
+         if (poll_fds.items[2].revents & lib_posix.POLL.IN != 0) {
+             signal.drainSignalPipe() catch {};
+@@ -325,6 +438,11 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+                 null,
+                 lib_posix.SOCK.NONBLOCK | lib_posix.SOCK.CLOEXEC,
+             );
++            if (daemon.clients.items.len >= 16) {
++                std.log.err("client limit reached; rejecting new connection", .{});
++                lib_posix.close(client_fd);
++                continue :daemon_loop;
++            }
+             const client = try gpa.create(Client);
+             client.* = Client{
+                 .alloc = gpa,
+@@ -345,7 +463,7 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+         }
+ 
+         const inp_flags = lib_posix.POLL.IN | lib_posix.POLL.HUP | lib_posix.POLL.ERR | lib_posix.POLL.NVAL;
+-        if (poll_fds.items[1].revents & inp_flags != 0) {
++        if (leader_can_read and poll_fds.items[1].revents & inp_flags != 0) {
+             // Read from PTY. Buffer is sized to N_TTY_BUF_SIZE (4096): the hard
+             // kernel limit for the N_TTY line discipline. A larger buffer doesn't
+             // help: each read() from a PTY master returns at most 4096 bytes
+@@ -360,14 +478,14 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+                 if (n == 0) {
+                     // EOF: Shell exited
+                     std.log.info("shell exited pty_fd={d}", .{pty_fd});
+-                    // Let the rest of this poll iteration complete so client
+-                    // write buffers are flushed via the normal POLLOUT path.
+-                    // On the next iteration, daemon.running will be false.
+-                    daemon.running = false;
++                    // The application can exit while several MiB are still
++                    // queued. Keep polling clients until every byte and the
++                    // normal-end notice have reached their socket queues.
++                    pty_eof = true;
+                 } else {
+                     // Feed PTY output to terminal emulator for state tracking
+-                    vt_stream.nextSlice(buf[0..n]);
+-                    daemon.setPwd(&term);
++                    if (daemon.osc66_detector.feed(buf[0..n])) daemon.has_unrestorable_osc66 = true;
++                    try shadow.feed(buf[0..n]);
+                     daemon.has_pty_output = true;
+ 
+                     // When no real terminal client has attached yet, respond to
+@@ -417,11 +535,13 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+                     const broadcast_data = util.rewritePromptRedraw(gpa, buf[0..n]) orelse buf[0..n];
+                     defer if (broadcast_data.ptr != buf[0..n].ptr) gpa.free(broadcast_data);
+                     for (daemon.clients.items) |client| {
++                        if (client.overflowed) continue;
+                         ipc.appendMessage(gpa, &client.write_buf, .Output, broadcast_data) catch |err| {
+-                            std.log.warn(
+-                                "failed to buffer output for client err={s}",
++                            std.log.err(
++                                "disconnecting slow client: output queue limit err={s}",
+                                 .{@errorName(err)},
+                             );
++                            client.overflowed = true;
+                             continue;
+                         };
+                         client.has_pending_output = true;
+@@ -448,7 +568,7 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+         // Only iterate over clients that were present when poll_fds was constructed
+         // poll_fds contains [server, pty, sig_pipe, client0, client1, ...]
+         // So number of clients in poll_fds is poll_fds.items.len - 3
+-        const num_polled_clients = poll_fds.items.len - 3;
++        const num_polled_clients = poll_fds.items.len - 4;
+         if (i > num_polled_clients) {
+             // If we have more clients than polled (i.e. we just accepted one), start from the
+             // polled ones
+@@ -459,34 +579,74 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+             i -= 1;
+             const client = daemon.clients.items[i];
+             const revents = poll_fds.items[i + 3].revents;
++            if (client.overflowed) {
++                _ = daemon.closeClient(gpa, client, i, false);
++                continue;
++            }
+ 
+-            if (revents & lib_posix.POLL.IN != 0) {
+-                const n = client.read_buf.read(client.socket_fd) catch |err| {
+-                    if (err == error.WouldBlock) continue;
+-                    std.log.debug(
+-                        "client read err={s} fd={d}",
+-                        .{ @errorName(err), client.socket_fd },
+-                    );
+-                    const last = daemon.closeClient(gpa, client, i, false);
+-                    if (last) break :daemon_loop;
+-                    continue;
+-                };
++            if ((revents & lib_posix.POLL.IN != 0 or client.resume_buffered) and client.pending_vt == null) {
++                client.resume_buffered = false;
++                if (revents & lib_posix.POLL.IN != 0) {
++                    const n = client.read_buf.read(client.socket_fd) catch |err| {
++                        if (err == error.WouldBlock) continue;
++                        std.log.debug(
++                            "client read err={s} fd={d}",
++                            .{ @errorName(err), client.socket_fd },
++                        );
++                        const last = daemon.closeClient(gpa, client, i, false);
++                        if (last) break :daemon_loop;
++                        continue;
++                    };
+ 
+-                if (n == 0) {
+-                    // Client closed connection
+-                    const last = daemon.closeClient(gpa, client, i, false);
+-                    if (last) break :daemon_loop;
+-                    continue;
++                    if (n == 0) {
++                        // Client closed connection
++                        const last = daemon.closeClient(gpa, client, i, false);
++                        if (last) break :daemon_loop;
++                        continue;
++                    }
+                 }
+-
+                 while (client.read_buf.next()) |msg| {
++                    if (client.close_after_flush) break;
++                    if (isVtRequest(msg.header.tag)) {
++                        if (msg.payload.len > client.pending_payload.len) {
++                            client.overflowed = true;
++                            break;
++                        }
++                        client.pending_vt = msg.header.tag;
++                        client.pending_len = msg.payload.len;
++                        @memcpy(client.pending_payload[0..msg.payload.len], msg.payload);
++                        shadow.requestPause();
++                        break;
++                    }
+                     switch (msg.header.tag) {
+-                        .Input => try daemon.handleInput(gpa, client, msg.payload),
+-                        .Send => daemon.handleSend(gpa, msg.payload),
+-                        .Output => try daemon.handleOutput(gpa, msg.payload, &term, &vt_stream),
+-                        .Init => try daemon.handleInit(gpa, client, pty_fd, &term, msg.payload),
+-                        .Switch => try daemon.handleSwitch(gpa, msg.payload),
+-                        .Resize => try daemon.handleResize(gpa, client, pty_fd, &term, msg.payload),
++                        .RestoreReady => {
++                            if (!client.restore_done_sent or msg.payload.len != 0) {
++                                client.overflowed = true;
++                                break;
++                            }
++                            client.awaiting_restore_ack = false;
++                        },
++                        .Input => {
++                            if (client.awaiting_restore_ack) {
++                                std.log.err("rejecting input before restore admission", .{});
++                                client.overflowed = true;
++                                break;
++                            }
++                            if (msg.payload.len > 4096) {
++                                std.log.err("rejecting oversized terminal input message", .{});
++                                client.overflowed = true;
++                                break;
++                            }
++                            try daemon.handleInput(gpa, client, msg.payload);
++                        },
++                        // This dedicated holder has no command injection or
++                        // multiplexer API. Files use the explicit capability
++                        // sidechannel, not generated shell commands in a PTY.
++                        .Send, .Output, .Switch, .Run, .Write => {
++                            try ipc.appendMessage(gpa, &client.write_buf, .Unsupported, "");
++                            client.has_pending_output = true;
++                        },
++                        .Init, .InitTextOnly, .Resize, .Info, .History, .Capture => unreachable,
+                         .Detach => {
+                             daemon.handleDetach(gpa, client, i);
+                             break :clients_loop;
+@@ -498,17 +658,12 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+                         .Kill => {
+                             break :daemon_loop;
+                         },
+-                        .Info => try daemon.handleInfo(gpa, client, &term),
+                         .LabelGet => try daemon.handleLabelGet(gpa, client),
+                         .LabelSet => try daemon.handleLabelSet(gpa, client, msg.payload),
+                         .LabelClear => try daemon.handleLabelClear(gpa, client),
+                         .EnvGet => try daemon.handleEnvGet(gpa, client),
+                         .EnvSet => try daemon.handleEnvSet(gpa, client, msg.payload),
+-                        .History => try daemon.handleHistory(gpa, client, &term, msg.payload),
+-                        .Capture => try daemon.handleCapture(gpa, client, &term, msg.payload),
+-                        .Run => try daemon.handleRun(gpa, io, client, msg.payload),
+-                        .Ack, .TaskComplete, .LabelData, .EnvData, .Unsupported => {},
+-                        .Write => try daemon.handleWrite(gpa, client, msg.payload),
++                        .Ack, .TaskComplete, .LabelData, .EnvData, .Unsupported, .StreamEnd, .RestoreError, .RestoreDone => {},
+                         _ => {
+                             std.log.warn(
+                                 "ignoring unknown IPC tag={d}",
+@@ -521,6 +676,11 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+                 }
+             }
+ 
++            if (client.overflowed) {
++                _ = daemon.closeClient(gpa, client, i, false);
++                continue;
++            }
++
+             if (revents & lib_posix.POLL.OUT != 0) {
+                 // Flush pending output buffers
+                 const n = lib_posix.write(client.socket_fd, client.write_buf.items) catch |err| blk: {
+@@ -537,6 +697,10 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+ 
+                 if (client.write_buf.items.len == 0) {
+                     client.has_pending_output = false;
++                    if (client.close_after_flush) {
++                        _ = daemon.closeClient(gpa, client, i, false);
++                        continue;
++                    }
+                 }
+             }
+ 
+@@ -563,6 +727,40 @@ const ClientResult = struct {
+     cwd: ?[]const u8 = null,
+ };
+ 
++fn isVtRequest(tag: ipc.Tag) bool {
++    return switch (tag) {
++        .Init, .InitTextOnly, .Resize, .Info, .History, .Capture => true,
++        else => false,
++    };
++}
++fn processVtRequest(gpa: std.mem.Allocator, daemon: *Daemon, client: *Client, pty_fd: i32, term: *ghostty_vt.Terminal, tag: ipc.Tag, payload: []const u8) !void {
++    switch (tag) {
++        .Init, .InitTextOnly => daemon.handleInitMode(gpa, client, pty_fd, term, payload, tag == .InitTextOnly) catch |err| {
++            std.log.err("terminal restoration refused err={s}", .{@errorName(err)});
++            if (client.restore) |data| gpa.free(data);
++            client.restore = null;
++            client.graphics_restore_state = null;
++            client.write_buf.clearRetainingCapacity();
++            ipc.appendMessage(gpa, &client.write_buf, .RestoreError, @errorName(err)) catch {
++                client.overflowed = true;
++            };
++            client.close_after_flush = true;
++            client.has_pending_output = true;
++        },
++        .Resize => try daemon.handleResize(gpa, client, pty_fd, term, payload),
++        .Info => try daemon.handleInfo(gpa, client, term),
++        .History => daemon.handleHistory(gpa, client, term, payload) catch {
++            std.log.err("history response exceeds queue limit", .{});
++            client.overflowed = true;
++        },
++        .Capture => daemon.handleCapture(gpa, client, term, payload) catch {
++            std.log.err("capture response exceeds queue limit", .{});
++            client.overflowed = true;
++        },
++        else => unreachable,
++    }
++}
++
+ /// Client represents each terminal that has connected to a session.
+ ///
+ /// Multiple Clients can connect to a single session.
+@@ -570,16 +768,71 @@ pub const Client = struct {
+     alloc: std.mem.Allocator,
+     socket_fd: i32,
+     has_pending_output: bool = false,
++    overflowed: bool = false,
++    close_after_flush: bool = false,
+     is_terminal: bool = false, // sent .Init (a `zmx attach`), not a run/send/tail client
+     read_buf: ipc.SocketBuffer,
+     write_buf: std.ArrayList(u8),
++    pending_vt: ?ipc.Tag = null,
++    pending_payload: [8192]u8 = undefined,
++    pending_len: usize = 0,
++    resume_buffered: bool = false,
+     env_str: ?[]u8 = null,
++    // Only the leader may stream a >queue snapshot. One immutable, bounded
++    // restore exists per daemon; observers never pause the foreground PTY.
++    restore: ?[]const u8 = null,
++    restore_offset: usize = 0,
++    graphics_restore_state: ?graphics_restore.State = null,
++    awaiting_restore_ack: bool = false,
++    restore_done_sent: bool = false,
+ 
+     pub fn deinit(self: *Client, gpa: std.mem.Allocator) void {
+         lib_posix.close(self.socket_fd);
+         self.read_buf.deinit();
+         self.write_buf.deinit(self.alloc);
+         if (self.env_str) |s| gpa.free(s);
++        if (self.restore) |data| gpa.free(data);
++    }
++
++    fn isRestoring(self: *const Client) bool {
++        return self.restore != null or self.graphics_restore_state != null or self.awaiting_restore_ack;
++    }
++
++    fn pumpRestore(self: *Client, gpa: std.mem.Allocator) !void {
++        if (self.restore) |data| {
++            while (self.restore_offset < data.len and
++                self.write_buf.items.len < ipc.MAX_QUEUE_LEN - (65536 + @sizeOf(ipc.Header)))
++            {
++                const end = @min(self.restore_offset + 65536, data.len);
++                try ipc.appendMessage(gpa, &self.write_buf, .Output, data[self.restore_offset..end]);
++                self.restore_offset = end;
++                self.has_pending_output = true;
++            }
++            if (self.restore_offset != data.len) return;
++            gpa.free(data);
++            self.restore = null;
++            self.restore_offset = 0;
++        }
++        if (self.graphics_restore_state) |*state| {
++            var buffer: [8192]u8 = undefined;
++            while (self.write_buf.items.len < ipc.MAX_QUEUE_LEN - (buffer.len + @sizeOf(ipc.Header))) {
++                var writer: std.Io.Writer = .fixed(&buffer);
++                if (!try state.next(&writer)) {
++                    self.graphics_restore_state = null;
++                    break;
++                }
++                try ipc.appendMessage(gpa, &self.write_buf, .Output, writer.buffered());
++                self.has_pending_output = true;
++            }
++        }
++        if (self.restore == null and self.graphics_restore_state == null and
++            self.awaiting_restore_ack and !self.restore_done_sent and
++            self.write_buf.items.len <= ipc.MAX_QUEUE_LEN - @sizeOf(ipc.Header))
++        {
++            try ipc.appendMessage(gpa, &self.write_buf, .RestoreDone, "");
++            self.restore_done_sent = true;
++            self.has_pending_output = true;
++        }
+     }
+ 
+     fn setEnv(self: *Client, gpa: std.mem.Allocator, env_str: []const u8) !void {
+@@ -623,6 +876,8 @@ pub const Daemon = struct {
+     cwd_buf: [std.fs.max_path_bytes]u8 = undefined,
+     cwd_path_buf: [std.fs.max_path_bytes]u8 = undefined,
+     has_pty_output: bool = false,
++    osc66_detector: snapshot_guard.Osc66 = .{},
++    has_unrestorable_osc66: bool = false,
+     created_at: u64, // unix timestamp (ns)
+     is_task_mode: bool = false, // flag for when session is run as a task
+     task_id: [4]u8 = undefined,
+@@ -674,7 +929,17 @@ pub const Daemon = struct {
+         const saved = term.flags.shell_redraws_prompt;
+         term.flags.shell_redraws_prompt = .false;
+         defer term.flags.shell_redraws_prompt = saved;
++        // Kitty retains existing tab stops over a resize. libghostty resets
++        // them when columns change, which loses application state before the
++        // reconnect formatter can replay it. Preserve the overlapping columns;
++        // newly added columns keep their ordinary default stops.
++        const previous_tabs = try gpa.alloc(bool, @min(term.cols, cols));
++        defer gpa.free(previous_tabs);
++        for (previous_tabs, 0..) |*value, col| value.* = term.tabstops.get(@intCast(col));
+         try term.resize(gpa, .{ .cols = cols, .rows = rows });
++        for (previous_tabs, 0..) |value, col| {
++            if (value) term.tabstops.set(@intCast(col)) else term.tabstops.unset(@intCast(col));
++        }
+     }
+ 
+     /// True while a client that sent .Init (a real `zmx attach`) is connected.
+@@ -843,7 +1108,7 @@ pub const Daemon = struct {
+ 
+         const gpa: std.mem.Allocator = blk: {
+             if (builtin.mode == .debug) {
+-                const GPA = std.heap.DebugAllocator(.{});
++                const GPA = std.heap.DebugAllocator(.{ .thread_safe = true });
+                 const Static = struct {
+                     var gpa: GPA = .{};
+                 };
+@@ -894,29 +1159,18 @@ pub const Daemon = struct {
+     const PTY_WRITE_BUF_MAX = 256 * 1024;
+ 
+     /// Queue bytes for the PTY's stdin. Flushed by daemonLoop on POLLOUT.
+-    /// Drops the payload if the buffer is over cap -- same failure mode as
+-    /// the old direct-write ptyWrite (drop on EAGAIN), just at a 64x higher
+-    /// threshold. Capping avoids OOM when the shell stops reading; dropping
+-    /// new (not old) bytes avoids tearing a partially-accepted sequence.
++    /// The polling loop applies backpressure before this queue can fill.
++    /// A violated invariant is a hard error, never a silently truncated paste.
+     fn queuePtyInput(self: *Daemon, gpa: std.mem.Allocator, data: []const u8) void {
+         if (data.len == 0) return;
+         if (self.pty_write_buf.items.len + data.len > PTY_WRITE_BUF_MAX) {
+-            std.log.warn(
+-                "pty input dropped {d} bytes (buffer full, shell not reading)",
+-                .{data.len},
+-            );
+-            return;
++            @panic("PTY input backpressure invariant violated");
+         }
+ 
+         // NOTE: for local dev only
+         // std.log.debug("buffering pty input data={x}", .{data});
+ 
+-        self.pty_write_buf.appendSlice(gpa, data) catch |err| {
+-            std.log.warn(
+-                "pty input dropped {d} bytes: {s}",
+-                .{ data.len, @errorName(err) },
+-            );
+-        };
++        self.pty_write_buf.appendSlice(gpa, data) catch @panic("PTY input allocation failed");
+     }
+ 
+     pub fn handleInput(self: *Daemon, gpa: std.mem.Allocator, client: *Client, payload: []const u8) !void {
+@@ -981,6 +1235,18 @@ pub const Daemon = struct {
+         pty_fd: i32,
+         term: *ghostty_vt.Terminal,
+         payload: []const u8,
++    ) !void {
++        return self.handleInitMode(gpa, client, pty_fd, term, payload, false);
++    }
++
++    pub fn handleInitMode(
++        self: *Daemon,
++        gpa: std.mem.Allocator,
++        client: *Client,
++        pty_fd: i32,
++        term: *ghostty_vt.Terminal,
++        payload: []const u8,
++        text_only: bool,
+     ) !void {
+         if (payload.len != @sizeOf(ipc.Resize)) return;
+ 
+@@ -989,6 +1255,8 @@ pub const Daemon = struct {
+             client.has_pending_output = false;
+         }
+         client.is_terminal = true;
++        client.awaiting_restore_ack = true;
++        client.restore_done_sent = false;
+ 
+         if (self.leader_client_fd == null) {
+             try self.setLeader(gpa, client);
+@@ -1006,29 +1274,50 @@ pub const Daemon = struct {
+             try resizeTerm(gpa, term, resize.cols, resize.rows);
+         }
+ 
++        if (!text_only and self.has_unrestorable_osc66) return error.KittyTextSizingRestoreUnsupported;
++
+         if (self.has_pty_output) {
+             const cursor = &term.screens.active.cursor;
+             std.log.debug(
+                 "cursor before serialize: x={d} y={d} pending_wrap={}",
+                 .{ cursor.x, cursor.y, cursor.pending_wrap },
+             );
+-            if (util.serializeTerminalState(gpa, term)) |term_output| {
+-                std.log.debug("serialize terminal state", .{});
+-                // Rewrite OSC 133;A to include redraw=0 so the outer terminal
+-                // does not clear prompt lines on resize (issue #111).
+-                const restore_data = util.rewritePromptRedraw(gpa, term_output) orelse term_output;
+-                defer gpa.free(term_output);
+-                defer if (restore_data.ptr != term_output.ptr) gpa.free(restore_data);
+-                ipc.appendMessage(gpa, &client.write_buf, .Output, restore_data) catch |err| {
+-                    std.log.warn(
+-                        "failed to buffer terminal state for client err={s}",
+-                        .{@errorName(err)},
+-                    );
+-                };
++            // Reject obviously oversized observers before formatting/base64
++            // work. An observer must not pause foreground I/O behind a large
++            // graphics snapshot that its4MiB queue can never admit.
++            if (!is_leader and !text_only and term.screens.active.kitty_images.total_bytes >
++                (ipc.MAX_QUEUE_LEN - 65536) / 4 * 3)
++                return error.ObserverGraphicsSnapshotTooLarge;
++            if (!text_only) try graphics_restore.validate(term);
++            const term_output = (if (text_only) terminal.serializeTerminalStateTextRecovery(gpa, term) else if (is_leader) terminal.serializeTerminalStateText(gpa, term) else util.serializeTerminalState(gpa, term)) orelse return error.SnapshotUnavailable;
++            // The formatter already emits redraw=0? Keep the existing prompt
++            // rewrite while bounding its independent allocation by 32MiB too.
++            const rewritten = util.rewritePromptRedraw(gpa, term_output);
++            const restore_data = rewritten orelse term_output;
++            if (restore_data.ptr != term_output.ptr) gpa.free(term_output);
++            var restore_transferred = false;
++            errdefer if (!restore_transferred) gpa.free(restore_data);
++            if (restore_data.len > util.terminal.MAX_SNAPSHOT_LEN)
++                return error.SnapshotTooLarge;
++            if (is_leader) {
++                if (client.restore != null) return error.RestoreAlreadyPending;
++                const graphics_state: ?graphics_restore.State = if (text_only) null else try graphics_restore.State.create(term);
++                client.restore = restore_data;
++                client.restore_offset = 0;
++                client.graphics_restore_state = graphics_state;
++                restore_transferred = true;
++                try client.pumpRestore(gpa);
++            } else {
++                // A large observer snapshot is explicitly refused. Its restore
++                // must never stall a foreground application's output/input.
++                try ipc.appendMessage(gpa, &client.write_buf, .Output, restore_data);
++                gpa.free(restore_data);
+                 client.has_pending_output = true;
+             }
+         }
+ 
++        try client.pumpRestore(gpa);
++
+         // only resize if leader
+         if (is_leader) {
+             var ws = resize.winsize();
+@@ -1576,3 +1865,80 @@ test "handleEnvGet returns leader client's environment variables including unset
+     const pay3 = client_req.write_buf.items[@sizeOf(ipc.Header)..];
+     try std.testing.expectEqualStrings("DISPLAY=:99\n", pay3);
+ }
++
++test "actor decoder stall leaves owner input and raw output independent and barriers exact" {
++    const alloc = std.heap.c_allocator;
++    const cfg = Cfg{ .socket_dir = "", .log_dir = "" };
++    var term = try initTerminal(alloc, std.testing.io, .{ .cols = 80, .rows = 24 }, &cfg);
++    defer term.deinit(alloc);
++    const Gate = struct {
++        var entered: std.Io.Event = .unset;
++        var released: std.Io.Event = .unset;
++        fn decode(a: std.mem.Allocator, _: []const u8) ghostty_vt.sys.DecodeError!ghostty_vt.sys.Image {
++            entered.set(std.testing.io);
++            released.waitUncancelable(std.testing.io);
++            const bytes = try a.dupe(u8, &.{ 0x55, 0xaa, 0x33, 0xff });
++            return .{ .width = 1, .height = 1, .data = bytes };
++        }
++    };
++    const previous_decoder = ghostty_vt.sys.decode_png;
++    ghostty_vt.sys.decode_png = &Gate.decode;
++    defer ghostty_vt.sys.decode_png = previous_decoder;
++    var actor = try ShadowActor.init(alloc, std.testing.io, &term);
++    defer actor.deinit();
++    // Ensure a failed test always releases a worker blocked in the test-only
++    // callback. The shipping decoder and actor have no artificial delay hook.
++    defer Gate.released.set(std.testing.io);
++    try actor.start();
++    const png = "\x1b_Ga=T,f=100,i=9,q=2;iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==\x1b\\";
++    try actor.feed(png);
++    Gate.entered.waitUncancelable(std.testing.io);
++    try std.testing.expect(actor.canFeed());
++    try std.testing.expect(!actor.isPaused());
++
++    // Exercise the actual owner input handler and output frame builder while
++    // the real VT PNG callback is blocked on a separate OS thread. No timer or
++    // latency threshold substitutes for this explicit causal ordering.
++    var daemon = testDaemon();
++    defer daemon.pty_write_buf.deinit(alloc);
++    const pipe = try lib_posix.pipe2(.{});
++    defer lib_posix.close(pipe[1]);
++    const client = try testClient(alloc, pipe[0], true);
++    defer {
++        client.deinit(alloc);
++        alloc.destroy(client);
++    }
++    daemon.leader_client_fd = client.socket_fd;
++    try daemon.handleInput(alloc, client, "owner-input-during-decode");
++    try std.testing.expectEqualStrings("owner-input-during-decode", daemon.pty_write_buf.items);
++    try ipc.appendMessage(alloc, &client.write_buf, .Output, "raw-output-during-decode");
++    try std.testing.expect(std.mem.indexOf(u8, client.write_buf.items, "raw-output-during-decode") != null);
++    try std.testing.expect(!Gate.released.isSet());
++
++    try actor.feed("\x1b]7;file://nas/actor-barrier\x1b\\\x1b[?1004h\x1b[>31uORDERED_TAIL");
++    // The limit counts allocations, including the in-flight decoder chunk.
++    // One-byte reads therefore cannot evade the memory bound.
++    for (2..8192) |_| try actor.feed("Z");
++    try std.testing.expect(!actor.canFeed());
++    actor.requestPause();
++    try std.testing.expect(!actor.isPaused());
++    try std.testing.expectEqual(@as(u64, 0), actor.parsed_offset);
++    Gate.released.set(std.testing.io);
++    for (0..10) |_| {
++        if (actor.isPaused()) break;
++        var fd = [_]lib_posix.pollfd{.{ .fd = actor.wake[0], .events = lib_posix.POLL.IN, .revents = 0 }};
++        _ = try lib_posix.poll(&fd, 1000);
++        actor.drainWake();
++    }
++    try std.testing.expect(actor.isPaused());
++    try std.testing.expectEqual(actor.enqueued_offset, actor.parsed_offset);
++    try std.testing.expectEqualStrings("file://nas/actor-barrier", term.getPwd().?);
++    try std.testing.expect(term.modes.get(.focus_event));
++    const history = util.serializeTerminal(alloc, &term, .plain) orelse return error.TestUnexpectedNull;
++    defer alloc.free(history);
++    try std.testing.expect(std.mem.indexOf(u8, history, "ORDERED_TAIL") != null);
++    try Daemon.resizeTerm(alloc, &term, 90, 30);
++    try std.testing.expectEqual(@as(usize, 90), term.cols);
++    actor.resumeParsing();
++    try std.testing.expect(actor.canFeed());
++}
+diff --git a/src/main.zig b/src/main.zig
+index 183b736..e029fc3 100644
+--- a/src/main.zig
++++ b/src/main.zig
+@@ -69,6 +69,11 @@ fn mainImpl(init: std.process.Init) !void {
+         return list(gpa, io, &cfg, false);
+     };
+ 
++    for ([_][]const u8{ "run", "r", "send", "s", "print", "p", "write", "wr" }) |disabled| {
++        if (std.mem.eql(u8, cmd, disabled))
++            return printError(io, "command is disabled in the dedicated Agency PTY holder: {s}", .{cmd});
++    }
++
+     if (std.mem.eql(u8, cmd, "version") or std.mem.eql(u8, cmd, "v") or std.mem.eql(u8, cmd, "-v") or std.mem.eql(u8, cmd, "--version")) {
+         return printVersion(io, &cfg);
+     } else if (std.mem.eql(u8, cmd, "help") or std.mem.eql(u8, cmd, "h") or std.mem.eql(u8, cmd, "-h")) {
+@@ -611,6 +616,8 @@ fn help(io: std.Io) !void {
+         \\                       from attaching clients
+         \\  ZMX_DIR_MODE         Sets mode for socket and log directories (octal, defaults to 0750)
+         \\  ZMX_LOG_MODE         Sets mode for log files (octal, defaults to 0640)
++        \\  ZMX_IMAGE_STORAGE_MIB Image cache budget1..512MiB per screen, allocated on demand (default320)
++        \\  ZMX_RESTORE_TEXT_ONLY Explicit image-free recovery when set to1; same retained PTY
+         \\  ZMX_NO_DETACH_KEY    Disables the ctrl+\ detach shortcut (set to any value)
+         \\
+     ;
+diff --git a/src/shadow_actor.zig b/src/shadow_actor.zig
+new file mode 100644
+index 0000000..8a8d507
+--- /dev/null
++++ b/src/shadow_actor.zig
+@@ -0,0 +1,132 @@
++//! Experimental 205 actor: only this worker feeds VT. The owner may borrow the
++//! terminal only after an exact FIFO barrier has completed, and holds the pause
++//! through any graphics iterator lifetime. No worker ever touches the PTY.
++const std = @import("std");
++const terminal = @import("terminal.zig");
++const posix = @import("posix.zig");
++
++pub const Actor = struct {
++    const MAX_CHUNKS = 8192;
++    const Chunk = struct { bytes: [4096]u8, len: usize, next: ?*Chunk = null };
++    allocator: std.mem.Allocator,
++    io: std.Io,
++    term: *terminal.ghostty_vt.Terminal,
++    mutex: std.Io.Mutex = .init,
++    changed: std.Io.Condition = .init,
++    head: ?*Chunk = null,
++    tail: ?*Chunk = null,
++    count: usize = 0, // Includes the currently decoding chunk.
++    enqueued_offset: u64 = 0,
++    parsed_offset: u64 = 0,
++    pause_requested: bool = false,
++    paused: bool = false,
++    stopping: bool = false,
++    thread: ?std.Thread = null,
++    wake: [2]posix.fd_t,
++
++    pub fn init(allocator: std.mem.Allocator, io: std.Io, term: *terminal.ghostty_vt.Terminal) !Actor {
++        return .{ .allocator = allocator, .io = io, .term = term, .wake = try posix.pipe2(.{ .CLOEXEC = true, .NONBLOCK = true }) };
++    }
++    pub fn start(self: *Actor) !void {
++        self.thread = try std.Thread.spawn(.{}, run, .{self});
++    }
++    pub fn deinit(self: *Actor) void {
++        self.mutex.lockUncancelable(self.io);
++        self.stopping = true;
++        self.changed.signal(self.io);
++        self.mutex.unlock(self.io);
++        if (self.thread) |thread| thread.join();
++        while (self.head) |chunk| {
++            self.head = chunk.next;
++            self.allocator.destroy(chunk);
++        }
++        posix.close(self.wake[0]);
++        posix.close(self.wake[1]);
++    }
++    fn notify(self: *Actor) void {
++        _ = posix.write(self.wake[1], "x") catch |err| {
++            if (err != error.WouldBlock) @panic("shadow actor wake pipe write failed");
++        };
++    }
++    pub fn drainWake(self: *Actor) void {
++        var buf: [256]u8 = undefined;
++        while (true) {
++            const n = posix.read(self.wake[0], &buf) catch |err| {
++                if (err == error.WouldBlock) return;
++                @panic("shadow actor wake pipe read failed");
++            };
++            if (n == 0) @panic("shadow actor wake pipe closed unexpectedly");
++        }
++    }
++    pub fn canFeed(self: *Actor) bool {
++        self.mutex.lockUncancelable(self.io);
++        defer self.mutex.unlock(self.io);
++        return !self.pause_requested and self.count < MAX_CHUNKS;
++    }
++    pub fn feed(self: *Actor, bytes: []const u8) !void {
++        std.debug.assert(bytes.len <= 4096);
++        // Owner-only admission precedes its PTY read; worker only frees slots.
++        const chunk = try self.allocator.create(Chunk);
++        errdefer self.allocator.destroy(chunk);
++        chunk.* = .{ .bytes = undefined, .len = bytes.len };
++        @memcpy(chunk.bytes[0..bytes.len], bytes);
++        self.mutex.lockUncancelable(self.io);
++        defer self.mutex.unlock(self.io);
++        std.debug.assert(!self.pause_requested and self.count < MAX_CHUNKS);
++        if (self.tail) |tail| tail.next = chunk else self.head = chunk;
++        self.tail = chunk;
++        self.count += 1;
++        self.enqueued_offset += bytes.len;
++        self.changed.signal(self.io);
++    }
++    pub fn requestPause(self: *Actor) void {
++        self.mutex.lockUncancelable(self.io);
++        defer self.mutex.unlock(self.io);
++        self.pause_requested = true;
++        self.changed.signal(self.io);
++    }
++    pub fn isPaused(self: *Actor) bool {
++        self.mutex.lockUncancelable(self.io);
++        defer self.mutex.unlock(self.io);
++        if (self.paused) std.debug.assert(self.parsed_offset == self.enqueued_offset);
++        return self.paused;
++    }
++    pub fn resumeParsing(self: *Actor) void {
++        self.mutex.lockUncancelable(self.io);
++        defer self.mutex.unlock(self.io);
++        self.pause_requested = false;
++        self.paused = false;
++        self.changed.signal(self.io);
++    }
++    fn run(self: *Actor) void {
++        var stream = self.term.vtStream();
++        defer stream.deinit();
++        self.mutex.lockUncancelable(self.io);
++        while (!self.stopping) {
++            if (self.pause_requested and self.head == null) {
++                if (!self.paused) {
++                    self.paused = true;
++                    self.notify();
++                }
++                self.changed.waitUncancelable(self.io, &self.mutex);
++                continue;
++            }
++            const chunk = self.head orelse {
++                self.changed.waitUncancelable(self.io, &self.mutex);
++                continue;
++            };
++            self.head = chunk.next;
++            if (self.head == null) self.tail = null;
++            self.mutex.unlock(self.io);
++            stream.nextSlice(chunk.bytes[0..chunk.len]);
++            const parsed = chunk.len;
++            self.allocator.destroy(chunk);
++            self.mutex.lockUncancelable(self.io);
++            const was_full = self.count == MAX_CHUNKS;
++            self.count -= 1;
++            self.parsed_offset += parsed;
++            if (was_full) self.notify();
++        }
++        self.mutex.unlock(self.io);
++    }
++};
+diff --git a/src/snapshot_guard.zig b/src/snapshot_guard.zig
+new file mode 100644
+index 0000000..b697eb0
+--- /dev/null
++++ b/src/snapshot_guard.zig
+@@ -0,0 +1,48 @@
++//! Conservative detection of a native Kitty extension the shadow drops.
++//! This is not another terminal parser: matching inside an enclosed string can
++//! produce a conservative false positive. Never clear the marker on a guessed
++//! reset; explicit text-only recovery remains available for the retained PTY.
++const std = @import("std");
++
++pub const Osc66 = struct {
++    prefix: u8 = 0,
++
++    pub fn feed(self: *Osc66, data: []const u8) bool {
++        var index: usize = 0;
++        while (index < data.len) {
++            if (self.prefix == 0) {
++                index += std.mem.indexOfAny(u8, data[index..], "\x1b\x9d") orelse return false;
++            }
++            const byte = data[index];
++            index += 1;
++            const restart: u8 = if (byte == 0x1b) 1 else if (byte == 0x9d) 2 else 0;
++            self.prefix = switch (self.prefix) {
++                0 => restart,
++                1 => if (byte == ']') 2 else restart,
++                2 => if (byte == '6') 3 else restart,
++                3 => if (byte == '6') 4 else restart,
++                4 => if (byte == ';') return true else restart,
++                else => unreachable,
++            };
++        }
++        return false;
++    }
++};
++
++test "OSC66 detector covers every split boundary and C1 prefix" {
++    for ([_][]const u8{ "\x1b]66;s=2;native\x1b\\", "\x9d66;s=2;native\x9c" }) |sequence| {
++        for (0..sequence.len + 1) |split| {
++            var detector: Osc66 = .{};
++            const first = detector.feed(sequence[0..split]);
++            const second = detector.feed(sequence[split..]);
++            try std.testing.expect(first or second);
++        }
++    }
++}
++
++test "OSC66 detector distinguishes ordinary OSC and resumes partial prefix" {
++    var detector: Osc66 = .{};
++    try std.testing.expect(!detector.feed("text\x1b]7;file://nas/x\x1b\\\x1b]660;other\x07"));
++    try std.testing.expect(!detector.feed("\x1b]6"));
++    try std.testing.expect(detector.feed("6;s=2;native\x07"));
++}
+diff --git a/src/terminal.zig b/src/terminal.zig
+index 786764e..fb68e92 100644
+--- a/src/terminal.zig
++++ b/src/terminal.zig
+@@ -2,6 +2,8 @@ const std = @import("std");
+ const build_options = @import("build_options");
+ const util = @import("util.zig");
+ const testing = std.testing;
++const graphics_restore = @import("graphics_restore.zig");
++pub const MAX_SNAPSHOT_LEN: usize = 32 * 1024 * 1024;
+ const has_daemon = if (@hasDecl(build_options, "has_daemon")) build_options.has_daemon else true;
+ pub const ghostty_vt = if (has_daemon) @import("ghostty-vt") else struct {
+     pub const Terminal = struct {};
+@@ -89,32 +91,36 @@ pub fn isUserInput(payload: []const u8) bool {
+ /// The NUL is not cosmetic: a client that records what it receives (kitty
+ /// writing its session file, for one) persists the NUL and then fails to parse
+ /// its own state back. See https://github.com/neurosnap/zmx/issues/222.
+-fn writePwd(writer: *std.Io.Writer, term: *const ghostty_vt.Terminal) void {
++fn writePwd(writer: *std.Io.Writer, term: *const ghostty_vt.Terminal) !void {
+     const pwd = term.getPwd() orelse return;
+     if (pwd.len == 0) return;
+-    writer.print("\x1b]7;{s}\x1b\\", .{pwd}) catch |err| {
+-        std.log.warn("failed to format pwd err={s}", .{@errorName(err)});
+-    };
++    try writer.print("\x1b]7;{s}\x1b\\", .{pwd});
+ }
+ 
+ fn writeDynamicColor(
+     writer: *std.Io.Writer,
+     kind: ghostty_vt.color.Dynamic,
+     dynamic: ghostty_vt.color.DynamicRGB,
+-) void {
++) !void {
+     const c = dynamic.override orelse return;
+-    writer.print("\x1b]{d};rgb:{x:0>2}/{x:0>2}/{x:0>2}\x1b\\", .{
++    try writer.print("\x1b]{d};rgb:{x:0>2}/{x:0>2}/{x:0>2}\x1b\\", .{
+         @backingInt(kind), c.r, c.g, c.b,
+-    }) catch |err| {
+-        std.log.warn("failed to format dynamic color err={s}", .{@errorName(err)});
+-    };
++    });
+ }
+ 
+-fn writeColorOverrides(writer: *std.Io.Writer, term: *const ghostty_vt.Terminal) void {
++fn writeColorOverrides(writer: *std.Io.Writer, term: *const ghostty_vt.Terminal) !void {
+     const colors = &term.colors;
+-    writeDynamicColor(writer, .foreground, colors.foreground);
+-    writeDynamicColor(writer, .background, colors.background);
+-    writeDynamicColor(writer, .cursor, colors.cursor);
++    // Restore only application overrides. The formatter's palette=true emits
++    // all 256 shadow defaults, which would overwrite the client's own theme.
++    for (colors.palette.current, 0..) |rgb, index| {
++        if (!colors.palette.mask.isSet(index)) continue;
++        try writer.print("\x1b]4;{d};rgb:{x:0>2}/{x:0>2}/{x:0>2}\x1b\\", .{
++            index, rgb.r, rgb.g, rgb.b,
++        });
++    }
++    try writeDynamicColor(writer, .foreground, colors.foreground);
++    try writeDynamicColor(writer, .background, colors.background);
++    try writeDynamicColor(writer, .cursor, colors.cursor);
+ }
+ 
+ /// The VT formatter does not emit the cursor shape (DECSCUSR).
+@@ -130,8 +136,25 @@ fn writeCursorStyle(writer: *std.Io.Writer, term: *ghostty_vt.Terminal) !void {
+ }
+ 
+ pub fn serializeTerminalState(alloc: std.mem.Allocator, term: *ghostty_vt.Terminal) ?[]const u8 {
+-    var builder: std.Io.Writer.Allocating = .init(alloc);
+-    defer builder.deinit();
++    return serializeTerminalStateImpl(alloc, term, true, true);
++}
++
++pub fn serializeTerminalStateText(alloc: std.mem.Allocator, term: *ghostty_vt.Terminal) ?[]const u8 {
++    return serializeTerminalStateImpl(alloc, term, false, true);
++}
++
++pub fn serializeTerminalStateTextRecovery(alloc: std.mem.Allocator, term: *ghostty_vt.Terminal) ?[]const u8 {
++    return serializeTerminalStateImpl(alloc, term, false, false);
++}
++
++fn serializeTerminalStateImpl(alloc: std.mem.Allocator, term: *ghostty_vt.Terminal, include_graphics: bool, validate_graphics: bool) ?[]const u8 {
++    const backing = alloc.alloc(u8, MAX_SNAPSHOT_LEN) catch return null;
++    defer alloc.free(backing);
++    var builder = struct { writer: std.Io.Writer }{ .writer = .fixed(backing) };
++    if (validate_graphics) graphics_restore.validate(term) catch |err| {
++        std.log.err("refusing incomplete graphics restore err={s}", .{@errorName(err)});
++        return null;
++    };
+ 
+     // Synchronized output (DECSET 2026) is a transient rendering handshake
+     // between a program and its current terminal client. Replaying it to a
+@@ -145,7 +168,7 @@ pub fn serializeTerminalState(alloc: std.mem.Allocator, term: *ghostty_vt.Termin
+     defer if (had_synchronized_output) term.modes.set(.synchronized_output, true);
+ 
+     // If state contains color override, restore it.
+-    writeColorOverrides(&builder.writer, term);
++    writeColorOverrides(&builder.writer, term) catch return null;
+ 
+     const pages = &term.screens.active.pages;
+     const screen_top = pages.getTopLeft(.screen);
+@@ -170,7 +193,7 @@ pub fn serializeTerminalState(alloc: std.mem.Allocator, term: *ghostty_vt.Termin
+             var sb_bottom = sb_bottom_row;
+             sb_bottom.x = @intCast(pages.cols - 1);
+ 
+-            var scroll_fmt = ghostty_vt.formatter.TerminalFormatter.init(term, .vt);
++            var scroll_fmt = ghostty_vt.formatter.TerminalFormatter.init(term, .{ .emit = .vt, .unwrap = true });
+             scroll_fmt.content = .{
+                 .selection = ghostty_vt.Selection.init(
+                     screen_top,
+@@ -181,6 +204,7 @@ pub fn serializeTerminalState(alloc: std.mem.Allocator, term: *ghostty_vt.Termin
+             scroll_fmt.extra = .none; // no modes, cursor, keyboard — just content
+             scroll_fmt.format(&builder.writer) catch |err| {
+                 std.log.warn("failed to format scrollback err={s}", .{@errorName(err)});
++                return null;
+             };
+         }
+ 
+@@ -195,11 +219,13 @@ pub fn serializeTerminalState(alloc: std.mem.Allocator, term: *ghostty_vt.Termin
+         // Clear visible screen after scrollback. \x1b[2J clears only the visible
+         // rows (not the scrollback buffer). \x1b[H homes the cursor. \x1b[0m resets
+         // SGR style so phase 1 styles don't bleed into phase 2.
+-        builder.writer.writeAll("\x1b[2J\x1b[H\x1b[0m") catch {};
++        builder.writer.writeAll("\x1b[2J\x1b[H\x1b[0m") catch return null;
+     }
+ 
+     // Phase 2: visible screen with full extras (modes, cursor, keyboard, etc.)
+-    var vis_fmt = ghostty_vt.formatter.TerminalFormatter.init(term, .vt);
++    // Let the attached terminal reproduce soft wraps at the same geometry,
++    // rather than materializing them as hard newlines during snapshot replay.
++    var vis_fmt = ghostty_vt.formatter.TerminalFormatter.init(term, .{ .emit = .vt, .unwrap = true });
+ 
+     // Restrict content to the active viewport only
+     const active_tl = pages.pin(.{ .active = .{ .x = 0, .y = 0 } });
+@@ -225,7 +251,7 @@ pub fn serializeTerminalState(alloc: std.mem.Allocator, term: *ghostty_vt.Termin
+         .palette = false,
+         .modes = true,
+         .scrolling_region = true,
+-        .tabstops = false, // tabstop restoration moves cursor after CUP, corrupting position
++        .tabstops = true, // current formatter restores tabs before content/cursor
+         .pwd = false, // emitted below without the sentinel the formatter includes
+         .keyboard = true,
+         .screen = .all,
+@@ -236,7 +262,11 @@ pub fn serializeTerminalState(alloc: std.mem.Allocator, term: *ghostty_vt.Termin
+         return null;
+     };
+ 
+-    writePwd(&builder.writer, term);
++    if (include_graphics) graphics_restore.write(&builder.writer, term) catch |err| {
++        std.log.err("failed to restore graphics err={s}", .{@errorName(err)});
++        return null;
++    };
++    writePwd(&builder.writer, term) catch return null;
+ 
+     // The formatter has no title extra and never emits OSC 0/1/2, so the title
+     // has to be replayed separately or an attaching client shows whatever its
+@@ -245,11 +275,13 @@ pub fn serializeTerminalState(alloc: std.mem.Allocator, term: *ghostty_vt.Termin
+     if (term.getTitle()) |title| {
+         builder.writer.print("\x1b]2;{s}\x07", .{title}) catch |err| {
+             std.log.warn("failed to format title err={s}", .{@errorName(err)});
++            return null;
+         };
+     }
+ 
+     writeCursorStyle(&builder.writer, term) catch |err| {
+         std.log.warn("failed to restore cursor style err={s}", .{@errorName(err)});
++        return null;
+     };
+ 
+     const output = builder.writer.buffered();
+@@ -282,11 +314,12 @@ pub fn serializeTerminalRange(
+     defer builder.deinit();
+ 
+     const opts: ghostty_vt.formatter.Options = switch (format) {
+-        .plain => .plain,
+-        .vt => .vt,
++        .plain => .{ .emit = .plain, .unwrap = true },
++        .vt => .{ .emit = .vt, .unwrap = true },
+         .html => .html,
+     };
+     var term_formatter = ghostty_vt.formatter.TerminalFormatter.init(term, opts);
++    if (format == .vt) writeColorOverrides(&builder.writer, term) catch return null;
+     term_formatter.content = .{ .selection = null };
+     if (scrollback_rows) |rows| {
+         const pages = &term.screens.active.pages;
+@@ -306,7 +339,7 @@ pub fn serializeTerminalRange(
+             .palette = false,
+             .modes = true,
+             .scrolling_region = true,
+-            .tabstops = false,
++            .tabstops = true,
+             .pwd = false, // emitted below without the sentinel the formatter includes
+             .keyboard = true,
+             .screen = .all,
+@@ -319,7 +352,7 @@ pub fn serializeTerminalRange(
+         return null;
+     };
+ 
+-    if (format == .vt) writePwd(&builder.writer, term);
++    if (format == .vt) writePwd(&builder.writer, term) catch return null;
+ 
+     const output = builder.writer.buffered();
+     if (output.len == 0) return null;
+@@ -1008,3 +1041,66 @@ test "isUserInput: kitty keyboard status reply is a terminal response" {
+     try testing.expect(isUserInput("\x1b[?1u\x1b[97;1u"));
+     try testing.expect(!isUserInput("\x1b[?1u\x1b[97;1:3u"));
+ }
++
++test "static Kitty graphics roundtrip preserves pixels placement and cursor" {
++    const alloc = testing.allocator;
++    var source = try ghostty_vt.Terminal.init(testing.io, alloc, .{ .cols = 80, .rows = 24 });
++    defer source.deinit(alloc);
++    var input = source.vtStream();
++    defer input.deinit();
++    input.nextSlice("\x1b[5;7H\x1b_Ga=T,f=32,s=2,v=1,i=49408,p=7,c=6,r=3,C=1,q=2;/wAA/wD/AP8=\x1b\\\x1b[11;13H");
++    try testing.expectEqual(@as(usize, 1), source.screens.active.kitty_images.images.count());
++    var dest = try serializeRoundtrip(alloc, testing.io, &source);
++    defer dest.deinit(alloc);
++    const image = dest.screens.active.kitty_images.images.get(49408) orelse return error.ImageMissing;
++    try testing.expectEqualSlices(u8, &.{ 255, 0, 0, 255, 0, 255, 0, 255 }, image.data.bytes().?);
++    try testing.expectEqual(@as(u32, 2), image.width);
++    try testing.expectEqual(@as(u32, 1), image.height);
++    try testing.expectEqual(@as(usize, 1), dest.screens.active.kitty_images.placements.count());
++    var placements = dest.screens.active.kitty_images.placements.valueIterator();
++    const placement = placements.next().?;
++    const location = dest.screens.active.pages.pointFromPin(.active, placement.location.pin.*).?.active;
++    try testing.expectEqual(@as(u32, 4), location.y);
++    try testing.expectEqual(@as(u16, 6), location.x);
++    try testing.expectEqual(@as(u32, 6), placement.columns);
++    try testing.expectEqual(@as(u32, 3), placement.rows);
++    try expectCursorAt(&dest, 10, 12);
++}
++
++test "static Kitty graphics snapshot follows replacement and deletion" {
++    const alloc = testing.allocator;
++    var source = try ghostty_vt.Terminal.init(testing.io, alloc, .{ .cols = 80, .rows = 24 });
++    defer source.deinit(alloc);
++    var input = source.vtStream();
++    defer input.deinit();
++    input.nextSlice("\x1b_Ga=T,f=24,s=1,v=1,i=7,q=2;/wAA\x1b\\");
++    input.nextSlice("\x1b_Ga=T,f=24,s=1,v=1,i=7,q=2;AP8A\x1b\\");
++    var replaced = try serializeRoundtrip(alloc, testing.io, &source);
++    defer replaced.deinit(alloc);
++    try testing.expectEqual(@as(usize, 1), replaced.screens.active.kitty_images.images.count());
++    const image = replaced.screens.active.kitty_images.images.get(7).?;
++    try testing.expectEqualSlices(u8, &.{ 0, 255, 0 }, image.data.bytes().?);
++    input.nextSlice("\x1b_Ga=d,d=I,i=7,q=2\x1b\\");
++    const snapshot = serializeTerminalState(alloc, &source) orelse return error.SerializationFailed;
++    defer alloc.free(snapshot);
++    var restored = replaced.vtStream();
++    defer restored.deinit();
++    restored.nextSlice(snapshot);
++    try testing.expectEqual(@as(usize, 0), replaced.screens.active.kitty_images.images.count());
++    try testing.expectEqual(@as(usize, 0), replaced.screens.active.kitty_images.placements.count());
++}
++
++test "PNG Kitty graphics retain exact decoded pixels for reconnect" {
++    graphics_restore.init();
++    const alloc = testing.allocator;
++    var source = try ghostty_vt.Terminal.init(testing.io, alloc, .{ .cols = 80, .rows = 24 });
++    defer source.deinit(alloc);
++    var input = source.vtStream();
++    defer input.deinit();
++    input.nextSlice("\x1b_Ga=T,f=100,i=49408,c=6,r=3,C=1,q=2;iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAADklEQVR4nGP4z8DwHwQBEPgD/U6VwW8AAAAASUVORK5CYII=\x1b\\");
++    try testing.expectEqual(@as(usize, 1), source.screens.active.kitty_images.images.count());
++    var dest = try serializeRoundtrip(alloc, testing.io, &source);
++    defer dest.deinit(alloc);
++    const image = dest.screens.active.kitty_images.images.get(49408) orelse return error.ImageMissing;
++    try testing.expectEqualSlices(u8, &.{ 255, 0, 0, 255, 0, 255, 0, 255 }, image.data.bytes().?);
++}
+diff --git a/src/test.zig b/src/test.zig
+index 33334d1..5df81b0 100644
+--- a/src/test.zig
++++ b/src/test.zig
+@@ -12,3 +12,7 @@ comptime {
+     _ = @import("lib.zig");
+     _ = @import("client.zig");
+ }
++
++test {
++    _ = @import("snapshot_guard.zig");
++}

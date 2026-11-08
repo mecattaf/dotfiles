@@ -8,6 +8,15 @@ const chat = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_OUTPUT = 4 * 1024 * 1024;
 const record = v => v && typeof v === 'object' && !Array.isArray(v);
 
+function validAgentStatus(value) {
+  if (value === undefined || value === null) return true;
+  if (!record(value) || Object.keys(value).sort().join(',') !== 'foreground,harness,state,verified,version' ||
+      value.version !== 1 || !['claude','codex'].includes(value.harness) || typeof value.verified !== 'boolean') return false;
+  if (['idle','working','done','waiting'].includes(value.state)) return value.foreground === true && value.verified === true;
+  if (['background','ended'].includes(value.state)) return value.foreground === false && value.verified === true;
+  return value.state === 'unverified' && value.foreground === null && value.verified === false;
+}
+
 function validRoute(row) {
   const direct = row?.mode === 'direct';
   const windowClass = direct ? row.windowClass === null || /^agencykitty-[a-f0-9]{32}$/.test(row.windowClass) :
@@ -20,6 +29,7 @@ function validRoute(row) {
     (row.kittyWindowId === undefined || row.kittyWindowId === null || Number.isSafeInteger(row.kittyWindowId) && row.kittyWindowId > 0 && row.kittyWindowId < 2**31) &&
     typeof row.directory === 'string' && row.directory.startsWith('/') && !/[\x00-\x1f\x7f]/.test(row.directory) &&
     typeof row.title === 'string' && row.title.length <= 256 && !/[\x00-\x1f\x7f]/.test(row.title) &&
+    validAgentStatus(row.agentStatus) &&
     Array.isArray(row.chatIds) && row.chatIds.length <= 128 && row.chatIds.every(id => typeof id === 'string' && chat.test(id)) &&
     (row.workspaceId === null || typeof row.workspaceId === 'string' && row.workspaceId.length <= 128 && !/[\x00-\x1f\x7f]/.test(row.workspaceId)) &&
     row.capabilities?.nativeRendering === true && row.capabilities?.contentIncluded === false && row.capabilities?.inputAuthority === false;
@@ -38,6 +48,7 @@ function validateReply(value, args) {
     workspaceId:v.workspaceId, windowClass:v.windowClass, status:v.status, liveness:v.liveness ?? 'unverified',
     mode:v.mode ?? 'persistent', resumable:v.resumable ?? true,
     kittyWindowId:v.kittyWindowId ?? null,
+    agentStatus:v.agentStatus ?? null,
     capabilities:{nativeRendering:true,contentIncluded:false,inputAuthority:false},
   }))};
 }

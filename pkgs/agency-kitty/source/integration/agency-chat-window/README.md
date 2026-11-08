@@ -27,3 +27,11 @@ have a separate provider and UUID. Chat IDs, terminal IDs and desktop classes
 remain distinct. Native tabs can share an OS-window class: the catalogue can
 focus that OS window, but does not claim to focus a specific Kitty tab.
 No live desktop or catalogue release is changed by installing this package.
+
+Native metadata is emitted before the existing serial DSH inventory, so a
+stalled DSH carrier does not delay healthy native rows. Both use the original
+poll clock; the two-entry result queue retains polling ownership until the
+DSH half completes. Shutdown waits up to eight seconds for this worker. The
+pre-existing DSH serial inventory can outlast that wait; running=False prevents
+it from starting another native helper afterwards. No claim is made that the
+old DSH worker's entire lifecycle has been redesigned here.

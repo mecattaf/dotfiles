@@ -32,6 +32,14 @@ def _snapshot(args) -> targets.Target:
 
 
 def _deliver(args, kind: str, value: str) -> None:
+    if kind=='paste' and args.harness_session:
+        # Explicit gesture work only, after staging and before the nonblocking
+        # GUI callback. This is not an atomic cross-host input transaction.
+        command = ssh_command_argv([getattr(args,'remote_program','agency-kitty'),'capability','validate-harness',
+                                   '--session-id',args.session,'--harness-session',args.harness_session])
+        result = json.loads(images.command_bytes(command,4096,timeout=6))
+        if result != {'version':1,'valid':True}:
+            raise RuntimeError('harness is no longer verified foreground; zero input sent')
     targets.deliver(args.kitty_socket, args.kitten_path, _snapshot(args), kind, value)
 
 
@@ -80,6 +88,9 @@ def parser() -> argparse.ArgumentParser:
     sound.add_argument("event", choices=tuple(notifications.SOUND_FILES))
     terminal = commands.add_parser("terminal-context", help="capture the exact managed remote shell PTY once")
     terminal.add_argument("--owner-pid", type=int, required=True)
+    validity = commands.add_parser('validate-harness',help='bounded metadata check for an explicit pending paste')
+    validity.add_argument('--session-id',required=True)
+    validity.add_argument('--harness-session',required=True)
     for verb in ("bind-harness", "harness-event"):
         bind = commands.add_parser(verb, help="harness hook: exact transcript binding or turn completion/attention metadata")
         bind.add_argument("--harness", choices=("claude", "codex"), required=True)
@@ -139,6 +150,10 @@ def main(argv: list[str] | None = None) -> int:
             notifications.play_sound(args.event)
         elif args.command == "terminal-context":
             print(json.dumps(harness.capture_terminal_context(args.owner_pid)))
+        elif args.command == 'validate-harness':
+            if not args.harness_session or len(args.harness_session)>256 or any(ord(c)<32 for c in args.harness_session):
+                raise ValueError('invalid exact harness session identity')
+            print(json.dumps({'version':1,'valid':harness_state.can_target(args.session_id,args.harness_session)}))
         elif args.command in {"bind-harness", "harness-event"}:
             # No transcript content is read, and no hook output enters model context.
             managed = os.environ.get("AGENCY_KITTY_SESSION", "")

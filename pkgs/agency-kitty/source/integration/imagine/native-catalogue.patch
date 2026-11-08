@@ -1,8 +1,135 @@
+diff --git a/src/imagine/ChatWindow.test.ts b/src/imagine/ChatWindow.test.ts
+index 2df5a38..1e2205c 100644
+--- a/src/imagine/ChatWindow.test.ts
++++ b/src/imagine/ChatWindow.test.ts
+@@ -73,3 +73,47 @@ test("first native announcement and placement are atomic and preserve old focus
+   expect(activeIdOf(after)).toBe(appWindowId("existing"));
+   expect(chatOrigin(after)?.workspace).toBe("1");
+ });
++
++test("native reservation owner requires exact class and a validated receipt before placement", async () => {
++  const {planChatReservations}=await import("./ChatWindow");
++  const tag="agencykitty-"+"a".repeat(32), origin=chatOrigin(fresh())!;
++  const placement={chatPlacement:true as const,workspace:"2",origin,reveal:true,exactIdentity:true,accepted:false};
++  const claims=new Map([[tag,{placement,expires:1000}]]);
++  const unrelated=planChatReservations(claims,[{desktopId:"prefix-"+tag,appId:"prefix"},{desktopId:tag+"-suffix",appId:"suffix"}],1);
++  expect(unrelated.placements).toHaveLength(0);expect(unrelated.preserveFocus).toBeFalse();
++  const waiting=planChatReservations(claims,[{desktopId:tag,appId:"native"}],1);
++  expect(waiting.placements).toHaveLength(0);expect(waiting.retire).toHaveLength(0);expect(waiting.preserveFocus).toBeTrue();
++  claims.set(tag,{placement:{...placement,accepted:true},expires:1000});
++  const accepted=planChatReservations(claims,[{desktopId:tag,appId:"native"}],1);
++  expect(accepted.placements[0]!.id).toBe(appWindowId("native"));expect(accepted.retire).toEqual([tag]);
++  expect(planChatReservations(claims,[{desktopId:tag,appId:"one"},{desktopId:tag,appId:"two"}],1).placements).toHaveLength(0);
++});
++test("a native announcement before receipt preserves newer navigation and existing focus without moving it",()=>{
++  let before=reduce(fresh(),A.AppAppeared("existing","Existing"));
++  before=reduce(before,A.WorkspaceSelected("3"));
++  before=reduce(before,A.AppAppeared("reading","Reading"));
++  const after=reduceChatNativeBatch(before,{chatNativeBatch:true,preserveFocus:true,actions:[A.AppAppeared("pending-native","Kitty")],placements:[]},reduce);
++  expect(activeIdOf(after)).toBe(appWindowId("reading"));expect(chatOrigin(after)?.workspace).toBe("3");
++  expect(workspaceHolding(after,appWindowId("pending-native"))?.name).toBe("3");
++  const accepted=placeChatWindow(after,{chatPlacement:true,id:appWindowId("pending-native"),workspace:"2",origin:{screen:"upper",workspace:"1"},reveal:true},reduce);
++  expect(workspaceHolding(accepted,appWindowId("pending-native"))?.name).toBe("2");
++  expect(activeIdOf(accepted)).toBe(appWindowId("reading"));expect(chatOrigin(accepted)?.workspace).toBe("3");
++});
++test("a pending appearance keeps a valid reducer fallback when the previous focused window closes",()=>{
++  const before=reduce(fresh(),A.AppAppeared("closed","Old"));
++  const after=reduceChatNativeBatch(before,{chatNativeBatch:true,preserveFocus:true,actions:[A.AppClosed("closed"),A.AppAppeared("pending","Kitty")],placements:[]},reduce);
++  expect(after.windows.some(window=>window.id===activeIdOf(after))).toBeTrue();
++  expect(activeIdOf(after)).not.toBe(appWindowId("closed"));
++});
++test("native terminal resume remains available when every numbered chat slot is occupied",async()=>{
++  const {nativeTerminalWorkspace}=await import("./ChatWindow");
++  let state=fresh();
++  for(let number=1;number<=9;number++){
++    state=reduce(state,A.WorkspaceSelected(String(number)));
++    state=reduce(state,A.AppAppeared("occupied-native-"+number,"Existing"));
++  }
++  state=reduce(state,A.WorkspaceSelected("4"));
++  expect(emptyChatWorkspace(state)).toBeUndefined();
++  expect(nativeTerminalWorkspace(state)).toBe("4");
++  expect(nativeTerminalWorkspace(state,"7")).toBe("7");
++});
+diff --git a/src/imagine/ChatWindow.ts b/src/imagine/ChatWindow.ts
+index c3f6a44..7215197 100644
+--- a/src/imagine/ChatWindow.ts
++++ b/src/imagine/ChatWindow.ts
+@@ -1,6 +1,7 @@
+ import { placeAgentWindow } from "./AgentWindows";
+ import { activeIdOf, WindowAction, workspaceHolding } from "@domicile-desktop/manganese-window-management/window-state";
+ import type { WindowState } from "@domicile-desktop/manganese-window-management/window-state";
++import { appWindowId } from "@domicile-desktop/manganese-window-management/window";
+ 
+ export type ChatWindowOptions = { readonly launcher: string; readonly bindAltEnter?: boolean };
+ export const chatWindowConfig = (value: ChatWindowOptions | undefined): ChatWindowOptions | undefined => {
+@@ -24,6 +25,11 @@ export const emptyChatWorkspace = (state: WindowState): string | undefined => {
+     name !== "10" && !shown.has(name) && tiling.root === undefined && floats.length === 0)?.name;
+ };
+ 
++/** Native terminals can join an occupied workspace as ordinary desktop splits.
++ * Saved PTYs are not restricted to one terminal per numbered chat slot. */
++export const nativeTerminalWorkspace = (state: WindowState, chatWorkspace?: string): string | undefined =>
++  chatWorkspace ?? emptyChatWorkspace(state) ?? chatOrigin(state)?.workspace;
++
+ export const chatLaunchTag = (requestId: string): string => "agencychat" + requestId.replaceAll("-", "");
+ export type ChatPlacement = {
+   readonly chatPlacement: true;
+@@ -35,17 +41,49 @@ export type ChatPlacement = {
+   /** A user-selected existing terminal may join its chat's workspace. */
+   readonly allowOccupied?: boolean;
+ };
+-export type ChatReservation = Omit<ChatPlacement, "id">;
++export type ChatReservation = Omit<ChatPlacement, "id"> & {
++  readonly exactIdentity?: boolean;
++  /** Native resume validates its helper receipt before authorizing placement. */
++  readonly accepted?: boolean;
++};
++export type ChatReservationClaim = { placement: ChatReservation; expires: number };
++export function planChatReservations(claims: ReadonlyMap<string, ChatReservationClaim>,
++  windows: readonly { desktopId: string; appId: string }[], now: number) {
++  const placements: ChatPlacement[] = [], retire: string[] = [];
++  let preserveFocus = false;
++  for (const [tag, claim] of claims) {
++    if (claim.expires < now) { retire.push(tag); continue; }
++    const matches = windows.filter(({ desktopId }) => claim.placement.exactIdentity ? desktopId === tag : desktopId.includes(tag));
++    if (claim.placement.exactIdentity && (claim.placement.accepted === false || matches.length > 1)) {
++      preserveFocus ||= matches.length > 0;
++      continue;
++    }
++    if (matches.length === 1) {
++      placements.push({ ...claim.placement, id: appWindowId(matches[0]!.appId) });
++      retire.push(tag);
++    }
++  }
++  return { placements, retire, preserveFocus };
++}
+ export type ChatNativeBatch = {
+   readonly chatNativeBatch: true;
+   readonly actions: readonly WindowAction[];
+   readonly placements: readonly ChatPlacement[];
++  readonly preserveFocus?: boolean;
+ };
+ 
+ /** Announce and place before React can render a frame on the old workspace. */
+ export const reduceChatNativeBatch = (before: WindowState, batch: ChatNativeBatch,
+   reduce: (state: WindowState, action: WindowAction) => WindowState): WindowState => {
+   let next = batch.actions.reduce(reduce, before);
++  if (batch.preserveFocus) {
++    const active = activeIdOf(before);
++    if (active !== undefined && next.windows.some(window => window.id === active)) {
++      next = reduce(next, WindowAction.WindowSelected(active));
++      next = { ...next, screens: before.screens, focused: before.focused, focusedId: before.focusedId,
++        pressed: before.pressed, replayed: before.replayed };
++    }
++  }
+   for (const placement of batch.placements) next = placement.agent === true
+     ? placeAgentWindow(before, next, placement, reduce) : placeChatWindow(next, placement, reduce, before);
+   return next;
 diff --git a/src/imagine/SessionCatalogue.test.ts b/src/imagine/SessionCatalogue.test.ts
-index 4503263..92f2cc6 100644
+index 4503263..9ccb600 100644
 --- a/src/imagine/SessionCatalogue.test.ts
 +++ b/src/imagine/SessionCatalogue.test.ts
-@@ -48,3 +48,34 @@ test("relay exit cancels open readers and promptly marks cached metadata unavail
+@@ -48,3 +48,46 @@ test("relay exit cancels open readers and promptly marks cached metadata unavail
    expect(frames.some(f => f.type === "unavailable")).toBeTrue();
    expect(cancelled).toBe(2);
  });
@@ -37,12 +164,26 @@ index 4503263..92f2cc6 100644
 +  expect(cat.nativeTerminals).toHaveLength(0);
 +  expect(()=>receive(baseline(),{type:"native-terminals",available:true,terminals:[{title:"one",route:nativeRoute()},{title:"two",route:nativeRoute()}]},"agency-web")).toThrow();
 +});
++test("same-workspace focus changes cancel delayed native reveal",async()=>{
++  const {catalogueOriginCurrent}=await import("./SessionCatalogue");
++  const {activeIdOf}=await import("@domicile-desktop/manganese-window-management/window-state");
++  const {chatOrigin}=await import("./ChatWindow");
++  let state=reduce(initialAgencyState(),A.ScreensDescribed([{name:"upper",box:{x:0,y:0,width:1440,height:900}}]));
++  state=reduce(state,A.AppAppeared("one","One"));state=reduce(state,A.AppAppeared("two","Two"));
++  const origin=chatOrigin(state)!, focus={id:activeIdOf(state)};
++  expect(catalogueOriginCurrent(state,origin,focus)).toBeTrue();
++  state=reduce(state,A.WindowSelected("app:one"));
++  expect(catalogueOriginCurrent(state,origin,focus)).toBeFalse();
++  expect(catalogueOriginCurrent(state,origin)).toBeTrue();
++});
 diff --git a/src/imagine/SessionCatalogue.ts b/src/imagine/SessionCatalogue.ts
-index 054ff2b..c2d3a0c 100644
+index 054ff2b..65a119a 100644
 --- a/src/imagine/SessionCatalogue.ts
 +++ b/src/imagine/SessionCatalogue.ts
-@@ -2,10 +2,12 @@ import { WindowKind } from "@domicile-desktop/manganese-window-management/window
- import { workspaceHolding } from "@domicile-desktop/manganese-window-management/window-state";
+@@ -1,11 +1,13 @@
+ import { WindowKind } from "@domicile-desktop/manganese-window-management/window";
+-import { workspaceHolding } from "@domicile-desktop/manganese-window-management/window-state";
++import { activeIdOf, workspaceHolding } from "@domicile-desktop/manganese-window-management/window-state";
  import type { WindowState } from "@domicile-desktop/manganese-window-management/window-state";
  
 -export type CatalogueOptions = { readonly relay: string; readonly server: string; readonly terminalLauncher?: string };
@@ -109,7 +250,18 @@ index 054ff2b..c2d3a0c 100644
    if (frame.version !== 1) throw Error("Unknown catalogue protocol");
    const epoch = identity(frame.epoch), seq = natural(frame.seq);
    if (frame.type === "snapshot") {
-@@ -113,10 +139,12 @@ export function projectCatalogue(catalogue: CatalogueState, state: WindowState)
+@@ -103,6 +129,10 @@ export function receiveCatalogue(before: CatalogueState, value: unknown, server:
+ }
+ export const markSessionSeen = (state: CatalogueState, id: string): CatalogueState => !Object.hasOwn(state.rows, id) ? state :
+   { ...state, seen: { ...state.seen, [id]: state.rows[id]!.attentionRevision } };
++export function catalogueOriginCurrent(state: WindowState, origin: {screen: string; workspace: string}, focus?: {id: string | undefined}) {
++  return state.focused === origin.screen && state.screens.find(screen => screen.name === state.focused)?.current === origin.workspace &&
++    (focus === undefined || activeIdOf(state) === focus.id);
++}
+ const priority: Record<AttentionStatus, number> = { "needs-approval": 0, "needs-answer": 0, working: 1, failed: 2, finished: 3, idle: 4 };
+ export function projectCatalogue(catalogue: CatalogueState, state: WindowState) {
+   const native = state.windows.filter((window) => window.kind === WindowKind.App);
+@@ -113,10 +143,12 @@ export function projectCatalogue(catalogue: CatalogueState, state: WindowState)
        row.attentionRevision > (Object.hasOwn(catalogue.seen, row.sessionId) ? catalogue.seen[row.sessionId]! : -1),
      viewers: catalogue.viewers.filter((viewer) => viewer.sessionId === row.sessionId).flatMap(({ tag }) =>
        native.filter((window) => window.desktopId.includes(tag)).map(({ id }) => ({ id, tag, workspace: location(id) }))),
@@ -144,16 +296,67 @@ index c6c3572..28908d3 100644
        </button>)}
      </div>)}
      {error && <p className="agency-source-status" role="alert">{error}</p>}
+diff --git a/src/imagine/useAgencyWindows.ts b/src/imagine/useAgencyWindows.ts
+index 407bc1c..6124b93 100644
+--- a/src/imagine/useAgencyWindows.ts
++++ b/src/imagine/useAgencyWindows.ts
+@@ -47,8 +47,8 @@ import { createAgencyReducer, DEFAULT_AGENCY_POLICY, initialAgencyState } from "
+ import type { AgencyPolicy } from "./policy";
+ import { reduceAmbient } from "./AmbientChat";
+ import type { AmbientTransition } from "./AmbientChat";
+-import { placeChatWindow, reduceChatNativeBatch } from "./ChatWindow";
+-import type { ChatPlacement, ChatReservation, ChatNativeBatch } from "./ChatWindow";
++import { placeChatWindow, planChatReservations, reduceChatNativeBatch } from "./ChatWindow";
++import type { ChatPlacement, ChatReservation, ChatReservationClaim, ChatNativeBatch } from "./ChatWindow";
+ import { externalWebCommand } from "./WebBrowser";
+ import type { WebBrowserOptions } from "./WebBrowser";
+ import { appIdOf, appWindowId, browserIdOf } from "@domicile-desktop/manganese-window-management/window";
+@@ -125,7 +125,7 @@ export const useAgencyWindows = (
+   const recoverLayout = useCallback((snapshot: import("./ipc/snapshot").Snapshot) => dispatch({ restoreLayout: true, snapshot }), []);
+   const transitionAmbient = useCallback((transition: AmbientTransition) => dispatch(transition), []);
+   const placeChat = useCallback((placement: ChatPlacement) => dispatch(placement), []);
+-  const reservations = useRef(new Map<string, { placement: ChatReservation; expires: number }>());
++  const reservations = useRef(new Map<string, ChatReservationClaim>());
+   const reserveChat = useCallback((tag: string, placement: ChatReservation | undefined) => {
+     if (placement === undefined) reservations.current.delete(tag);
+     else reservations.current.set(tag, { placement, expires: Date.now() + 150000 });
+@@ -216,16 +216,9 @@ export const useAgencyWindows = (
+     // pointer scaling uses it too.
+     const windowsChanged = () => {
+       const now = windows.list;
+-      const placements: ChatPlacement[] = [];
+-      for (const [tag, claim] of reservations.current) {
+-        const matches = now.filter(({ desktopId }) => desktopId.includes(tag));
+-        if (claim.expires < Date.now()) reservations.current.delete(tag);
+-        else if (matches.length === 1) {
+-          placements.push({ ...claim.placement, id: appWindowId(matches[0]!.appId) });
+-          reservations.current.delete(tag);
+-        }
+-      }
+-      dispatch({ chatNativeBatch: true, actions: nativeWindowActions(floating, listed.current, now), placements });
++      const { placements, retire, preserveFocus } = planChatReservations(reservations.current, now, Date.now());
++      for (const tag of retire) reservations.current.delete(tag);
++      dispatch({ chatNativeBatch: true, actions: nativeWindowActions(floating, listed.current, now), placements, preserveFocus });
+       listed.current = now;
+     };
+     const focusChanged = () => {
 diff --git a/src/imagine/useSessionCatalogue.ts b/src/imagine/useSessionCatalogue.ts
-index adac25e..6a2c205 100644
+index adac25e..82da59c 100644
 --- a/src/imagine/useSessionCatalogue.ts
 +++ b/src/imagine/useSessionCatalogue.ts
-@@ -6,7 +6,7 @@ import { WindowKind } from "@domicile-desktop/manganese-window-management/window
- import { chatOrigin, chatLaunchTag, emptyChatWorkspace } from "./ChatWindow";
+@@ -1,12 +1,12 @@
+ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+ import type { Domicile } from "@domicile-desktop/sdk/desktop/desktop";
+-import { WindowAction } from "@domicile-desktop/manganese-window-management/window-state";
++import { activeIdOf, WindowAction } from "@domicile-desktop/manganese-window-management/window-state";
+ import type { WindowState } from "@domicile-desktop/manganese-window-management/window-state";
+ import { WindowKind } from "@domicile-desktop/manganese-window-management/window";
+-import { chatOrigin, chatLaunchTag, emptyChatWorkspace } from "./ChatWindow";
++import { chatOrigin, chatLaunchTag, emptyChatWorkspace, nativeTerminalWorkspace } from "./ChatWindow";
  import type { ChatOrigin, ChatPlacement, ChatReservation } from "./ChatWindow";
  import { runHelperRequest } from "./HelperRequest";
 -import { EMPTY_CATALOGUE, markSessionSeen, projectCatalogue, receiveCatalogue } from "./SessionCatalogue";
-+import { EMPTY_CATALOGUE, markSessionSeen, nativeTerminal, projectCatalogue, receiveCatalogue } from "./SessionCatalogue";
++import { catalogueOriginCurrent, EMPTY_CATALOGUE, markSessionSeen, nativeTerminal, projectCatalogue, receiveCatalogue } from "./SessionCatalogue";
  import type { CatalogueOptions, CatalogueRow, CatalogueState } from "./SessionCatalogue";
  
  /** Stream frames across arbitrary UTF-8/chunk boundaries; no unbounded line buffer. */
@@ -171,20 +374,34 @@ index adac25e..6a2c205 100644
  
  
 -type PendingView = { session: string; identity: string; workspace: string; origin: ChatOrigin; allowOccupied: boolean; reveal: boolean; accepted: boolean };
-+type PendingView = { session: string; identity: string; exactIdentity: boolean; workspace: string; origin: ChatOrigin; allowOccupied: boolean; reveal: boolean; accepted: boolean };
++type PendingView = { session: string; identity: string; exactIdentity: boolean; originFocused: string | undefined; workspace: string; origin: ChatOrigin; allowOccupied: boolean; reveal: boolean; accepted: boolean };
  export function useSessionCatalogue({ domicile, config, chatLauncher, state, blocked, act, reserve, place }: {
    domicile: Domicile; config?: CatalogueOptions; chatLauncher?: string; state: WindowState; blocked: boolean;
    act: (action: WindowAction) => void; reserve: (identity: string, placement: ChatReservation | undefined) => void;
-@@ -110,7 +110,7 @@ export function useSessionCatalogue({ domicile, config, chatLauncher, state, blo
-     waiting.reveal &&= stillHere(waiting.origin);
-     if (!waiting.reveal) reserve(waiting.identity, { chatPlacement: true, workspace: waiting.workspace, origin: waiting.origin, reveal: false, allowOccupied: waiting.allowOccupied });
+@@ -100,17 +100,16 @@ export function useSessionCatalogue({ domicile, config, chatLauncher, state, blo
+     });
+   }, [domicile, config]);
+   const seen = (id: string) => { model.current = markSessionSeen(model.current, id); setCatalogue(model.current); };
+-  const stillHere = (origin: ChatOrigin) => {
+-    const current = chatOrigin(latest.current.state);
+-    return !latest.current.blocked && current?.screen === origin.screen && current.workspace === origin.workspace;
++  const stillHere = (origin: ChatOrigin, request?: PendingView) => {
++    return !latest.current.blocked && catalogueOriginCurrent(latest.current.state, origin, request?.exactIdentity ? {id: request.originFocused} : undefined);
+   };
+   useEffect(() => {
+     const waiting = pending.current;
+     if (waiting === undefined) return;
+-    waiting.reveal &&= stillHere(waiting.origin);
+-    if (!waiting.reveal) reserve(waiting.identity, { chatPlacement: true, workspace: waiting.workspace, origin: waiting.origin, reveal: false, allowOccupied: waiting.allowOccupied });
++    waiting.reveal &&= stillHere(waiting.origin, waiting);
++    if (!waiting.reveal) reserve(waiting.identity, { chatPlacement: true, workspace: waiting.workspace, origin: waiting.origin, reveal: false, allowOccupied: waiting.allowOccupied, exactIdentity: waiting.exactIdentity, accepted: !waiting.exactIdentity || waiting.accepted });
      if (!waiting.accepted) return;
 -    const matches = state.windows.filter((window) => window.kind === WindowKind.App && window.desktopId.includes(waiting.identity));
 +    const matches = state.windows.filter((window) => window.kind === WindowKind.App && (waiting.exactIdentity ? window.desktopId === waiting.identity : window.desktopId.includes(waiting.identity)));
      if (matches.length === 1) {
        reserve(waiting.identity, undefined);
        place({ chatPlacement: true, id: matches[0]!.id, workspace: waiting.workspace, origin: waiting.origin, reveal: waiting.reveal, allowOccupied: waiting.allowOccupied });
-@@ -128,27 +128,32 @@ export function useSessionCatalogue({ domicile, config, chatLauncher, state, blo
+@@ -128,27 +127,33 @@ export function useSessionCatalogue({ domicile, config, chatLauncher, state, blo
      const session = row?.sessionId ?? "$web";
      const main = row === undefined ? state.windows.filter(w => w.kind === WindowKind.App && catalogue.mainViewers.some(tag => w.desktopId.includes(tag))) : [];
      if (main.length > 1) { setError("More than one DSH web window matched."); return; }
@@ -197,14 +414,16 @@ index adac25e..6a2c205 100644
 +    const isNative = terminal !== undefined && nativeTerminal(terminal.route);
 +    const launcher = terminal ? isNative ? config.nativeTerminalLauncher : config.terminalLauncher : chatLauncher;
      if (!launcher) return;
-     const origin = chatOrigin(state), workspace = row === undefined ? origin?.workspace : terminal ? row.viewers[0]?.workspace ?? emptyChatWorkspace(state) : emptyChatWorkspace(state);
+-    const origin = chatOrigin(state), workspace = row === undefined ? origin?.workspace : terminal ? row.viewers[0]?.workspace ?? emptyChatWorkspace(state) : emptyChatWorkspace(state);
++    const origin = chatOrigin(state), workspace = row === undefined ? origin?.workspace : terminal ? isNative ? nativeTerminalWorkspace(state, row.viewers[0]?.workspace) : row.viewers[0]?.workspace ?? emptyChatWorkspace(state) : emptyChatWorkspace(state);
      if (origin === undefined || workspace === undefined) { setError("No workspace is available for this viewer."); return; }
      const viewerId = crypto.randomUUID(), identity = terminal?.route.windowClass ?? chatLaunchTag(viewerId);
 -    const request: PendingView = { session, identity, workspace, origin, allowOccupied: row === undefined || (terminal !== undefined && row.viewers.length > 0), reveal: true, accepted: false };
 +    if (terminal && terminal.route.windowClass === null) return;
-+    const request: PendingView = { session, identity, exactIdentity: isNative, workspace, origin, allowOccupied: row === undefined || (terminal !== undefined && row.viewers.length > 0), reveal: true, accepted: false };
++    const request: PendingView = { session, identity, exactIdentity: isNative, originFocused: activeIdOf(state), workspace, origin, allowOccupied: isNative || row === undefined || (terminal !== undefined && row.viewers.length > 0), reveal: true, accepted: false };
      pending.current = request;
-     reserve(identity, { chatPlacement: true, workspace, origin, reveal: true, allowOccupied: request.allowOccupied });
+-    reserve(identity, { chatPlacement: true, workspace, origin, reveal: true, allowOccupied: request.allowOccupied });
++    reserve(identity, { chatPlacement: true, workspace, origin, reveal: true, allowOccupied: request.allowOccupied, exactIdentity: isNative, accepted: !isNative });
      inFlight.current = true; setBusy(session); setError(undefined);
      try {
 -      const receipt = await runHelperRequest(domicile, terminal ? [launcher] : [launcher, row === undefined ? "--main" : "--session"], terminal ? terminal.route : row === undefined ? { viewerId } : { sessionId: row.sessionId, viewerId });
@@ -213,7 +432,9 @@ index adac25e..6a2c205 100644
        if ((row !== undefined && (terminal ? receipt.session : receipt.sessionId) !== row.sessionId) || (terminal ? tag !== terminal.route.windowClass : !/^agencychat[0-9a-f]{32}$/.test(tag))) throw Error("Viewer identity mismatch");
 +      if (isNative && (receipt.version !== 1 || receipt.provider !== "agency-kitty" || receipt.host !== "nas" || receipt.terminalId !== terminal!.route.terminal)) throw Error("Native terminal receipt mismatch");
        if (!alive.current) return;
-       request.accepted = true; request.reveal &&= stillHere(origin);
+-      request.accepted = true; request.reveal &&= stillHere(origin);
++      request.accepted = true; request.reveal &&= stillHere(origin, request);
++      if (isNative) reserve(identity, { chatPlacement: true, workspace, origin, reveal: request.reveal, allowOccupied: request.allowOccupied, exactIdentity: true, accepted: true });
        if (tag !== identity) {
          reserve(identity, undefined);
 -        const existing = latest.current.state.windows.filter((window) => window.kind === WindowKind.App && window.desktopId.includes(tag));

@@ -34,7 +34,7 @@ quiet.
 
 ## DSH ownership is a separate contract
 
-The exact installed DSH0.2.1-rc.2 terminal controller was inspected in its
+The installed DSH0.2.1-rc.2 and updated0.2.2-rc.1 terminal controllers were inspected in their
 `@deepseek-ai/dsh-api-terminal-controller` package. Its process owner is a
 DSH session, not a local terminal window. Attachment cancellation preserves the
 process and never replays input. `retain` holds an existing terminal without
@@ -59,10 +59,13 @@ The optional `@agency/kitty-native` plugin was mounted into the real installed
 Host in a private fixture. It registered `kitty_native_sessions`, returned two
 explicit terminal identities, filtered one by its chat link, rejected an
 unknown identity, and left all stored metadata unchanged. No agent turn or
-provider request was needed. This is concrete metadata integration; it does
-not claim that Imagine's existing DSH terminal sidebar already accepts the new
-provider route. That route remains distinct, with an explicit human launcher
-and stable native window class for reconciliation by Imagine.
+provider request was needed. The actual updated0.2.2-rc.1 installed bundle passed its batch raw-call API and
+selected native composition executor without an agent/provider request. This
+is concrete metadata integration. The source-qualified Imagine catalogue
+bridge now accepts the distinct native route, with an explicit human launcher,
+exact window class and validated resume receipt. Its135 tests and full build
+pass; no live desktop source refresh or matching engine transition is claimed.
+See integration/imagine and docs/DSH-INSTALLED-BUNDLE-PROOF.md.
 
 ## Status standards
 

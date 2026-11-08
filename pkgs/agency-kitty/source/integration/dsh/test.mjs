@@ -59,3 +59,16 @@ test('direct terminals preserve mode and cannot claim resumption or an invented 
     assert.equal((await tool(async()=>value).execute({},context())).code,'unavailable');
   }
 });
+
+test('only typed verified foreground agent status can report working', async () => {
+  const value=reply();
+  value.sessions[0].agentStatus={version:1,harness:'codex',state:'working',foreground:true,verified:true};
+  let result=await tool(async()=>value).execute({},context());
+  assert.deepEqual(JSON.parse(result.catalogueJson).sessions[0].agentStatus,value.sessions[0].agentStatus);
+  for(const mutate of [v=>v.foreground=false,v=>v.verified=false,v=>v.transcript='/PRIVATE',v=>v.state='invented']) {
+    const broken=structuredClone(value);mutate(broken.sessions[0].agentStatus);
+    result=await tool(async()=>broken).execute({},context());assert.equal(result.code,'unavailable');
+  }
+  value.sessions[0].agentStatus={version:1,harness:'claude',state:'unverified',foreground:null,verified:false};
+  assert.equal((await tool(async()=>value).execute({},context())).code,'ok');
+});

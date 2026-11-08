@@ -15,7 +15,16 @@ python3Packages.buildPythonApplication {
   pname = "agency-kitty";
   version = "0.1.0";
   pyproject = true;
-  src = lib.cleanSource ./.;
+  # Research receipts and build recipes remain in Git. Runtime source contains
+  # only code/assets/usage, so changing a historical report neither rebuilds
+  # this helper nor retains historical store closures in its output.
+  src = lib.fileset.toSource {
+    root = ./.;
+    fileset = lib.fileset.unions [
+      ./agency_kitty ./kitty ./integration ./pyproject.toml ./LICENSE ./README.md
+      ./docs/USAGE.md ./docs/HARNESS-LAUNCHERS.md ./docs/DIRECT_CATALOGUE.md ./docs/NATIVE_FORWARD.md
+    ];
+  };
   build-system = [ python3Packages.setuptools ];
   nativeBuildInputs = [ makeWrapper ];
   # Runtime-sensitive qualification is deliberately run through runtime-test on
@@ -40,7 +49,7 @@ python3Packages.buildPythonApplication {
     # source repository. Their historical build/store paths must not turn a
     # small terminal helper into a retention root for unrelated build tools.
     mkdir -p $out/share/agency-kitty/docs
-    cp docs/CAPABILITIES.md docs/HARNESS-LAUNCHERS.md docs/DIRECT_CATALOGUE.md docs/NATIVE_FORWARD.md \
+    cp docs/USAGE.md docs/HARNESS-LAUNCHERS.md docs/DIRECT_CATALOGUE.md docs/NATIVE_FORWARD.md \
       $out/share/agency-kitty/docs/
     cp README.md LICENSE $out/share/agency-kitty/
   '';

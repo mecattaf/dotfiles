@@ -14,7 +14,7 @@ import time
 import uuid
 
 from ..sessions import SessionError, SessionStore, validate_id
-from . import harness
+from . import harness, harness_process
 
 MAX_STATE_BYTES = 16384
 
@@ -84,26 +84,36 @@ def _write(fd: int, identity: str, value: dict) -> None:
             pass
 
 
-def record_event(payload: dict, name: str, identity: str, *, store: SessionStore | None = None,
-                 context: str | None = None, inherited_id: str = "") -> bool:
-    """Write only an explicit valid hook for an existing durable NAS identity."""
-    validate_id(identity)
-    store = store or SessionStore()
+def _known(store: SessionStore, identity: str, context: str | None = None, *, ended=False) -> bool:
+    from ..direct_registry import DirectRegistry
     try:
         session = store.get(identity)
     except SessionError as error:
         if str(error).startswith("unknown session:"):
-            return False  # direct/ephemeral terminal: no metadata allocation
+            registry = DirectRegistry(store)
+            if ended:
+                return registry.known(identity)
+            return registry.context_matches(identity,context) if context is not None else registry.get(identity) is not None
         raise
-    if session.status == "closed":
-        return False
+    return ended or session.status != 'closed'
+
+
+def record_event(payload: dict, name: str, identity: str, *, store: SessionStore | None = None,
+                 context: str | None = None, inherited_id: str = "", process_token: str | None = None) -> bool:
+    """Write an explicit typed hook for a known durable or live direct identity."""
+    validate_id(identity)
+    store = store or SessionStore()
     event = payload.get("hook_event_name")
     binding = harness.binding(payload, name, identity, inherited_id)
     attention = harness.attention(payload, name, identity, inherited_id)
     if not binding and not attention:
         return False
     context = os.environ.get("AGENCY_KITTY_TERMINAL", "") if context is None else context
-    harness.validate_terminal_context(context)
+    if not _known(store,identity,context,ended=event=='SessionEnd'):
+        return False
+    if event!='SessionEnd':
+        harness.validate_terminal_context(context)
+    token = os.environ.get(harness_process.ENVIRONMENT,'') if process_token is None else process_token
     with _directory(store, True) as directory:
         lock = os.open(identity + ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=directory)
         try:
@@ -120,10 +130,14 @@ def record_event(payload: dict, name: str, identity: str, *, store: SessionStore
             current = _read(directory, identity)
             exact = (current is not None and current.get("harness") == name
                      and current.get("session_id") == payload["session_id"] and current.get("terminal_context") == context)
+            if exact and current.get('process') is not None:
+                parsed = harness_process.parse(token,name)
+                exact = parsed is not None and all(current['process'].get(key)==value for key,value in parsed.items())
             if event == "SessionStart":
                 value = {"version": 1, "terminal_id": identity, "harness": name,
                          "session_id": payload["session_id"], "path": payload.get("transcript_path"),
-                         "terminal_context": context, "ended": False, "attention": None}
+                         "terminal_context": context, "ended": False, "attention": None,
+                         "process":harness_process.attest(token,name)}
             elif event == "SessionEnd":
                 if not exact:
                     return False  # an old exit cannot erase a newer harness
@@ -140,6 +154,53 @@ def record_event(payload: dict, name: str, identity: str, *, store: SessionStore
             return True
         finally:
             os.close(lock)
+
+
+def _saved(identity: str, store: SessionStore) -> dict | None:
+    try:
+        if not _known(store,identity):
+            return None
+        with _directory(store,False) as directory:
+            value = _read(directory,identity)
+        if value is not None:
+            if not _known(store,identity,value['terminal_context']):
+                return None
+            harness.validate_terminal_context(value['terminal_context'])
+        return value
+    except FileNotFoundError:
+        return None
+    except (OSError,ValueError):
+        return None
+
+
+def status(identity: str, *, store: SessionStore | None = None) -> dict | None:
+    """Metadata only; a saved working hook alone never proves a live agent."""
+    validate_id(identity)
+    value = _saved(identity,store or SessionStore())
+    if value is None:
+        return None
+    name = value.get('harness')
+    if name not in {'claude','codex'}:
+        raise ValueError('invalid saved harness name')
+    foreground = harness_process.foreground(value.get('process'),value['terminal_context'],name)
+    if value['ended'] or foreground=='ended':
+        state, active, verified = 'ended',False,True
+    elif foreground=='foreground':
+        attention = value.get('attention') or {}
+        event = attention.get('hook_event_name')
+        state = {'UserPromptSubmit':'working','Stop':'done','Notification':'waiting'}.get(event,'idle')
+        active, verified = True,True
+    else:
+        state, active, verified = foreground,False if foreground=='background' else None,foreground!='unverified'
+    return {'version':1,'harness':name,'state':state,'foreground':active,'verified':verified}
+
+
+def can_target(identity: str, harness_session: str, *, store: SessionStore | None = None) -> bool:
+    """Explicit gesture validation, independent of possibly stale local tags."""
+    validate_id(identity)
+    value = _saved(identity,store or SessionStore())
+    return (value is not None and not value['ended'] and value.get('session_id')==harness_session
+            and harness_process.foreground(value.get('process'),value['terminal_context'],value.get('harness'))=='foreground')
 
 
 def read_rebind(identity: str, *, store: SessionStore | None = None) -> bytes:
@@ -164,6 +225,8 @@ def read_rebind(identity: str, *, store: SessionStore | None = None) -> bytes:
         harness.validate_terminal_context(value.get("terminal_context", ""))
     except (OSError, ValueError):
         return b""  # original shell/PTY ended; do not bind a recycled pathname
+    if value.get('process') is not None and harness_process.foreground(value['process'],value['terminal_context'],value.get('harness'))!='foreground':
+        return b''
     payload = {"session_id": value.get("session_id"), "transcript_path": value.get("path"),
                "hook_event_name": "SessionStart"}
     wire = harness.binding(payload, value.get("harness"), identity)

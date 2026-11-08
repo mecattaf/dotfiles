@@ -8,36 +8,46 @@
  
  HERE = Path(__file__).resolve().parent
  SOCKET = Path('/home/tom/.local/state/agency-web/native-terminal/pty.sock')
-@@ -70,12 +71,14 @@
+@@ -65,17 +66,20 @@
+         stderr=log, start_new_session=True)
+     buffer = b''
+     sessions = set()
+-    last_terminals = None
++    last_terminals = {}
+     poll_at = 0
      running = True
-     results = queue.Queue(maxsize=1)
+-    results = queue.Queue(maxsize=1)
++    results = queue.Queue(maxsize=2)
      polling = False
 +    poll_thread = None
      def poll(identities):
++        native = native_inventory(set(identities)) if running else {'type': 'native-terminals', 'available': False}
++        results.put((set(identities), native, False))
          try:
              value = inventory(identities, path, server)
          except Exception:
              value = {'type': 'terminals', 'available': False}
 -        results.put((set(identities), value))
-+        native = native_inventory(set(identities)) if running else {'type': 'native-terminals', 'available': False}
-+        results.put((set(identities), [value, native]))
++        results.put((set(identities), value, True))
      def stop(*_):
          nonlocal running
          running = False
-@@ -113,15 +116,20 @@
+@@ -111,17 +115,20 @@
+                         raise ValueError('Catalogue exceeds its limit')
+                     emit(value)
              if not results.empty():
-                 polled, value = results.get_nowait(); polling = False
-                 if polled == sessions and value != last_terminals:
+-                polled, value = results.get_nowait(); polling = False
+-                if polled == sessions and value != last_terminals:
 -                    emit(value); last_terminals = value
-+                    for frame in value:
-+                        emit(frame)
-+                    last_terminals = value
++                polled, value, done = results.get_nowait(); polling = not done
++                if polled == sessions and value != last_terminals.get(value['type']):
++                    emit(value); last_terminals[value['type']] = value
              if time.monotonic() >= poll_at and not polling:
                  # A missing/slow terminal carrier must not block attention or
 -                # stdin EOF cleanup. This worker owns no subprocess or PTY.
 -                threading.Thread(target=poll, args=(sorted(sessions),), daemon=True).start()
-+                # stdin EOF cleanup. The native metadata helper is bounded and
-+                # joined on shutdown; this worker owns no application PTY.
++                # stdin EOF cleanup. Native metadata is emitted first and owns
++                # only a bounded leaf helper; application PTYs stay separate.
 +                poll_thread = threading.Thread(target=poll, args=(sorted(sessions),), daemon=True)
 +                poll_thread.start()
                  polling = True; poll_at = time.monotonic() + 10
@@ -48,12 +58,12 @@
          signal.signal(signal.SIGTERM, previous)
          if child.poll() is None:
              child.terminate()
-@@ -129,6 +137,8 @@
+@@ -129,6 +136,8 @@
                  child.wait(3)
              except subprocess.TimeoutExpired:
                  child.kill(); child.wait(3)
 +        if poll_thread is not None:
-+            poll_thread.join(6)
++            poll_thread.join(8)
          log.close()
  
  

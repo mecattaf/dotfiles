@@ -13,7 +13,7 @@ import shlex
 import shutil
 import sys
 
-from .capabilities import harness
+from .capabilities import harness, harness_process
 from .sessions import validate_id
 
 
@@ -94,7 +94,10 @@ def main(argv: list[str] | None = None) -> int:
         args = args[1:]
     try:
         command = arguments(name, args)
-        os.execvpe(command[0], command, os.environ)
+        environment = dict(os.environ)
+        if environment.get('AGENCY_KITTY_SESSION'):
+            environment[harness_process.ENVIRONMENT] = harness_process.capture(name)
+        os.execvpe(command[0], command, environment)
     except (OSError, ValueError) as error:
         print('agency-kitty harness: ' + str(error), file=sys.stderr)
         return 1

@@ -1,0 +1,2 @@
+# Unified patches retain the mandatory space on empty context lines.
+native-catalogue.patch -whitespace
