@@ -160,6 +160,22 @@
     # Keep upstream's nixpkgs so its signed binary cache remains usable.
     vicinae.url = "github:vicinaehq/vicinae/v0.29.1";
 
+    # Domicile, under trial on the client beside Sway (modules/domicile.nix).
+    # `release` moves only through an upstream release and runs the official
+    # prebuilt engine. flake.lock freezes it, so the pin moves only by a lock
+    # change; keep it out of rollingInputOverrides. No follows: its hand-set
+    # fixed-output hashes and its Mesa belong to its own nixpkgs, and following
+    # ours would test something upstream's release CI did not.
+    domicile.url = "git+file:///home/tom/.wt/kitty-consolidation/sources/domicile-dnd?rev=ec4852dc02c6da2376dc6a81bea845980db47669";
+    imagine = {
+      url = "git+file:///home/tom/.wt/kitty-consolidation/sources/imagine-native-catalogue?rev=8954bbe22e7bad338206322576838f6c20b2043a";
+      flake = false;
+    };
+    dsh-domicile = {
+      url = "path:./pkgs/client-desktop/dsh-domicile";
+      flake = false;
+    };
+
     # herdr — the terminal workspace manager for AI coding agents
     # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
     # replaces everything this repo used to invent for itself: the home-grown
@@ -1252,8 +1268,8 @@
             ];
 
           assert !(strixHome.systemd.user.services ? wayvnc);
-          # The seat EQUALITIES: greetd == Sway == myDisplay, greetd starts the
-          # Sway session launcher, and niri (retired 2026-10-13) is on nowhere.
+          # Seat programs remain available while client greetd starts Domicile.
+          # Other display hosts retain Sway; niri stays retired everywhere.
           assert builtins.all (
             h:
             let
@@ -1265,12 +1281,21 @@
             && !c.programs.niri.enable
             && (
               !d.enable
-              || nixpkgs.lib.hasSuffix "/bin/sway-physical-session" c.services.greetd.settings.initial_session.command
+              || nixpkgs.lib.hasSuffix
+                (if h == "client" then "/bin/domicile-physical-session" else "/bin/sway-physical-session")
+                c.services.greetd.settings.initial_session.command
             )
           ) displayHosts;
-          # The client is the Sway seat; the Herdr server remains independent.
+          # Domicile is the client's default; Sway remains a manual fallback.
+          # The no-password return is a shell, avoiding compositor crash loops.
           assert (cfgOf "client").myDisplay.enable;
           assert (cfgOf "client").programs.sway.enable;
+          assert (cfgOf "client").programs.domicile.enable;
+          assert (cfgOf "client").services.greetd.settings.initial_session.user == "tom";
+          assert (cfgOf "client").services.greetd.settings.default_session.user == "tom";
+          assert nixpkgs.lib.hasSuffix "/bin/bash -l" (cfgOf "client").services.greetd.settings.default_session.command;
+          assert !((cfgOf "client").specialisation ? domicile);
+          assert (cfgOf "client").systemd.services.greetd.restartIfChanged == false;
           assert clientHome.programs.vicinae.enable;
           assert clientHome.services.mako.enable;
           assert clientHome.systemd.user.services.mako.Service.Type == "dbus";

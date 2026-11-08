@@ -1,0 +1,14 @@
+{
+  "utc": "2026-11-08T06:12:35Z",
+  "effectiveAdmission": "/home/tom/.wt/kitty-consolidation/artifacts/client-composition/admission-complete.json",
+  "candidatePaths": "/home/tom/.wt/kitty-consolidation/artifacts/client-composition/candidate-path-existence.json",
+  "engineFiles": "/home/tom/.wt/kitty-consolidation/artifacts/client-composition/qualified-engine-files.json",
+  "nasRoleDelta": "/home/tom/.wt/kitty-consolidation/artifacts/client-composition/nas-role-config-delta.json",
+  "renderedEntrySourceSha256": "2e347d4aa5eb6934897223dcb9ad1f8c24b62fc5af33606655c179926c555281",
+  "renderedEntryCompiled": false,
+  "productionImagineBundlePreviouslyQualifiedSha256": "191547be9ec4c56a2108c4d82eda5b2f99a501492e0727e9db980cd5f5db1f37",
+  "currentCandidateRustSdkLoadedAttestation": false,
+  "newClosureRealized": false,
+  "activationPerformed": false,
+  "buildAttempted": false
+}

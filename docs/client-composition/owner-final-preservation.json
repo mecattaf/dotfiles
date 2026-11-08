@@ -1,0 +1,19 @@
+{
+  "utc": "2026-11-08T06:13:58Z",
+  "ownerFilesDrifted": [],
+  "ownerEntrySha256": "b6cf824a58a96efe6ec8f7d4d674e9a2cf9dff771524a81e4ef96033c0ad4fb9",
+  "sourceSnapshots": [
+    {
+      "path": "/home/tom/.wt/kitty-consolidation/sources/domicile-dnd",
+      "head": "ec4852dc02c6da2376dc6a81bea845980db47669",
+      "clean": true
+    },
+    {
+      "path": "/home/tom/.wt/kitty-consolidation/sources/imagine-native-catalogue",
+      "head": "8954bbe22e7bad338206322576838f6c20b2043a",
+      "clean": true
+    }
+  ],
+  "activationPerformed": false,
+  "buildAttempted": false
+}

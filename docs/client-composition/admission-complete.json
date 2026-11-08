@@ -1,0 +1,68 @@
+{
+  "composed": {
+    "activates": false,
+    "client": {
+      "activationDerivation": "/nix/store/pl7xz0zvwn7dzxfmpcnba4lrq2711spx-home-manager-generation.drv",
+      "baseNixpkgs": "e2587caef70cea85dd97d7daab492899902dbf5d",
+      "companionSource": "/nix/store/0p67x75cqflffcgr3wrpa1n35qhmvrm0-domicile-config/imagine",
+      "configuredEntry": "/nix/store/ln2sg6icnz0mxy5c834c451pxn6m8yh7-agency-domicile-entry.tsx",
+      "domicileEngine": "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244",
+      "domicileSource": "ec4852dc02c6da2376dc6a81bea845980db47669",
+      "editor": {
+        "role": "seat",
+        "viAlias": true
+      },
+      "failedAssertions": [],
+      "greetd": {
+        "default_session": {
+          "command": "/nix/store/dddwfz7nph37q3cjky9lhpy9kb90rrrx-bash-interactive-5.3p15/bin/bash -l",
+          "user": "tom"
+        },
+        "initial_session": {
+          "command": "/nix/store/cdfc95k165iwcqirbjam60clprknjpxj-domicile-physical-session/bin/domicile-physical-session",
+          "user": "tom"
+        },
+        "terminal": {
+          "vt": 1
+        }
+      },
+      "greetdRestartIfChanged": false,
+      "helper": "/nix/store/ph974z6szi1cnlv3p9x13m033b4flghv-agency-kitty-0.1.0",
+      "imagineSource": "8954bbe22e7bad338206322576838f6c20b2043a",
+      "kernel": "/nix/store/wjng0666yjjchqkf4dhhksaahhmr0dzz-linux-7.3",
+      "kitty": {
+        "path": "/nix/store/rs4s3ggn03a65bbwj9r1ps20d4kichm1-kitty-0.50.0",
+        "version": "0.50.0"
+      },
+      "mesa": "/nix/store/phi22s7027ilx17453zjxskja9slvbd4-mesa-26.1.5",
+      "sdkPackage": "/nix/store/x19d825w87a7b7wcqkyfmjs2ix2havl1-domicile",
+      "sourceEntry": "/nix/store/0p67x75cqflffcgr3wrpa1n35qhmvrm0-domicile-config/domicile.tsx",
+      "swayManualFallback": true,
+      "systemDerivation": "/nix/store/8qhk48cznd8xx5q8qhc1zgqb4in9g6sg-nixos-system-client-26.11.20260723.e2587ca.drv"
+    },
+    "nas": {
+      "editor": {
+        "role": "brain",
+        "viAlias": true
+      },
+      "failedAssertions": [],
+      "helper": "/nix/store/l4xqxsda661gi9n3bnhwkrn2pil167sh-agency-kitty-0.1.0",
+      "herdrSwitchMethod": "keep-old",
+      "neovim": "/nix/store/ni8l4h0n6hfi3p7bs2xn73afh6s989fy-neovim-0.12.4",
+      "neovimPlugins": "/nix/store/ylgdn6pcxbzkb1p7gmlcqzqizcvqhpda-plugins.lua",
+      "systemDerivation": "/nix/store/c18816iy2g6rykkrdl264l20qyssqbzb-nixos-system-nas-26.05.20260731.5b4f72e.drv"
+    }
+  },
+  "nasAdmission": {
+    "catalogueEntry": "/nix/store/dj8ziv0pmc92q55agnpzpv25rxc25svl-agency-chat-native-catalogue/catalogue_nas.py",
+    "cataloguePayload": "/nix/store/dj8ziv0pmc92q55agnpzpv25rxc25svl-agency-chat-native-catalogue",
+    "changesCurrentNas": false,
+    "editorRole": "brain",
+    "helper": "/nix/store/l4xqxsda661gi9n3bnhwkrn2pil167sh-agency-kitty-0.1.0",
+    "herdrSwitchMethod": "keep-old",
+    "neovim": "/nix/store/ni8l4h0n6hfi3p7bs2xn73afh6s989fy-neovim-0.12.4",
+    "neovimPlugins": "/nix/store/ylgdn6pcxbzkb1p7gmlcqzqizcvqhpda-plugins.lua",
+    "primaryVi": true,
+    "unitLifecycleAutomatic": false
+  }
+}

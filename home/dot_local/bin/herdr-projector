@@ -57,6 +57,11 @@
 # backoff. HERDR_PROJECTOR_UNIT= (empty) skips the check for a target that
 # runs herdr without that unit.
 #
+# HERDR_PROJECTOR_RECONNECT=0 makes one unit-preflight/attach attempt, then
+# returns its failure to the caller. This lets Domicile return to local control
+# after a lost link instead of silently landing later keys in a different pane.
+# Other callers keep the reconnect policy above.
+#
 # The child runs in the background with its stdin put back on the tty, and
 # the script `wait`s for it: a foreground child would hold bash off its traps
 # until the child is gone, and a background job of a non-interactive bash
@@ -72,6 +77,13 @@ set -u
 target="${HERDR_PROJECTOR_TARGET:-nas}"
 herdr_bin="${HERDR_BIN:-herdr}"
 ssh_bin="${HERDR_PROJECTOR_SSH:-ssh}"
+# Domicile's local control owns reattachment: one selection, one attempt.
+# Existing projector callers retain automatic reconnect unless they opt out.
+reconnect="${HERDR_PROJECTOR_RECONNECT-1}"
+case "$reconnect" in
+  0|1) ;;
+  *) echo 'herdr-projector: HERDR_PROJECTOR_RECONNECT must be 0 or 1' >&2; exit 2 ;;
+esac
 unit="${HERDR_PROJECTOR_UNIT-herdr.service}"
 # This value becomes one argument in the remote shell command.
 case "$unit" in
@@ -180,6 +192,10 @@ backoff() {
 while :; do
   if ! server_unit_active; then
     [ "$stopping" = 1 ] && exit 0
+    if [ "$reconnect" = 0 ]; then
+      printf 'herdr-projector: %s; returning to local control.\n' "$unit_error" >&2
+      exit 1
+    fi
     backoff "$unit_error"
     continue
   fi
@@ -204,6 +220,9 @@ while :; do
     printf 'herdr-projector: herdr refused its arguments (exit 2); not retrying\n' >&2
     exit 2
   fi
+
+  # An explicit one-attempt caller owns any later attachment.
+  [ "$reconnect" = 1 ] || exit "$status"
 
   # A session that held for a minute was a working link: start the backoff over.
   if [ $((SECONDS - started)) -ge 60 ]; then

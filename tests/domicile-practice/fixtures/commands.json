@@ -1,0 +1,13 @@
+{
+  "rescue": [
+    "kitty",
+    "--title",
+    "practice-rescue",
+    "--config",
+    "NONE",
+    "--",
+    "{python}",
+    "{app}",
+    "counter"
+  ]
+}

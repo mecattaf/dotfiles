@@ -1,0 +1,19 @@
+{
+  "terminal": [
+    "kitty",
+    "practice-terminal"
+  ],
+  "rescue": [
+    "kitty",
+    "practice-rescue"
+  ],
+  "browser": [
+    "chrome",
+    "--user-data-dir={work}/chrome",
+    "about:blank"
+  ],
+  "files": [
+    "nautilus",
+    "{home}/Documents"
+  ]
+}

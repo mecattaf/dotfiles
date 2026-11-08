@@ -1,0 +1,29 @@
+{
+  "resolvedFrom": "owner complete lock graph, exact common root inputs preserved",
+  "updatedByFollowedGraphPaths": [
+    {
+      "path": [
+        "llm-agents"
+      ],
+      "ownerNode": "llm-agents",
+      "canonicalNode": "llm-agents"
+    },
+    {
+      "path": [
+        "llm-agents",
+        "flake-parts"
+      ],
+      "ownerNode": "flake-parts_2",
+      "canonicalNode": "flake-parts"
+    },
+    {
+      "path": [
+        "llm-agents",
+        "nixpkgs"
+      ],
+      "ownerNode": "nixpkgs_5",
+      "canonicalNode": "nixpkgs_4"
+    }
+  ],
+  "rootNixpkgsRev": "e2587caef70cea85dd97d7daab492899902dbf5d"
+}

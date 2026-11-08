@@ -9,9 +9,10 @@
 # general device passthrough.
 set -euo pipefail
 usage() {
-  echo 'usage: runtime-test [--allow-kvm] [--allow-gpu /dev/dri/renderD<number>] [--] command [args...]'
+  echo 'usage: runtime-test [--allow-kvm] [--allow-gpu /dev/dri/renderD<number>] [--allow-render-node /dev/dri/renderD<number>] [--] command [args...]'
   echo 'Private /run/user and PID/IPC namespaces; source files remain writable.'
   echo '--allow-kvm binds only /dev/kvm for KVM guests.'
+  echo '--allow-render-node binds only the selected render node, without KFD/card nodes.'
   echo '--allow-gpu binds only /dev/kfd and the selected render node for GPU tests.'
 }
 if [ "$#" -eq 0 ]; then
@@ -20,10 +21,19 @@ if [ "$#" -eq 0 ]; then
 fi
 allow_kvm=0
 gpu_node=""
+render_node=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help) usage; exit 0 ;;
     --allow-kvm) allow_kvm=1; shift ;;
+    --allow-render-node)
+      if [ "$#" -lt 2 ] || [[ ! "$2" =~ ^/dev/dri/renderD[0-9]+$ ]] || [ -n "$render_node" ]; then
+        echo 'runtime-test: --allow-render-node requires one explicit renderD<number> node' >&2
+        exit 2
+      fi
+      render_node="$2"
+      shift 2
+      ;;
     --allow-gpu)
       if [ "$#" -lt 2 ] || [[ ! "$2" =~ ^/dev/dri/renderD[0-9]+$ ]]; then
         echo 'runtime-test: --allow-gpu requires /dev/dri/renderD<number>' >&2
@@ -50,6 +60,18 @@ if [ "$allow_kvm" -eq 1 ]; then
   fi
   devices+=(--dev-bind /dev/kvm /dev/kvm)
 fi
+if [ -n "$render_node" ] && [ -n "$gpu_node" ]; then
+  echo 'runtime-test: select either --allow-gpu or --allow-render-node' >&2
+  exit 2
+fi
+if [ -n "$render_node" ]; then
+  if [ ! -c "$render_node" ] || [ ! -r "$render_node" ] || [ ! -w "$render_node" ] \
+    || [ "$(readlink -f -- "$render_node")" != "$render_node" ]; then
+    echo 'runtime-test: --allow-render-node requires an accessible non-symlink character device' >&2
+    exit 1
+  fi
+  devices+=(--dir /dev/dri --dev-bind "$render_node" "$render_node")
+fi
 if [ -n "$gpu_node" ]; then
   for device in /dev/kfd "$gpu_node"; do
     if [ ! -c "$device" ] || [ ! -r "$device" ] || [ ! -w "$device" ] \
@@ -72,6 +94,6 @@ exec bwrap --die-with-parent --unshare-user --unshare-pid --unshare-ipc \
   --unsetenv DBUS_SESSION_BUS_ADDRESS --unsetenv DBUS_SESSION_BUS_PID \
   --unsetenv NOTIFY_SOCKET --unsetenv WATCHDOG_PID --unsetenv WATCHDOG_USEC \
   --unsetenv WAYLAND_DISPLAY --unsetenv DISPLAY --unsetenv SWAYSOCK \
-  --unsetenv I3SOCK \
+  --unsetenv I3SOCK --unsetenv DOMICILE_SOCK \
   --unsetenv SSH_AUTH_SOCK --unsetenv PULSE_SERVER \
   -- "$@"

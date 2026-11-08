@@ -1,0 +1,16 @@
+{
+  "originalOwnerSha256": "b6cf824a58a96efe6ec8f7d4d674e9a2cf9dff771524a81e4ef96033c0ad4fb9",
+  "templateEntrySha256": "216de88661e9dfd9344b99d7ff99d01d9b3d2066618c74bab325a3ce7106ba08",
+  "patches": [
+    {
+      "path": "/home/tom/.wt/kitty-consolidation/kitten/integration/domicile/client-entry.patch",
+      "sha256": "fac3e885e81011dc005c20775a9d515483930ae9b7fa79422b2c74b0fed6adcd"
+    },
+    {
+      "path": "/home/tom/.wt/kitty-consolidation/kitten/integration/domicile/client-native-catalogue.patch.in",
+      "sha256": "cf6ec9aff6a4d14609baca86a2b4f573136ff869e41e71558667007138484c05"
+    }
+  ],
+  "renderedBy": "modules/agency-kitty-client.nix selected home.programs.agencyKitty.package",
+  "ownerStillUnchanged": true
+}

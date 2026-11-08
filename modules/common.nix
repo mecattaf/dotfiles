@@ -227,9 +227,9 @@
       # password is ever prompted. The out-of-store config checkout is guaranteed
       # present before this runs by ./dotfiles-bootstrap.nix (ordered before greetd).
       #
-      # NB: there is NO usable interactive fallback — default_session (agreety) prompts
-      # for a password tom does not have, so it cannot log him in. Real recovery if this
-      # session fails is the VT2-6 getty autologin below (Ctrl+Alt+F2) or a reboot.
+      # NB: default_session (agreety) prompts for the account password. Whether tom can
+      # get past it is unconfirmed until he answers decision 4 (the lock and the password),
+      # so do not count on it. Known recovery is the VT2-6 getty autologin below or a reboot.
       settings.initial_session = {
         command = sessionCommand;
         user = "tom";

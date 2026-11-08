@@ -90,10 +90,15 @@
     inputs.nixos-hardware.nixosModules.common-pc-laptop-ssd
     ../../modules/zenbook-duo-daemon.nix
     ../../modules/keyring-autounlock.nix # TPM-sealed keyring unlock; greetd autologin types no password
+    ../../modules/domicile.nix # Domicile default; Sway remains available manually.
+    ../../modules/agency-web-client.nix
+    ../../modules/agency-kitty-client.nix # Public native terminal/editor/catalogue entry composition.
   ];
 
   networking.hostName = "client";
   myFleet.roles = [ "seat" ];
+  programs.agencyWebClient.enable = true;
+  programs.agencyWebClient.ambient.enable = true;
 
   # No dotfiles checkout on the thin client (Tom, 2026-10-11, about ~/dotfiles
   # and ~/mecattaf here: "i dnt need here"). Every raw dotfile (sway, kitty,

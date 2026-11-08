@@ -1,0 +1,196 @@
+{
+  "ownerHead": "87491201700acc5051cb3edfb55f5551a4eb9fbe",
+  "copiedFiles": [
+    {
+      "path": "home/dot_config/domicile/domicile.tsx",
+      "sha256": "b6cf824a58a96efe6ec8f7d4d674e9a2cf9dff771524a81e4ef96033c0ad4fb9",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "home/dot_config/fish/conf.d/desktop-sessions.fish",
+      "sha256": "d7826cc665af8ec9ea2d213b2c7975ea152446457ba3acf6a4d79091dd1b2aee",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "home/dot_local/bin/domicile-apps",
+      "sha256": "bd4fa0443d04654de712e5a8a29a7c77fb784db78757d9754df7f2cc4cbd3fd8",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "home/dot_local/bin/domicile-open-terminal",
+      "sha256": "126032ef5d43d6d6a6a7db9d88c2e01b80524ab56ecd4e1eddb4b183a1766c83",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "home/dot_local/bin/domicile-terminal",
+      "sha256": "f40ee14285001bdb49c93ede1f9714e8b4f9a0fc530010d0335469218f948b20",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "home/dot_local/bin/domicile-terminal-open",
+      "sha256": "1af4b08521f39d3f9b4399225e8a02631d66407156470193b1ab14541fd959a0",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "home/dot_local/bin/herdr-domicile-client",
+      "sha256": "3423abcd07dbef336ba9d3422b38138c241df143c32d35d664317ef1bd766317",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "home/dot_local/bin/runtime-test",
+      "sha256": "d9a0aa8608c962e83a15707121c230095c337944e78a43c1b52f9f21602bef89",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "hosts/client/default.nix",
+      "sha256": "571bfab93fd30e41b23709be32771777db5bb305d7f4e7ad16ab83b6df01e9e8",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web-client.nix",
+      "sha256": "e02cf204fd92bfd32c44744b9d5ac5f41dd96c8808360516eeefc05a88014a18",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/client-launcher.py",
+      "sha256": "f265f99cd9785cbeb1021aa2846ab09771c592a29ca5ae08393c823990315baa",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/domicile-apps.nix",
+      "sha256": "e973ac7c50733dd82f2d09b4aa648a2ba66aa6a2520122e2834b8f1adf85a842",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/domicile-session/recover.py",
+      "sha256": "ab7dff9c32cb33fae72dcba34b030a00e788986b7e3bb010ccc8f5624844551f",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/domicile-snapshot.nix",
+      "sha256": "de9018e48e855bad0f0adf6c458d978fc2ee285c6ac2c090bc8021c197b06f7f",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/domicile.nix",
+      "sha256": "373057c2d40aedb467f821cb08213efd098416ed5c92e48a21709c463dbbbcea",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "tests/domicile-apps/README.md",
+      "sha256": "a523b56a8b4a653b6c69657a2bce4a962d1aca43193e429f2f3f08a40ddb3343",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "tests/domicile-apps/test_native_launch.py",
+      "sha256": "3d1668993ffd67051847e47f7d90c4fe7fef5f262cdb7010a29f00a16974dd8f",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "tests/domicile-apps/test_routing.py",
+      "sha256": "d57c1055a6ec3d3a70313349cf751645abbefea5b0825d0f9e5cc3ac4950f898",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "tests/domicile-login/README.md",
+      "sha256": "4b2f8591e179f54f58e247e1c8d0d0975e9ef91d522891c7ce0546473c3f31a7",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "tests/domicile-login/evaluate.nix",
+      "sha256": "36af384f83b48fe997a9724e392064f4ea58af42a9e4902b32b062e4f2979a99",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "tests/domicile-login/test_lifecycle.py",
+      "sha256": "4dad59b5b6b88a439104a42c726e7ab3426c0ef10791d8800570d47f172c6739",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/agent-windows/client",
+      "sha256": "43c8e0e68ef4b32d75efb0984e7b561e449141efd7114dd34f65a428dc366aab",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/agent-windows/client.py",
+      "sha256": "7c2db8a0e8e9e9bfc1ce64d749f1e89fa2529c92aa65975f70cdaf8736504f64",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/agent-windows/transport.py",
+      "sha256": "fe347c12e84751a96541ef6c027e540e4f9b1f30129f6d6bbe3e48d69560f674",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/chrome_launcher.py",
+      "sha256": "b66c230f6a4de57d23c783e2ac9331c183e4b1d7d5af9fd2f5e376cba92eacae",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/chrome_broker.py",
+      "sha256": "f482cedde08588594c326606b6b53fbb91ee00597e48be1f77b5b1c1fbb7bd6f",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/nas_handoff.py",
+      "sha256": "20b78a4ae48fd28a155fb57e03d2967ab3445b53430814f2d169e54706d4d0f0",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/legacy_bootstrap.py",
+      "sha256": "8f23a788b66dceafbd9f5ba2154f73ff610d78862e2d186975e446b79fed5b47",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/attention-reader.py",
+      "sha256": "c7caf10504e4603ff5c837f3ff0cefd37713b7692bc6496fe8ceb1393b048ef0",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/catalogue_nas.py",
+      "sha256": "dc2e866152e0a1b1b3165cfeeb2a06525babbabbafb01a10a38be5807e08c60e",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/catalogue_client.py",
+      "sha256": "859da2efca734dfd865a20c8dc41994846434ccc4b83f4f39223f1d691a03bf6",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/catalogue_logs.py",
+      "sha256": "e4bdf672a8ff729212648e5073ebfc9751734a78fe0efaef79d34b442fd70696",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/terminal_launcher.py",
+      "sha256": "580650bf6181d9a250a99715fdf7b61a15051af5a96d3c66e88092414f398c43",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/layout_identity.py",
+      "sha256": "b8dcce1e2222bcc6164bef8baeea766ac3a2a5764cdc6a8173d098a7980dc645",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/native_terminal/control.py",
+      "sha256": "9b57264e54233c7ebe48f6ea4489464cefb95e19e81384e564b1b5332bdfad98",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/native_terminal/view.py",
+      "sha256": "34577233b0c56dd367d438f8e0e6348bf0f645fba72876bab63576a2800c47d7",
+      "ownerUnchangedCopy": true
+    },
+    {
+      "path": "modules/agency-web/chat-window/native_terminal/README.md",
+      "sha256": "9e83c7ea2db742a077f30b07bdda7a9fa89374eb6cb61fa7d4a4e12bdbe1ee03",
+      "ownerUnchangedCopy": true
+    }
+  ],
+  "notCopied": [
+    "home/dot_config/domicile/agency",
+    "owner unrelated helper removals",
+    "owner 0.48-only Wayland patch overlay"
+  ],
+  "ownerEntrySha256": "b6cf824a58a96efe6ec8f7d4d674e9a2cf9dff771524a81e4ef96033c0ad4fb9"
+}
