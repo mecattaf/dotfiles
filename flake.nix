@@ -1644,6 +1644,7 @@
               nativeBuildInputs = [
                 pkgs.python3
                 pkgs.systemd
+                pkgs.utility-storage
               ];
             }
             ''
@@ -1651,6 +1652,7 @@
               export PYTHONPATH=${./lib/python}
               export CALL_DIARIZE_REMOTE_SCRIPT=${./home/dot_local/bin/call-diarize-remote}
               export RECORDING_STAGE_SCRIPT=${./home/dot_local/bin/recording-transcript-stage}
+              export RECORDING_STAGE_BIN=${pkgs.utility-storage}/bin/recording-transcript-stage
               export SPEECH_QUEUE_SCRIPT=${./pkgs/speech-session/queue.py}
               python3 -m unittest discover -s ${./tests/utility-storage} -v
               python3 -m unittest discover -s ${./tests/speech-session} -v
