@@ -70,6 +70,7 @@ in
         allow_remote_control socket-only
         clipboard_control write-clipboard write-primary read-clipboard-ask read-primary-ask
         map --when-focus-on var:agency_session ctrl+b kitten ${cfg.editorKitten} sidebar
+        map --when-focus-on var:agency_editor_picker=1 ctrl+b kitten ${cfg.editorKitten} sidebar
         map --when-focus-on var:agency_session ctrl+v kitten ${assets}/agency.py image
         map --when-focus-on var:agency_session ctrl+shift+c kitten ${assets}/agency.py copy
         map --when-focus-on var:agency_session ctrl+shift+h kitten ${assets}/agency.py transcript
