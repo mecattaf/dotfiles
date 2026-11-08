@@ -1650,6 +1650,7 @@
               export PYTHONDONTWRITEBYTECODE=1
               export PYTHONPATH=${./lib/python}
               export CALL_DIARIZE_REMOTE_SCRIPT=${./home/dot_local/bin/call-diarize-remote}
+              export RECORDING_STAGE_SCRIPT=${./home/dot_local/bin/recording-transcript-stage}
               export SPEECH_QUEUE_SCRIPT=${./pkgs/speech-session/queue.py}
               python3 -m unittest discover -s ${./tests/utility-storage} -v
               python3 -m unittest discover -s ${./tests/speech-session} -v

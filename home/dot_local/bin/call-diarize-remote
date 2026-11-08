@@ -24,6 +24,12 @@ def dispatch(source, extra, run=subprocess.run):
         checked(['rsync', '-a', '--checksum', '--safe-links', '--protect-args',
                  '--exclude', 'mix.wav', '--exclude', 'far.wav', '--exclude', 'near.wav',
                  host + ':' + remote + '/', str(source) + '/'])
+        # This successful return is the event: publish only finished local
+        # artifacts, with their review/provenance. No timer or new inference.
+        # Resolve the sibling through the NAS's existing out-of-store link:
+        # new raw files need not have a Home Manager PATH link yet.
+        publisher = Path(__file__).resolve().with_name('recording-transcript-stage')
+        checked([sys.executable, str(publisher), str(source)])
     except (OSError, subprocess.CalledProcessError):
         print('Compute scratch retained at ' + host + ':' + remote, file=sys.stderr)
         raise
