@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "scope": "Second independently optional exact-entry patch, applied after client-entry.patch",
+  "inputEntrySha256": "61d031227c1e7f731f72046a148f224a20be2ed4b57a01b6c8a3426a5bd9d72d",
+  "inputFirstPatchSha256": "fac3e885e81011dc005c20775a9d515483930ae9b7fa79422b2c74b0fed6adcd",
+  "templatePatchSha256": "cf6ec9aff6a4d14609baca86a2b4f573136ff869e41e71558667007138484c05",
+  "templateEntrySha256": "216de88661e9dfd9344b99d7ff99d01d9b3d2066618c74bab325a3ce7106ba08",
+  "placeholder": "@AGENCY_KITTY_COMMAND@",
+  "placeholderCount": 1,
+  "changedPublicField": "sessionCatalogue.nativeTerminalLauncher",
+  "nativeLauncherAction": "desktop-resume-request",
+  "rendering": "Replace the single placeholder with the selected installed seat helper absolute path before applying/building; unresolved template is not a valid runtime configuration.",
+  "retainedExistingTerminalLauncher": true,
+  "automaticChatOrWorkspaceLinkage": false,
+  "ownerEntryEdited": false,
+  "liveClientAdopted": false,
+  "qualification": {
+    "receipt": "docs/evidence/native-imagine-public-catalogue/receipt.json",
+    "receiptSha256": "c8a29e5fd5083d224d7c7978d76ab7af687f098d50082e49e107843862925c13",
+    "fixtureSourceSha256": "6d914c2fcca8495da82526e5b0600c21d4cbcc441f7043c6f63ed5f831445cb9",
+    "compiledEntrySha256": "a69806183aa89299eb7d634ecd0de6f40b745e5dba1dc0137af76059b2c8db68",
+    "renderedEntrySha256": "d0c432243fb2217bb76fcbc0df728bea40d6c7b491c5d7195d86ce846b51dc81",
+    "trustedPointerClick": true,
+    "sameNasProcess": true,
+    "allTenConfiguredWorkspacesOccupied": true,
+    "actualInstalledHelperReceiptCompleted": true,
+    "ownerDirtyEntryUnchanged": true
+  }
+}

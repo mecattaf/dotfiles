@@ -180,6 +180,36 @@ preserving their editability. This is packaging continuity, not evidence of a
 new terminal transport. [d5a06636, July 29](https://github.com/mecattaf/dotfiles/commit/d5a06636)
 finally removes the Fedora transition output and documents NixOS-only main.
 
+### July 4: the exact local RPC UI had already been considered
+
+Tom's remembered earlier investigation exists in
+[e16d3271, July 4](https://github.com/mecattaf/dotfiles/commit/e16d3271).
+`REMOTE_NVIM_DECISION.md` ends with an explicit SSH `-L` forward to a remote
+`nvim --headless --listen` server, followed by local
+`nvim --server ... --remote-ui`. It also mentions the emerging native
+`:detach`/`:connect` route. This is the same editor/UI separation pursued now,
+not merely Nvim's terminal escape sequences travelling through SSH.
+
+The earlier decision chose a different default: local Nvim **and local files**,
+rsync on save, and a reverse-forwarded Nvim RPC socket for server-side file
+watchers to nudge a local buffer refresh. Its deciding requirement was reading
+and scrolling open files while offline. The actual remote-UI route was kept
+as a stable-connectivity fallback, because a disconnected remote editor cannot
+provide that local interaction. The note's technical claims about plugins and
+sync guarantees are historical reasoning, not current qualifications.
+
+[da6a8600, later that day](https://github.com/mecattaf/dotfiles/commit/da6a8600)
+moves the note out of dotfiles; the preserved
+[notes copy](/home/tom/notes/references/archive/restructuring-history/midjuly-notes-reshape/projects/nixos-transition/jul4-flash-week-decisions/refugees/REMOTE_NVIM_DECISION.md)
+is byte-identical to the committed file. Its companion
+[implementation audit](/home/tom/notes/references/archive/restructuring-history/midjuly-notes-reshape/projects/nixos-transition/jul4-flash-week-decisions/remote-terminal-and-nvim.md)
+calls the chosen remote-reflection glue ratified but unbuilt and records that
+none of that glue existed in the tree. The pre-November 7 search across all
+dotfiles Git refs found the explicit `--remote-ui` text only in this document's
+addition and removal. It did not establish a deployed, retained per-directory
+RPC editor predecessor. The current run adds that lifecycle, stable directory
+identity and recovery qualification; it does not invent the original split.
+
 [55eb63f8, July 7](https://github.com/mecattaf/dotfiles/commit/55eb63f8)
 briefly replaces shpool with zmosh, pursuing UDP roaming after SSH bootstrap.
 [a7ce43a7, also July 7](https://github.com/mecattaf/dotfiles/commit/a7ce43a7)
@@ -301,6 +331,18 @@ seconds. Clipboard provider behavior is another capability-specific concern,
 not evidence of slow ordinary key delivery.
 
 ## October–November: the front end moves; the native boundary still matters
+
+The [October 7 Nvim summon survey](/home/tom/notes/archives/ai-chats/support/unattributed/ancillary/nvim-summon--a19be304c522c4f4.md)
+provides a second, distinct precedent. It records source inspection of
+`herdr-nvim` v1.1.0 (`5e849b5`): a detached headless Nvim server per Herdr tab,
+with its sidebar process executing `nvim --server ... --remote-ui`. This is
+retained editor state behind replaceable UI processes, but both processes are
+on the coordinator inside Herdr, not a laptop-native UI over SSH. The same
+survey explicitly says neither Nvim plugin was installed and its recommendation
+was a proposal with nothing armed. Earlier Echo/Nvim RPC and observer work
+controls buffers through sockets; that alone is not a remote UI or a retained
+editor service. The bounded search record and exact source hashes are in
+[`docs/evidence/nvim-rpc-lineage/search.json`](evidence/nvim-rpc-lineage/search.json).
 
 The nine-workspace restriction has a concrete source. In
 [bab72378, October 7](https://github.com/mecattaf/dotfiles/commit/bab72378),

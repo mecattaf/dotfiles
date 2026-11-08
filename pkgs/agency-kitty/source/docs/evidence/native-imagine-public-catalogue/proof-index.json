@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "scope": "Combined exact client entry: three-chord patch plus independently optional public native catalogue field",
+  "receiptSha256": "c8a29e5fd5083d224d7c7978d76ab7af687f098d50082e49e107843862925c13",
+  "fixtureSourceSha256": "6d914c2fcca8495da82526e5b0600c21d4cbcc441f7043c6f63ed5f831445cb9",
+  "invocationSha256": "b4f74f15fe26caae9d5da75aca2c038fc9b77eb6071af98423eaa80f22575f4e",
+  "wallSeconds": 12.636882022023201,
+  "passedCases": [
+    "trusted-mod-enter-direct",
+    "trusted-mod-control-shift-enter-menu",
+    "trusted-mod-shift-enter-rescue",
+    "actual-entry-public-native-catalogue"
+  ],
+  "sourceChain": {
+    "sourceSha256": "61d031227c1e7f731f72046a148f224a20be2ed4b57a01b6c8a3426a5bd9d72d",
+    "originalDirtyEntrySha256": "b6cf824a58a96efe6ec8f7d4d674e9a2cf9dff771524a81e4ef96033c0ad4fb9",
+    "adoptionPatchSha256": "fac3e885e81011dc005c20775a9d515483930ae9b7fa79422b2c74b0fed6adcd",
+    "compiledShellSha256": "a69806183aa89299eb7d634ecd0de6f40b745e5dba1dc0137af76059b2c8db68",
+    "compilerWorkspace": "/nix/store/wdalyh44vk2k9ddhla4d2dkx96jwlqxf-domicile-shell-workspace-0.0.0",
+    "startupExportsNotActivated": true,
+    "firstPatchEntryCopiedUnchangedBeforeOptionalPatch": true,
+    "originalEntryBytesPreserved": false,
+    "optionalNativeCatalogue": {
+      "templatePatchSha256": "cf6ec9aff6a4d14609baca86a2b4f573136ff869e41e71558667007138484c05",
+      "renderedPatchSha256": "2991ebfef7002a8d5630b9e61f6fdbde696bd8a50b20203ea2c607be4e163338",
+      "renderedEntrySha256": "d0c432243fb2217bb76fcbc0df728bea40d6c7b491c5d7195d86ce846b51dc81",
+      "configuredPublicNativeTerminalLauncher": "/nix/store/vqv62pdzfx3jdxk7jdj3gwllg810fn21-agency-kitty-0.1.0/bin/agency-kitty",
+      "allOtherEntryBytesPreserved": true
+    }
+  },
+  "fullImagineBundleSha256": "191547be9ec4c56a2108c4d82eda5b2f99a501492e0727e9db980cd5f5db1f37",
+  "installedSeatHelper": "/nix/store/vqv62pdzfx3jdxk7jdj3gwllg810fn21-agency-kitty-0.1.0/bin/agency-kitty",
+  "installedNasHelper": "/nix/store/2vlbxx89hnm1d9ynrnblyg0ki3ysg0aq-agency-kitty-0.1.0/bin/agency-kitty",
+  "engineLibrarySha256": [
+    "43f0dc75132f7ab3ae7042a75d7c19b88e89a9e10a4850a656a06bcda623c02f"
+  ],
+  "ownerDirtyEntryUnchanged": true,
+  "runtimeCoreChanged": false,
+  "liveClientAdopted": false,
+  "noAutomaticChatOrWorkspaceLinkage": true,
+  "allConfiguredGlobalWorkspaces": 10,
+  "savedNativePtysAreSeparateCatalogueEntries": true,
+  "clientOwnedCleanup": {
+    "escalations": [],
+    "remainingOwnedProcesses": []
+  },
+  "nasOwnedCleanup": {
+    "escalations": [],
+    "remainingOwnedProcesses": []
+  },
+  "externalReadOnlyAuditRemainingExactProofProcesses": [],
+  "computeProofDirectory": "/home/tom/agent-work/kitty-consolidation/imagine-resume/proof-public-catalogue-qualified-20261108-0432",
+  "limitations": [
+    "Private shell-only runtime leaves captured startup exports unactivated; this is not a full client deployment.",
+    "The field uses explicit NAS session/chat links; it does not infer chat or workspace links.",
+    "All ten configured global workspaces were occupied to exercise the existing current-workspace fallback.",
+    "Preliminary empty-workspace assertion was corrected to match existing placement policy; a later menu fixture input race was fixed by observing the actual filtered native fzf screen before Enter."
+  ]
+}

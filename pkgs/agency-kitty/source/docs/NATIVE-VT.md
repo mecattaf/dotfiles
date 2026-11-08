@@ -79,3 +79,9 @@ which gives that launch a deliberate output-ordering barrier. This is a useful
 native implementation pattern, not proof that the previous NAS shell/agent
 survived or that an arbitrary running TUI can be reconstructed. Linux's desktop
 portal logout lifecycle remains a separate Domicile integration to qualify.
+
+The [complete native-backend source audit](KITTY-NATIVE-BACKEND-AUDIT.md)
+maps the existing exports and exact missing contracts. Native Kitty is a
+credible higher-fidelity model; the main work is bounded state export and
+restore, including Window-owned callbacks and future graphics/mode operations.
+It is not ruled out by previous failed glue experiments.

@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "recordedUtc": "2026-11-08T04:37:20Z",
+  "purpose": "Targeted pre-November 7 local Nvim UI / remote RPC historical recall; read-only source inspection",
+  "runtimeTestsBuildsOrTimingsRun": false,
+  "historicalCommandsExecuted": false,
+  "dotfilesSearch": {
+    "repository": "/home/tom/dotfiles",
+    "shallow": false,
+    "reachableCommitsAcrossAllRefs": 2248,
+    "cutoff": "2026-11-07T00:00:00Z",
+    "exactUiPattern": "remote-ui|vim[.]net[.]_ssh|vim/net/_ssh|:connect ssh",
+    "exactUiMatches": [
+      "da6a8600d90d77f2d06213789c7c3571316cb764 2026-07-04T17:04:43+02:00 docs: rewrite README for the flake era; move 9 root working notes to the notes vault",
+      "e16d32717688259d5171e3a3152954a41b50a47c 2026-07-04T16:10:18+02:00 docs: land nvim / pi-agent / slides-skill working notes"
+    ],
+    "broaderPatterns": [
+      "nvim.*--server",
+      "nvim.*--listen",
+      "neovide",
+      "remote.?ssh[.]nvim",
+      "rnvim",
+      "vim-arsync",
+      "claude_reflect",
+      "nvim.*daemon",
+      "per.directory.*nvim"
+    ],
+    "nonDocumentationRpcCodeMatches": [
+      "2369f56b: theme switcher invokes --remote-expr; not a remote UI launcher"
+    ]
+  },
+  "notesSearch": {
+    "roots": [
+      "references/devlogs",
+      "references/knowledge",
+      "references/archive",
+      "archives/ai-chats",
+      "journal/2026/06 through journal/2026/10"
+    ],
+    "textExtensions": [
+      "md",
+      "txt",
+      "lua",
+      "fish",
+      "sh"
+    ],
+    "exactStrings": [
+      "--remote-ui",
+      ":connect ssh",
+      "vim.net._ssh",
+      "vim/net/_ssh"
+    ],
+    "relatedTerms": [
+      "Neovide",
+      "client/server Nvim",
+      "headless/listen",
+      "per-directory daemon/buffers"
+    ],
+    "exclusions": "Targeted follow-up text searches excluded dependency/source/vendor copies, generated filesystem inventories and current-run artifacts where practical. Initial broad-scan inventory and current-run hits were discarded. Relevant historical source fragments were then read explicitly; generic plugin documentation was not counted as user implementation."
+  },
+  "sources": {
+    "julyDecision": {
+      "path": "/home/tom/notes/references/archive/restructuring-history/midjuly-notes-reshape/projects/nixos-transition/jul4-flash-week-decisions/refugees/REMOTE_NVIM_DECISION.md",
+      "sha256": "e24fd27b53461a8680ee59512d2b4a0c679a1b23ad776582b93587f08de002cb",
+      "sameBytesAsGitBlob": "e16d3271:REMOTE_NVIM_DECISION.md",
+      "relevantLines": {
+        "localFilesDefault": "30-62",
+        "reverseRpcReflection": "81-99",
+        "exactLocalUiFallback": "139-150"
+      }
+    },
+    "julyUnbuiltAudit": {
+      "path": "/home/tom/notes/references/archive/restructuring-history/midjuly-notes-reshape/projects/nixos-transition/jul4-flash-week-decisions/remote-terminal-and-nvim.md",
+      "sha256": "27f33fde27feac4b388e46a29de6f356adb58df6a7eb46e2afd5f248eedae78a",
+      "relevantLines": "38-47"
+    },
+    "octoberSummonSurvey": {
+      "path": "/home/tom/notes/archives/ai-chats/support/unattributed/ancillary/nvim-summon--a19be304c522c4f4.md",
+      "sha256": "a19be304c522c4f425113a9fe528f278b739fb975e3322c99aae801876a2a4aa",
+      "relevantLines": "1-34, 83-84, 169-175"
+    },
+    "echoRpcReadme": {
+      "path": "/home/tom/notes/references/devlogs/1h26/echo-cli-scoping-oct25/nvim-rpc/README.md",
+      "sha256": "327bb56b56a51327a7d722426087fbd021f9471eac16219a8e12ad1a06cee4da"
+    },
+    "earlyRemoteTuiDiscussion": {
+      "path": "/home/tom/notes/references/devlogs/1h26/pre-sync/dell-xps2022-linux-discussion.md",
+      "sha256": "19e5c5eb32ff457188f0d1c0550877e6925922510588ecd35bf75b4ad0e5359b"
+    }
+  },
+  "findings": [
+    {
+      "kind": "exact documented local UI / remote editor predecessor",
+      "dateProvenByGit": "2026-07-04",
+      "source": "julyDecision",
+      "fact": "SSH -L launches remote nvim --headless --listen, then local nvim --server ... --remote-ui. Native :detach/:connect is also mentioned. Historical default instead chose local files + rsync-on-save + reverse RPC reflection for offline reading."
+    },
+    {
+      "kind": "deployment limit",
+      "source": "julyUnbuiltAudit",
+      "fact": "Contemporaneous archived audit calls the chosen reflection glue ratified but unbuilt and reports zero such remote glue in the tree. The exact-UI Git matches are document addition/removal, not an installed launcher. No deployed retained per-directory predecessor established by this bounded search."
+    },
+    {
+      "kind": "retained-server implementation surveyed, not installed",
+      "dateInReport": "2026-10-07",
+      "source": "octoberSummonSurvey",
+      "fact": "Historical survey records herdr-nvim v1.1.0 5e849b5 using a detached headless server per Herdr tab and --remote-ui in its sidebar. Both on coordinator; survey says no plugins installed and recommendation was unarmed. This pass does not requalify that external code."
+    },
+    {
+      "kind": "related RPC work, different boundary",
+      "sources": [
+        "echoRpcReadme",
+        "earlyRemoteTuiDiscussion"
+      ],
+      "fact": "Echo buffer-edit RPC and observer discussions expose Neovim buffers on sockets; early thin-client discussion explicitly carries remote Neovim ANSI through SSH. Neither alone establishes a laptop-native remote UI."
+    }
+  ],
+  "claimsNotMade": [
+    "No earliest-ever date outside the searched archive is asserted.",
+    "No historical launcher or shell fragment was sourced or run.",
+    "A written decision, archived source audit and actual installed runtime are separate evidence.",
+    "No prior deployed per-directory retained-server or WIP checkpoint service was proven."
+  ]
+}

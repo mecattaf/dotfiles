@@ -15,6 +15,13 @@ deployment; installing this package is not a complete desktop rollout.
 - Mod+Ctrl+Shift+Enter: `agency-kitty menu`, explicit saved-session chooser.
 - Mod+Shift+Enter: `agency-kitty desktop rescue`, ordinary local fish.
 
+The separately optional [native catalogue template](NATIVE-CATALOGUE.md) adds
+only the existing public `sessionCatalogue.nativeTerminalLauncher` field.
+Its actual combined-entry proof compiles through the installed SDK, exercises
+the three chords, then resumes an explicitly linked native row with all ten
+configured workspaces occupied. Render its one placeholder to the selected
+seat helper; neither patch infers chat links or deploys the client.
+
 ## Existing configuration seam
 
 Imagine already accepts public `ImagineOptions.keybindings`. `runImagine()`

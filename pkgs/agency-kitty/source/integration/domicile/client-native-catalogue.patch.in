@@ -1,0 +1,11 @@
+--- a/home/dot_config/domicile/domicile.tsx
++++ b/home/dot_config/domicile/domicile.tsx
+@@ -81,7 +81,7 @@
+ const imagineShell = runImagine({
+   ambientChat: { launcher: "agency-chat-ambient-bootstrap" },
+   chatWindow: { launcher: "agency-chat-window", bindAltEnter: true },
+-  sessionCatalogue: { relay: "agency-chat-catalogue", server: "agency-web", terminalLauncher: "agency-chat-terminal" },
++  sessionCatalogue: { relay: "agency-chat-catalogue", server: "agency-web", terminalLauncher: "agency-chat-terminal", nativeTerminalLauncher: "@AGENCY_KITTY_COMMAND@" },
+   layoutPersistence: { identity: "agency-layout-identity" },
+   webBrowser: { command: ["domicile-apps", "chrome"] },
+   policy: { upperDisplay: upperPanel, lowerDisplay: lowerPanel },

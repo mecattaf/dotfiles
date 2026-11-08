@@ -186,3 +186,10 @@ keeps each retained PTY. Kitty 0.50's native session/restore features are useful
 local conveniences, but a saved launch description or scrollback is not proof
 that the original NAS process survived. The [native session documentation](https://sw.kovidgoyal.net/kitty/sessions/)
 makes its relaunch/restore behavior explicit.
+
+Further source audits distinguish the
+[supported C ABI migration surface](LIBGHOSTTY-C-ABI.md),
+[native Kitty model export](KITTY-NATIVE-BACKEND-AUDIT.md), and
+[surviving-client missing-byte continuation](SAME-CLIENT-CONTINUITY.md).
+The last can avoid snapshot serialization while the same client/frontend
+survives, but is not implemented by this project's fresh-attachment supervisor.

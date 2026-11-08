@@ -1,0 +1,1993 @@
+{
+  "passed": true,
+  "homeUnchanged": true,
+  "realHomeMasked": true,
+  "privateNetworkAndRuntime": true,
+  "bundleSha256": "191547be9ec4c56a2108c4d82eda5b2f99a501492e0727e9db980cd5f5db1f37",
+  "fullImagineBundle": true,
+  "productionActivated": false,
+  "installedSeatHelper": "/nix/store/vqv62pdzfx3jdxk7jdj3gwllg810fn21-agency-kitty-0.1.0/bin/agency-kitty",
+  "installedNasHelper": "/nix/store/2vlbxx89hnm1d9ynrnblyg0ki3ysg0aq-agency-kitty-0.1.0/bin/agency-kitty",
+  "installedMetadataCompanionSha256": "db88c32a172229bfb5f10d89839eace69a66cc4e91a134578d468db3c053485d",
+  "cases": [
+    {
+      "name": "trusted-mod-enter-direct",
+      "windowClass": "agencykitty-36d1b268d5dc431a8111b5e50da98f49",
+      "managedUuid": "36d1b268-d5dc-431a-8111-b5e50da98f49",
+      "ordinaryOpenSshArgv": [
+        "-tt",
+        "-o",
+        "Hostname=100.65.85.114",
+        "-o",
+        "HostKeyAlias=nas",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ForwardAgent=no",
+        "-o",
+        "ClearAllForwardings=yes",
+        "-o",
+        "ControlMaster=no",
+        "-o",
+        "ControlPath=none",
+        "-o",
+        "ConnectTimeout=10",
+        "-o",
+        "ServerAliveInterval=15",
+        "-o",
+        "ServerAliveCountMax=3",
+        "--",
+        "nas",
+        "/nix/store/2vlbxx89hnm1d9ynrnblyg0ki3ysg0aq-agency-kitty-0.1.0/bin/agency-kitty remote direct --id 36d1b268-d5dc-431a-8111-b5e50da98f49 --cwd /home/tom --window-class agencykitty-36d1b268d5dc431a8111b5e50da98f49 --kitty-window-id 1"
+      ],
+      "noHolderAllocated": true,
+      "nativeOsc133Prompt": true,
+      "nativeOsc7Cwd": "kitty-shell-cwd://nas/home/tom",
+      "nativeTerm": {
+        "pid": 861,
+        "start": "120321353",
+        "term": "xterm-kitty",
+        "terminfo": "/nix/store/ryc1x74bpvnm57lfbj2m3iz08r3551in-kitty-0.50.0/lib/kitty/terminfo"
+      },
+      "exactUserVars": {
+        "agency_attention": "",
+        "agency_chat": "",
+        "agency_chats": "[]",
+        "agency_directory": "/home/tom",
+        "agency_editor_request": "",
+        "agency_harness": "",
+        "agency_harness_session": "",
+        "agency_host": "nas",
+        "agency_mode": "direct",
+        "agency_program_status": "",
+        "agency_resumable": "0",
+        "agency_session": "36d1b268-d5dc-431a-8111-b5e50da98f49",
+        "agency_status": "",
+        "agency_transcript": "",
+        "agency_workspace": ""
+      },
+      "noChatOrWorkspaceLink": true
+    },
+    {
+      "name": "trusted-mod-control-shift-enter-menu",
+      "windowClass": "agencykitty-menu",
+      "nativeFzfUi": true,
+      "selectionInput": "Kitty native remote-control text/key into private fzf UI",
+      "exactSavedUuid": "6b763da4-1438-4a4f-8036-e8c8f4ce91e7",
+      "savedFishOwnerUnchanged": true,
+      "noNewHolderAllocated": true
+    },
+    {
+      "name": "trusted-mod-shift-enter-rescue",
+      "windowClass": "agencykitty-rescue",
+      "localFishCmdline": [
+        "fish",
+        "--login",
+        "--interactive"
+      ],
+      "additionalSshInvocations": 0,
+      "noManagedNasUuid": true
+    },
+    {
+      "name": "actual-entry-public-native-catalogue",
+      "exactSavedUuid": "d25fd4fe-af32-4c06-9c07-c66dfbd788b2",
+      "windowClass": "agencykitty-d25fd4feaf324c069c07c66dfbd788b2",
+      "currentOccupiedWorkspace": "1",
+      "priorOccupiedNativeWindows": 3,
+      "globalConfiguredWorkspaceCount": 10,
+      "allConfiguredWorkspacesOccupied": true,
+      "totalNativeWindowsBeforeClick": 12,
+      "placedWorkspace": "1",
+      "existingWindowsUnmoved": true,
+      "sameNasFishOwner": {
+        "pid": 207,
+        "start": "120321039",
+        "term": "xterm-kitty",
+        "terminfo": "/nix/store/ryc1x74bpvnm57lfbj2m3iz08r3551in-kitty-0.50.0/lib/kitty/terminfo"
+      },
+      "noNewHolderAllocated": true,
+      "explicitChatLink": "proof-chat",
+      "trustedPointerEvent": {
+        "trusted": true,
+        "title": "Native sameFocus"
+      },
+      "configuredInstalledHelper": "/nix/store/vqv62pdzfx3jdxk7jdj3gwllg810fn21-agency-kitty-0.1.0/bin/agency-kitty",
+      "actualPublicHelperReceiptCompleted": true
+    }
+  ],
+  "domicileRuntimeSha256": {
+    "domicile": "288294048c41a2f329126cd3a8c047959a74f4536cf62c5b5ef9280d6a42be22",
+    "domicile-compositor": "5cfad5ab7f4bb436abb8e79fd897edfc5a8b24d0f88b9eed4e886c662bf73df7",
+    "domicile-native-drag-events": "1f509d0319e54f3343a784a5734599cc4cec64024af7ad2548bad1f0ed185d2f"
+  },
+  "seatHelperFromNixStore": true,
+  "fixtureSourceSha256": "6d914c2fcca8495da82526e5b0600c21d4cbcc441f7043c6f63ed5f831445cb9",
+  "clientEntry": {
+    "sourceSha256": "61d031227c1e7f731f72046a148f224a20be2ed4b57a01b6c8a3426a5bd9d72d",
+    "originalDirtyEntrySha256": "b6cf824a58a96efe6ec8f7d4d674e9a2cf9dff771524a81e4ef96033c0ad4fb9",
+    "adoptionPatchSha256": "fac3e885e81011dc005c20775a9d515483930ae9b7fa79422b2c74b0fed6adcd",
+    "compiledShellSha256": "a69806183aa89299eb7d634ecd0de6f40b745e5dba1dc0137af76059b2c8db68",
+    "compilerWorkspace": "/nix/store/wdalyh44vk2k9ddhla4d2dkx96jwlqxf-domicile-shell-workspace-0.0.0",
+    "startupExportsNotActivated": true,
+    "firstPatchEntryCopiedUnchangedBeforeOptionalPatch": true,
+    "originalEntryBytesPreserved": false,
+    "optionalNativeCatalogue": {
+      "templatePatchSha256": "cf6ec9aff6a4d14609baca86a2b4f573136ff869e41e71558667007138484c05",
+      "renderedPatchSha256": "2991ebfef7002a8d5630b9e61f6fdbde696bd8a50b20203ea2c607be4e163338",
+      "renderedEntrySha256": "d0c432243fb2217bb76fcbc0df728bea40d6c7b491c5d7195d86ce846b51dc81",
+      "configuredPublicNativeTerminalLauncher": "/nix/store/vqv62pdzfx3jdxk7jdj3gwllg810fn21-agency-kitty-0.1.0/bin/agency-kitty",
+      "allOtherEntryBytesPreserved": true
+    }
+  },
+  "noAutomaticChatOrWorkspaceLinkage": true,
+  "engineAttestation": {
+    "root": "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244",
+    "loadedLibrarySha256": {
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/libdomicile_engine.so": "43f0dc75132f7ab3ae7042a75d7c19b88e89a9e10a4850a656a06bcda623c02f"
+    }
+  },
+  "kittyAttestation": {
+    "binary": "/nix/store/rs4s3ggn03a65bbwj9r1ps20d4kichm1-kitty-0.50.0/bin/kitty",
+    "sha256": "d0565fa5f55341068f2354e0c4444a16cfa268e1c08701f3c59b2bfc8fefa918"
+  },
+  "actualEngineKeyDispatches": [
+    {
+      "type": "rawKeyDown",
+      "key": "Enter",
+      "code": "Enter",
+      "windowsVirtualKeyCode": 13,
+      "nativeVirtualKeyCode": 28,
+      "modifiers": 4
+    },
+    {
+      "type": "keyUp",
+      "key": "Enter",
+      "code": "Enter",
+      "windowsVirtualKeyCode": 13,
+      "nativeVirtualKeyCode": 28,
+      "modifiers": 4
+    },
+    {
+      "type": "rawKeyDown",
+      "key": "Enter",
+      "code": "Enter",
+      "windowsVirtualKeyCode": 13,
+      "nativeVirtualKeyCode": 28,
+      "modifiers": 14
+    },
+    {
+      "type": "keyUp",
+      "key": "Enter",
+      "code": "Enter",
+      "windowsVirtualKeyCode": 13,
+      "nativeVirtualKeyCode": 28,
+      "modifiers": 14
+    },
+    {
+      "type": "rawKeyDown",
+      "key": "Enter",
+      "code": "Enter",
+      "windowsVirtualKeyCode": 13,
+      "nativeVirtualKeyCode": 28,
+      "modifiers": 12
+    },
+    {
+      "type": "keyUp",
+      "key": "Enter",
+      "code": "Enter",
+      "windowsVirtualKeyCode": 13,
+      "nativeVirtualKeyCode": 28,
+      "modifiers": 12
+    }
+  ],
+  "menuFilterScreen": "NAS sessions \u203a Native occupied                          \n  2/4 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 \n  Enter: open / resume   Esc: cancel                    \n\u258c Native occupied  \u00b7  /home/tom/agent-work/kitty-cons\u00b7\u00b7 \n\u258c \u00b7\u00b7resume/proof-public-catalogue-qualified-20261108-\u00b7\u00b7\n",
+  "retainedNasOwners": {
+    "6b763da4-1438-4a4f-8036-e8c8f4ce91e7": {
+      "pid": 135,
+      "start": "120320986",
+      "term": "xterm-kitty",
+      "terminfo": "/nix/store/ryc1x74bpvnm57lfbj2m3iz08r3551in-kitty-0.50.0/lib/kitty/terminfo"
+    },
+    "d25fd4fe-af32-4c06-9c07-c66dfbd788b2": {
+      "pid": 207,
+      "start": "120321039",
+      "term": "xterm-kitty",
+      "terminfo": "/nix/store/ryc1x74bpvnm57lfbj2m3iz08r3551in-kitty-0.50.0/lib/kitty/terminfo"
+    },
+    "dc733f15-19ad-4226-a8e5-6b63ba4536c4": {
+      "pid": 259,
+      "start": "120321092",
+      "term": "xterm-kitty",
+      "terminfo": "/nix/store/ryc1x74bpvnm57lfbj2m3iz08r3551in-kitty-0.50.0/lib/kitty/terminfo"
+    }
+  },
+  "allNasPidsAndStartsPreserved": true,
+  "nativeCatalogueBeforeSnapshot": {
+    "capabilities": {
+      "snapshot": true,
+      "workspaceQuery": true,
+      "pollSnapshots": true,
+      "eventReplay": false,
+      "focus": false,
+      "layout": false,
+      "closeViewer": false,
+      "terminateDshSession": false,
+      "windowTitles": false,
+      "windowUrls": false,
+      "windowContents": false
+    },
+    "coordinates": "desktop-logical",
+    "containerIdentity": "epoch+revision+workspace+layer+floatIndex+path",
+    "outputs": [
+      {
+        "id": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "logicalGeometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 768
+        },
+        "scale": 1,
+        "visibleWorkspace": {
+          "kind": "workspace",
+          "value": "1"
+        },
+        "focused": true
+      }
+    ],
+    "focus": {
+      "output": {
+        "kind": "output",
+        "value": "HEADLESS-1"
+      },
+      "workspace": {
+        "kind": "workspace",
+        "value": "1"
+      },
+      "shellWindow": {
+        "kind": "window",
+        "value": "app:app-4"
+      },
+      "nativeWindow": {
+        "kind": "native-window",
+        "value": "app-4"
+      },
+      "replayed": true
+    },
+    "workspaces": [
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "1"
+        },
+        "name": "1",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [
+          {
+            "kind": "output",
+            "value": "HEADLESS-1"
+          }
+        ],
+        "tiling": {
+          "depth": 2,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "split-horizontal",
+            "focusedChild": 2,
+            "fractions": [
+              0.3333333333333333,
+              0.3333333333333333,
+              0.3333333333333333
+            ],
+            "children": [
+              {
+                "kind": "container",
+                "path": [
+                  0
+                ],
+                "layout": "tabbed",
+                "focusedChild": 0,
+                "fractions": [
+                  1
+                ],
+                "children": [
+                  {
+                    "kind": "window",
+                    "window": {
+                      "kind": "window",
+                      "value": "app:app-1"
+                    },
+                    "focusedAt": 1
+                  }
+                ]
+              },
+              {
+                "kind": "container",
+                "path": [
+                  1
+                ],
+                "layout": "tabbed",
+                "focusedChild": 0,
+                "fractions": [
+                  1
+                ],
+                "children": [
+                  {
+                    "kind": "window",
+                    "window": {
+                      "kind": "window",
+                      "value": "app:app-3"
+                    },
+                    "focusedAt": 2
+                  }
+                ]
+              },
+              {
+                "kind": "container",
+                "path": [
+                  2
+                ],
+                "layout": "tabbed",
+                "focusedChild": 0,
+                "fractions": [
+                  1
+                ],
+                "children": [
+                  {
+                    "kind": "window",
+                    "window": {
+                      "kind": "window",
+                      "value": "app:app-4"
+                    },
+                    "focusedAt": 3
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-1"
+          },
+          {
+            "kind": "window",
+            "value": "app:app-3"
+          },
+          {
+            "kind": "window",
+            "value": "app:app-4"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "2"
+        },
+        "name": "2",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-5"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-5"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "3"
+        },
+        "name": "3",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-6"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-6"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "4"
+        },
+        "name": "4",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-7"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-7"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "5"
+        },
+        "name": "5",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-8"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-8"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "6"
+        },
+        "name": "6",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-9"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-9"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "7"
+        },
+        "name": "7",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-10"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-10"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "8"
+        },
+        "name": "8",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-11"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-11"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "9"
+        },
+        "name": "9",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-12"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-12"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "10"
+        },
+        "name": "10",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-13"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-13"
+          }
+        ]
+      }
+    ],
+    "windows": [
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-1"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-1"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "agencykitty-36d1b268d5dc431a8111b5e50da98f49"
+        },
+        "placements": [
+          {
+            "output": {
+              "kind": "output",
+              "value": "HEADLESS-1"
+            },
+            "frame": {
+              "x": 256,
+              "y": 0,
+              "width": 256,
+              "height": 768
+            },
+            "surface": {
+              "x": 256,
+              "y": 29,
+              "width": 256,
+              "height": 739
+            },
+            "bar": {
+              "x": 256,
+              "y": 0,
+              "width": 184,
+              "height": 30
+            },
+            "bare": false,
+            "depth": 0,
+            "selected": false
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-3"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-3"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "agencykitty-6b763da414384a4f8036e8c8f4ce91e7"
+        },
+        "placements": [
+          {
+            "output": {
+              "kind": "output",
+              "value": "HEADLESS-1"
+            },
+            "frame": {
+              "x": 512,
+              "y": 0,
+              "width": 256,
+              "height": 768
+            },
+            "surface": {
+              "x": 512,
+              "y": 29,
+              "width": 256,
+              "height": 739
+            },
+            "bar": {
+              "x": 512,
+              "y": 0,
+              "width": 184,
+              "height": 30
+            },
+            "bare": false,
+            "depth": 0,
+            "selected": false
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-4"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-4"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "agencykitty-rescue"
+        },
+        "placements": [
+          {
+            "output": {
+              "kind": "output",
+              "value": "HEADLESS-1"
+            },
+            "frame": {
+              "x": 768,
+              "y": 0,
+              "width": 256,
+              "height": 768
+            },
+            "surface": {
+              "x": 768,
+              "y": 29,
+              "width": 256,
+              "height": 739
+            },
+            "bar": {
+              "x": 768,
+              "y": 0,
+              "width": 184,
+              "height": 30
+            },
+            "bare": false,
+            "depth": 0,
+            "selected": false
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-5"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-5"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-2"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-6"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-6"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-3"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-7"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-7"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-4"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-8"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-8"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-5"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-9"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-9"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-6"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-10"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-10"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-7"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-11"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-11"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-8"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-12"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-12"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-9"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-13"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-13"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-10"
+        },
+        "placements": []
+      }
+    ],
+    "scratchpad": {
+      "semantics": "hidden queue; shown scratchpad windows are workspace floats with scratchpad=true",
+      "windows": []
+    },
+    "background": [],
+    "unplaced": [],
+    "popups": []
+  },
+  "finalSnapshot": {
+    "capabilities": {
+      "snapshot": true,
+      "workspaceQuery": true,
+      "pollSnapshots": true,
+      "eventReplay": false,
+      "focus": false,
+      "layout": false,
+      "closeViewer": false,
+      "terminateDshSession": false,
+      "windowTitles": false,
+      "windowUrls": false,
+      "windowContents": false
+    },
+    "coordinates": "desktop-logical",
+    "containerIdentity": "epoch+revision+workspace+layer+floatIndex+path",
+    "outputs": [
+      {
+        "id": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "logicalGeometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 768
+        },
+        "scale": 1,
+        "visibleWorkspace": {
+          "kind": "workspace",
+          "value": "1"
+        },
+        "focused": true
+      }
+    ],
+    "focus": {
+      "output": {
+        "kind": "output",
+        "value": "HEADLESS-1"
+      },
+      "workspace": {
+        "kind": "workspace",
+        "value": "1"
+      },
+      "shellWindow": {
+        "kind": "window",
+        "value": "app:app-14"
+      },
+      "nativeWindow": {
+        "kind": "native-window",
+        "value": "app-14"
+      },
+      "replayed": true
+    },
+    "workspaces": [
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "1"
+        },
+        "name": "1",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [
+          {
+            "kind": "output",
+            "value": "HEADLESS-1"
+          }
+        ],
+        "tiling": {
+          "depth": 2,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "split-horizontal",
+            "focusedChild": 3,
+            "fractions": [
+              0.25,
+              0.25,
+              0.25,
+              0.25
+            ],
+            "children": [
+              {
+                "kind": "container",
+                "path": [
+                  0
+                ],
+                "layout": "tabbed",
+                "focusedChild": 0,
+                "fractions": [
+                  1
+                ],
+                "children": [
+                  {
+                    "kind": "window",
+                    "window": {
+                      "kind": "window",
+                      "value": "app:app-1"
+                    },
+                    "focusedAt": 1
+                  }
+                ]
+              },
+              {
+                "kind": "container",
+                "path": [
+                  1
+                ],
+                "layout": "tabbed",
+                "focusedChild": 0,
+                "fractions": [
+                  1
+                ],
+                "children": [
+                  {
+                    "kind": "window",
+                    "window": {
+                      "kind": "window",
+                      "value": "app:app-3"
+                    },
+                    "focusedAt": 2
+                  }
+                ]
+              },
+              {
+                "kind": "container",
+                "path": [
+                  2
+                ],
+                "layout": "tabbed",
+                "focusedChild": 0,
+                "fractions": [
+                  1
+                ],
+                "children": [
+                  {
+                    "kind": "window",
+                    "window": {
+                      "kind": "window",
+                      "value": "app:app-4"
+                    },
+                    "focusedAt": 3
+                  }
+                ]
+              },
+              {
+                "kind": "container",
+                "path": [
+                  3
+                ],
+                "layout": "tabbed",
+                "focusedChild": 0,
+                "fractions": [
+                  1
+                ],
+                "children": [
+                  {
+                    "kind": "window",
+                    "window": {
+                      "kind": "window",
+                      "value": "app:app-14"
+                    },
+                    "focusedAt": 4
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-1"
+          },
+          {
+            "kind": "window",
+            "value": "app:app-3"
+          },
+          {
+            "kind": "window",
+            "value": "app:app-4"
+          },
+          {
+            "kind": "window",
+            "value": "app:app-14"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "2"
+        },
+        "name": "2",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-5"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-5"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "3"
+        },
+        "name": "3",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-6"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-6"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "4"
+        },
+        "name": "4",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-7"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-7"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "5"
+        },
+        "name": "5",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-8"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-8"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "6"
+        },
+        "name": "6",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-9"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-9"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "7"
+        },
+        "name": "7",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-10"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-10"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "8"
+        },
+        "name": "8",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-11"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-11"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "9"
+        },
+        "name": "9",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-12"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-12"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "10"
+        },
+        "name": "10",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 1,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "tabbed",
+            "focusedChild": 0,
+            "fractions": [
+              1
+            ],
+            "children": [
+              {
+                "kind": "window",
+                "window": {
+                  "kind": "window",
+                  "value": "app:app-13"
+                },
+                "focusedAt": 1
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-13"
+          }
+        ]
+      }
+    ],
+    "windows": [
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-1"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-1"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "agencykitty-36d1b268d5dc431a8111b5e50da98f49"
+        },
+        "placements": [
+          {
+            "output": {
+              "kind": "output",
+              "value": "HEADLESS-1"
+            },
+            "frame": {
+              "x": 256,
+              "y": 0,
+              "width": 192,
+              "height": 768
+            },
+            "surface": {
+              "x": 256,
+              "y": 29,
+              "width": 192,
+              "height": 739
+            },
+            "bar": {
+              "x": 256,
+              "y": 0,
+              "width": 120,
+              "height": 30
+            },
+            "bare": false,
+            "depth": 0,
+            "selected": false
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-3"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-3"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "agencykitty-6b763da414384a4f8036e8c8f4ce91e7"
+        },
+        "placements": [
+          {
+            "output": {
+              "kind": "output",
+              "value": "HEADLESS-1"
+            },
+            "frame": {
+              "x": 448,
+              "y": 0,
+              "width": 192,
+              "height": 768
+            },
+            "surface": {
+              "x": 448,
+              "y": 29,
+              "width": 192,
+              "height": 739
+            },
+            "bar": {
+              "x": 448,
+              "y": 0,
+              "width": 120,
+              "height": 30
+            },
+            "bare": false,
+            "depth": 0,
+            "selected": false
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-4"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-4"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "agencykitty-rescue"
+        },
+        "placements": [
+          {
+            "output": {
+              "kind": "output",
+              "value": "HEADLESS-1"
+            },
+            "frame": {
+              "x": 640,
+              "y": 0,
+              "width": 192,
+              "height": 768
+            },
+            "surface": {
+              "x": 640,
+              "y": 29,
+              "width": 192,
+              "height": 739
+            },
+            "bar": {
+              "x": 640,
+              "y": 0,
+              "width": 120,
+              "height": 30
+            },
+            "bare": false,
+            "depth": 0,
+            "selected": false
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-5"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-5"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-2"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-6"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-6"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-3"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-7"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-7"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-4"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-8"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-8"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-5"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-9"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-9"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-6"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-10"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-10"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-7"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-11"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-11"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-8"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-12"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-12"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-9"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-13"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-13"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "public-occupant-10"
+        },
+        "placements": []
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-14"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-14"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "agencykitty-d25fd4feaf324c069c07c66dfbd788b2"
+        },
+        "placements": [
+          {
+            "output": {
+              "kind": "output",
+              "value": "HEADLESS-1"
+            },
+            "frame": {
+              "x": 832,
+              "y": 0,
+              "width": 192,
+              "height": 768
+            },
+            "surface": {
+              "x": 832,
+              "y": 29,
+              "width": 192,
+              "height": 739
+            },
+            "bar": {
+              "x": 832,
+              "y": 0,
+              "width": 120,
+              "height": 30
+            },
+            "bare": false,
+            "depth": 0,
+            "selected": false
+          }
+        ]
+      }
+    ],
+    "scratchpad": {
+      "semantics": "hidden queue; shown scratchpad windows are workspace floats with scratchpad=true",
+      "windows": []
+    },
+    "background": [],
+    "unplaced": [],
+    "popups": []
+  },
+  "nasOwnedCleanup": {
+    "escalations": [],
+    "remainingOwnedProcesses": []
+  },
+  "clientOwnedCleanup": {
+    "escalations": [],
+    "remainingOwnedProcesses": []
+  },
+  "wallSeconds": 12.636882022023201,
+  "sshdExit": -15
+}

@@ -1,0 +1,143 @@
+{
+  "startedUtc": "2026-11-08T04:25:41.256227+00:00",
+  "binary": "/nix/store/dk79ahln6h6p0323yby3gc5a5gck9w6p-agency-zmx-actor-1.0.1-agency.5-actor/bin/zmx",
+  "binarySha256": "4cbf364bbe9649187132265661cbaedeec13d36f47998a57cb1d75086dea7d61",
+  "binaryVersion": "zmx\t\t1.0.1-agency.5-actor\nghostty_vt\tghostty-1.4.1-dev-5UdBC58_nQWN3FHzqvvLtKzhOKptGc_uH9t7ejdTBGd3\nsocket_dir\t/run/user/1000/zmx\nlog_dir\t\t/home/tom/.local/state/zmx/logs",
+  "python": "/nix/store/rgnappqqc5vbq60gza5fflyk84sylwl6-python3-3.14.6/bin/python3.14",
+  "source": "/home/tom/.wt/kitty-consolidation/actor-qualification",
+  "homeEnvironmentUnchanged": true,
+  "latencySamplesCollected": 0,
+  "nixBuilds": 0,
+  "productionPolicyChanged": false,
+  "freeBytesBefore": 29182861312,
+  "fixtureAdaptation": {
+    "original": "/home/tom/.wt/kitty-consolidation/actor-qualification/tests/native_codex_graphics.py",
+    "originalSha256": "18283a5592420f70050d2232aa0c077ef4445290b1a282d2d79b58d60928bf8e",
+    "adapted": "/home/tom/.wt/kitty-consolidation/actor-qualification/tests/native_codex_graphics_nix_artifact.py",
+    "adaptedSha256": "517114fdf1b71d3c22579ba3ac0781f433ae971e720db2e2cd8e08c837c99b96",
+    "oldLine": "    assert args.zmx.resolve().is_relative_to(source), 'stage the non-secret holder binary inside the checkout'",
+    "newLine": "    assert args.zmx.resolve() == Path('/nix/store/dk79ahln6h6p0323yby3gc5a5gck9w6p-agency-zmx-actor-1.0.1-agency.5-actor/bin/zmx'), 'require the exact immutable Nix actor artifact'",
+    "scope": "one fixture safety assertion; requires exact immutable store artifact instead of an in-checkout binary"
+  },
+  "sourceFingerprints": {
+    "backend/actor_qualification.py": "ab1657e023c78a3fc06f998064e30f67f0c263aa89af8d91ed9cbb417f675974",
+    "backend/qualify_transport.py": "7b01f54c35b71926bfb115e2c310c8ab3a7368e784766c4d8053ad4e75ecf10e",
+    "backend/kitty_snapshot.py": "84e1b1b8ad7b23b99b49641d0eb4f95302529a5c3a187f552d4ba697af7d5c60",
+    "agency_kitty/server.py": "03fa850175021a8d6c75ff45b3f434cde535264fd9a8a0096e5f9e5b688b274b",
+    "agency_kitty/sessions.py": "40ca21993bd81ed07f7a425c7ddb4adbb133dfb287fffc3dc132893f68edda45",
+    "agency_kitty/transport.py": "5e27b19859e521965e38060591c02b122aa5a6a280738f5d9cc7654e2ffe74a2",
+    "tests/offline_codex_session.py": "2a2939b3ee5bd9e8af2f6516d3c5dce69aff44e9637fb2b8400c51c836202f6f"
+  },
+  "cases": {
+    "stopped-worker": {
+      "argv": [
+        "/home/tom/.local/bin/runtime-test",
+        "--",
+        "/etc/profiles/per-user/tom/bin/python3",
+        "backend/actor_qualification.py",
+        "--zmx",
+        "/nix/store/dk79ahln6h6p0323yby3gc5a5gck9w6p-agency-zmx-actor-1.0.1-agency.5-actor/bin/zmx",
+        "--output",
+        "/home/tom/.wt/kitty-consolidation/actor-qualification/proof-nix-actor-20261108-final/stopped-worker.json"
+      ],
+      "runtimeIsolation": true,
+      "timeoutSeconds": 60,
+      "exitCode": 0,
+      "wallSeconds": 0.26547987991943955,
+      "stdoutSha256": "ba32d51cd3cef1133de3d2558a01e8dd5b36e68b9e4be4ea4a773e9d7b4158dd",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "functional": {
+      "argv": [
+        "/home/tom/.local/bin/runtime-test",
+        "--",
+        "/etc/profiles/per-user/tom/bin/python3",
+        "backend/qualify_transport.py",
+        "--functional-only",
+        "--samples",
+        "0",
+        "--zmx",
+        "/nix/store/dk79ahln6h6p0323yby3gc5a5gck9w6p-agency-zmx-actor-1.0.1-agency.5-actor/bin/zmx",
+        "--output",
+        "/home/tom/.wt/kitty-consolidation/actor-qualification/proof-nix-actor-20261108-final/functional.json"
+      ],
+      "runtimeIsolation": true,
+      "timeoutSeconds": 150,
+      "exitCode": 0,
+      "wallSeconds": 6.381076994817704,
+      "stdoutSha256": "e9e4860c6b237621e413293f08fa08c0f41a68a3f22ef22f3fac2e1e56579549",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native-snapshot": {
+      "argv": [
+        "/home/tom/.local/bin/runtime-test",
+        "--",
+        "/etc/profiles/per-user/tom/bin/python3",
+        "backend/kitty_snapshot.py",
+        "--zmx",
+        "/nix/store/dk79ahln6h6p0323yby3gc5a5gck9w6p-agency-zmx-actor-1.0.1-agency.5-actor/bin/zmx",
+        "--output",
+        "/home/tom/.wt/kitty-consolidation/actor-qualification/proof-nix-actor-20261108-final/native-snapshot",
+        "--kitty",
+        "/nix/store/rs4s3ggn03a65bbwj9r1ps20d4kichm1-kitty-0.50.0/bin/kitty",
+        "--domicile-engine",
+        "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/.chrome-unwrapped"
+      ],
+      "runtimeIsolation": true,
+      "timeoutSeconds": 100,
+      "exitCode": 0,
+      "wallSeconds": 13.487946063978598,
+      "stdoutSha256": "5d504d747c337825f6d39394d04e45c4891c58048e271f8350d5a3b745419e50",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native-graphics": {
+      "argv": [
+        "/home/tom/.local/bin/runtime-test",
+        "--",
+        "/etc/profiles/per-user/tom/bin/python3",
+        "/home/tom/.wt/kitty-consolidation/actor-qualification/tests/native_codex_graphics_nix_artifact.py",
+        "--output",
+        "/home/tom/.wt/kitty-consolidation/actor-qualification/proof-nix-actor-20261108-final/native-graphics",
+        "--zmx",
+        "/nix/store/dk79ahln6h6p0323yby3gc5a5gck9w6p-agency-zmx-actor-1.0.1-agency.5-actor/bin/zmx",
+        "--expected-zmx-sha",
+        "4cbf364bbe9649187132265661cbaedeec13d36f47998a57cb1d75086dea7d61",
+        "--fish-hook",
+        "/home/tom/.wt/kitty-consolidation/actor-qualification/assets/agency-kitty.fish",
+        "--external-sshd",
+        "--synthetic-graphics",
+        "--offline-codex",
+        "--codex-binary",
+        "/nix/store/22139ip2k5dfc272a1nv0br2ms0nymbv-codex-0.167.0/bin/codex",
+        "--kitty",
+        "/nix/store/rs4s3ggn03a65bbwj9r1ps20d4kichm1-kitty-0.50.0/bin/kitty",
+        "--domicile-engine",
+        "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/.chrome-unwrapped"
+      ],
+      "runtimeIsolation": true,
+      "timeoutSeconds": 180,
+      "exitCode": 0,
+      "wallSeconds": 18.457769634900615,
+      "stdoutSha256": "1f90d8947e623bd193a9b4f9694de3e96832e11b06f47892fec1a246cbdd0b71",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "blockedPngUnitScope": "Existing Zig unit uses a separately compiled test-only gated decoder. It is not rerun or claimed to execute inside this release artifact.",
+  "privateSshdSupervisor": {
+    "argv": [
+      "sudo",
+      "-n",
+      "/etc/profiles/per-user/tom/bin/python3",
+      "/home/tom/.wt/kitty-consolidation/actor-qualification/tests/native_codex_graphics_nix_artifact.py",
+      "--serve-private-sshd",
+      "/home/tom/.wt/kitty-consolidation/actor-qualification/proof-nix-actor-20261108-final/native-graphics"
+    ],
+    "scope": "existing supervisor verifies private child mount/PID/network/login-record namespaces before joining",
+    "exitCode": 0
+  },
+  "passed": true,
+  "endedUtc": "2026-11-08T04:26:19.854406+00:00",
+  "binarySha256After": "4cbf364bbe9649187132265661cbaedeec13d36f47998a57cb1d75086dea7d61",
+  "freeBytesAfter": 28334600192,
+  "remainingOwnedProofProcesses": []
+}

@@ -92,9 +92,12 @@ Apply the following order to that isolated descendant:
 7. If adopting the native chat catalogue too, compose its separately reviewed
    NAS catalogue companion and Imagine change, then set the existing public
    `sessionCatalogue.nativeTerminalLauncher` to the absolute installed helper.
-   The original entry lacks that optional field. Installing three launch
-   chords alone does not enable the chat-linked native resume UI or infer a
-   chat/workspace relationship.
+   The original entry lacks that optional field. The separately optional
+   [exact-entry template](NATIVE-CATALOGUE.md) supplies it without hard-coding a
+   historical helper path. The combined rendered entry passed installed-SDK
+   compilation, all three trusted chords and a real linked-row resume with
+   every configured workspace occupied. Installing three launch chords alone
+   does not enable that UI or infer a chat/workspace relationship.
 
 The owner's deletion of its old `pkgs/dsh-plugins/kitty-native` directory does
 not remove our new plugin: the reviewed integration's plugin map points to

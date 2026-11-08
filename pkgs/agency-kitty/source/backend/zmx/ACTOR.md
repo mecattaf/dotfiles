@@ -103,16 +103,39 @@ private candidate allowlist and its hardcoded observer wire identity.
 upstream archive, official Zig 0.17 checksum and fixed-output eight-package
 Zig dependency tree as the qualified version 4 recipe. The candidate was built
 with that compiler/dependency tree directly on compute using ReleaseSafe and
-`x86_64-linux-musl`; its candidate Nix derivation has not been built or qualified.
-No executable is committed to Git. Preserve `NOTICE.actor`, `LICENSE.upstream`
+`x86_64-linux-musl`. The separate Nix derivation subsequently built on compute
+after its 25 GiB guard, and its exact immutable binary passed functional/native
+admission without collecting latency samples. No executable is committed to Git. Preserve `NOTICE.actor`, `LICENSE.upstream`
 and `licenses/` with any distribution.
 
 The existing restoration limits remain: static direct RGB/RGBA/PNG graphics
-only, conservative strict refusal after OSC66, explicit refusal for unsupported
-placements/animation/state, bounded history and a bounded per-screen image
+only, conservative strict refusal after detected OSC66, refusal for known
+retained unsupported placements/animation/state, bounded history and a bounded per-screen image
 cache. This is not full Kitty-protocol parity. The standalone SSH baseline and
 other persistence candidates remain valid choices. Choosing this actor requires
-independent source review and later consistent comparisons of frozen builds.
+independent source review; the frozen text comparison did not establish a
+speed advantage over stable v4. No production allowlist/default was changed.
+
+## Exact Nix artifact admission
+
+The source-built Nix binary SHA256 is
+`4cbf364bbe9649187132265661cbaedeec13d36f47998a57cb1d75086dea7d61`.
+Its executable sections match the frozen manual artifact. Thirty bytes of a
+build-cache include path differ in allocated read-only data, so whole-data
+identity is not claimed. The actual Nix artifact then ran the stopped-worker
+ordering gate, nine functional gates, native palette/wrap/cursor/tab/KKP
+restoration and private-SSH 4K/Codex graphics admission. Three fresh 4K attaches,
+image replacement/deletion, the same Codex process and unsent draft, exact
+54×57 thumbnail pixels, semantic history and unknown-ID refusal all passed.
+
+[The aggregate receipt](../../docs/evidence/actor-nix-runtime/qualification.json)
+records the exact binary, fixture hashes, namespaces, old/new safety assertion,
+all commands and empty cleanup. The fixture adaptation changes one source-tree
+path assertion to require that exact immutable store executable; it does not
+copy or patch the actor. The artificial blocked-PNG/8192-node decoder unit is
+still a separately compiled test artifact, not a hidden hook in this release.
+Full SHA-verified logs/screenshots remain under
+`/home/tom/.wt/kitty-consolidation/artifacts/actor-nix-runtime/`.
 
 Primary source pins: [zmx](https://github.com/neurosnap/zmx/tree/a35f00a2118b15a5e9d522a43035c8d7487df9b7),
 [libghostty](https://github.com/ghostty-org/ghostty/tree/0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec),
