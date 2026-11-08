@@ -2164,7 +2164,17 @@
               )
             );
             expectHeadless = pkgs.writeText "dsh-plugins-headless.json" (
-              builtins.toJSON (base // { absent = pluginRows; })
+              builtins.toJSON (base // { absent = pluginRows ++ [ "agency-kitty-native" ]; })
+            );
+            expectNative = pkgs.writeText "dsh-plugins-native.json" (
+              builtins.toJSON (
+                base
+                // {
+                  rows.agency-kitty-native.command = "${self.nixosConfigurations.nas.pkgs.agency-kitty}/bin/agency-kitty";
+                  present = [ "stderr-log" "agency-kitty-native" ];
+                  absent = [ "herdr-guard" "dsh-herdr-toolkit" "jev" "mnemon" "opencode-zen-free" ];
+                }
+              )
             );
             semver = "${dshNoKey.unwrapped}/lib/node_modules/@deepseek-ai/dsh/node_modules/semver";
           in
@@ -2232,6 +2242,19 @@
               }
               dump herdr ${expectHerdr} herdr --dump-config
               dump headless ${expectHeadless} headless --dump-config
+              dump native ${expectNative} native --dump-config
+              dump native-flag ${expectNative} --profile native --dump-config
+
+              # Native metadata uses the rendered helper and remains isolated
+              # from the older Herdr/memory/provider plugin profiles.
+              n="$DSH_HOME/profiles/native"
+              test "$(stat -c %a "$n/package.json")" = 600
+              test "$(readlink "$n/node_modules/@agency/kitty-native")" = ${plugins.kitty-native}
+              test "$(readlink "$n/node_modules/@mecattaf/stderr-log")" = ${plugins.stderr-log}
+              test ! -e "$n/node_modules/@dsh-external"
+              test ! -e "$n/node_modules/jevcore-dsh"
+              test ! -e "$n/node_modules/@jiesou"
+              test -z "$(find "$n" -maxdepth 1 -name '.sync.*')"
 
               # The synced profile: a private manifest and store links only.
               p="$DSH_HOME/profiles/herdr"
