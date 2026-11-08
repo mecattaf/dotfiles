@@ -326,39 +326,6 @@ let
       }
     ) ([ localModel.modelId ] ++ localModel.alternates);
   };
-  # ds4's keyless LAN route: DeepSeek V4.1 Flash 1017 on strix-worker
-  # (modules/ds4.nix, single host with SSD expert streaming), at the contract
-  # in lib/local-model.nix. Same public dummy bearer as Gufo. It answers only
-  # while an operator has started `ds4.service` there, which stops the
-  # worker's Gufo units; the fleet endpoint on strix-coordinator is untouched.
-  # ds4-server takes `thinking` and `reasoning_effort` and returns
-  # `reasoning_content`; Think Max needs --ctx >= 393216, so at this context
-  # only high is offered.
-  ds4 = {
-    displayName = "ds4 DeepSeek V4.1 (local)";
-    api = "openai-completions";
-    baseURL = "${localModel.ds4.endpoint}/v1";
-    apiKeyEnv = "DS4_API_KEY";
-    compat = {
-      supportsDeveloperRole = false;
-      supportsReasoningEffort = true;
-      supportsStore = false;
-    };
-    models = [
-      {
-        id = localModel.ds4.modelId;
-        name = "DeepSeek V4.1 Flash 1017 (ds4, strix-worker)";
-        inherit (localModel.ds4) contextWindow;
-        maxTokens = 16384;
-        input = [ "text" ];
-        reasoningEfforts.high = "high";
-        compat = {
-          thinkingFormat = "deepseek";
-          requiresReasoningContentOnAssistantMessages = true;
-        };
-      }
-    ];
-  };
   # The keyed cloud routes, by their pi-ai route name (catalog names where
   # pi-ai ships the provider; `cohere` is hand-declared).
   keyedProviders = retryPolicy: {
@@ -372,7 +339,7 @@ let
     cerebras = cerebras retryPolicy;
     vercel-ai-gateway = vercel retryPolicy;
   };
-  providers = retryPolicy: keyedProviders retryPolicy // { inherit gufo ds4; };
+  providers = retryPolicy: keyedProviders retryPolicy // { inherit gufo; };
 
   defaultRoute = {
     provider = "google";
@@ -492,8 +459,8 @@ let
     # 3. No runtime plugin installs; plugins come from Nix only.
     (off "plugin-manager")
     (off "tool-plugin-manager")
-    # 4. Inference: Gemini (free tier) is the default; the other keyed lanes,
-    #    Gufo and ds4 are explicit DSH_ROUTE picks.
+    # 4. Inference: Gemini (free tier) is the default; the other keyed lanes
+    #    and Gufo are explicit DSH_ROUTE picks.
     (set "llm-pi-ai" {
       providers = providers {
         mode = "normal";
@@ -619,7 +586,7 @@ let
   # credentials-local resolves $DSH_HOME/.credentials.yaml first, then the
   # inherited environment (the wrapper's OPENCODE_ZEN_FREE_API_KEY), then .env
   # files: a stored key outranks the slot. The pi-ai routes of the policy
-  # overlay (Gemini, Gufo, ds4) stay available as explicit picks. A patch
+  # overlay (Gemini, Gufo) stay available as explicit picks. A patch
   # REPLACES a row's config, so the plugin row restates every key it keeps.
   # Retry: the design proposed `mode = "always"`, which in this dsh has no
   # maxRetries and would retry a 429 FreeUsageLimitError without bound; the
@@ -671,7 +638,7 @@ in
     ]
   ) routes;
   # Local provider data for offline config checks.
-  localProviders = { inherit gufo ds4; };
+  localProviders = { inherit gufo; };
   # The keyed cloud providers of the policy, for checks.dsh-config (the
   # policy's retry settings, not the smoke's): apiKeyEnv, the model ids and,
   # for the hand-declared cohere route, its api and baseURL.

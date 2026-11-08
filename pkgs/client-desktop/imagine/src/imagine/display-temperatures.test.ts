@@ -52,3 +52,18 @@ test("transport failure is surfaced", async () => {
   await Bun.sleep(0);
   expect(f.errors).toEqual([failure]);
 });
+
+test("a refused native temperature request is surfaced", async () => {
+  const errors: unknown[] = [];
+  const failure = { code: "unavailable", message: "gamma is unavailable" };
+  const displays = {
+    list: [{ name: "upper" }],
+    on: () => () => {},
+    setColorTemperature: async () => ({
+      match: ({ Err }: { Err: (error: unknown) => void }) => Err(failure),
+    }),
+  };
+  maintainDisplayTemperatures(displays, { upper: 3850 }, (error) => errors.push(error));
+  await Bun.sleep(0);
+  expect(errors).toEqual([failure]);
+});
