@@ -1,22 +1,22 @@
 { ... }:
-# NAS front door for the plain-HTTP `.internal` sites and the artifact drop-dir.
-# Decided 2026-10-31: the NAS hosts every internal website, so Caddy lives here
-# and strix-coordinator runs none. The artifact plane (drop-dir import, tmpfiles,
-# reaper) comes from modules/caddy-artifacts.nix; the browser and handwriting
-# vhosts are added by their own host files.
+# NAS front door for the plain-HTTP `.internal` sites. Caddy remains the
+# media/browser/handwriting front door after private artifact hosting was
+# retired on 2026-11-08; those vhosts are added here and by their host files.
 #
 # Bind: Tailscale Serve owns :443 on the NAS tailnet address
 # (modules/herdr-web-ui.nix), so Caddy must never bind a wildcard. default_bind
 # keeps every site on the LAN address and loopback only.
 #
-# Plain HTTP by the same posture as the artifact plane: WireGuard is the
-# transport security on the tailnet and `.internal` never resolves publicly.
+# WireGuard supplies transport security on the tailnet; `.internal` names
+# never resolve publicly.
 {
-  imports = [ ../../modules/caddy-artifacts.nix ];
-
-  services.caddy.globalConfig = ''
-    default_bind 10.42.0.1 127.0.0.1
-  '';
+  services.caddy = {
+    enable = true;
+    globalConfig = ''
+      auto_https disable_redirects
+      default_bind 10.42.0.1 127.0.0.1
+    '';
+  };
 
   # Memorable intranet names for the media services the NAS runs itself
   # (hosts/nas/media.nix). AdGuard answers 10.42.0.1 for each of them
@@ -35,9 +35,8 @@
     '';
   };
 
-  # LAN clients reach Caddy on the router address. Tailnet clients get :80 here
-  # (artifact records point at the NAS); :443 is already admitted on
-  # tailscale0 for Tailscale Serve.
+  # LAN clients reach Caddy on the router address. Tailnet clients retain :80
+  # for internal sites; :443 belongs to Tailscale Serve and Herdr.
   networking.firewall.extraInputRules = ''
     iifname "enp1s0" ip saddr 10.42.0.0/24 tcp dport { 80, 443 } accept comment "Caddy front door (LAN)"
   '';

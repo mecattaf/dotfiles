@@ -73,14 +73,10 @@ final: _prev: {
   # document path; modules/printing.nix installs this only on the active fleet.
   brother-print-text = final.callPackage ../pkgs/brother-print-text.nix { };
 
-  # Artifact system toolchain (sovereign replacement for claude.ai Artifacts;
-  # skills: md-artifact / presentation-beta / publish-artifact). Identity knobs
-  # come from modules/artifacts-defaults.nix — the one edit point — passed in
-  # here because an overlay can't read NixOS `config`.
+  # Local artifact rendering/viewing stays available after private hosting
+  # retirement. Explicit public publication is independent of these tools.
   artifact-render = final.callPackage ../pkgs/artifact-render { };
-  artifact-view = final.callPackage ../pkgs/artifact-view.nix {
-    inherit (import ../modules/artifacts-defaults.nix) namespace;
-  };
+  artifact-view = final.callPackage ../pkgs/artifact-view.nix { };
   artifact-deck = final.callPackage ../pkgs/artifact-deck { };
   keyring-unlock = final.callPackage ../pkgs/keyring-unlock { };
 

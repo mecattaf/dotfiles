@@ -1,23 +1,16 @@
-# Artifact system identity/knobs — THE single edit point (Tom's modularity
-# ruling 2026-07-11). Imported by BOTH the NixOS layer (modules/artifacts.nix,
-# modules/caddy-artifacts.nix read it via the myArtifacts option defaults) and
-# the package layer (overlays/default.nix passes values to pkgs/artifact-*),
-# because an overlay cannot read NixOS `config`. Change the namespace/zone here
-# and everything follows on the next rebuild: Caddy import dir, reaper sweep,
-# artifact-view URL scheme. The skills' live-facts tables
-# point HERE as their verify-before-acting source — keep this file boring.
+# Retained public artifact identity. Private Caddy/Tailscale hosting and its
+# reaper were retired on 2026-11-08. These values install no serving plane.
 {
   # Cloudflare zone the namespace lives in (same CF account wrangler is
   # authenticated against — see secrets/wrangler-config.age, strix-only).
   zone = "mecattaf.dev";
 
-  # Every artifact is <slug>.<namespace>. Stable across rungs (split-horizon):
-  # tailnet rung = unproxied DNS record -> strix tailnet IP; public rung =
-  # same name, proxied (Pages custom domain / tunnel). URL never changes.
+  # Optional custom-domain namespace for explicit public publication.
+  # The LAN resolver no longer shadows these public names.
   namespace = "art.mecattaf.dev";
 
-  # The ONLY mutable surface of the whole system: <slug>.until-YYYYMMDD.caddy
-  # site blocks + <slug>/ snapshot dirs. No side registry anywhere.
+  # Legacy state location retained as metadata; no Caddy import, tmpfiles or
+  # reaper is installed. Existing snapshots stay in place until disposed of.
   stateDir = "/var/lib/artifacts";
 
   # "In doubt: 7 days." Never publish without a TTL — durable = git.

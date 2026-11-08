@@ -1,7 +1,7 @@
 { lib, ... }:
-# Fleet-wide artifact options (defaults from artifacts-defaults.nix — edit
-# THERE, not here). The serving plane
-# (Caddy + reaper) is NAS-only and lives in caddy-artifacts.nix.
+# Retained artifact identity options for public publication and compatibility.
+# Private Caddy hosting and its reaper were retired on 2026-11-08; declaring
+# these metadata options does not install a serving plane.
 let
   defaults = import ./artifacts-defaults.nix;
 in
@@ -20,7 +20,7 @@ in
     stateDir = lib.mkOption {
       type = lib.types.path;
       default = defaults.stateDir;
-      description = "Caddy drop-dir: TTL-stamped site blocks + snapshot dirs.";
+      description = "Legacy artifact state location; private serving is retired.";
     };
     defaultTtlDays = lib.mkOption {
       type = lib.types.ints.positive;
