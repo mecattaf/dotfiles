@@ -12,8 +12,10 @@ invokes its fixed `desktop-resume-request` action. Existing windows focus throug
 the current reducer. Pending windows retain existing reservations and respect
 lock, modal state and later navigation. Native classes match exactly. Duplicate
 matches refuse both movement and a new launch. Direct terminal rows focus an
-existing OS window but never resume, and their metadata is removed when the NAS
-PTY owner ends. See ../agency-chat-window for the NAS metadata patch.
+existing OS window but never resume. They leave the live catalogue when the NAS
+PTY owner ends; retained records have an explicit archive action, and their UUIDs
+remain reserved after archival too.
+See ../agency-chat-window for the NAS metadata patch.
 
 Qualification used the exact pinned SDK workspace dependency donor from the
 native-drag fixture. All135 Imagine tests passed; the full Vite production build

@@ -1,0 +1,1282 @@
+{
+  "scope": "published Core0.1.18 attached versus fresh native Kitty C state; no GUI or latency",
+  "release_source_tag": "3965a46caae095a3ead01de237fa13955e52b8c6",
+  "core_sha256": "baa9d208d6400556a6e379152455fe1301e0e1acdbc114ff60b79d64425179cf",
+  "kitty_sha256": "d0565fa5f55341068f2354e0c4444a16cfa268e1c08701f3c59b2bfc8fefa918",
+  "observer_path": "/nix/store/rs4s3ggn03a65bbwj9r1ps20d4kichm1-kitty-0.50.0/bin/.kitty-wrapped",
+  "worker_python_path": "/nix/store/lj4j7680q9chs3gj5a6jcas451nivpd4-python3-3.14.6-env/bin/python3.14",
+  "worker_python_sha256": "9bfa54c39ad52bd64ea04e2b0c88599c0ddfcc2da5d3213a2f9fc1e833fa8e1c",
+  "source_sha256": {
+    "herdr_core_native_fidelity.py": "6e21215d744b0da63e184ca71f566ca52c6d50fc313c3fd84b73a4307036cc02",
+    "frozen_terminal.py": "88a1e9935a2156da7f7f2bde301b1d3a9e1e58eced4f3994ef7ffcb70d37c357",
+    "kitty_native_vt.py": "fd80f35294fc5dd78a1f7f683f9b3051dccddd8fd101078395fb16761ff23de7",
+    "qualify_transport.py": "7b01f54c35b71926bfb115e2c310c8ab3a7368e784766c4d8053ad4e75ecf10e",
+    "frozen_local_compare.py": "70ae8c676e8829e5f856d454d744c6f056917b4e3c40c057aa01332ef3fd082c"
+  },
+  "home_environment_unchanged": true,
+  "real_home_masked": true,
+  "cases": [
+    {
+      "name": "keyboard-cursor",
+      "owner": {
+        "pid": 17,
+        "start": "120042760",
+        "emissions": 1
+      },
+      "same_live_process_without_redraw": true,
+      "emitted_payload_sha256": "a575ba6338690fa8dcedf2ac48fea853d0c5a0acb654fbe2def5ed62edf328e5",
+      "attached": {
+        "keyboard_reply_hex": "1b5b3f333175",
+        "cursor": {
+          "x": 21,
+          "y": 14,
+          "shape": 2,
+          "blink": true,
+          "visible": false
+        },
+        "palette17": [
+          0,
+          0,
+          95
+        ],
+        "default_fg": [
+          221,
+          221,
+          221
+        ],
+        "default_bg": [
+          0,
+          0,
+          0
+        ],
+        "native_osc66": false,
+        "lines": [
+          "CORE_FIDELITY_keyboard-cursor",
+          "",
+          "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb\u001b[38:2:12:34:56mTRUECOLOR",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "image": null
+      },
+      "expected": {
+        "keyboard_reply_hex": "1b5b3f333175",
+        "cursor": {
+          "x": 21,
+          "y": 14,
+          "shape": 2,
+          "blink": true,
+          "visible": false
+        },
+        "palette17": [
+          33,
+          44,
+          55
+        ],
+        "default_fg": [
+          201,
+          202,
+          203
+        ],
+        "default_bg": [
+          4,
+          5,
+          6
+        ],
+        "native_osc66": false,
+        "lines": [
+          "CORE_FIDELITY_keyboard-cursor",
+          "",
+          "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb\u001b[38:2:12:34:56mTRUECOLOR",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "image": null
+      },
+      "fresh": [
+        {
+          "keyboard_reply_hex": "1b5b3f333175",
+          "cursor": {
+            "x": 21,
+            "y": 14,
+            "shape": 0,
+            "blink": true,
+            "visible": false
+          },
+          "palette17": [
+            0,
+            0,
+            95
+          ],
+          "default_fg": [
+            221,
+            221,
+            221
+          ],
+          "default_bg": [
+            0,
+            0,
+            0
+          ],
+          "native_osc66": false,
+          "lines": [
+            "CORE_FIDELITY_keyboard-cursor",
+            "",
+            "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb\u001b[38:2:12:34:56mTRUECOLOR",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "image": null
+        },
+        {
+          "keyboard_reply_hex": "1b5b3f333175",
+          "cursor": {
+            "x": 21,
+            "y": 14,
+            "shape": 0,
+            "blink": true,
+            "visible": false
+          },
+          "palette17": [
+            0,
+            0,
+            95
+          ],
+          "default_fg": [
+            221,
+            221,
+            221
+          ],
+          "default_bg": [
+            0,
+            0,
+            0
+          ],
+          "native_osc66": false,
+          "lines": [
+            "CORE_FIDELITY_keyboard-cursor",
+            "",
+            "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb\u001b[38:2:12:34:56mTRUECOLOR",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "image": null
+        }
+      ],
+      "attached_checks": {
+        "keyboard_reply_hex": true,
+        "cursor": true,
+        "lines": true
+      },
+      "fresh_checks": [
+        {
+          "keyboard_reply_hex": true,
+          "cursor": false,
+          "lines": true
+        },
+        {
+          "keyboard_reply_hex": true,
+          "cursor": false,
+          "lines": true
+        }
+      ]
+    },
+    {
+      "name": "palette",
+      "owner": {
+        "pid": 29,
+        "start": "120042866",
+        "emissions": 1
+      },
+      "same_live_process_without_redraw": true,
+      "emitted_payload_sha256": "96f08fb38115b2a536e06b11a11b5c55c5911719ec1b12dc2a4f05f72a387b23",
+      "attached": {
+        "keyboard_reply_hex": "1b5b3f3075",
+        "cursor": {
+          "x": 21,
+          "y": 14,
+          "shape": 2,
+          "blink": true,
+          "visible": false
+        },
+        "palette17": [
+          18,
+          52,
+          86
+        ],
+        "default_fg": [
+          17,
+          34,
+          51
+        ],
+        "default_bg": [
+          68,
+          85,
+          102
+        ],
+        "native_osc66": false,
+        "lines": [
+          "CORE_FIDELITY_palette",
+          "",
+          "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb\u001b[38:5:17mPALETTE",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "image": null
+      },
+      "expected": {
+        "keyboard_reply_hex": "1b5b3f3075",
+        "cursor": {
+          "x": 21,
+          "y": 14,
+          "shape": 2,
+          "blink": true,
+          "visible": false
+        },
+        "palette17": [
+          18,
+          52,
+          86
+        ],
+        "default_fg": [
+          17,
+          34,
+          51
+        ],
+        "default_bg": [
+          68,
+          85,
+          102
+        ],
+        "native_osc66": false,
+        "lines": [
+          "CORE_FIDELITY_palette",
+          "",
+          "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb\u001b[38:5:17mPALETTE",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "image": null
+      },
+      "fresh": [
+        {
+          "keyboard_reply_hex": "1b5b3f3075",
+          "cursor": {
+            "x": 21,
+            "y": 14,
+            "shape": 0,
+            "blink": true,
+            "visible": false
+          },
+          "palette17": [
+            0,
+            0,
+            95
+          ],
+          "default_fg": [
+            221,
+            221,
+            221
+          ],
+          "default_bg": [
+            0,
+            0,
+            0
+          ],
+          "native_osc66": false,
+          "lines": [
+            "CORE_FIDELITY_palette",
+            "",
+            "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb\u001b[38:5:17mPALETTE",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "image": null
+        },
+        {
+          "keyboard_reply_hex": "1b5b3f3075",
+          "cursor": {
+            "x": 21,
+            "y": 14,
+            "shape": 0,
+            "blink": true,
+            "visible": false
+          },
+          "palette17": [
+            0,
+            0,
+            95
+          ],
+          "default_fg": [
+            221,
+            221,
+            221
+          ],
+          "default_bg": [
+            0,
+            0,
+            0
+          ],
+          "native_osc66": false,
+          "lines": [
+            "CORE_FIDELITY_palette",
+            "",
+            "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb\u001b[38:5:17mPALETTE",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "image": null
+        }
+      ],
+      "attached_checks": {
+        "palette17": true,
+        "default_fg": true,
+        "default_bg": true
+      },
+      "fresh_checks": [
+        {
+          "palette17": false,
+          "default_fg": false,
+          "default_bg": false
+        },
+        {
+          "palette17": false,
+          "default_fg": false,
+          "default_bg": false
+        }
+      ]
+    },
+    {
+      "name": "png",
+      "owner": {
+        "pid": 41,
+        "start": "120042973",
+        "emissions": 1
+      },
+      "same_live_process_without_redraw": true,
+      "emitted_payload_sha256": "a1d98ee2288beda2e6e62a212af4a9ac90ba3af43df1c69dc2aef1dd6bdb2db7",
+      "attached": {
+        "keyboard_reply_hex": "1b5b3f3075",
+        "cursor": {
+          "x": 21,
+          "y": 14,
+          "shape": 2,
+          "blink": true,
+          "visible": false
+        },
+        "palette17": [
+          0,
+          0,
+          95
+        ],
+        "default_fg": [
+          221,
+          221,
+          221
+        ],
+        "default_bg": [
+          0,
+          0,
+          0
+        ],
+        "native_osc66": false,
+        "lines": [
+          "CORE_FIDELITY_png",
+          "",
+          "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "image": {
+          "width": 2,
+          "height": 2,
+          "rgba_sha256": "50c3618d17fcb4251513a0f4eb6b344bb600b903d284a5f5324dba8fd35b56cb",
+          "placement_count": 1,
+          "layers": [
+            {
+              "dest_rect": {
+                "left": -0.8999999761581421,
+                "top": 0.800000011920929,
+                "right": -0.8333333134651184,
+                "bottom": 0.699999988079071
+              },
+              "src_rect": {
+                "left": 0.0,
+                "top": 0.0,
+                "right": 1.0,
+                "bottom": 1.0
+              },
+              "group_count": 1
+            }
+          ]
+        }
+      },
+      "expected": {
+        "keyboard_reply_hex": "1b5b3f3075",
+        "cursor": {
+          "x": 21,
+          "y": 14,
+          "shape": 2,
+          "blink": true,
+          "visible": false
+        },
+        "palette17": [
+          33,
+          44,
+          55
+        ],
+        "default_fg": [
+          201,
+          202,
+          203
+        ],
+        "default_bg": [
+          4,
+          5,
+          6
+        ],
+        "native_osc66": false,
+        "lines": [
+          "CORE_FIDELITY_png",
+          "",
+          "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "image": {
+          "width": 2,
+          "height": 2,
+          "rgba_sha256": "50c3618d17fcb4251513a0f4eb6b344bb600b903d284a5f5324dba8fd35b56cb",
+          "placement_count": 1,
+          "layers": [
+            {
+              "dest_rect": {
+                "left": -0.8999999761581421,
+                "top": 0.800000011920929,
+                "right": -0.8333333134651184,
+                "bottom": 0.699999988079071
+              },
+              "src_rect": {
+                "left": 0.0,
+                "top": 0.0,
+                "right": 1.0,
+                "bottom": 1.0
+              },
+              "group_count": 1
+            }
+          ]
+        }
+      },
+      "fresh": [
+        {
+          "keyboard_reply_hex": "1b5b3f3075",
+          "cursor": {
+            "x": 21,
+            "y": 14,
+            "shape": 0,
+            "blink": true,
+            "visible": false
+          },
+          "palette17": [
+            0,
+            0,
+            95
+          ],
+          "default_fg": [
+            221,
+            221,
+            221
+          ],
+          "default_bg": [
+            0,
+            0,
+            0
+          ],
+          "native_osc66": false,
+          "lines": [
+            "CORE_FIDELITY_png",
+            "",
+            "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "image": null
+        },
+        {
+          "keyboard_reply_hex": "1b5b3f3075",
+          "cursor": {
+            "x": 21,
+            "y": 14,
+            "shape": 0,
+            "blink": true,
+            "visible": false
+          },
+          "palette17": [
+            0,
+            0,
+            95
+          ],
+          "default_fg": [
+            221,
+            221,
+            221
+          ],
+          "default_bg": [
+            0,
+            0,
+            0
+          ],
+          "native_osc66": false,
+          "lines": [
+            "CORE_FIDELITY_png",
+            "",
+            "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "image": null
+        }
+      ],
+      "attached_checks": {
+        "image": true
+      },
+      "fresh_checks": [
+        {
+          "image": false
+        },
+        {
+          "image": false
+        }
+      ]
+    },
+    {
+      "name": "osc66",
+      "owner": {
+        "pid": 55,
+        "start": "120043081",
+        "emissions": 1
+      },
+      "same_live_process_without_redraw": true,
+      "emitted_payload_sha256": "82e222521205903740e0e4b3082bef0c1f60535afff1eda5699cf1347f1e46c5",
+      "attached": {
+        "keyboard_reply_hex": "1b5b3f3075",
+        "cursor": {
+          "x": 21,
+          "y": 14,
+          "shape": 2,
+          "blink": true,
+          "visible": false
+        },
+        "palette17": [
+          0,
+          0,
+          95
+        ],
+        "default_fg": [
+          221,
+          221,
+          221
+        ],
+        "default_bg": [
+          0,
+          0,
+          0
+        ],
+        "native_osc66": true,
+        "lines": [
+          "CORE_FIDELITY_osc66",
+          "",
+          "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb",
+          "",
+          "\u001b]66;s=2;WIDE\u0007",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "image": null
+      },
+      "expected": {
+        "keyboard_reply_hex": "1b5b3f3075",
+        "cursor": {
+          "x": 21,
+          "y": 14,
+          "shape": 2,
+          "blink": true,
+          "visible": false
+        },
+        "palette17": [
+          33,
+          44,
+          55
+        ],
+        "default_fg": [
+          201,
+          202,
+          203
+        ],
+        "default_bg": [
+          4,
+          5,
+          6
+        ],
+        "native_osc66": true,
+        "lines": [
+          "CORE_FIDELITY_osc66",
+          "",
+          "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb",
+          "",
+          "\u001b]66;s=2;WIDE\u0007",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "image": null
+      },
+      "fresh": [
+        {
+          "keyboard_reply_hex": "1b5b3f3075",
+          "cursor": {
+            "x": 21,
+            "y": 14,
+            "shape": 0,
+            "blink": true,
+            "visible": false
+          },
+          "palette17": [
+            0,
+            0,
+            95
+          ],
+          "default_fg": [
+            221,
+            221,
+            221
+          ],
+          "default_bg": [
+            0,
+            0,
+            0
+          ],
+          "native_osc66": false,
+          "lines": [
+            "CORE_FIDELITY_osc66",
+            "",
+            "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "image": null
+        },
+        {
+          "keyboard_reply_hex": "1b5b3f3075",
+          "cursor": {
+            "x": 21,
+            "y": 14,
+            "shape": 0,
+            "blink": true,
+            "visible": false
+          },
+          "palette17": [
+            0,
+            0,
+            95
+          ],
+          "default_fg": [
+            221,
+            221,
+            221
+          ],
+          "default_bg": [
+            0,
+            0,
+            0
+          ],
+          "native_osc66": false,
+          "lines": [
+            "CORE_FIDELITY_osc66",
+            "",
+            "Cafe\u0301 \u4f60\u597d \ud83d\udc69\u200d\ud83d\udcbb",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "image": null
+        }
+      ],
+      "attached_checks": {
+        "native_osc66": true,
+        "lines": true
+      },
+      "fresh_checks": [
+        {
+          "native_osc66": false,
+          "lines": false
+        },
+        {
+          "native_osc66": false,
+          "lines": false
+        }
+      ]
+    }
+  ],
+  "completed": true,
+  "version": "hc 0.1.18",
+  "attached_oracle_pass": true,
+  "same_process_pass": true,
+  "full_fresh_restore_pass": false,
+  "server_stop_returncode": 0,
+  "cleanup_remaining_owned_processes": []
+}

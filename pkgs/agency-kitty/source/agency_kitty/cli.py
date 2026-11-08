@@ -9,6 +9,7 @@ import os
 import posixpath
 from pathlib import Path, PurePosixPath
 import shlex
+import stat
 import subprocess
 import sys
 
@@ -143,8 +144,37 @@ def launch_argv(session: Session) -> list[str]:
 
 
 def open_window(session: Session) -> dict:
-    process = subprocess.Popen(launch_argv(session), stdin=subprocess.DEVNULL,
-                               env=clean_environment(), start_new_session=True)
+    # The caller may be a desktop helper whose capture pipes must reach EOF
+    # as soon as this receipt exits. Keep native Kitty diagnostics separately;
+    # the terminal's app PTY is internal to Kitty and never passes this file.
+    store = SessionStore()
+    store._prepare()
+    root_fd = os.open(store.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(root_fd)
+        if info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise SessionError('launch state directory must be private and owned by this user')
+        try:
+            os.mkdir('launches', mode=0o700, dir_fd=root_fd)
+        except FileExistsError:
+            pass
+        directory_fd = os.open('launches', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+    finally:
+        os.close(root_fd)
+    try:
+        info = os.fstat(directory_fd)
+        if info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise SessionError('launch diagnostics directory must be private and owned by this user')
+        import uuid
+        descriptor = os.open(session.id + '-' + uuid.uuid4().hex + '.log',
+                             os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                             0o600, dir_fd=directory_fd)
+    finally:
+        os.close(directory_fd)
+    with os.fdopen(descriptor, 'ab', buffering=0) as diagnostics:
+        process = subprocess.Popen(launch_argv(session), stdin=subprocess.DEVNULL,
+                                   stdout=diagnostics, stderr=subprocess.STDOUT,
+                                   env=clean_environment(), start_new_session=True)
     return {"version": 1, "terminalId": session.id, "launcherPid": process.pid,
             "windowClass": "agencykitty-" + session.id.replace("-", ""),
             "status": "launch-requested"}

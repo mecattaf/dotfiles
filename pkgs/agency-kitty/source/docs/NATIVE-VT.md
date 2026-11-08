@@ -61,3 +61,21 @@ cases, and universal protocol parity are three different claims.
 The direct stock-SSH route remains available. Persistence is an explicit
 feature with a separately qualified state model; it is not a reason to remove
 the original fast and fully native reference path.
+
+## Kitty 0.50 logout restoration has a narrower contract
+
+The new native logout feature is useful, but it does not contain a hidden full
+remote-PTY snapshot API. In the pinned
+[`logout_session.py`](https://github.com/kovidgoyal/kitty/blob/bb1aca6f279f1a5cfa3edd765a71650fe91b6472/kitty/logout_session.py#L319),
+`scrollback_for_restore()` exports the main screen and history as formatted
+text, joins soft wraps, omits a current shell prompt and trailing blank lines,
+and does not include scrollback-pager history. `sanitize_restored_output()`
+retains only SGR, hyperlinks and OSC66 text sizing; it removes shell integration
+marks and other controls. It does not restore Kitty graphics or all input modes.
+
+The saved session relaunches child commands. `Window.resize_child()` feeds the
+saved text into the new Screen before marking the new child terminal ready,
+which gives that launch a deliberate output-ordering barrier. This is a useful
+native implementation pattern, not proof that the previous NAS shell/agent
+survived or that an arbitrary running TUI can be reconstructed. Linux's desktop
+portal logout lifecycle remains a separate Domicile integration to qualify.

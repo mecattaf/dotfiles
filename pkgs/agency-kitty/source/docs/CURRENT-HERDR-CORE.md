@@ -53,3 +53,14 @@ image replay. OSC66 and advanced Kitty graphics still need explicit tests.
 Nor have these admission gates measured latency. The exact binary can join
 the later frozen same-worker cohort. Even a fast headless backend does not
 require adopting Herdr's desktop, workspace model or web terminal.
+
+## Native Kitty restoration follow-up
+
+The later [published-binary native fidelity gate](HERDR-CORE-NATIVE-FIDELITY.md)
+separates attached bytes from two fresh displays without application redraw.
+Attached output matched the native Kitty oracle and all application PIDs
+survived. Fresh clients retained KKP31, tested Unicode/truecolor and cursor
+position/visibility, but lost the explicit cursor shape, OSC4/10/11 overrides,
+static PNG/placement and OSC66 sizing. The complete receipt preserves those
+failures, source hashes and empty cleanup. This is a concrete restoration
+boundary; it assigns no historical frame timer or latency floor to Core.

@@ -16,8 +16,8 @@ Research clones live outside the repository under
   history by sending wheel events and restoring the viewport; that technique
   was deliberately not copied into a live harness.
 - [Kitty](https://github.com/kovidgoyal/kitty), GPL-3.0. The v0.48.0 source
-  commit is `5b4ea1bbba26a9a4ba74dc9a5bb587c9f983fec5`. Source qualification
-  and0.50.0 is `bb1aca6f279f1a5cfa3edd765a71650fe91b6472`. Source qualification
+  commit is `5b4ea1bbba26a9a4ba74dc9a5bb587c9f983fec5`;
+  0.50.0 is `bb1aca6f279f1a5cfa3edd765a71650fe91b6472`. Source qualification
   used `kittens/runner.py`, `kitty/boss.py`, `kitty/window.py`, `kitty/mouse.c`
   and `kitty/screen.c`, especially the no-UI loader, exact-window callback,
   native bracketed paste and selection-complete callsites.
@@ -43,19 +43,28 @@ Research clones live outside the repository under
   Herdr CLI tools through `execFile`; no frontend or rendering layer from it
   is required for native Kitty sidechannels.
 - [Codex](https://github.com/openai/codex), Apache-2.0, exact installed version
-  0.163.0 source `83086188ae0614bd882818ff1aa23f3194962012`. Its hook schemas
+  at the initial audit was 0.163.0 source `83086188ae0614bd882818ff1aa23f3194962012`.
+  The updated 0.167.0 source is `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
+  Its hook schemas
   and core lifecycle dispatch were inspected for exact session/transcript
   binding. No Codex source was copied or modified.
 
-Claude Code2.1.306's installed bundled image-path implementation was inspected
-locally as primary evidence, and its actual TUI was run only against a private
-offline Messages fixture. Claude's proprietary implementation is not copied,
+Claude Code 2.1.306's initially installed bundled image-path implementation was
+inspected locally as primary evidence. The updated 2.1.319 TUI and scoped hooks
+were also qualified against a private offline Messages fixture. Claude's
+proprietary implementation is not copied,
 vendored, patched or distributed here.
 
 The private Anthropic sound captures are proprietary local-use assets. They
 are outside Git and are not redistributed by this package. Their archived
 provenance and checksums are in `CAPABILITIES.md` and the private audio README.
 The freedesktop sound files are referenced from the system's installed theme.
+
+The separately source-built holder and optional actor carry their own complete
+upstream/dependency notices under `backend/zmx/`. See `NOTICE`, `NOTICE.v4`,
+`NOTICE.actor` and `licenses/provenance.json` there; this capability-source list
+does not replace those notices. The transport survey's exact source pins and
+licenses are also recorded in `VT-ARCHITECTURE.md`.
 
 The test's optional `cdp_wire.py` is imported from Tom's pre-existing private
 benchmark source rather than copied or packaged. It directs trusted mouse

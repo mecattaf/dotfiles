@@ -28,6 +28,13 @@ explicitly creates a persistent NAS terminal and opens its Kitty window.
 creates a replacement for an unknown or ended session. `agency-kitty menu`
 opens the explicit saved-session chooser; only its New selection creates one.
 
+Detached native windows write Kitty launch diagnostics to private 0600 files
+under the local session store's `launches/` directory (normally
+`~/.local/state/agency-kitty/launches`). These are startup/Kitty diagnostics,
+not a terminal-content log. Their descriptors are independent of a desktop
+helper's captured stdout/stderr, so the helper can finish while Kitty stays
+open. Existing diagnostics are retained for inspection.
+
 `AGENCY_KITTY_RECONNECT=1 agency-kitty open --directory /NAS/PATH` opts into
 bounded reconnection in that same view. The setting is inherited by its launch
 and later tabs; it can also prefix `resume`, `new`, `menu` or `attach`. Only
@@ -48,6 +55,12 @@ images are qualified, including repeated large-image replacement/deletion.
 Unsupported graphics subsets and OSC66 restoration refuse strict replay.
 `ZMX_RESTORE_TEXT_ONLY=1` is an explicit degraded recovery escape, not full
 protocol parity. The unwrapped direct route remains the compatibility baseline.
+
+The existing Kitty configuration keeps 100,000 local scrollback lines while
+attached. The holder retains at most 10,000 lines with a 64 MiB state bound;
+fresh text snapshots have a separate 32 MiB bound. A new window cannot recover
+more terminal history than its holder retained. Saved semantic harness history
+is a separate view, rather than a substitute for identical terminal scrollback.
 
 `agency-kitty-native-forward --session UUID` is an opt-in local compiled client
 over a private stock-SSH Unix forward. It requires the matching NAS version.
@@ -70,6 +83,10 @@ The fleet module installs the Kitty watcher and mappings for tagged windows:
 - Ctrl+Shift+H: read exact saved Claude/Codex semantic history in a separate
   local read-only Nvim view; without an exact binding, use existing native shell
   scrollback. History is not a reconstruction of unsaved TUI pixels/prompts.
+
+Managed drag-selection completion also adds Copied feedback after Kitty's
+native clipboard copy. This is a silent native desktop notice lasting 1.6
+seconds, rather than an in-terminal overlay or replacement selection engine.
 
 Image jobs capture terminal UUID, Kitty window/root-child identity and harness
 occupant before work. After an exact harness binds, staged image/file/voice
@@ -125,7 +142,8 @@ catalogue focus identifies that OS window, not a particular Kitty tab.
 `agency-kitty capability sound startup|voice-start|voice-end|disconnected|done|attention`
 plays an explicitly selected local sound. Private Anthropic captures belong in
 `~/.local/share/agency-kitty/audio` or AGENCY_KITTY_AUDIO_DIR; they are not shipped
-in this package. Completion/attention fall back to the desktop's theme assets.
+in this package. Completion/attention use the desktop's theme assets.
+No new automatic agent-completion sound or notification policy is enabled.
 The voice-text action accepts final text from a future system-wide ASR utility
 and uses exact-target literal paste without submission. No bare-Space listener,
 recording service or speech model is enabled here.

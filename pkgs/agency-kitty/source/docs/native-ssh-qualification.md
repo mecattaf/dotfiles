@@ -33,15 +33,22 @@ private fixture; no production input reader or relay is introduced. Explicit
 stock SSH kitten startup is checked separately as a labelled negative gate.
 
 The passing exact-runtime receipt is
-`/home/tom/.wt/kitty-consolidation/artifacts/managed-ssh-startup/receipt.json`
-(compute `ssh-typeahead/proof-3`). All four complete commands executed, all
-four native raw-key/OSC gates passed, and fresh/resume retained fish PID 1646
+`/home/tom/.wt/kitty-consolidation/artifacts/managed-ssh-startup/receipt-final.json`
+(compute `ssh-typeahead/proof-4`). All four complete commands executed, all
+four native raw-key/OSC gates passed, and fresh/resume retained fish PID 1664
 and its start identity. The explicit stock SSH kitten reached the same fish
 prompt but consumed the early complete command; a later explicit command
 executed successfully. It used the activated Kitty 0.50 binary, official
 Domicile engine 63db244, and the exact fleet NAS holder SHA `6a217563…ed02`.
 This focused gate does not repeat the separately established full Neovim
 plugin or pending-editor lifecycle qualification.
+
+The original receipt's display label escaped the command's newline. Its raw
+send-text call and server-origin command marker used the literal Enter/newline.
+`receipt-reporting-correction.json` preserves the original receipt hash and
+records the exact input bytes separately; no runtime result was changed or
+retimed for that reporting correction. The negative SSH-kitten case also
+checks that the early command stays absent after a later command succeeds.
 
 ## Earlier capability receipts
 

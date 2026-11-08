@@ -1,7 +1,8 @@
 # Static graphics restoration candidate
 
 Version 4 restores the measured native Codex image workflow without asking Codex
-to repaint. Kitty remains the renderer. Its stock SSH kitten carries bytes;
+to repaint. Kitty remains the renderer. Stock OpenSSH carries bytes in the
+managed default; the SSH kitten remains an explicit bootstrap option. In both,
 the native holder keeps the existing PTY and a NAS-side VT shadow. Python is
 absent from the ongoing byte path. This is an optional persistent transport;
 the direct SSH reference remains available.
