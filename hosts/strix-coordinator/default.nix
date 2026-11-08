@@ -38,6 +38,28 @@
   myNasClient.useRemoteStorage = true;
 
   services.utilityModel.enable = true;
+  services.superroc.enable = true;
+  services.gufo.models."qwen3.8-27b-ara" = {
+    artifact = "qwen38-27b-heretic-ara-q8-gguf";
+    # The ARA checkpoint has no matching vision or speculative sidecar.
+    # Keep one session and a bounded prefix cache for the shared GPU.
+    serve = {
+      sessions = 1;
+      context = 102400;
+      think = "on";
+      maxTokens = 16384;
+      extraArgs = [
+        "--cache-ram-bytes"
+        "1073741824"
+        "--max-pending"
+        "8"
+        "--request-timeout-ms"
+        "1200000"
+        "--stall-timeout-ms"
+        "180000"
+      ];
+    };
+  };
   # The one selected D3 runtime is native vllm-srun, alongside Gufo behind
   # llama-swap. The BF16 snapshot uses the same NAS Library/explicit loan path.
   # Declaring its loan set starts no worker and moves no model bytes.
