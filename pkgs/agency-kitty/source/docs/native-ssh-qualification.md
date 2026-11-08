@@ -1,5 +1,50 @@
 # Stock Kitty SSH and native editor qualification
 
+## Default transport and startup input
+
+Managed direct terminals and durable interactive attachments use ordinary
+OpenSSH `-tt` by default, retaining the pinned NAS address/host key, no agent
+forwarding, no connection sharing, and the existing keystroke timing policy.
+The NAS package supplies immutable Kitty terminfo and fish integration; this
+does not require an SSH kitten data-transfer bootstrap. Python constructs
+commands and may wait for child lifecycle changes, but never reads terminal
+input.
+
+`AGENCY_KITTY_SSH_TRANSPORT=kitten` explicitly selects the stock SSH kitten.
+The only accepted values are `plain` and `kitten`; unknown values fail before
+NAS session allocation. The SSH kitten qualifications below are historical
+receipts and do not establish startup typeahead preservation.
+
+Exact Kitty 0.50 source distinguishes two mechanisms. Initial Go TTY setup
+uses `TCSANOW`; `TCSAFLUSH` belongs to its restore/cleanup path. During normal
+interactive bootstrap, both Python and SH implementations consume complete
+input lines before `KITTY_DATA_START` into `leading_data`, remove line endings,
+and never replay those lines into the eventual shell. Upstream's
+`test_ssh_leading_data` explicitly exercises that consumption. Ordinary
+OpenSSH 10.4 enters raw mode with `TCSADRAIN`, which preserves queued input.
+Startup command loss is not attributed to a Go startup flush.
+
+The focused `--managed-startup-only` fixture types a complete command plus
+Enter into native Kitty before actual SSH exec, and separately while the NAS
+endpoint is paused before fish/attachment. It checks direct, durable fresh
+and durable resume paths, single keys without Enter, native OSC 7/133,
+TERM/terminfo, and retained fish PID/start identity. Pauses exist only in the
+private fixture; no production input reader or relay is introduced. Explicit
+stock SSH kitten startup is checked separately as a labelled negative gate.
+
+The passing exact-runtime receipt is
+`/home/tom/.wt/kitty-consolidation/artifacts/managed-ssh-startup/receipt.json`
+(compute `ssh-typeahead/proof-3`). All four complete commands executed, all
+four native raw-key/OSC gates passed, and fresh/resume retained fish PID 1646
+and its start identity. The explicit stock SSH kitten reached the same fish
+prompt but consumed the early complete command; a later explicit command
+executed successfully. It used the activated Kitty 0.50 binary, official
+Domicile engine 63db244, and the exact fleet NAS holder SHA `6a217563…ed02`.
+This focused gate does not repeat the separately established full Neovim
+plugin or pending-editor lifecycle qualification.
+
+## Earlier capability receipts
+
 2026-11-07. This fixture uses the real stock Kitty SSH kitten, OpenSSH client
 and server, patched holder, fish, Neovim TUI, Neovim native remote UI and
 nvim-tree. No alternate terminal renderer is involved.

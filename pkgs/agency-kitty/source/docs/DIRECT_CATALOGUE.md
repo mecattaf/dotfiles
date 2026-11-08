@@ -53,8 +53,30 @@ session root's `direct/` directory. Reads use `O_NOFOLLOW`, validate file type
 and ownership, and cap records at 32 KiB. The inventory is limited to 4,096
 records and 512 KiB, including ended records. At the bound, registration fails
 with an explicit archival message; it does not delete session state or start a
-replacement transport. Administrative archival of ended metadata is an
-explicit operation. It gives up those archived UUID reservations.
+replacement transport. Archive one explicitly selected ended record on NAS:
+
+```sh
+agency-kitty remote archive-direct --id TERMINAL_UUID
+```
+
+This action verifies that the original owner ended, then atomically
+moves the unchanged private record to the sibling `direct-archive/` directory
+without overwriting any destination. Its JSON receipt contains the exact UUID,
+byte count and SHA-256. A live or unknown UUID is refused; an unknown request
+allocates no metadata. Repeating an already completed archive is refused.
+Exit proof requires a different boot, absent original PID or changed process
+start time. An inaccessible or changed PTY alone does not permit archival of a
+still-existing original process. The command never signals a process, invokes
+a holder or changes harness state.
+There is no automatic cleanup or background archive task.
+
+Archived records no longer count against the active inventory bounds. Their
+UUIDs remain reserved for both direct and persistent registration through
+exact-path checks; catalogue reads never scan the archive. Archive files are
+immutable through this API. A later exact matching harness `SessionEnd` may
+still clear its separate binding, while a foreign end event cannot. Preserve
+the archive when moving or backing up this metadata root. Linux `renameat2`
+with `RENAME_NOREPLACE` is required; there is no overwriting fallback.
 
 The combined direct/persistent metadata inventory has the same record and byte
 bounds. Each terminal can link up to 64 chat IDs; workspace IDs are arbitrary
@@ -68,6 +90,9 @@ holder actions, launch/tab class construction and an actual `remote direct`
 bootstrap becoming Fish. `tests/test_harness_state.py` waits for the fixture
 child's readiness before inspecting its PTY, avoiding the exec/dumpability
 transition race without relaxing production validation.
+Archival tests cover unchanged bytes/inode/permissions, quota recovery with a
+fresh owned PTY, UUID reuse refusal, live/unknown/repeated/collision refusal,
+private-path checks, holder-free dispatch and a matching late `SessionEnd`.
 
 Qualification runs through `runtime-test` on compute with private paths and
 unchanged `HOME`. This test does not activate a laptop configuration or prove

@@ -11,11 +11,34 @@ on explicit gestures or on harness events; they do not proxy each key.
 ends when its SSH process ends. Its optional chat/workspace links are metadata,
 not persistence. New Kitty tabs get independent terminal UUIDs.
 
+Managed direct and persistent routes default to ordinary OpenSSH, with pinned
+NAS terminfo and fish integration. This preserves complete commands typed
+during startup. `AGENCY_KITTY_SSH_TRANSPORT=kitten` explicitly selects stock
+Kitty SSH bootstrap; its bootstrap consumes complete pre-handshake input lines.
+
+Ended direct-terminal metadata remains bounded and keeps its UUID reserved.
+On NAS, `agency-kitty remote archive-direct --id UUID` explicitly archives one
+ended record without changing a process or releasing that UUID. It refuses live,
+unknown and already archived records. No automatic cleanup runs. See
+DIRECT_CATALOGUE.md for the byte/hash receipt and private archive contract.
+
 `agency-kitty open --directory /NAS/PATH --chat-id CHAT --workspace-id WORKSPACE`
 explicitly creates a persistent NAS terminal and opens its Kitty window.
 `agency-kitty resume UUID` reattaches that exact surviving NAS PTY. It never
 creates a replacement for an unknown or ended session. `agency-kitty menu`
 opens the explicit saved-session chooser; only its New selection creates one.
+
+`AGENCY_KITTY_RECONNECT=1 agency-kitty open --directory /NAS/PATH` opts into
+bounded reconnection in that same view. The setting is inherited by its launch
+and later tabs; it can also prefix `resume`, `new`, `menu` or `attach`. Only
+persistent plain-SSH attachments are supervised. The supervisor verifies the
+exact surviving NAS identity, never allocates a replacement, and retries at
+most five times within a 45-second retry burst. An SSH child that runs for at
+least 30 seconds resets that burst; this measures child lifetime rather than
+application readiness or an absolute deadline for the whole attachment. It
+preserves unconsumed local typeahead; it never replays bytes already consumed
+by a dead SSH process.
+Direct sessions end with their SSH-owned PTY. See ATTACHMENT-RECONNECT.md.
 
 Persistent mode uses the version-matched source-built holder on NAS. It has no
 layout manager, prefix key or terminal renderer. Attached application bytes
@@ -49,13 +72,14 @@ The fleet module installs the Kitty watcher and mappings for tagged windows:
   scrollback. History is not a reconstruction of unsaved TUI pixels/prompts.
 
 Image jobs capture terminal UUID, Kitty window/root-child identity and harness
-occupant before work. After an exact harness binds, staged image/file/voice actions also query its
+occupant before work. After an exact harness binds, staged image/file/voice
+actions also query its
 NAS foreground identity. Suspended, ended or unverified agents receive no
 input. The NAS check precedes local delivery rather than forming an atomic
 cross-host transaction. Before Codex emits its first SessionStart, generic
-terminal semantics remain. Closed, rebound or stale targets receive no input. There
-is no fallback to the currently focused window. Clipboard MIME/magic and image
-size are checked; batches contain at most16 images of at most16MiB each.
+terminal semantics remain. Closed, rebound or stale targets receive no input.
+There is no fallback to the currently focused window. Clipboard MIME/magic and
+image size are checked; batches contain at most 16 images of at most 16 MiB each.
 
 Native cross-application file dragging additionally requires the matched
 Domicile/Imagine drag patches. Installing this package does not replace a
@@ -83,8 +107,9 @@ Managed fish `cc`/`cx` route the original Claude/Codex arguments through
 `agency-kitty harness ...`. Invocation-scoped hooks bind the exact transcript
 and report working/waiting/completed-turn metadata. No global hook/config trust
 is added. DSH agentStatus distinguishes verified foreground work, waiting and
-completed turns from background, ended and legacy unverified bindings. Native OSC99 handles desktop notifications; OSC7 reports cwd and
-OSC133 marks shell boundaries. These protocols have different jobs.
+completed turns from background, ended and legacy unverified bindings. Native
+OSC99 handles desktop notifications; OSC7 reports cwd and OSC133 marks shell
+boundaries. These protocols have different jobs.
 
 `agency-kitty catalogue --local --json` reads bounded NAS metadata only.
 `agency-kitty link UUID --chat-id CHAT --workspace-id REF` updates links.

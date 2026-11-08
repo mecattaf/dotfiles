@@ -23,6 +23,7 @@ python3Packages.buildPythonApplication {
     fileset = lib.fileset.unions [
       ./agency_kitty ./kitty ./integration ./pyproject.toml ./LICENSE ./README.md
       ./docs/USAGE.md ./docs/HARNESS-LAUNCHERS.md ./docs/DIRECT_CATALOGUE.md ./docs/NATIVE_FORWARD.md
+      ./docs/AGENT-STATUS.md ./docs/ATTACHMENT-RECONNECT.md
     ];
   };
   build-system = [ python3Packages.setuptools ];
@@ -35,6 +36,7 @@ python3Packages.buildPythonApplication {
     "agency_kitty.catalogue"
     "agency_kitty.native_forward"
     "agency_kitty.native_forward_control"
+    "agency_kitty.attachment"
   ];
   passthru = { kittyPackage = kitty; inherit holderPackage; };
   postInstall = ''
@@ -50,6 +52,7 @@ python3Packages.buildPythonApplication {
     # small terminal helper into a retention root for unrelated build tools.
     mkdir -p $out/share/agency-kitty/docs
     cp docs/USAGE.md docs/HARNESS-LAUNCHERS.md docs/DIRECT_CATALOGUE.md docs/NATIVE_FORWARD.md \
+      docs/AGENT-STATUS.md docs/ATTACHMENT-RECONNECT.md \
       $out/share/agency-kitty/docs/
     cp README.md LICENSE $out/share/agency-kitty/
   '';

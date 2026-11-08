@@ -26,11 +26,21 @@ def clean_environment() -> dict[str, str]:
 def transport() -> SSHTransport:
     return SSHTransport(kitten=os.environ.get("AGENCY_KITTY_KITTEN", "kitten"),
                         ssh=os.environ.get("AGENCY_KITTY_SSH", "ssh"),
-                        remote_program=os.environ.get("AGENCY_KITTY_REMOTE_PROGRAM", "agency-kitty"))
+                        remote_program=os.environ.get("AGENCY_KITTY_REMOTE_PROGRAM", "agency-kitty"),
+                        interactive_transport=os.environ.get("AGENCY_KITTY_SSH_TRANSPORT", "plain"))
 
 
 def command_path() -> str:
     return os.environ.get("AGENCY_KITTY_COMMAND", "agency-kitty")
+
+
+def reconnect_requested(carrier: SSHTransport | None = None) -> bool:
+    value = os.environ.get('AGENCY_KITTY_RECONNECT', '0')
+    if value not in {'0', '1'}:
+        raise SessionError('AGENCY_KITTY_RECONNECT must be 0 or 1')
+    if value == '1' and (carrier or transport()).interactive_transport != 'plain':
+        raise SessionError('automatic reconnect requires the plain SSH transport')
+    return value == '1'
 
 
 def source_session(value: dict) -> Session:
@@ -51,13 +61,18 @@ def emit_metadata(session: Session, *, persistent: bool = True) -> None:
         os.write(1, f"\x1b]1337;SetUserVar={key}={encoded}\x1b\\".encode())
 
 
-def attach(session: Session, *, execute: bool = True) -> list[str]:
-    argv = transport().attach_argv(session)
+def attach(session: Session, *, execute: bool = True) -> list[str] | int:
+    carrier = transport()
+    argv = carrier.attach_argv(session)
     if not execute:
         return argv
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise SessionError("attachment requires an interactive Kitty terminal")
+    reconnect = reconnect_requested(carrier)
     emit_metadata(session)
+    if reconnect:
+        from .attachment import supervise
+        return supervise(session, argv, carrier, env=clean_environment())
     os.execvpe(argv[0], argv, clean_environment())
     raise AssertionError("exec returned")
 
@@ -293,6 +308,11 @@ def main(argv: list[str] | None = None) -> int:
         return desktop_main(['resume' if words[0] == 'desktop-resume-request' else 'frame'])
     args = parser().parse_args(words)
     try:
+        # Validate the typed policy before a launcher can allocate NAS state.
+        if "AGENCY_KITTY_SSH_TRANSPORT" in os.environ:
+            transport()
+        if 'AGENCY_KITTY_RECONNECT' in os.environ:
+            reconnect_requested()
         if args.action == "desktop":
             return desktop(args)
         if args.action == "menu":
@@ -365,12 +385,12 @@ def main(argv: list[str] | None = None) -> int:
                                   "launch": launch_argv(session), "attach": attach(session, execute=False)})); return 0
             session = create(args, store)
             if args.action == "new":
-                attach(session)
+                return attach(session)
             else:
                 print(json.dumps(open_window(session)))
             return 0
         if args.action == "attach":
-            attach(store.get(args.id)); return 0
+            return attach(store.get(args.id))
         if args.action == "resume":
             session = refresh(args.id, store)
             print(json.dumps({"launch": launch_argv(session)} if args.plan else open_window(session))); return 0

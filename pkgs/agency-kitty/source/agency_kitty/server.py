@@ -228,7 +228,7 @@ def _parser() -> argparse.ArgumentParser:
     direct.add_argument("--chat-id", action="append", default=[])
     direct.add_argument("--window-class")
     direct.add_argument("--kitty-window-id", type=int)
-    for action in ("create", "attach", "list", "describe", "rebind", "link", "close", "capture", "health"):
+    for action in ("create", "attach", "list", "describe", "rebind", "link", "close", "capture", "health", "archive-direct"):
         command = subparsers.add_parser(action)
         if action not in {"list", "health"}:
             command.add_argument("--id", required=True, type=validate_id)
@@ -273,6 +273,9 @@ def main(argv: list[str] | None = None) -> int:
             raise AssertionError("exec returned")
         store = SessionStore()
         registry = DirectRegistry(store)
+        if args.action == 'archive-direct':
+            print(json.dumps(registry.archive_ended(args.id), ensure_ascii=False))
+            return 0
         if args.action == 'list':
             # Ordinary direct sessions need neither a holder binary nor a
             # holder control call merely to expose their own live metadata.

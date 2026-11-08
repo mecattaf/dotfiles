@@ -1,5 +1,12 @@
 # Explicit native forwarding prototype
 
+Ordinary managed direct and durable SSH attachments default to plain OpenSSH
+`-tt`, with NAS-owned Kitty terminfo and fish integration. They preserve early
+commands without a terminal-byte relay. The separately selectable stock SSH
+kitten (`AGENCY_KITTY_SSH_TRANSPORT=kitten`) has a bootstrap data protocol that
+consumes complete pre-data lines; this is distinct from Go's exit-time
+`TCSAFLUSH`. See `native-ssh-qualification.md` for the focused startup gate.
+
 `agency-kitty-native-forward` is an installed opt-in experiment. Desktop
 launching and ordinary `agency-kitty` actions keep their existing behavior.
 Kitty renders locally; the compiled local holder client frames input/output

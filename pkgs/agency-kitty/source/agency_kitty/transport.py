@@ -35,6 +35,11 @@ class SSHTransport:
     kitten: str = "kitten"
     ssh: str = "ssh"
     remote_program: str = "agency-kitty"
+    interactive_transport: str = "plain"
+
+    def __post_init__(self):
+        if self.interactive_transport not in {"plain", "kitten"}:
+            raise SessionError("SSH transport must be plain or kitten")
 
     def _remote(self, *args: str) -> list[str]:
         return [self.remote_program, "remote", *args]
@@ -48,16 +53,20 @@ class SSHTransport:
                 "title": session.title, "workspace_id": session.workspace_id,
                 "chat_ids": list(session.chat_ids),
             }, ensure_ascii=False, separators=(",", ":"))]
-        # Unlike an interactive login, kitten ssh with a remote command does
-        # not allocate a PTY automatically. Force it for single-key input.
-        return [self.kitten, "ssh", "-tt", *KITTEN_OPTIONS, *SSH_OPTIONS, NAS_HOST, shlex.join(remote)]
+        return self.interactive_argv(remote)
 
     def direct_argv(self) -> list[str]:
-        return [self.kitten, "ssh", *KITTEN_OPTIONS, *SSH_OPTIONS, NAS_HOST]
+        if self.interactive_transport == "kitten":
+            return [self.kitten, "ssh", "-tt", *KITTEN_OPTIONS, *SSH_OPTIONS, NAS_HOST]
+        return [self.ssh, "-tt", *SSH_OPTIONS, "--", NAS_HOST]
 
     def interactive_argv(self, remote: list[str]) -> list[str]:
-        return [self.kitten, "ssh", "-tt", *KITTEN_OPTIONS, *SSH_OPTIONS,
-                NAS_HOST, shlex.join(remote)]
+        if not remote or any(not isinstance(arg, str) or "\0" in arg for arg in remote):
+            raise SessionError("a nonempty remote argv without NUL is required")
+        # NAS owns the immutable terminfo/fish assets. Ordinary OpenSSH leaves
+        # early complete commands queued; the optional SSH kitten bootstrap
+        # consumes pre-data lines before the application shell exists.
+        return [*self.direct_argv(), shlex.join(remote)]
 
     def command_argv(self, action: str, session_id: str | None = None, *args: str) -> list[str]:
         if action not in {"create", "list", "describe", "rebind", "link", "close", "capture", "health"}:
