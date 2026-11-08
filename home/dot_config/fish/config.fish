@@ -48,21 +48,34 @@ alias cd='z'
 # saves workspace trust for $HOME (docs, security: "trust acceptance is held
 # for the current session only and is not written to disk"), so a seat started
 # in ~ shows "Accessing workspace" on every launch. Both launchers therefore
-# move into the desk envelope (~/today) when typed from ~; the shell stays
-# there afterwards. Tom, 2026-10-13: cc and cc2 keep starting in ~/today; its
-# stale CLAUDE.md brief was moved out that day.
+# select a permanent dated cwd when typed from ~. ~/today is only an alias;
+# rotating it never moves an existing chat. Continue/resume uses the last cwd
+# for that seat, and an explicit project cwd or custom envelope stays intact.
 set -q CLAUDE_ENVELOPE; or set -gx CLAUDE_ENVELOPE $HOME/today
 function __claude_seat --description 'start one Claude seat outside $HOME'
     set -l seat $argv[1]
     set -l config_dir $argv[2]
     set -l args $argv[3..]
     if test (pwd) = $HOME
-        if not test -d $CLAUDE_ENVELOPE
-            echo "$seat: \$CLAUDE_ENVELOPE ($CLAUDE_ENVELOPE) does not exist; cd into a project first" >&2
+        set -l envelope $CLAUDE_ENVELOPE
+        if test "$envelope" = "$HOME/today"
+            set -l workspace_args --seat $seat
+            for arg in $args
+                if contains -- $arg --continue --resume -c -r; or string match -q -- '--resume=*' $arg
+                    set workspace_args --resume-seat $seat
+                    break
+                end
+            end
+            set envelope (journal-day $workspace_args)
+            or return 1
+        end
+        if not test -d "$envelope"
+            echo "$seat: workspace ($envelope) does not exist; cd into a project first" >&2
             return 1
         end
-        builtin cd $CLAUDE_ENVELOPE
-        echo "($seat: started in $CLAUDE_ENVELOPE, not in ~)" >&2
+        builtin cd "$envelope"
+        or return 1
+        echo "($seat: started in $envelope, not in ~)" >&2
     end
     # Agent view off for both seats (2026-10-12): finished background sessions
     # sat in "Needs input" for weeks. The 2.1.287
