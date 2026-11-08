@@ -1,0 +1,415 @@
+{
+  "repository": "https://github.com/cprussin/domicile",
+  "commit": "67c29a9906905bd5e1679803232c2f510b3fed9e",
+  "package_directory": "packages/shell-manganese",
+  "public_package": "@domicile-desktop/manganese",
+  "git_tree": "3e572b563f3dc16057516cb32b1dffc35cf33273",
+  "license": {
+    "path": "LICENSE",
+    "sha256": "4fa7186fcad8f0d7a72ce5a4c7477bc69b7cbef3b5e6b5c52f052cab9b312460",
+    "copyright": "Copyright (c) 2026 Connor Prussin"
+  },
+  "files": [
+    {
+      "path": "reference/manganese/CHANGELOG.md",
+      "upstream_path": "packages/shell-manganese/CHANGELOG.md",
+      "mode": "100644",
+      "git_blob": "b0d895d102c9f4cec64da63c7734929d0a1dfe74",
+      "sha256": "858f35059e02484b34dff804c2e02e41e0f9ef7b8bc212c896a5610242464ada",
+      "bytes": 1593
+    },
+    {
+      "path": "reference/manganese/README.md",
+      "upstream_path": "packages/shell-manganese/README.md",
+      "mode": "100644",
+      "git_blob": "f61d684cbda10e04c8ad921b51c0e1045381d818",
+      "sha256": "07ecb78c4283872ebb1d7e46a20d665be6aae24e1cce5b1a25811776a7fc7d0b",
+      "bytes": 5817
+    },
+    {
+      "path": "reference/manganese/bunfig.toml",
+      "upstream_path": "packages/shell-manganese/bunfig.toml",
+      "mode": "100644",
+      "git_blob": "8d263d6c7144e2ccce04618cc535052ba65b39c3",
+      "sha256": "8e847f8685d0c2b90a0b86f9fab201b8be1c71150f7d806e6444673a7524c22a",
+      "bytes": 60
+    },
+    {
+      "path": "reference/manganese/docs/CUSTOM-BAR-ITEMS.md",
+      "upstream_path": "packages/shell-manganese/docs/CUSTOM-BAR-ITEMS.md",
+      "mode": "100644",
+      "git_blob": "9ae30259c3f2f87fc59baafa9213aee3ad417e6d",
+      "sha256": "faa2674ab32bf8781cf1ebddc4dfeea08c222811440b4b54a942ac8c0a3858d0",
+      "bytes": 786
+    },
+    {
+      "path": "reference/manganese/docs/HOST-READOUTS.md",
+      "upstream_path": "packages/shell-manganese/docs/HOST-READOUTS.md",
+      "mode": "100644",
+      "git_blob": "671fc12dbbc3338883e5a9feafcd4f987b5d12ce",
+      "sha256": "d0ab65ebaeea56a00d5faaaef7e30f433a863b0d749ee5e780906536c363a2af",
+      "bytes": 2654
+    },
+    {
+      "path": "reference/manganese/docs/SOURCE.md",
+      "upstream_path": "packages/shell-manganese/docs/SOURCE.md",
+      "mode": "100644",
+      "git_blob": "a3871c73e83dfa1c7db6b108d13cf1b7f983bfe5",
+      "sha256": "ec14ae1b28b234d52262bcc6deeeb55b945b20f60e3b0f583fc2659aaa8608e2",
+      "bytes": 1623
+    },
+    {
+      "path": "reference/manganese/docs/TOP-BAR.md",
+      "upstream_path": "packages/shell-manganese/docs/TOP-BAR.md",
+      "mode": "100644",
+      "git_blob": "5b3c78040ec45993ac46fcacc177f8e0694ecb8a",
+      "sha256": "d859e1e72c4aaec96ff098a378f1b767aa22bdaab42c2f821845f20ac6b2901b",
+      "bytes": 27221
+    },
+    {
+      "path": "reference/manganese/package.json",
+      "upstream_path": "packages/shell-manganese/package.json",
+      "mode": "100644",
+      "git_blob": "7bfb84c6de9ed3f612af42b85c3670875cfaacaf",
+      "sha256": "5243d40783758a69d31eb2eac8f7e46ec3a874d581ac1d147da1eefb61e2977d",
+      "bytes": 4486
+    },
+    {
+      "path": "reference/manganese/panda.config.ts",
+      "upstream_path": "packages/shell-manganese/panda.config.ts",
+      "mode": "100644",
+      "git_blob": "f755e057414c69417e2673e4a38a6bc939f34fb3",
+      "sha256": "dc5caa52987dd19fe54f9d5715364d34e1c090514ead5f9974a6a8f1030f753d",
+      "bytes": 2070
+    },
+    {
+      "path": "reference/manganese/src/Desktop.tsx",
+      "upstream_path": "packages/shell-manganese/src/Desktop.tsx",
+      "mode": "100644",
+      "git_blob": "0072699db4ff9c659e46338b6c51412c91524d85",
+      "sha256": "6b472894973dad1808361a309f3e6e61710d4da75806b3125c5362111be114de",
+      "bytes": 38536
+    },
+    {
+      "path": "reference/manganese/src/KeymapNotice.test.tsx",
+      "upstream_path": "packages/shell-manganese/src/KeymapNotice.test.tsx",
+      "mode": "100644",
+      "git_blob": "52457bfcd59ef3a051125e4bb45e793bb8f4a111",
+      "sha256": "59c6e33d87b186c45342a24b4df61befecdf0244387f424b45ccf7ebf3348696",
+      "bytes": 1884
+    },
+    {
+      "path": "reference/manganese/src/KeymapNotice.tsx",
+      "upstream_path": "packages/shell-manganese/src/KeymapNotice.tsx",
+      "mode": "100644",
+      "git_blob": "6ba14fbb526bf17ac4fd5accbf601973a03561f3",
+      "sha256": "28f0a7904486c5ab71523b55d452406a4bb1c6c85354216389ab001b4200f826",
+      "bytes": 1097
+    },
+    {
+      "path": "reference/manganese/src/LevelNotice.test.tsx",
+      "upstream_path": "packages/shell-manganese/src/LevelNotice.test.tsx",
+      "mode": "100644",
+      "git_blob": "1042f2d940e789a7f3b4bcb5fa38556babe83d79",
+      "sha256": "1b72f24696e0db9bb0c92c2b2f496b44d9273a909061b66ba930e80a084fffe9",
+      "bytes": 2409
+    },
+    {
+      "path": "reference/manganese/src/LevelNotice.tsx",
+      "upstream_path": "packages/shell-manganese/src/LevelNotice.tsx",
+      "mode": "100644",
+      "git_blob": "887caed7f72c85f44cb01cfe92b647c10fc1a06e",
+      "sha256": "e193e1cee954cf0fa000aeefba6b0703cb66ef8c8a0e1dbbd2b7e12a7bdb524c",
+      "bytes": 1949
+    },
+    {
+      "path": "reference/manganese/src/Manganese.test.tsx",
+      "upstream_path": "packages/shell-manganese/src/Manganese.test.tsx",
+      "mode": "100644",
+      "git_blob": "0f5d779ce6151c8d9d7eb7a4b17d693f8da0c9c3",
+      "sha256": "4b2566883c7aaf154e4e6a3808c0ea8df2e832f53a13efc9437d9d96d6bc7737",
+      "bytes": 2770
+    },
+    {
+      "path": "reference/manganese/src/Manganese.tsx",
+      "upstream_path": "packages/shell-manganese/src/Manganese.tsx",
+      "mode": "100644",
+      "git_blob": "28168278234a26a7c1659efa4de082cc311a0327",
+      "sha256": "29e2de79143cbb8fa35f8b96a1ba6ac184513c39bcb10a7a32b59c9daf1aa109",
+      "bytes": 2117
+    },
+    {
+      "path": "reference/manganese/src/ScreenNotice.tsx",
+      "upstream_path": "packages/shell-manganese/src/ScreenNotice.tsx",
+      "mode": "100644",
+      "git_blob": "7db0e27140c790457f1f01c458fccb4a711e4c67",
+      "sha256": "70bb1e7b274f7a2c57c7e4f96477aebed11dd4f87bbddf41bda2d80f5bb7affa",
+      "bytes": 840
+    },
+    {
+      "path": "reference/manganese/src/Shell.test.tsx",
+      "upstream_path": "packages/shell-manganese/src/Shell.test.tsx",
+      "mode": "100644",
+      "git_blob": "0ea5b0ba8d8fe9085d2f2ca49acc1a9fcb69b100",
+      "sha256": "c5d462061fd0a247eae79ec50d479050f3cdad3da1c1011849db4b751b5924a1",
+      "bytes": 137348
+    },
+    {
+      "path": "reference/manganese/src/Shell.tsx",
+      "upstream_path": "packages/shell-manganese/src/Shell.tsx",
+      "mode": "100644",
+      "git_blob": "4f94773ce83b1ae4543664f31f8a09b253fa6cd7",
+      "sha256": "c37b908e035dceb803dd78ea303e672e759552222ade0e432df4df45a5951853",
+      "bytes": 3465
+    },
+    {
+      "path": "reference/manganese/src/cast-holds.test.ts",
+      "upstream_path": "packages/shell-manganese/src/cast-holds.test.ts",
+      "mode": "100644",
+      "git_blob": "ee44fccc46df4b50e2ea1bd534ca04c556738628",
+      "sha256": "ad570ab7ed5a8135225730ca81a277e0374e570fa6e049e33c3352b119f06949",
+      "bytes": 2938
+    },
+    {
+      "path": "reference/manganese/src/cast-holds.ts",
+      "upstream_path": "packages/shell-manganese/src/cast-holds.ts",
+      "mode": "100644",
+      "git_blob": "8becd27d4fa92f6f08bc3cd21b51dc722b26cc37",
+      "sha256": "dfe30c6c4844a5f767543987e1e43a7173ee0b814975047753740cf1ae59a221",
+      "bytes": 2192
+    },
+    {
+      "path": "reference/manganese/src/css.d.ts",
+      "upstream_path": "packages/shell-manganese/src/css.d.ts",
+      "mode": "100644",
+      "git_blob": "ef6d741f62257373cf2eb878f2dcdd0a4cdfc782",
+      "sha256": "a1e11ea9c568f92e5ff3b72ce5f9a47575e0b3c390a8b318e71f413af9f1b1a8",
+      "bytes": 26
+    },
+    {
+      "path": "reference/manganese/src/default-bars.test.tsx",
+      "upstream_path": "packages/shell-manganese/src/default-bars.test.tsx",
+      "mode": "100644",
+      "git_blob": "c0c18f938f7dfebe0b51be2b07b0a0599b383597",
+      "sha256": "fac51e71d35205c705f02acccf60a767e29fc950fda7a93c26207b976ef458da",
+      "bytes": 1428
+    },
+    {
+      "path": "reference/manganese/src/default-bars.tsx",
+      "upstream_path": "packages/shell-manganese/src/default-bars.tsx",
+      "mode": "100644",
+      "git_blob": "02471ebec6d73beaf48713f3fdd36cced3db034e",
+      "sha256": "c5e6611a6a626fe746cc5b90cd0ec3c3a3bf74c2898ebb2b15ad987221c999cd",
+      "bytes": 2107
+    },
+    {
+      "path": "reference/manganese/src/inbox-drawer.test.ts",
+      "upstream_path": "packages/shell-manganese/src/inbox-drawer.test.ts",
+      "mode": "100644",
+      "git_blob": "01860c1da30c36742b237ab6e8bca8553bfbc08e",
+      "sha256": "b08bc9f76b691391a25e0ccd24dd240eb6457c9403270f7886b370d868355f3c",
+      "bytes": 6149
+    },
+    {
+      "path": "reference/manganese/src/inbox-drawer.ts",
+      "upstream_path": "packages/shell-manganese/src/inbox-drawer.ts",
+      "mode": "100644",
+      "git_blob": "e20b691e3f182147cb6efbf8f9778e29f18172b9",
+      "sha256": "f422d553c2971767b437f5038428bdfb4ef70fe971f0606704347b8abd8bf4b6",
+      "bytes": 7459
+    },
+    {
+      "path": "reference/manganese/src/index.test.tsx",
+      "upstream_path": "packages/shell-manganese/src/index.test.tsx",
+      "mode": "100644",
+      "git_blob": "f4033bf8feea4d87d8c040c1829e0a7e2c17630e",
+      "sha256": "a8c43497f00dd2af4f1a70cd564031c899ca95cf87ca0cd6ecda074b6cfebbde",
+      "bytes": 705
+    },
+    {
+      "path": "reference/manganese/src/index.tsx",
+      "upstream_path": "packages/shell-manganese/src/index.tsx",
+      "mode": "100644",
+      "git_blob": "953c53949b4d39af5136f8d6c1edcd90f8d0ce61",
+      "sha256": "db32b93a5501204d968032aac11f7dff03d8015a955367cfda5480eb1a8e4b1a",
+      "bytes": 4903
+    },
+    {
+      "path": "reference/manganese/src/launcher-glances.test.ts",
+      "upstream_path": "packages/shell-manganese/src/launcher-glances.test.ts",
+      "mode": "100644",
+      "git_blob": "fa2a77a38852be1ec4c4e59985404f47c158409b",
+      "sha256": "d6192b0e322884b6afd7d407b65e6525feedf90acce919866f3135cc5741d094",
+      "bytes": 2654
+    },
+    {
+      "path": "reference/manganese/src/launcher-glances.ts",
+      "upstream_path": "packages/shell-manganese/src/launcher-glances.ts",
+      "mode": "100644",
+      "git_blob": "36445beb319beda5d18987a75c68a6566d7fcf2e",
+      "sha256": "29cd5849ff6b534aa2f8f892d7d2c29e602d321fa0808d4ae49ec92235ee059e",
+      "bytes": 2711
+    },
+    {
+      "path": "reference/manganese/src/media-keys.test.ts",
+      "upstream_path": "packages/shell-manganese/src/media-keys.test.ts",
+      "mode": "100644",
+      "git_blob": "9e386420e825175dfe21d62418a669475819ce35",
+      "sha256": "db56a8c06ff31af2007dcc76dfa36dbcaf163a2897c9c4baa06a136ba2db45dc",
+      "bytes": 2016
+    },
+    {
+      "path": "reference/manganese/src/media-keys.ts",
+      "upstream_path": "packages/shell-manganese/src/media-keys.ts",
+      "mode": "100644",
+      "git_blob": "d6407d41fcd63798dffdfb01c5145f6639906460",
+      "sha256": "6472b6277b534aa30241b1d212de458d17d187f11212ba9a5c3a10374a42263c",
+      "bytes": 1954
+    },
+    {
+      "path": "reference/manganese/src/options-docs.test.ts",
+      "upstream_path": "packages/shell-manganese/src/options-docs.test.ts",
+      "mode": "100644",
+      "git_blob": "8cdd729bff36d4bfd040ae3758ea93e469b75bdd",
+      "sha256": "274a7d839ac82668a142060ed47c51e13ad0702375491d993c15ebbd3dd7b687",
+      "bytes": 1121
+    },
+    {
+      "path": "reference/manganese/src/options.test.ts",
+      "upstream_path": "packages/shell-manganese/src/options.test.ts",
+      "mode": "100644",
+      "git_blob": "bb806dbff56c6337b3e9125c59533aa93467dc85",
+      "sha256": "21daca6a862d17a3ca925c89f3ca2a0dd47a9d6ff7de81bfba6094a6fb837dab",
+      "bytes": 412
+    },
+    {
+      "path": "reference/manganese/src/options.ts",
+      "upstream_path": "packages/shell-manganese/src/options.ts",
+      "mode": "100644",
+      "git_blob": "62173e55dc190ab0f1089967938c789aafece763",
+      "sha256": "b14a7d65358516fe45dd90299bd953a07e0a3cb47b01cc799b0d83474cba46ef",
+      "bytes": 1425
+    },
+    {
+      "path": "reference/manganese/src/panda-config.test.ts",
+      "upstream_path": "packages/shell-manganese/src/panda-config.test.ts",
+      "mode": "100644",
+      "git_blob": "39da128d596c75215d8930744cec905c4ea8d019",
+      "sha256": "d51e8164de223fff1ac11d678224a977b0edf9bd5510850285cc8966dd56998d",
+      "bytes": 666
+    },
+    {
+      "path": "reference/manganese/src/screens/Monitor.tsx",
+      "upstream_path": "packages/shell-manganese/src/screens/Monitor.tsx",
+      "mode": "100644",
+      "git_blob": "480a57cdd5f2209ff52bfb6ca815717c5abeaf03",
+      "sha256": "bc00d3711710b3a91fc32d41102ee5f6925cdc952e1554e7657056cb1666b55c",
+      "bytes": 1126
+    },
+    {
+      "path": "reference/manganese/src/screens/NoScreens.tsx",
+      "upstream_path": "packages/shell-manganese/src/screens/NoScreens.tsx",
+      "mode": "100644",
+      "git_blob": "f68b51fe6bb135d810f9c328524d409094671350",
+      "sha256": "cdc21cca388759d3ccc2a2e247587ef9edab3d46d565b3ff1729e0ef2e3b099a",
+      "bytes": 1246
+    },
+    {
+      "path": "reference/manganese/src/shows-sharing.test.tsx",
+      "upstream_path": "packages/shell-manganese/src/shows-sharing.test.tsx",
+      "mode": "100644",
+      "git_blob": "25647722b17273cb469e6853155823c50188b96a",
+      "sha256": "ec41c8b40359cfed5d21b1e4c55fc5b3c3206d27e66ba67e68444c9f1c696be1",
+      "bytes": 753
+    },
+    {
+      "path": "reference/manganese/src/shows-sharing.ts",
+      "upstream_path": "packages/shell-manganese/src/shows-sharing.ts",
+      "mode": "100644",
+      "git_blob": "b5dd80bc61d7819cbdd1947320e3eeaae8a37430",
+      "sha256": "7de240fe2752298802b433146f138721d42d422ad4bbd32add24580a42288e2a",
+      "bytes": 500
+    },
+    {
+      "path": "reference/manganese/src/text-selection.test.ts",
+      "upstream_path": "packages/shell-manganese/src/text-selection.test.ts",
+      "mode": "100644",
+      "git_blob": "2a5f70b39fd3e3d679fef6e7848294810c3f1459",
+      "sha256": "9c7e0391e2b2bca31fad1a2ead02ea2b2ab40d3e1e1ccd9df05c25a902a77a18",
+      "bytes": 797
+    },
+    {
+      "path": "reference/manganese/src/theme/host-theme.test.ts",
+      "upstream_path": "packages/shell-manganese/src/theme/host-theme.test.ts",
+      "mode": "100644",
+      "git_blob": "a2887d78127b8a6fecf1fdc9c79f40052d673efe",
+      "sha256": "434c11d08cdcb6fb72f915793f19c1b70f31b6aa82c7623979ea56c6a4657a58",
+      "bytes": 4431
+    },
+    {
+      "path": "reference/manganese/src/theme/host-theme.ts",
+      "upstream_path": "packages/shell-manganese/src/theme/host-theme.ts",
+      "mode": "100644",
+      "git_blob": "54ad578719827775862a7f2143db7aff4fc879fd",
+      "sha256": "95d9774e370ec65ff5d13407383a6626f43c7f1f20b9b7f0abc8a5049f6622cc",
+      "bytes": 2340
+    },
+    {
+      "path": "reference/manganese/src/theme/remembered-theme.test.ts",
+      "upstream_path": "packages/shell-manganese/src/theme/remembered-theme.test.ts",
+      "mode": "100644",
+      "git_blob": "2c6696b3e19f51cc23890b8115ff3f19e87865e9",
+      "sha256": "92621df13327e8338529d11f027382ee7ad149453519eb00256da89c962b412d",
+      "bytes": 934
+    },
+    {
+      "path": "reference/manganese/src/theme/remembered-theme.ts",
+      "upstream_path": "packages/shell-manganese/src/theme/remembered-theme.ts",
+      "mode": "100644",
+      "git_blob": "1b792140b433fde598bfa233a5b6c6008e91872f",
+      "sha256": "59166b3649cc443f9f24832af8e1d928099caa541f7961ce1e1b41121e05e301",
+      "bytes": 1455
+    },
+    {
+      "path": "reference/manganese/src/virtual-monitors.test.ts",
+      "upstream_path": "packages/shell-manganese/src/virtual-monitors.test.ts",
+      "mode": "100644",
+      "git_blob": "ba286f7304053ed3b18d51efe5a84b94c0af7db1",
+      "sha256": "1f99071a084ffd63e6a5ae4e9fb1fc57acb5fa190415cf2f33d5002240fe21c3",
+      "bytes": 2684
+    },
+    {
+      "path": "reference/manganese/src/virtual-monitors.ts",
+      "upstream_path": "packages/shell-manganese/src/virtual-monitors.ts",
+      "mode": "100644",
+      "git_blob": "aa1a9eb6ad50aee1ba9c3230334e2c7eb0f4f215",
+      "sha256": "8ed26e7d1503e816da7a0724e21e19102c5dc01703e368988c5f3c4bfe4e1088",
+      "bytes": 2159
+    },
+    {
+      "path": "reference/manganese/tsconfig.json",
+      "upstream_path": "packages/shell-manganese/tsconfig.json",
+      "mode": "100644",
+      "git_blob": "f0605fb44c7e32d36e09020892b4e53d0edf365e",
+      "sha256": "ef0235698f4163e87c73a5779602bfdde091d137b7e7a970313aeb9e1fd66bd5",
+      "bytes": 250
+    },
+    {
+      "path": "reference/manganese/turbo.json",
+      "upstream_path": "packages/shell-manganese/turbo.json",
+      "mode": "100644",
+      "git_blob": "2dec5e52699d8753de5f563f9b9643be1e29d1ed",
+      "sha256": "cc486822aefd1ac74a1fc03263790f7649f80563c19a475b3600ae0978527e92",
+      "bytes": 302
+    },
+    {
+      "path": "reference/manganese/vite.config.ts",
+      "upstream_path": "packages/shell-manganese/vite.config.ts",
+      "mode": "100644",
+      "git_blob": "92c449c8aead34efdb8e57c0489786b766dae4f0",
+      "sha256": "18da933c286bb6f41934ea725fbf61e51de20f87456bea8bc3fe72505706d702",
+      "bytes": 921
+    }
+  ],
+  "additional_reference_file": "reference/manganese/LICENSE is a copy of the monorepo root license; it was not a tracked file inside the upstream package"
+}

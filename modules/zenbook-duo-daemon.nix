@@ -11,10 +11,10 @@
 #   * keyboard (USB 0b05:1b2c) snapped onto the bottom panel → writes `off` to
 #     the eDP-2 connector's force-status file; detached → `on`. The kernel
 #     raises a real hotplug uevent either way, so this is compositor-agnostic —
-#     Sway drops or adds the output and kanshi re-applies a profile.
+#     Domicile detects the output and reapplies its display profile.
 #   * copies intel_backlight (eDP-1) → card1-eDP-2-backlight every 500 ms, so
 #     brightness keys on eDP-1 carry to eDP-2 and a brightness of 0 darkens both panels
-#     (that is what the F10 backlight toggle in home/home.nix's sway-local.conf
+#     (that is what the F10 backlight toggle in the Domicile client config
 #     branch relies on). It copies without comparing: per-panel adjustment of
 #     eDP-2 alone is therefore ineffective while this runs — accepted.
 #   * re-emits the keyboard's vendor Fn keys through uinput (brightness,

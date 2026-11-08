@@ -112,70 +112,6 @@ let
     unfocused-split-fill = ${t.ground.base}
   '';
 
-  sway = t: ''
-    ${header t "#"}
-    client.focused          ${t.border.active} ${t.ground.base} ${t.fg} ${t.border.active} ${t.border.active}
-    client.focused_inactive ${t.border.inactive} ${t.ground.base} ${t.fgDim} ${t.border.inactive} ${t.border.inactive}
-    client.unfocused        ${t.border.inactive} ${t.ground.base} ${t.fgDim} ${t.border.inactive} ${t.border.inactive}
-    client.urgent           ${t.red} ${t.ground.base} ${t.fg} ${t.red} ${t.red}
-    # The desktop stays OLED black independently of the application palette.
-    output * bg #000000 solid_color
-  '';
-
-  # mako's progress bar takes Vicinae's selection blue (Tom, 2026-10-12: "the
-  # blue color is not the same as the vicinae launcher. i prefer the latter's").
-  mako = t: ''
-    ${header t "#"}
-    background-color=${t.ground.raised}
-    text-color=${t.fg}
-    border-color=${t.border.active}
-    progress-color=over ${t.selection.bg}
-    [urgency=low]
-    border-color=${t.border.inactive}
-    [urgency=high]
-    border-color=${t.red}
-    default-timeout=0
-  '';
-
-  vicinae = t: ''
-    ${header t "#"}
-    [meta]
-    name = "Dotfiles ${t.name}"
-    description = "The same semantic palette as Kitty and Herdr"
-    variant = "${t.polarity}"
-    inherits = "vicinae-${t.polarity}"
-    [colors.core]
-    background = "${t.ground.base}"
-    secondary_background = "${t.ground.raised}"
-    foreground = "${t.fg}"
-    border = "${t.border.inactive}"
-    accent = "${t.accent}"
-    accent_foreground = "${t.ground.base}"
-    [colors.accents]
-    blue = "${t.blue}"
-    green = "${t.green}"
-    magenta = "${t.magenta}"
-    orange = "${t.orange}"
-    red = "${t.red}"
-    yellow = "${t.yellow}"
-    cyan = "${t.cyan}"
-    purple = "${t.magenta}"
-    [colors.text]
-    default = "${t.fg}"
-    muted = "${t.comment}"
-    placeholder = "${t.comment}"
-    danger = "${t.red}"
-    success = "${t.green}"
-    selection = { background = "${t.selection.bg}", foreground = "${t.selection.fg}" }
-    [colors.list.item.selection]
-    background = "${t.selection.bg}"
-    foreground = "${t.selection.fg}"
-    secondary_foreground = "${t.selection.fg}"
-    [colors.loading]
-    bar = "${t.brand}"
-    spinner = "${t.fg}"
-  '';
-
   # fish wants bare hex, no '#'.
   bare = c: lib.removePrefix "#" c;
   fish = t: ''
@@ -281,9 +217,6 @@ rec {
   render = t: {
     "kitty.conf" = kitty t;
     "ghostty" = ghostty t;
-    "sway.conf" = sway t;
-    "mako.conf" = mako t;
-    "vicinae.toml" = vicinae t;
     "colors.fish" = fish t;
     "theme.lua" = lua t;
     "meta" = meta t;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# F9 -> paired audio route picker. The DOCK era (2026-09-11): the Sound
+# Explicit paired audio route command, launched from Domicile. The DOCK era (2026-09-11): the Sound
 # Blaster GS3, the iContact webcam mic and the INZONE dongle hang off the
 # client's Thunderbolt dock, not off the strix, and hosts/client/audio.nix
 # pins the iContact as the default source at boot. This script is what moves off
@@ -103,68 +103,15 @@ node_id_match() {
     ' <<< "$graph"
 }
 
-default_id() {
-    wpctl inspect "$1" 2>/dev/null \
-        | sed -n '1s/^id \([0-9][0-9]*\),.*/\1/p'
-}
-
 speaker_sink_id=$(node_id Audio/Sink "$SPEAKER_SINK" 2>/dev/null || true)
 webcam_source_id=$(node_id Audio/Source "$WEBCAM_SOURCE" 2>/dev/null || true)
 inzone_sink_id=$(node_id Audio/Sink "$INZONE_SINK" 2>/dev/null || true)
 inzone_source_id=$(node_id Audio/Source "$INZONE_SOURCE" 2>/dev/null || true)
 internal_sink_id=$(node_id_match Audio/Sink "$INTERNAL_SINK_PREFIX" "$INTERNAL_CARD_RE" 2>/dev/null || true)
 internal_source_id=$(node_id_match Audio/Source "$INTERNAL_SOURCE_PREFIX" "$INTERNAL_CARD_RE" 2>/dev/null || true)
-current_sink_id=$(default_id @DEFAULT_AUDIO_SINK@ || true)
-current_source_id=$(default_id @DEFAULT_AUDIO_SOURCE@ || true)
-
-marker() {
-    if [[ "$1" == "$current_sink_id" && "$2" == "$current_source_id" ]]; then
-        printf '●'
-    else
-        printf ' '
-    fi
-}
-
-menu=()
-if [[ -n "$speaker_sink_id" && -n "$webcam_source_id" ]]; then
-    menu+=("speaker"$'\t'"  $(marker "$speaker_sink_id" "$webcam_source_id")  Sound Blaster GS3  ·  webcam mic")
-fi
-if [[ -n "$inzone_sink_id" && -n "$inzone_source_id" ]]; then
-    menu+=("inzone"$'\t'"  $(marker "$inzone_sink_id" "$inzone_source_id")  Sony INZONE stereo  ·  INZONE mic")
-fi
-if [[ -n "$internal_sink_id" && -n "$internal_source_id" ]]; then
-    menu+=("internal"$'\t'"  $(marker "$internal_sink_id" "$internal_source_id")  Laptop speakers  ·  laptop mic")
-fi
-
-if ((${#menu[@]} == 0)); then
-    printf '%s\n' 'Neither complete audio route is available.' >&2
-    printf '%s\n' 'Check the USB-C speaker, webcam, and INZONE dongle.' >&2
-    read -r -t 3 || true
-    exit 1
-fi
-
-case "${1:-menu}" in
-speaker|inzone|internal)
-    choice=$1
-    ;;
-menu)
-    choice=$(printf '%s\n' "${menu[@]}" \
-        | fzf \
-            --delimiter=$'\t' \
-            --with-nth='2..' \
-            --prompt='> ' \
-            --header='Output + microphone' \
-            --height=100% \
-            --reverse \
-            --no-info \
-            --pointer='›' \
-            --color='prompt:bold:8,header:italic:7,pointer:5') || exit 0
-    choice=${choice%%$'\t'*}
-    ;;
-*)
-    printf 'Usage: %s [speaker|inzone|internal|menu]\n' "${0##*/}" >&2
-    exit 2
-    ;;
+case "${1:-}" in
+speaker|inzone|internal) choice=$1 ;;
+*) printf 'Usage: %s speaker|inzone|internal\n' "${0##*/}" >&2; exit 2 ;;
 esac
 
 case "$choice" in

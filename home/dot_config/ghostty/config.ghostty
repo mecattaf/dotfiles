@@ -64,7 +64,7 @@ keybind = ctrl+minus=decrease_font_size:2
 # have no Ghostty side: splits, tabs and the scrollback viewer are not configured here.
 
 # Frosted terminal (2026-09-16): background_opacity 0.96. The compositor blur
-# rode on niri's kitty app-id rule (niri retired 2026-10-13); Sway has no
+# uses compositor configuration; Domicile has no
 # blur, so Ghostty windows are simply translucent.
 background-opacity = 0.96
 # kitty does not dim inactive splits; Ghostty's default is 0.7.

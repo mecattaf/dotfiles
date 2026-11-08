@@ -156,9 +156,17 @@
       inputs.utils.follows = "flake-utils";
     };
 
-    # Client desktop pilot: package and Home Manager module from one release.
-    # Keep upstream's nixpkgs so its signed binary cache remains usable.
-    vicinae.url = "github:vicinaehq/vicinae/v0.29.1";
+    # The daily desktop and its SDK use one pinned official upstream release.
+    # Keep upstream's nixpkgs and prebuilt engine together.
+    domicile.url = "github:cprussin/domicile/4f209c94d7ff64c40fcdd29b7686edb3bb8c7e71";
+    imagine = {
+      url = "path:./pkgs/client-desktop/imagine";
+      flake = false;
+    };
+    dsh-domicile = {
+      url = "path:./pkgs/client-desktop/dsh-domicile";
+      flake = false;
+    };
 
     # herdr — the terminal workspace manager for AI coding agents
     # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
@@ -487,7 +495,7 @@
         # tenure here; `zenbook-duo` left on 2026-08-30 and came back from
         # omarchy-fleet under this name). Plain mkHost: it rides the unstable
         # pin like the twins and keeps Home Manager, because it is the box Tom
-        # sits at — Sway, kitty and Chrome are real here, nothing else is.
+        # sits at — Domicile, Kitty and Chrome are real here, nothing else is.
         client = mkHost { hostModule = ./hosts/client; };
       };
 
@@ -635,6 +643,18 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        domicile-config =
+          self.nixosConfigurations.client.config.programs.domicilePhysical.checkedConfigPackage;
+        domicile-display-temperatures =
+          pkgs.runCommand "domicile-display-temperatures"
+            {
+              nativeBuildInputs = [ inputs.domicile.legacyPackages.${system}.bun ];
+            }
+            ''
+              bun test ${./pkgs/client-desktop/imagine/src/imagine}/display-temperatures.test.ts
+              touch "$out"
+            '';
+
         fleet-agent-transport = import ./tests/fleet-agent-transport {
           inherit pkgs self;
           inherit (nixpkgs) lib;
@@ -1139,7 +1159,7 @@
             # modules/display.nix) is either listed here on purpose or its
             # absence is visible at eval. The list is the roll call, not a
             # claim that all four have displays: what is asserted per host is
-            # the EQUALITY greetd == Sway == myDisplay, plus the three
+            # the equality greetd == Domicile == myDisplay, plus the three
             # topology facts below that never flip.
             displayHosts = [
               "strix-coordinator"
@@ -1176,26 +1196,13 @@
           assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") strixHome.home.packages);
           assert !(strixHome.xdg.configFile ? "kitty-herdr-nix.conf");
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr") strixHome.home.packages;
-          # The client's herdr chords live in Sway's RAW, hot-reloaded binds.conf,
-          # which no generation renders, so they are asserted here by content
-          # (precedent: the readFile assert on dot_claude/settings.json below).
-          # Each one goes through herdr-chord into ONE projector window.
-          # Whole lines, so a commented-out or re-targeted bind fails here.
-          # (Mod+Shift+N moves a window on Sway, #538, so rename is not here.)
-          assert
-            let
-              swayBinds = nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/sway/binds.conf);
-            in
-            builtins.all (l: builtins.elem l swayBinds) [
-              "bindsym $mod+Ctrl+space exec env HERDR_PROJECTOR_TARGET=nas HERDR_PICKER_HOSTNAME=nas HERDR_SWAY_LOCAL=0 ~/.local/bin/herdr-picker"
-              "bindsym $mod+Return exec env HERDR_PROJECTOR_TARGET=nas HERDR_PICKER_HOSTNAME=nas HERDR_SWAY_LOCAL=0 ~/.local/bin/herdr-chord new"
-              "bindsym $mod+Ctrl+Shift+Return exec env HERDR_PROJECTOR_TARGET=nas HERDR_PICKER_HOSTNAME=nas HERDR_SWAY_LOCAL=0 ~/.local/bin/herdr-chord sidebar"
-              "bindsym $mod+Shift+Return exec kitty -e fish"
-              # AGENTS.md seat rule: Alt+H/L left/right monitor, Alt+J/K down/up.
-              "bindsym Alt+h focus output left"
-              "bindsym Alt+l focus output right"
-              "bindsym Alt+j focus output down"
-              "bindsym Alt+k focus output up"
+          # The client shell owns the primary terminal and output chords.
+          assert builtins.all
+            (line: nixpkgs.lib.hasInfix line (builtins.readFile ./home/dot_config/domicile/domicile.tsx))
+            [
+              ''"Meta+Return": exec("domicile-apps", "terminal")''
+              ''"Meta+j": agency("output", "down")''
+              ''"Meta+k": agency("output", "up")''
             ];
           # kitty.conf may not map anything to the removed `hk` action: kitty
           # turns an unknown action into a bad-config overlay on every start,
@@ -1245,43 +1252,59 @@
             ];
 
           assert !(strixHome.systemd.user.services ? wayvnc);
-          # The seat EQUALITIES: greetd == Sway == myDisplay, greetd starts the
-          # Sway session launcher, and niri (retired 2026-10-13) is on nowhere.
+          # Domicile is the only compositor; compute and NAS remain headless.
           assert builtins.all (
             h:
             let
               c = cfgOf h;
-              d = c.myDisplay;
+              hm = c.home-manager.users.tom;
             in
-            c.services.greetd.enable == d.enable
-            && c.programs.swayPhysical.enable == d.enable
+            c.services.greetd.enable == c.myDisplay.enable
+            && (c.programs.domicile.enable or false) == c.myDisplay.enable
+            && !c.programs.sway.enable
             && !c.programs.niri.enable
+            && !(c.programs ? swayPhysical)
+            && !hm.programs.waybar.enable
+            && !hm.services.mako.enable
+            && !(hm.systemd.user.services ? mako)
+            && !(hm.systemd.user.services ? vicinae)
+            && !(hm.home.sessionVariables ? HERDR_SWAY_LOCAL)
+            && builtins.all (name: !(hm.xdg.configFile ? ${name})) [
+              "sway"
+              "sway-local.conf"
+              "niri"
+              "kanshi"
+              "mako/config"
+              "vicinae/settings.json"
+            ]
+            && !(builtins.any (
+              p:
+              builtins.elem (nixpkgs.lib.getName p) [
+                "sway"
+                "sway-unwrapped"
+                "niri"
+                "vicinae"
+                "mako"
+                "waybar"
+                "kanshi"
+                "swayidle"
+                "swaybg"
+                "wl-gammarelay-rs"
+                "dmenu"
+                "fuzzel"
+                "rofi"
+                "wofi"
+              ]
+            ) (hm.home.packages ++ c.environment.systemPackages))
             && (
-              !d.enable
-              || nixpkgs.lib.hasSuffix "/bin/sway-physical-session" c.services.greetd.settings.initial_session.command
+              !c.myDisplay.enable
+              || nixpkgs.lib.hasSuffix "/bin/domicile-physical-session" c.services.greetd.settings.initial_session.command
             )
           ) displayHosts;
-          # The client is the Sway seat; the Herdr server remains independent.
           assert (cfgOf "client").myDisplay.enable;
-          assert (cfgOf "client").programs.sway.enable;
-          assert clientHome.programs.vicinae.enable;
-          assert clientHome.services.mako.enable;
-          assert clientHome.systemd.user.services.mako.Service.Type == "dbus";
-          assert clientHome.systemd.user.services.mako.Service.BusName == "org.freedesktop.Notifications";
-          assert
-            clientHome.systemd.user.services.mako.Service.ExecStart
-            == [ "${clientHome.services.mako.package}/bin/mako" ];
-          assert !clientHome.programs.waybar.enable;
-          assert !strixHome.programs.vicinae.enable;
-          assert !strixHome.services.mako.enable;
-          assert !strixHome.programs.waybar.enable;
-          assert strixHome.home.sessionVariables.HERDR_SWAY_LOCAL == "0";
-          assert clientHome.home.sessionVariables.HERDR_SWAY_LOCAL == "0";
-          assert !(strixHome.systemd.user.services ? herdr);
-          assert (cfgOf "client").systemd.user.services.sway-physical.restartIfChanged == false;
-          assert clientHome.programs.vicinae.settings.font.normal.family == "Anthropic Sans";
-          assert clientHome.services.mako.settings.font == "Anthropic Sans 11";
-          assert clientHome.xdg.configFile ? "sway-local.conf";
+          assert (cfgOf "client").systemd.services.greetd.restartIfChanged == false;
+          assert clientHome.xdg.configFile ? "domicile/domicile.tsx";
+          assert clientHome.xdg.configFile ? "domicile/imagine";
           # MacTahoe on every session (non-negotiable): Home Manager's gtk
           # block keeps MacTahoe for GTK3 and its icons, and GTK4's gtk.css,
           # gtk-dark.css and assets point through ~/.config/theme at the
@@ -1305,9 +1328,6 @@
             [
               clientHome
             ];
-          # pkgs.sway stays stock for the seats and the headless browser desktop.
-          assert pkgs.sway-unwrapped.src.repo or "sway" == "sway";
-          assert nixpkgs.lib.getName pkgs.sway == "sway";
           assert (cfgOf "client").myDisplay.enable;
           assert !(cfgOf "strix-coordinator").myDisplay.enable;
           # No Claude Desktop or ChatGPT apps and no Chrome --app launcher
@@ -1368,19 +1388,8 @@
             ];
 
           assert !(cfgOf "nas").myDisplay.enable;
-          # The thin client (2026-09-11): Tom's seat, so Sway and greetd are
-          # ON and the whole strix-gated tier is OFF — no tally, no
-          # voxtype, no herdr SERVER (the binary is here: Mod+Return is
-          # herdr-chord into a local `herdr --remote strix` projector,
-          # #385 — asserted above on the RAW sway/binds.conf, and below as the
-          # generated sway-local.conf overriding none of those chords), no
-          # wayvnc SERVER (while the strix
-          # had a display the client VIEWED it through a `strix (VNC)`
-          # Remmina profile — asserted below as an equality, absent since the
-          # 2026-09-11 flip — and no
-          # `client (VNC)` profile ever exists on the strix, in either
-          # direction of the flip), no :5900 door, no
-          # seat-feeder clocks. Touch and pen are mapped per panel in sway-local.conf.
+          # The client owns the physical Domicile seat, with no agent server,
+          # VNC server or feeder clocks. Touch and pen are mapped per panel.
           assert clientHome.home.username == "tom";
           # The client's home stays clean by construction: Home Manager places
           # hidden files only. Existing Downloads, Pictures and Videos stay
@@ -1439,26 +1448,19 @@
               self.nixosConfigurations.client.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
                 or [ ]
             );
-          # The client's generated slot: touch mapped, the lid handled by
-          # bindswitch (hosts/client/lid.nix relies on the compositor for the
-          # panel), and no override of the herdr chords.
+          # Native input policy maps each touch and pen device to its panel.
           assert builtins.all
-            (mapping: nixpkgs.lib.hasInfix mapping clientHome.xdg.configFile."sway-local.conf".text)
+            (mapping: nixpkgs.lib.hasInfix mapping (builtins.readFile ./home/dot_config/domicile/domicile.tsx))
             [
-              "input \"1267:16987:ELAN9008:00_04F3:425B\" map_to_output eDP-1"
-              "input \"1267:16986:ELAN9009:00_04F3:425A\" map_to_output eDP-2"
-              "input \"1267:16987:ELAN9008:00_04F3:425B_Stylus\" map_to_output eDP-1"
-              "input \"1267:16986:ELAN9009:00_04F3:425A_Stylus\" map_to_output eDP-2"
+              "ELAN9008:00 04F3:425B"
+              "ELAN9009:00 04F3:425A"
+              "drm-21536134253248512"
+              "drm-21536134253248513"
+              ''"disable_while_typing": "libinput"''
+              ''"scroll_acceleration": false''
+              "[upperPanel]: 3850"
+              "[lowerPanel]: 3350"
             ];
-          assert
-            !(nixpkgs.lib.hasInfix "input type:touch map_to_output"
-              clientHome.xdg.configFile."sway-local.conf".text
-            );
-          assert nixpkgs.lib.hasInfix "bindswitch --reload --locked lid:on output eDP-1 disable"
-            clientHome.xdg.configFile."sway-local.conf".text;
-          assert !(nixpkgs.lib.hasInfix "$mod+Return " clientHome.xdg.configFile."sway-local.conf".text);
-          assert !(nixpkgs.lib.hasInfix "$mod+Shift+n " clientHome.xdg.configFile."sway-local.conf".text);
-          assert !(strixHome.xdg.configFile ? "sway-local.conf");
 
           assert
             !builtins.elem 5900 (
@@ -2164,8 +2166,17 @@
                 base
                 // {
                   rows.agency-kitty-native.command = "${self.nixosConfigurations.nas.pkgs.agency-kitty}/bin/agency-kitty";
-                  present = [ "stderr-log" "agency-kitty-native" ];
-                  absent = [ "herdr-guard" "dsh-herdr-toolkit" "jev" "mnemon" "opencode-zen-free" ];
+                  present = [
+                    "stderr-log"
+                    "agency-kitty-native"
+                  ];
+                  absent = [
+                    "herdr-guard"
+                    "dsh-herdr-toolkit"
+                    "jev"
+                    "mnemon"
+                    "opencode-zen-free"
+                  ];
                 }
               )
             );
@@ -2310,29 +2321,6 @@
               touch "$out"
             '';
 
-        # bin/screenshot on the client (2026-10-11): hidden spool, push to
-        # strix:~/Pictures/Screenshots, local delete only after a sha256 match,
-        # kept while the strix is down, never an overwrite there; other hosts
-        # unchanged. Hermetic: the "strix-coordinator" is a temp home behind a fake ssh.
-        screenshot-spool =
-          pkgs.runCommand "screenshot-spool"
-            {
-              nativeBuildInputs = [
-                pkgs.bash
-                pkgs.coreutils
-                pkgs.findutils
-                pkgs.gnugrep
-                pkgs.jq
-                pkgs.rsync
-                pkgs.util-linux
-              ];
-            }
-            ''
-              set -euo pipefail
-              bash ${./tests/screenshot/test-spool.sh} ${./home/dot_local/bin/screenshot}
-              touch "$out"
-            '';
-
         # call-diarize-start: the detached launcher that `call-record stop`
         # calls now that Tally (the old queue) is gone (removed 2026-09-30,
         # handoff 2026-10-10). Hermetic: a fake systemd-run records its argv and
@@ -2361,28 +2349,6 @@
                 -p 'test_*.py' \
                 -v
 
-              touch "$out"
-            '';
-
-        # Native controls are exercised with fake CLI/desktop commands only.
-        inzone-audio =
-          pkgs.runCommand "inzone-audio"
-            {
-              nativeBuildInputs = [
-                pkgs.python3
-                pkgs.bash
-                pkgs.coreutils
-                pkgs.util-linux
-                pkgs.gawk
-              ];
-            }
-            ''
-              export HOME="$TMPDIR/home"
-              export PYTHONDONTWRITEBYTECODE=1
-              export INZONE_MENU_SCRIPT=${./home/dot_local/bin/inzone-menu}
-              export INZONE_VOLUME_SCRIPT=${./home/dot_local/bin/volume}
-              mkdir -p "$HOME"
-              python3 -m unittest discover -s ${./tests/inzone-audio} -p 'test_*.py' -v
               touch "$out"
             '';
 
@@ -2969,14 +2935,10 @@
             }
             ''
               ${pkgs.shellcheck}/bin/shellcheck \
-                ${./home/dot_local/bin/herdr-chord} \
                 ${./home/dot_local/bin/herdr-projector} \
-                ${./home/dot_local/bin/herdr-sway-projector} \
-                ${./home/dot_local/bin/sway-workspace} \
                 ${./home/dot_local/bin/theme} \
                 ${./home/dot_local/bin/runtime-test}
               python3 ${./tests/herdr/test_launchers.py}
-              python3 ${./tests/herdr/test_sway_picker.py}
               touch "$out"
             '';
 

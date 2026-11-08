@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""A fresh NAS shell for each Kitty window; --local is the seat rescue shell."""
+import argparse
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+# Pin transport to the known NAS Tailnet address and its existing host identity.
+NAS_TAILNET = "100.65.85.114"
+
+
+def clean_environment():
+    # A terminal launched by an agent must not inherit its pane or attach gate.
+    return {key: value for key, value in os.environ.items()
+            if not key.startswith(("HERDR_", "DOMICILE_HERDR_"))
+            and key not in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CODEX_THREAD_ID")}
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--local", action="store_true", help="open fish on this device")
+    parser.add_argument("--cwd", help="absolute directory on the shell's host")
+    args = parser.parse_args(argv)
+    if args.cwd is not None and (not Path(args.cwd).is_absolute() or
+                                 any(ord(c) < 32 or ord(c) == 127 for c in args.cwd)):
+        parser.error("--cwd must be an absolute path without control characters")
+    return args
+
+
+def ssh_argv(cwd):
+    # OpenSSH joins command arguments into shell text. Quote deliberately:
+    # a project path is data even when it contains shell syntax.
+    shell = shlex.join(["env", "-u", "HERDR_ENV", "-u", "HERDR_SESSION",
+                        "-u", "HERDR_WORKSPACE_ID", "-u", "HERDR_PANE_ID",
+                        "-u", "HERDR_SOCKET_PATH", "fish", "--login", "--interactive"])
+    remote = (f"cd -- {shlex.quote(cwd)} && " if cwd is not None else "") + "exec " + shell
+    return ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+            "-o", f"Hostname={NAS_TAILNET}", "-o", "HostKeyAlias=nas",
+            "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes",
+            "-o", "ControlMaster=no", "-o", "ControlPath=none",
+            "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15",
+            "-o", "ServerAliveCountMax=3", "nas", remote]
+
+
+def main(argv=None):
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        print("domicile-terminal: interactive terminal required", file=sys.stderr)
+        return 2
+    env = clean_environment()
+    if args.local:
+        if args.cwd is not None:
+            os.chdir(args.cwd)
+        os.execvpe("fish", ["fish", "--login", "--interactive"], env)
+    status = subprocess.call(ssh_argv(args.cwd), env=env)
+    if status == 255:
+        # Never reconnect into another shell and never silently change host.
+        print("\nNAS connection ended. Mod+Enter opens a new NAS shell; "
+              "Mod+Shift+Enter opens a local shell.", file=sys.stderr, flush=True)
+        try:
+            input("Press Enter to close this window. ")
+        except EOFError:
+            pass
+    return status
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        raise SystemExit(130)
+    except OSError as error:
+        print(f"domicile-terminal: {error}", file=sys.stderr)
+        raise SystemExit(2)

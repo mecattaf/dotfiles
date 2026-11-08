@@ -14,7 +14,6 @@
     ./browser-trust.nix
     ./headless.nix # opt-in appliance profile without home-manager or desktop
     ./display.nix # myDisplay.enable — does a human sit at this box (default true); .session picks the compositor
-    ./sway.nix # physical native Sway session, separate from the headless browser
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
     ./user-password.nix # tom's login password via agenix hashedPasswordFile (#54)
@@ -201,16 +200,14 @@
   # path at all.
   security.sudo.wheelNeedsPassword = false;
 
-  # --- session: greetd → Sway ---
-  # Both derive from myDisplay.enable (./display.nix, default true): a human
-  # sits here, so greetd starts Sway. A host without a seat gets no
-  # compositor and no greeter. The greetd settings below stay unconditional
-  # (the module ignores them when the service is off), so a host only ever
-  # flips the option.
-  programs.swayPhysical.enable = config.myDisplay.enable;
+  # The physical seat starts Domicile; headless hosts have no greeter.
   services.greetd =
     let
-      sessionCommand = "${config.programs.swayPhysical.sessionPackage}/bin/sway-physical-session";
+      sessionCommand =
+        if config.programs.domicile.enable or false then
+          "${config.programs.domicilePhysical.sessionPackage}/bin/domicile-physical-session"
+        else
+          "${pkgs.bash}/bin/bash -l";
     in
     {
       enable = config.myDisplay.enable;
@@ -447,7 +444,7 @@
     # color-scheme per theme. An env var cannot change under a running session,
     # so it had to go for the theme switcher to work without a re-login.
     # Chromium/Electron (google-chrome + PWA launchers) only run native Wayland
-    # under Sway with this set; otherwise they fall back to X11 and blur/fail.
+    # under Domicile with this set; otherwise they fall back to X11 and blur/fail.
     NIXOS_OZONE_WL = "1";
     # Moved here from fish/config.fish's pre-`status is-interactive` guard
     # block (#236): with bash as tom's login shell those `export`/`set -gx`

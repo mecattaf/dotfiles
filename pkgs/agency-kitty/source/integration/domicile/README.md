@@ -6,8 +6,7 @@ validation. `keybindings.ts` also shows those actions as an additive fragment.
 Neither artifact changes Imagine's Desktop, AgencyKeys, engine or window reducer.
 No production key was changed.
 
-The canonical dotfiles client profile still describes Sway and omits the
-separate Domicile owner's current composition. Use the
+The Domicile-only dotfiles profile owns the complete client composition. Use the
 [client composition plan](CLIENT-ADOPTION.md) before preparing a client
 deployment; installing this package is not a complete desktop rollout.
 

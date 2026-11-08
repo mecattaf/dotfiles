@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Open one fresh NAS Kitty through an explicitly selected Imagine desktop."""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import socket
+import stat
+import struct
+import subprocess
+import sys
+
+
+def discover_socket(runtime):
+    root = Path(runtime)
+    info = root.stat()
+    if not root.is_absolute() or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+        raise ValueError("private user runtime directory required")
+    live = []
+    for path in root.glob("domicile-ipc.*.sock"):
+        info = path.lstat()
+        if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+            raise ValueError("desktop socket owner/type/mode mismatch")
+        with socket.socket(socket.AF_UNIX) as peer:
+            peer.settimeout(.25)
+            try:
+                peer.connect(str(path))
+                _, uid, _ = struct.unpack("3i", peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                if uid != os.getuid():
+                    raise ValueError("desktop socket peer mismatch")
+                live.append(str(path))
+            except (ConnectionRefusedError, FileNotFoundError, socket.timeout):
+                continue
+    if len(live) != 1:
+        raise ValueError("desktop is absent or ambiguous")
+    return live[0]
+
+
+def launch(desktop, cwd, config_path):
+    info = config_path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+        raise ValueError("owned regular mode0600 desktop config required")
+    config = json.loads(config_path.read_text())
+    if config.get("desktopId") != desktop:
+        raise ValueError("selected desktop does not match local configuration")
+    binary = config["domicileBinary"]
+    if not isinstance(binary, str) or not binary.startswith("/") or any(c in binary for c in "\0\r\n"):
+        raise ValueError("explicit absolute Domicile executable required")
+    selected = discover_socket(config["runtimeDirectory"])
+    command = [binary, "send-shell", "exec", "domicile-apps", "terminal", "--cwd", cwd]
+    result = subprocess.run(command, env=dict(os.environ, DOMICILE_SOCK=selected),
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            timeout=5, check=False)
+    if result.returncode:
+        # Preserve diagnostics on the trusted SSH channel, never as success.
+        sys.stderr.buffer.write(result.stderr)
+        raise ValueError("native launch refused or outcome unknown; inspect snapshot before retrying")
+    return {"ok": True, "desktop": desktop, "status": "launch-queued",
+            "dshOwnedPty": False, "observedWindow": None}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("desktop")
+    parser.add_argument("--cwd", required=True, help="absolute NAS project directory")
+    parser.add_argument("--config", type=Path, default=Path.home()/".config/dsh-domicile/client.json")
+    args = parser.parse_args()
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", args.desktop):
+        parser.error("invalid desktop identity")
+    if not Path(args.cwd).is_absolute() or any(ord(c) < 32 or ord(c) == 127 for c in args.cwd):
+        parser.error("absolute NAS path without control characters required")
+    try:
+        print(json.dumps(launch(args.desktop, args.cwd, args.config)))
+        return 0
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        print(json.dumps({"ok": False, "desktop": args.desktop, "status": "unavailable-or-unknown",
+                          "error": str(error), "retryAutomatically": False}))
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

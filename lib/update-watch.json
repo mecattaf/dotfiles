@@ -63,23 +63,6 @@
       "switch": "The herdr server keeps X-SwitchMethod=keep-old, so a switch never kills a live PTY. The new server runs only after a deliberate `systemctl --user restart herdr`, and existing clients need a new projector launch."
     },
     {
-      "name": "vicinae",
-      "follow": "release",
-      "hosts": [
-        "client"
-      ],
-      "versions": {
-        "vicinae": "inputs.vicinae.packages.x86_64-linux.default.version"
-      },
-      "notes": {
-        "vicinae": {
-          "repo": "vicinaehq/vicinae",
-          "tagPrefix": "v"
-        }
-      },
-      "switch": "Client only, through `deploy .#client`. The Vicinae user service restarts in the Sway session."
-    },
-    {
       "name": "nixpkgs-fresh",
       "follow": "branch",
       "hosts": [

@@ -1,0 +1,48 @@
+{
+  "name": "@agency-agency/imagine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agency desktop shell, extracted from the pinned Domicile Manganese package",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./css": "./src/styles/manganese-75708d7.css"
+  },
+  "files": [
+    "src",
+    "LICENSE",
+    "provenance"
+  ],
+  "engines": {
+    "bun": ">=1.4.2",
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@cprussin/option-result": "2.0.1",
+    "@domicile-desktop/component-library": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-bar": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-bar-module-brightness": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-bar-module-clock": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-bar-module-idle-inhibitor": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-bar-module-keymap": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-bar-module-network": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-bar-module-notifications": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-bar-module-tray": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-bar-module-volume": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-clipboard": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-host": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-launcher": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-lock": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-notifications": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-quick-settings": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/manganese-window-management": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/react": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/sdk": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/system-apps": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/system-audio": "0.0.0-alpha-75708d763800",
+    "@domicile-desktop/system-backlight": "0.0.0-alpha-75708d763800",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  }
+}

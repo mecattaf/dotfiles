@@ -39,10 +39,8 @@ let
     "yt-dlp"
   ]
   ++ lib.optionals isSeat [
-    "sway"
     "kitty"
     "ghostty"
-    "kanshi"
     "qt6ct"
   ];
 
@@ -65,7 +63,7 @@ let
     }) binNames
   );
 
-  # Python interpreter backing the helper bin/ scripts (wifi-menu, fzf-nmcli, …).
+  # Python interpreter backing the maintained helper scripts.
   pythonForScripts = pkgs.python3.withPackages (
     ps:
     with ps;
@@ -77,11 +75,6 @@ let
       watchdog
       numpy
       ijson
-    ]
-    ++ lib.optionals isSeat [
-      pycairo
-      pygobject3
-      pywayland
     ]
     ++ lib.optionals isBrain [
       # CLI-Anything's generated harnesses and validation workflow assume these
@@ -113,14 +106,13 @@ in
   ++ lib.optionals isSeat [
     ./client-apps.nix
     ./theme.nix
-    ./vicinae.nix
   ];
 
   home.username = "tom";
   home.homeDirectory = "/home/tom";
   programs.home-manager.enable = true;
 
-  # Every home.packages tool must be on the SESSION PATH so Sway's exec and
+  # Every home.packages tool must be on the session PATH so desktop apps and
   # kitty-daemon `kitty @ launch` children find Nix-provided binaries.
   home.sessionPath = [
     "$HOME/.nix-profile/bin"
@@ -143,78 +135,11 @@ in
         action_alias kitty_scrollback_nvim kitten ${pkgs.vimPlugins.kitty-scrollback-nvim}/python/kitty_scrollback_nvim.py
       '';
 
-      "sway-local.conf".text =
-        lib.optionalString (osConfig.myFleet.has "compute") ''
-          output DP-4 scale 2 position 0 0
-          output DP-1 scale 2 position 2560 0
-        ''
-        + lib.optionalString (hostName == "client") ''
-          # Zenbook Duo: logical 1440x900 panels, vertically stacked.
-          output eDP-1 scale 2 position 0 0
-          output eDP-2 scale 2 position 0 900
-          # Per-panel touch and pen mapping, recovered from the Scroll config;
-          # device identifiers confirmed on the client on 2026-10-19.
-          input "1267:16987:ELAN9008:00_04F3:425B" map_to_output eDP-1
-          input "1267:16986:ELAN9009:00_04F3:425A" map_to_output eDP-2
-          input "1267:16987:ELAN9008:00_04F3:425B_Stylus" map_to_output eDP-1
-          input "1267:16986:ELAN9009:00_04F3:425A_Stylus" map_to_output eDP-2
-          bindswitch --reload --locked lid:on output eDP-1 disable
-          bindswitch --reload --locked lid:off output eDP-1 enable
-          bindsym --no-warn F10 exec ~/.local/bin/brightness toggle
-          # Plain F-keys (external keyboard or Fn): brightness aliases.
-          # Keep the theme/accent pickers available under Super instead.
-          bindsym --locked F1 exec ~/.local/bin/brightness down
-          bindsym --locked --no-warn F2 exec ~/.local/bin/brightness up
-          bindsym --locked --no-warn Shift+F2 exec ~/.local/bin/brightness up 100%
-          bindsym --no-repeat Mod4+F2 exec kitty --class theme-prompt -e ~/.local/bin/theme-prompt theme
-          bindsym --no-repeat Mod4+Shift+F2 exec kitty --class theme-prompt -e ~/.local/bin/theme-prompt accent
-          bindsym --locked XF86MonBrightnessDown exec ~/.local/bin/brightness down
-          bindsym --locked XF86MonBrightnessUp exec ~/.local/bin/brightness up
-          # Shift+F5/F6: 2% fine steps (Tom, 2026-10-10). The XF86 keysym comes
-          # from the daemon's virtual keyboard while Shift is held on the
-          # physical one; Sway's default keyboard_grouping=smart groups both
-          # (same keymap and repeat info), so the modifier carries across.
-          bindsym --locked Shift+XF86MonBrightnessDown exec ~/.local/bin/brightness down 2%
-          bindsym --locked Shift+XF86MonBrightnessUp exec ~/.local/bin/brightness up 2%
-          bindsym --locked XF86AudioMicMute exec ~/.local/bin/volume micmute
-        '';
-
     };
   # (The gtk-4.0/{gtk.css,gtk-dark.css,assets} links that used to sit here — a
   # store symlink of MacTahoe-Dark-grey's gtk-4.0 — moved to home/theme.nix,
   # where they point through the ~/.config/theme pointer at whichever theme's
   # MacTahoe variant is selected. 2026-09-17.)
-
-  # Standard desktop entries are searchable by Vicinae and its replacement.
-  xdg.desktopEntries = lib.mkIf (hostName == "client") {
-    brightness-down = {
-      name = "Brightness down";
-      comment = "Dim both laptop screens by 10%";
-      exec = "${config.home.homeDirectory}/.local/bin/brightness down";
-      icon = "display-brightness-symbolic";
-      terminal = false;
-      categories = [ "Settings" ];
-      settings.Keywords = "brightness;screen;display;dim;";
-    };
-    brightness-up = {
-      name = "Brightness up";
-      comment = "Brighten both laptop screens by 10%";
-      exec = "${config.home.homeDirectory}/.local/bin/brightness up";
-      icon = "display-brightness-symbolic";
-      terminal = false;
-      categories = [ "Settings" ];
-      settings.Keywords = "brightness;screen;display;brighten;";
-    };
-    brightness-max = {
-      name = "Maximum brightness";
-      comment = "Set both laptop screens to 100%";
-      exec = "${config.home.homeDirectory}/.local/bin/brightness up 100";
-      icon = "display-brightness-symbolic";
-      terminal = false;
-      categories = [ "Settings" ];
-      settings.Keywords = "brightness;screen;display;maximum;100;";
-    };
-  };
 
   # gtk-theme / icon-theme / color-scheme are deliberately NOT pinned here any
   # more (2026-09-17): the theme switcher owns them at runtime (`theme apply`
@@ -434,23 +359,10 @@ in
     ++ lib.optionals isSeat [
       google-chrome
       anthropic-webfonts
-      swayidle
       acpi
       brightnessctl
       playerctl
-      swaybg
       wl-clipboard
-      cliphist
-      wl-gammarelay-rs
-      kanshi
-      grim
-      slurp
-      satty
-      wf-recorder
-      wl-mirror
-      wmctrl
-      wtype
-      lisgd
       ddcutil
       cava
       pamixer

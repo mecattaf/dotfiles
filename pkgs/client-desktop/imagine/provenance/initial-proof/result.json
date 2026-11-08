@@ -1,0 +1,119 @@
+{
+  "result": "PASS",
+  "package": "@agency-agency/imagine",
+  "proof_directory": "/home/tom/compute/imagine-extraction-20261105/.proof/pinned-20261105T203726.815945Z",
+  "workspace": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0",
+  "dependencies": {
+    "@cprussin/option-result": {
+      "version": "2.0.1",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/node_modules/.bun/@cprussin+option-result@2.0.1/node_modules/@cprussin/option-result"
+    },
+    "@domicile-desktop/component-library": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/component-library"
+    },
+    "@domicile-desktop/manganese-bar": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-bar"
+    },
+    "@domicile-desktop/manganese-bar-module-brightness": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-bar-module-brightness"
+    },
+    "@domicile-desktop/manganese-bar-module-clock": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-bar-module-clock"
+    },
+    "@domicile-desktop/manganese-bar-module-idle-inhibitor": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-bar-module-idle-inhibitor"
+    },
+    "@domicile-desktop/manganese-bar-module-keymap": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-bar-module-keymap"
+    },
+    "@domicile-desktop/manganese-bar-module-network": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-bar-module-network"
+    },
+    "@domicile-desktop/manganese-bar-module-notifications": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-bar-module-notifications"
+    },
+    "@domicile-desktop/manganese-bar-module-tray": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-bar-module-tray"
+    },
+    "@domicile-desktop/manganese-bar-module-volume": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-bar-module-volume"
+    },
+    "@domicile-desktop/manganese-clipboard": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-clipboard"
+    },
+    "@domicile-desktop/manganese-host": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-host"
+    },
+    "@domicile-desktop/manganese-launcher": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-launcher"
+    },
+    "@domicile-desktop/manganese-lock": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-lock"
+    },
+    "@domicile-desktop/manganese-notifications": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-notifications"
+    },
+    "@domicile-desktop/manganese-quick-settings": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-quick-settings"
+    },
+    "@domicile-desktop/manganese-window-management": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/manganese-window-management"
+    },
+    "@domicile-desktop/react": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/react"
+    },
+    "@domicile-desktop/sdk": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/chrome-sdk"
+    },
+    "@domicile-desktop/system-apps": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/system-apps"
+    },
+    "@domicile-desktop/system-audio": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/system-audio"
+    },
+    "@domicile-desktop/system-backlight": {
+      "version": "0.0.0-alpha-67c29a990690",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/packages/system-backlight"
+    },
+    "react": {
+      "version": "19.2.8",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/node_modules/.bun/react@19.2.8/node_modules/react"
+    },
+    "react-dom": {
+      "version": "19.2.8",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/node_modules/.bun/react-dom@19.2.8+0f58469d5b3bd39f/node_modules/react-dom"
+    },
+    "vite": {
+      "version": "8.2.2",
+      "path": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0/node_modules/.bun/vite@8.2.2+5ddbb4a061578875/node_modules/vite"
+    }
+  },
+  "own_entry_in_bundle": true,
+  "own_desktop_in_bundle": true,
+  "reference_shell_sources_in_bundle": false,
+  "bundle_bytes": 4201619,
+  "bundle_sha256": "a3bec4806fc93553961dbb3561ea49b44d74f87e5a3311dff633eb6da63af2a2",
+  "tests_log": "/home/tom/compute/imagine-extraction-20261105/.proof/pinned-20261105T203726.815945Z/tests.log",
+  "build_log": "/home/tom/compute/imagine-extraction-20261105/.proof/pinned-20261105T203726.815945Z/build.log"
+}

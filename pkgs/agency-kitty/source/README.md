@@ -46,8 +46,8 @@ separate software echo from physical display latency, and
 
 The client desktop is not activated by this repository. Follow the
 [client composition plan](integration/domicile/CLIENT-ADOPTION.md) before applying
-the exact public-entry patch: canonical dotfiles still selects Sway, while the
-current Domicile owner has separate uncommitted desktop changes. The qualified
+the exact public-entry patch. The Domicile-only dotfiles profile now owns the
+physical desktop composition; activation remains a separate measured step. The qualified
 three shortcuts and full Imagine resume clicks are documented in
 [the actual-entry proof](docs/IMAGINE-CLIENT-KEYS-PROOF.md) and
 [the resume proof](docs/IMAGINE-NATIVE-RESUME-PROOF.md).

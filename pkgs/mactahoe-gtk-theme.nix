@@ -149,7 +149,7 @@ stdenvNoCC.mkDerivation {
     # MacTahoe's no-gnome-shell branch leaves SHELL_VERSION empty (upstream bug),
     # generating invalid SCSS ($GNOME_SHELL: ;). gnome-shell is never present in a
     # build sandbox, so set it explicitly — the overwriting line is gated behind
-    # `command -v gnome-shell`, so this survives. (You run niri; the gnome-shell
+    # `command -v gnome-shell`, so this survives. (You run Domicile; the gnome-shell
     # theme produced is unused but must still compile for install.sh to finish.)
     export SHELL_VERSION=48
     # NB: --opacity/--color take ONE value per flag (install.sh does `shift 2`),

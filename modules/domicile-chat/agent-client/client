@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /etc/profiles/per-user/tom/bin/python3 /home/tom/.local/lib/kitty-dsh/agent-windows-v1/client.py "$@"

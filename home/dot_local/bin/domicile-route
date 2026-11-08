@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Domicile CLI with external opening; --app and desktop utilities stay explicit."""
+import os
+from pathlib import Path
+import sys
+
+def command(args,real='/run/current-system/sw/bin/domicile'):
+    if args[:1]==['open'] and len(args)==2 and not args[1].startswith('--'):
+        return [str(Path.home()/'.local/bin/desktop-open'),args[1]]
+    return [real,*args]
+
+if __name__=='__main__':
+    argv=command(sys.argv[1:]);os.execvp(argv[0],argv)

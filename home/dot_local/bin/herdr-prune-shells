@@ -3,7 +3,7 @@
 # shells. (Was hk-prune-shells; renamed when herdr-kitten left the fleet,
 # #385 — it never called `hk`, only herdr.)
 #
-# Every Mod+Return creates a workspace with one pane (herdr-chord new);
+# Every Mod+Return creates a workspace with one pane (domicile-apps terminal new);
 # closing the projector window, or losing the link under it, leaves that
 # shell alive server-side by design (preservation, #355 role A). When the
 # shell was never used, or its agent was exited by hand before the window

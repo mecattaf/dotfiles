@@ -1,0 +1,109 @@
+{
+  "description": "Settled Agency prototype copied before Imagine extraction transformations",
+  "source_host": "strix-coordinator",
+  "source_directory": "/home/tom/compute/dotfiles-domicile-first-pass-20261105/home/dot_config/domicile/agency",
+  "source_repository_head": "87491201700acc5051cb3edfb55f5551a4eb9fbe",
+  "working_tree": "uncommitted first-pass changes; source snapshot includes Meta+J/K output direction adapter",
+  "files": [
+    {
+      "path": "AgencyKeys.ts",
+      "sha256": "123532ea7b3c9a850200019cff4bb0fd1036a1a0e7f26a69aff3dad7becc2aad",
+      "bytes": 3998
+    },
+    {
+      "path": "AgencyShell.tsx",
+      "sha256": "5607b56d63ad8edb1b1645ff93b7d94b8af8f7a0cfeb9c60c74f53e4691560c5",
+      "bytes": 2620
+    },
+    {
+      "path": "Desktop.tsx",
+      "sha256": "6c40b775a13278c7c4cadc2c230c5867a7d4cd8a193305bc10562bbfef67b7d6",
+      "bytes": 21875
+    },
+    {
+      "path": "Finder.tsx",
+      "sha256": "837d7a4545a9662e6637aec690a6d70cb6c6eead264f52780a583373c87306be",
+      "bytes": 9253
+    },
+    {
+      "path": "GaplessFrames.ts",
+      "sha256": "838298442cb361aadb132b04de07da1527891f5f2626703fc641c7eabd50f922",
+      "bytes": 11332
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "4fa7186fcad8f0d7a72ce5a4c7477bc69b7cbef3b5e6b5c52f052cab9b312460",
+      "bytes": 1071
+    },
+    {
+      "path": "NativeUi.tsx",
+      "sha256": "8c1fe8a194ad6b2d76a6e739b3f8e72591f2d0928d8a2ca10d8ece0e1a8ae910",
+      "bytes": 6515
+    },
+    {
+      "path": "README.md",
+      "sha256": "d4b3ce1e6cb4b650c9606b4f98330b05ba1829b7f1bd34d5d7a00ce62652e5bd",
+      "bytes": 4927
+    },
+    {
+      "path": "StageActions.ts",
+      "sha256": "cce828fb511b6511dd4a123e1c393bc897954c2e677573e00a1aef6d7d30df0a",
+      "bytes": 4632
+    },
+    {
+      "path": "WorkspaceRail.tsx",
+      "sha256": "552abdecf1716fdb02b4c7d00c592e1a06a00792d0b952a325c5ea44177fdd19",
+      "bytes": 4693
+    },
+    {
+      "path": "brightness.ts",
+      "sha256": "39503b9563b7a9904fb5d2861576b06fb0d7de611715eedeaf6751d4126d022e",
+      "bytes": 5936
+    },
+    {
+      "path": "controls.test.ts",
+      "sha256": "d2559d49f2969f9aabafdd47e73d1def9df39bd91299252452b99cd109aef596",
+      "bytes": 10930
+    },
+    {
+      "path": "layout.test.ts",
+      "sha256": "0dcebda5a9c358443a7795ff17007af483e96dc80e73a180042036c3945a1eab",
+      "bytes": 5170
+    },
+    {
+      "path": "layout.ts",
+      "sha256": "62a7365d73ded9a6db8a5480113b2e88c7e6674cae078be25ed8c1299beae0d3",
+      "bytes": 4714
+    },
+    {
+      "path": "media.ts",
+      "sha256": "52857e808d5bc2759356b24a7f640f66602b7cf72556bd4ecd42001df06cbbc8",
+      "bytes": 6291
+    },
+    {
+      "path": "policy.test.ts",
+      "sha256": "8f1ecf8f272607c863dfde8268829dc166d22d20aaa29dd2e9bbea24cbb9db35",
+      "bytes": 15055
+    },
+    {
+      "path": "policy.ts",
+      "sha256": "de6e84041efe9c568fc7184f5a912c95d4d44c639a8076a298a8f364223ed520",
+      "bytes": 5731
+    },
+    {
+      "path": "rail.css",
+      "sha256": "6000482f8d83729a1ed77691a92976e5cafea7658e02d7a1fe2257fd5d220ed5",
+      "bytes": 5479
+    },
+    {
+      "path": "theme.ts",
+      "sha256": "7afb2834030fe6ec025e07d83d1b374d43cdaf65ed8dc9d304a5cd565dd7008b",
+      "bytes": 1262
+    },
+    {
+      "path": "useAgencyWindows.ts",
+      "sha256": "79cf670626004ad50828a4bf9d08058f44047d3a55d592f8b9ab9129267e4bca",
+      "bytes": 18845
+    }
+  ]
+}

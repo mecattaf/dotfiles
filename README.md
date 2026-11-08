@@ -12,7 +12,7 @@ The flake exports these NixOS host configurations:
 | `strix-coordinator` | Framework Desktop, AMD Strix Halo | Headless compute, wired 10.42.0.2; Gufo, the fleet's local model endpoint on :8731, and on-demand Immich ML |
 | `strix-worker` | Framework Desktop, AMD Strix Halo | Headless compute, wired 10.42.0.5; Gufo's second TP2 rank, and DeepSeek V4.1 on ds4 (:8732, started by hand) |
 | `nas` | UGREEN NASync DXP2800 GT, AMD R2514 | Wired 10.42.0.1: storage, DNS, media, and the closet's Tailscale subnet router |
-| `client` | ASUS Zenbook Duo | Physical Sway desktop; Huion, Magic Trackpad and remote Herdr projector |
+| `client` | ASUS Zenbook Duo | Physical Domicile desktop; Huion, Magic Trackpad and remote Herdr projector |
 
 Strix and NAS plug into the BE550, with Freebox upstream. Strix's public
 Internet route goes directly through BE550; private service DNS uses NAS.
@@ -24,7 +24,7 @@ flake.nix        four NixOS hosts wired through one mkHost
 modules/         common.nix (every host) + strix.nix (AMD Strix Halo compute host)
 hosts/           one module per machine
 home/            home-manager: typed nix (home.nix, nvim.nix) + RAW out-of-store
-                 configs (sway, kitty, fish, nvim lua) linked via mkOutOfStoreSymlink
+                 configs (kitty, fish, nvim lua) linked via mkOutOfStoreSymlink
 overlays/ pkgs/  custom packages (mactahoe themes, …)
 docs/local-ai/  Gufo (:8731) and ds4 (:8732), the model catalogue and per-host wanted sets
 docs/old/       archival stub indexing retired docs in Git history

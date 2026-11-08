@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Open web addresses in the main Google Chrome profile."""
+import os
+from pathlib import Path
+import sys
+from urllib.parse import urlsplit
+
+def command(targets):
+    if not targets or any('\0' in target or '\n' in target or '\r' in target for target in targets):
+        raise ValueError('expected an address or local file')
+    urls=[]
+    for target in targets:
+        scheme=urlsplit(target).scheme.lower()
+        if scheme not in ('http','https','file'):
+            if scheme:raise ValueError('unsupported browser address scheme')
+            target=Path(target).resolve().as_uri()
+        urls.append(target)
+    return ['google-chrome-stable','--ozone-platform=wayland','--new-tab','--',*urls]
+
+if __name__=='__main__':
+    try:
+        argv=command(sys.argv[1:])
+        os.execvp(argv[0],argv)
+    except (OSError,ValueError) as error:
+        print(f'desktop-web: {error}',file=sys.stderr)
+        raise SystemExit(1)

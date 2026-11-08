@@ -96,7 +96,8 @@ text before fencing it, never the rendered wrapper.
 the canonical home and agent host: Herdr, history, credentials and harnesses.
 `dsh` is the primary harness; pi was retired (2026-10-25). NAS retains routing, DNS,
 Tailscale and the Library. The Zenbook client is the physical seat, with Huion
-and Magic Trackpad; Otto is the incoming compositor base. strix-coordinator
+and Magic Trackpad; Domicile is the sole daily compositor. Sway, Niri, Vicinae, Mako and
+external desktop menus are retired; use the native Domicile APIs. strix-coordinator
 keeps its independent Tailscale fallback; use ordinary OpenSSH. Speech defaults to
 client; synthesis stays on compute. These are cutover targets, not a claim
 that the migration is live. Preserve Herdr sessions; activation and reboot

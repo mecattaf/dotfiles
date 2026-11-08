@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Always create a Kitty OS window; never send text or reuse a control socket.
+set -euo pipefail
+here=$(dirname -- "$0")
+case "${1:-terminal}" in
+  terminal)
+    [[ $# == 0 ]] || shift
+    # Kitty's own new-window/new-tab actions must also stay on NAS. An -e
+    # child alone would leave those actions using the global local fish shell.
+    exec kitty --class domicile-terminal --title "NAS terminal" \
+      --override "shell=$here/domicile-terminal" -e "$here/domicile-terminal" "$@"
+    ;;
+  rescue)
+    shift
+    exec kitty --class domicile-rescue --title "Local terminal" -e "$here/domicile-terminal" --local "$@"
+    ;;
+  chrome)
+    shift
+    exec google-chrome-stable --ozone-platform=wayland "$@"
+    ;;
+  files)
+    shift
+    export GDK_BACKEND=wayland
+    exec nautilus --new-window "$@"
+    ;;
+  *) echo 'usage: domicile-apps [terminal|rescue [--cwd PATH]|chrome [URL...]|files [PATH...]]' >&2; exit 2 ;;
+esac

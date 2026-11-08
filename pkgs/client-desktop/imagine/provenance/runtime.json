@@ -1,0 +1,38 @@
+{
+  "upstream_commit": "67c29a9906905bd5e1679803232c2f510b3fed9e",
+  "validated_workspace": "/nix/store/2dc32vzrhgzmj53zkgxdpglpnhalqniq-domicile-shell-workspace-0.0.0",
+  "domicile_package": "/nix/store/sz1pfpfw4wjyxbi6w7ils7nwip8kajy1-domicile",
+  "direct_dependencies": {
+    "@cprussin/option-result": "2.0.1",
+    "@domicile-desktop/component-library": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-bar": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-bar-module-brightness": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-bar-module-clock": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-bar-module-idle-inhibitor": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-bar-module-keymap": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-bar-module-network": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-bar-module-notifications": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-bar-module-tray": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-bar-module-volume": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-clipboard": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-host": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-launcher": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-lock": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-notifications": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-quick-settings": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/manganese-window-management": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/react": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/sdk": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/system-apps": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/system-audio": "0.0.0-alpha-67c29a990690",
+    "@domicile-desktop/system-backlight": "0.0.0-alpha-67c29a990690",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "dev_dependencies": {
+    "vite": "8.2.2"
+  },
+  "version_source": "Installed Nix workspace package manifests; Domicile versions rewritten to alpha-67c29a990690",
+  "registry_install_verified": false,
+  "proof_method": "Independent standard Vite build of Imagine package entry using only declared direct dependencies linked from this pinned workspace; pure Bun tests; no Domicile config builder or compositor launch."
+}

@@ -16,7 +16,7 @@
 #   FALLBACK — this oneshot. It only fires when the primary was skipped/failed
 #              (ConditionPathExists gate → "skipped", not "failed", when .git exists),
 #              e.g. a rebuilt VM or a flash that forgot the flag. Ordered before greetd
-#              so Sway sees the config; soft network-online + non-fatal so a network-
+#              so the desktop sees the config; soft network-online + non-fatal so a network-
 #              less boot degrades to default config instead of a hung login screen.
 #
 # Clone-to-temp + atomic mv means an interrupted clone never leaves a half-populated
@@ -47,7 +47,7 @@ let
       ${pkgs.coreutils}/bin/mv "$tmp" "$repo"
       echo "dotfiles-bootstrap: checkout ready" >&2
     else
-      echo "dotfiles-bootstrap: clone failed (offline?) — niri will use default config; retry next boot" >&2
+      echo "dotfiles-bootstrap: clone failed (offline?) — raw configs remain unavailable; retry next boot" >&2
       ${pkgs.coreutils}/bin/rm -rf "$tmp"
       exit 1
     fi
@@ -76,7 +76,7 @@ lib.mkIf (!config.myHeadless.enable && !inStore) {
     };
   };
 
-  # greetd waits for the checkout to land (so Sway reads the real config on first
+  # greetd waits for the checkout to land (so the desktop reads the real config on first
   # boot), but softly: Wants, not Requires, and a skipped/failed bootstrap still lets
   # the login proceed rather than wedging the greeter. Gated on the greeter itself:
   # unconditional, this block alone materialised a bodyless greetd.service on every

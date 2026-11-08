@@ -1,7 +1,0 @@
-# asks for `--location=vsplit` need it.
-# (e.g. a kitty spawned from niri that must be addressed independently of
-# instead of the pink focus accent, so a kitty split reads as a quiet
-# niri-native divider rather than a loud highlight (Tom 2026-07-15).
-# Split divider: match niri's INACTIVE window border (#373735, layout.kdl:30)
-# Splits layout stays enabled: kitty's own split verbs and any kitten that
-# whichever kitty already had focus).
