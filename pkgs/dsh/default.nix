@@ -26,6 +26,10 @@
       "stderr-log"
       "opencode-zen-free"
     ];
+    native = [
+      "stderr-log"
+      "kitty-native"
+    ];
   },
   # Retired subscription: no fleet key is delivered. An explicit external
   # override may still supply a credential for another installation.
@@ -141,6 +145,7 @@ let
     jevcore = "jevcore-dsh";
     mnemon = "dsh-mnemon";
     opencode-zen-free = "@jiesou/dsh-opencode-zen-free-provider";
+    kitty-native = "@agency/kitty-native";
   };
   selectedPackages =
     name:
@@ -180,6 +185,11 @@ let
         };
         zen = {
           patch = config.zen;
+          env = { };
+        };
+        native = {
+          # The bundle supplies its fully rendered immutable command path.
+          patch = writeText "dsh-native.patch.yml" "[]\n";
           env = { };
         };
       };
@@ -238,20 +248,22 @@ assert lib.assertMsg (lib.all
       "herdr"
       "mnemon"
       "zen"
+      "native"
     ]
   )
   (builtins.attrNames profilePlugins)
-) "DSH plugins can be selected only for the declared herdr, mnemon and zen profiles";
+) "DSH plugins can be selected only for the declared herdr, mnemon, zen and native profiles";
 assert lib.assertMsg
   (
     !(builtins.any (name: builtins.elem "opencode-zen-free" (profilePlugins.${name} or [ ])) [
       "herdr"
       "mnemon"
+      "native"
     ])
   )
   "The OpenCode Zen provider belongs in its dedicated zen profile, where credentials are re-enabled for it";
 assert lib.assertMsg (
-  !(builtins.elem "mnemon" (profilePlugins.herdr or [ ]))
+  !(builtins.any (name: builtins.elem "mnemon" (profilePlugins.${name} or [ ])) [ "herdr" "native" ])
 ) "Mnemon belongs in its dedicated profile, where the fleet memory policy is applied";
 writeShellApplication {
   name = "dsh";
@@ -483,8 +495,8 @@ writeShellApplication {
     route="''${DSH_ROUTE-}"
     if [ -n "$route" ]; then
       case "$profile" in
-        headless | sdk | acp | zen) ;;
-        *) refuse "DSH_ROUTE applies only to the headless, sdk, acp and zen profiles" ;;
+        headless | sdk | acp | zen | native) ;;
+        *) refuse "DSH_ROUTE applies only to the headless, sdk, acp, zen and native profiles" ;;
       esac
       case "$route" in
         ${routeCase}

@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "returncode": 0,
+  "sourceRevision": "943175b0884b81bbbcfbcd8506a88afb1d959ebd",
+  "actualSystem": "/nix/store/cpn7dg6mrf70a5d7zli6pi61nyc3qhg5-nixos-system-strix-coordinator-26.11.20260723.e2587ca",
+  "persistentProfile": "/nix/store/llhddx3875sr9499hhpgpsfqkcg9g9xc-activatable-nixos-system-strix-coordinator-26.11.20260723.e2587ca",
+  "closure": "/nix/store/llhddx3875sr9499hhpgpsfqkcg9g9xc-activatable-nixos-system-strix-coordinator-26.11.20260723.e2587ca",
+  "kitty": "kitty 0.50.0 created by Kovid Goyal",
+  "kittyInSystemClosure": true,
+  "kittyOnHeadlessHostPath": false,
+  "gufoHealth": "OK",
+  "kernelUnchanged": true,
+  "rebooted": false,
+  "credentialsCopied": false,
+  "failedUnitsAfter": "\u25cf thunderbolt-ibverbs-check.service loaded failed failed Validate thunderbolt_ibverbs runtime state\n",
+  "preexistingHardwareFailureStillVisible": true,
+  "initialActivationReturnedWarningAndRollbackCouldNotReactivateLegacyProfile": true,
+  "finalizedAlreadyActiveReviewedSystemWithDeployRsBoot": true,
+  "finishedUtc": "2026-11-08T00:14:34Z"
+}

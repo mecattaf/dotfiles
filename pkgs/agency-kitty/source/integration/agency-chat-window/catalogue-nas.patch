@@ -1,0 +1,59 @@
+--- a/catalogue_nas.py
++++ b/catalogue_nas.py
+@@ -14,6 +14,7 @@
+ 
+ from native_terminal.control import request as terminal_request, route
+ from catalogue_logs import diagnostic
++from native_catalogue import inventory as native_inventory
+ 
+ HERE = Path(__file__).resolve().parent
+ SOCKET = Path('/home/tom/.local/state/agency-web/native-terminal/pty.sock')
+@@ -70,12 +71,14 @@
+     running = True
+     results = queue.Queue(maxsize=1)
+     polling = False
++    poll_thread = None
+     def poll(identities):
+         try:
+             value = inventory(identities, path, server)
+         except Exception:
+             value = {'type': 'terminals', 'available': False}
+-        results.put((set(identities), value))
++        native = native_inventory(set(identities)) if running else {'type': 'native-terminals', 'available': False}
++        results.put((set(identities), [value, native]))
+     def stop(*_):
+         nonlocal running
+         running = False
+@@ -113,15 +116,20 @@
+             if not results.empty():
+                 polled, value = results.get_nowait(); polling = False
+                 if polled == sessions and value != last_terminals:
+-                    emit(value); last_terminals = value
++                    for frame in value:
++                        emit(frame)
++                    last_terminals = value
+             if time.monotonic() >= poll_at and not polling:
+                 # A missing/slow terminal carrier must not block attention or
+-                # stdin EOF cleanup. This worker owns no subprocess or PTY.
+-                threading.Thread(target=poll, args=(sorted(sessions),), daemon=True).start()
++                # stdin EOF cleanup. The native metadata helper is bounded and
++                # joined on shutdown; this worker owns no application PTY.
++                poll_thread = threading.Thread(target=poll, args=(sorted(sessions),), daemon=True)
++                poll_thread.start()
+                 polling = True; poll_at = time.monotonic() + 10
+         emit({'type': 'unavailable'})
+         return 1
+     finally:
++        running = False
+         signal.signal(signal.SIGTERM, previous)
+         if child.poll() is None:
+             child.terminate()
+@@ -129,6 +137,8 @@
+                 child.wait(3)
+             except subprocess.TimeoutExpired:
+                 child.kill(); child.wait(3)
++        if poll_thread is not None:
++            poll_thread.join(6)
+         log.close()
+ 
+ 

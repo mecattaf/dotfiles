@@ -1,0 +1,35 @@
+{
+  "scope": "headless Herdr Core0.1.18 correctness; no latency benchmark or live service",
+  "binarySha256": "baa9d208d6400556a6e379152455fe1301e0e1acdbc114ff60b79d64425179cf",
+  "releaseArchiveSha256": "5b2f97cb4b2a9d7a6b2cc5942628203ed9fbb7cc0c2b4b09ad8a6f5648e246b7",
+  "releaseSourceTag": "3965a46caae095a3ead01de237fa13955e52b8c6",
+  "homeEnvironmentUnchanged": true,
+  "realHomeMasked": true,
+  "cases": [
+    {
+      "name": "attached-protocol",
+      "exact": true,
+      "expectedSha256": "93981207810c3a17495e8d9509458f371a4abd4b1c992d044bc96717431dbd45",
+      "actualSha256": "93981207810c3a17495e8d9509458f371a4abd4b1c992d044bc96717431dbd45",
+      "actualHex": "1b5d373b66696c653a2f2f6e61732f686f6d652f746f6d2f70726f6a6563741b5c1b5d35323b633b534756736247383d071b5d39393b693d746573743a643d303b57616974696e6720666f7220696e7075741b5c1b50406b697474792d636d647b22636d64223a226765742d636f6c6f7273222c2276657273696f6e223a5b302c34382c305d7d1b5c1b5f47613d712c693d372c733d312c763d312c663d32343b414141411b5c1b5b3e3331751b5b3c751b5b3f32303034681b5b3f323030346c1b5b3f31303036681b5b3f31303136681b5b3f313030366c1b5b3f313031366c1b5b3f32303236684153434949e29c931b5b3f323032366c"
+    },
+    {
+      "name": "fresh-client-same-process",
+      "passed": true,
+      "appPid": 17
+    },
+    {
+      "name": "delayed-reader-4MiB-paste",
+      "passed": true,
+      "sha256": "3cab7815c40973b8fb036c7a2a69b3649882622a4a0a2f1a980efa4ef8545577"
+    },
+    {
+      "name": "immediate-exit-4MiB-output",
+      "passed": true,
+      "bytes": 4194304,
+      "sha256": "3cab7815c40973b8fb036c7a2a69b3649882622a4a0a2f1a980efa4ef8545577"
+    }
+  ],
+  "passed": true,
+  "version": "hc 0.1.18"
+}

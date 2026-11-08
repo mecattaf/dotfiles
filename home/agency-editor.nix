@@ -12,7 +12,9 @@ let
 in
 {
   options.programs.agencyEditor = {
-    enable = lib.mkEnableOption "native per-directory NAS Neovim editors for Agency Kitty";
+    enable = lib.mkEnableOption "native per-directory NAS Neovim editors for Agency Kitty" // {
+      default = isBrain || isSeat;
+    };
     viAlias = lib.mkOption {
       type = lib.types.bool;
       default = true;

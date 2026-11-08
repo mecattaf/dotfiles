@@ -2,13 +2,17 @@
 let
   cfg = config.programs.agencyKitty;
   isSeat = osConfig.myFleet.has "seat";
+  isBrain = osConfig.myFleet.has "brain";
   assets = "${cfg.package}/share/agency-kitty/kitty";
 in
 {
   options.programs.agencyKitty = {
-    enable = lib.mkEnableOption "native Kitty transport and DSH/Imagine workflow extensions";
+    enable = lib.mkEnableOption "native Kitty transport and DSH/Imagine workflow extensions" // {
+      default = isSeat || isBrain;
+    };
     package = lib.mkOption {
       type = lib.types.package;
+      default = pkgs.agency-kitty;
       description = "The reviewed agency-kitty package, built from its dedicated repository.";
     };
     kittyPackage = lib.mkOption {

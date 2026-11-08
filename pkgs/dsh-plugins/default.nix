@@ -17,6 +17,8 @@ let
   dshModules = "${llm-agents.dsh}/lib/node_modules/@deepseek-ai/dsh/node_modules";
 in
 {
+  # Owned native terminal catalogue, no input or process-allocation authority.
+  kitty-native = callPackage ../agency-kitty/source/integration/dsh { };
   # wenhao4126/dsh-herdr behind ./dsh-herdr/tom.patch.
   dsh-herdr = callPackage ./dsh-herdr { inherit dshTools herdr; };
   # Owned here: the gate dsh-herdr cannot load without.

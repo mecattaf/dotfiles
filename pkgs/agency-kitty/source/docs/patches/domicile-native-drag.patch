@@ -1,0 +1,773 @@
+From ec4852dc02c6da2376dc6a81bea845980db47669 Mon Sep 17 00:00:00 2001
+From: mecattaf <thomas@mecattaf.dev>
+Date: Sun, 8 Nov 2026 01:30:43 +0100
+Subject: [PATCH] Expose validated native drag lifecycle to desktop shells
+
+Queue pointer drag lifecycle events through the existing outbound writer. Provide a bounded, desktop-pinned JSON stream for shell pointer-capture policy.
+
+Validate with core fmt/clippy/tests, all 942 compositor unit tests, and an actual cross-application Wayland drag through Imagine into Kitty.
+
+Guidelines audited: TESTING, ERRORS, CONTROL_FLOW, FUNCTIONS, FILES, WRITING, RUST, DATA, DISCRIMINATED_UNIONS and OPTION_RESULT. The compositor integration fixture that reassigns HOME remains excluded by the session runtime-isolation requirement.
+---
+ docs/SHELL-DESKTOP-EVENTS.md                  | 24 ++++++
+ flake.nix                                     |  3 +-
+ .../src/chrome_connection.rs                  |  1 +
+ .../domicile-compositor/src/chrome_hub.rs     | 52 ++++++++++++
+ packages/domicile-compositor/src/outbound.rs  |  7 ++
+ .../domicile-compositor/src/selections.rs     | 25 +++++-
+ packages/domicile-host/src/lib.rs             |  1 +
+ packages/domicile-host/src/native_drags.rs    |  7 ++
+ packages/domicile-host/src/system.rs          | 30 +++++++
+ packages/domicile-host/tests/system.rs        | 35 ++++++++
+ .../src/bin/domicile-native-drag-events.rs    | 25 ++++++
+ packages/domicile-launch/src/bin/domicile.rs  |  5 ++
+ packages/domicile-launch/src/lib.rs           |  1 +
+ packages/domicile-launch/src/native_drag.rs   | 81 +++++++++++++++++++
+ packages/domicile-launch/src/spawn.rs         |  4 +
+ packages/domicile-launch/tests/native_drag.rs | 60 ++++++++++++++
+ packages/domicile-launch/tests/spawn.rs       | 18 +++++
+ packages/domicile-protocol/src/lib.rs         |  6 ++
+ .../domicile-protocol/tests/native_drag.rs    | 24 ++++++
+ packages/e2e-harness/src/protocol.test.ts     | 10 +++
+ packages/e2e-harness/src/protocol.ts          |  4 +
+ 21 files changed, 421 insertions(+), 2 deletions(-)
+ create mode 100644 packages/domicile-host/src/native_drags.rs
+ create mode 100644 packages/domicile-launch/src/bin/domicile-native-drag-events.rs
+ create mode 100644 packages/domicile-launch/src/native_drag.rs
+ create mode 100644 packages/domicile-launch/tests/native_drag.rs
+ create mode 100644 packages/domicile-protocol/tests/native_drag.rs
+
+diff --git a/docs/SHELL-DESKTOP-EVENTS.md b/docs/SHELL-DESKTOP-EVENTS.md
+index a785629e..b6c7435f 100644
+--- a/docs/SHELL-DESKTOP-EVENTS.md
++++ b/docs/SHELL-DESKTOP-EVENTS.md
+@@ -178,6 +178,30 @@ domicile.notifications.dismiss([id]);          // clear; the app is told
+ - Design: [NOTIFICATIONS.md](/docs/architecture/NOTIFICATIONS.md).
+   Manganese's: [`notifications/`](/packages/manganese-notifications/src/).
+ 
++## Native file drags
++
++`domicile-native-drag-events` streams this desktop's native drag lifecycle as
++JSON lines. Spawn the fixed command with `domicile.processes.spawn` and consume
++its stdout through the returned process handle.
++
++- The first line is `{"kind":"ready"}` after the compositor accepts the
++  subscription.
++- `{"kind":"native_drag","app_id":"..."}` identifies the source of a
++  client drag whose implicit pointer-grab serial Smithay has validated.
++- `{"kind":"native_drag","app_id":null}` marks pointer-button drop
++  completion. It does not report that the destination accepted the data.
++- A shell tracks its native `<app>` pointer presses. On a matching drag start,
++  it releases that element's DOM pointer capture so motion can hit-test other
++  native windows. Other presses keep their capture.
++- The launcher pins the helper to its matching binaries and supplies
++  `DOMICILE_NATIVE_DRAG_SOCKET` for that desktop. The helper refuses a missing
++  or relative socket, messages over 4096 bytes, and unexpected protocol frames.
++- Startup has a five-second deadline. After readiness, the helper waits for
++  lifecycle events without polling. A lost compositor connection is an error;
++  restart the subscription on `compositorreplaced` and stop it on shell cleanup.
++- Event delivery uses the compositor's outbound writer. The Wayland input
++  thread queues each event without waiting for a subscriber.
++
+ ## Application dialogs
+ 
+ Applications ask for dialogs through `xdg-desktop-portal`, and the compositor
+diff --git a/flake.nix b/flake.nix
+index 10398689..3e180f7d 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -448,6 +448,7 @@
+         } ''
+         mkdir -p "$out/bin" "$out/libexec/domicile"
+         cp ${domicileBinaries}/bin/domicile "$out/bin/domicile"
++        cp ${domicileBinaries}/bin/domicile-native-drag-events "$out/bin/domicile-native-drag-events"
+         cp ${domicileBinaries}/bin/domicile-compositor "$out/bin/domicile-compositor"
+         # `BROWSER` inside a desktop. Copied for the same reason as above.
+         cp ${domicileBinaries}/bin/domicile-open-url "$out/bin/domicile-open-url"
+@@ -628,7 +629,7 @@
+         cargoBuildFlags = [
+           "-p" "domicile-compositor" "--bin" "domicile-compositor"
+           "-p" "domicile-recorder" "--bin" "domicile-recorder"
+-          "-p" "domicile-launch" "--bin" "domicile" "--bin" "domicile-open-url" "--bin" "domicile-xdg-open" "--bin" "domicile-history" "--bin" "domicile-settings" "--bin" "domicile-app-host"
++          "-p" "domicile-launch" "--bin" "domicile" "--bin" "domicile-native-drag-events" "--bin" "domicile-open-url" "--bin" "domicile-xdg-open" "--bin" "domicile-history" "--bin" "domicile-settings" "--bin" "domicile-app-host"
+           "-p" "domicile-miracast" "--bin" "domicile-miracast"
+         ];
+ 
+diff --git a/packages/domicile-compositor/src/chrome_connection.rs b/packages/domicile-compositor/src/chrome_connection.rs
+index b4e36b3e..4c05b1f3 100644
+--- a/packages/domicile-compositor/src/chrome_connection.rs
++++ b/packages/domicile-compositor/src/chrome_connection.rs
+@@ -218,6 +218,7 @@ fn read_chrome_messages(
+         }
+     })
+     .sharing_window_requests(hub.window_requests.clone())
++    .sharing_native_drags(hub.native_drags.clone())
+     .adding_virtual_monitors_with({
+         let hub = hub.clone();
+         move |wanted| {
+diff --git a/packages/domicile-compositor/src/chrome_hub.rs b/packages/domicile-compositor/src/chrome_hub.rs
+index e86ac64c..f2832d74 100644
+--- a/packages/domicile-compositor/src/chrome_hub.rs
++++ b/packages/domicile-compositor/src/chrome_hub.rs
+@@ -11,6 +11,7 @@ use domicile_host::idle_holds::IdleHolds;
+ use domicile_host::idle_warnings::IdleWarnings;
+ use domicile_host::ipc::{apply_chrome_message, to_line};
+ use domicile_host::keymaps::Keymaps;
++use domicile_host::native_drags::NativeDrags;
+ use domicile_host::shell_commands::ShellCommands;
+ use domicile_host::unlock_refusals::UnlockRefusals;
+ use domicile_host::window_requests::WindowRequests;
+@@ -100,6 +101,8 @@ pub struct ChromeHub {
+     /// connection's `System`. The writer thread sends to them; see
+     /// [`Outbound::WindowRequest`].
+     pub window_requests: WindowRequests,
++    /// Validated native drag starts and drop completion.
++    pub native_drags: NativeDrags,
+     /// The virtual monitors pages add. See [`crate::virtual_monitors`].
+     pub virtual_monitors: VirtualMonitors,
+     /// The keymaps and the one the desktop types on, shared by every
+@@ -137,6 +140,7 @@ impl ChromeHub {
+             idle_holds: IdleHolds::default(),
+             unlock_refusals: UnlockRefusals::default(),
+             window_requests: WindowRequests::default(),
++            native_drags: NativeDrags::default(),
+             virtual_monitors: VirtualMonitors::default(),
+             keymaps: Keymaps::default(),
+         });
+@@ -290,6 +294,10 @@ pub fn serve_outbound(hub: Arc<ChromeHub>, outbound: OutboundReceiver) {
+                 hub.window_requests.send(&(app_id, request));
+                 continue;
+             }
++            Outbound::NativeDrag(app_id) => {
++                hub.native_drags.send(&app_id);
++                continue;
++            }
+         };
+         // Encoded once; every chrome gets the same line.
+         let line = to_line(&message);
+@@ -389,6 +397,50 @@ mod tests {
+     use crate::outbound::Outbound;
+     use crate::portals::Portals;
+ 
++    #[test]
++    fn native_drag_lifecycle_waits_for_the_writer_and_never_runs_on_the_seat() {
++        use domicile_host::system::System;
++        use domicile_protocol::{SystemEvent, SystemReply, SystemRequest};
++        use std::sync::mpsc::channel;
++
++        let (hub, outbound, app_id) = hub_with_an_app();
++        let _ = queued(&outbound);
++        let (sent, heard) = channel();
++        let system = System::new(std::env::temp_dir(), Vec::new(), 0, move |message| {
++            sent.send(message).unwrap();
++        })
++        .sharing_native_drags(hub.native_drags.clone());
++        system.handle(7, SystemRequest::NativeDragEvents);
++        assert_eq!(
++            heard.recv().unwrap(),
++            HostMessage::SystemReply {
++                id: 7,
++                reply: SystemReply::Started
++            }
++        );
++
++        hub.outbound.native_drag(Some(app_id.clone()));
++        assert!(
++            heard.try_recv().is_err(),
++            "the seat must not call a socket listener"
++        );
++        match outbound.recv_until(Duration::from_secs(1)) {
++            Some(Some(Outbound::NativeDrag(event))) => {
++                hub.native_drags.send(&event);
++            }
++            _ => panic!("the native drag must be queued for the writer"),
++        }
++        assert_eq!(
++            heard.recv().unwrap(),
++            HostMessage::SystemEvent {
++                id: 7,
++                event: SystemEvent::NativeDrag {
++                    app_id: Some(app_id)
++                },
++            }
++        );
++    }
++
+     #[test]
+     fn a_theme_the_shell_picked_reaches_every_page_on_the_desk() {
+         // A click on one monitor's page must switch every page. The compositor
+diff --git a/packages/domicile-compositor/src/outbound.rs b/packages/domicile-compositor/src/outbound.rs
+index faf69899..574bc6c4 100644
+--- a/packages/domicile-compositor/src/outbound.rs
++++ b/packages/domicile-compositor/src/outbound.rs
+@@ -21,6 +21,8 @@ pub enum Outbound {
+     /// page is written to under its connection's lock, which may wait on a
+     /// chrome that is not reading.
+     WindowRequest(AppId, WindowRequest),
++    /// Native drag lifecycle subscriptions use the same off-seat writer.
++    NativeDrag(Option<AppId>),
+ }
+ 
+ /// The sending half, held by the Wayland thread.
+@@ -49,6 +51,11 @@ impl OutboundSender {
+     pub fn window_request(&self, app_id: AppId, request: WindowRequest) {
+         let _ = self.sender.send(Outbound::WindowRequest(app_id, request));
+     }
++
++    /// Queue a validated native drag lifecycle event without waiting on a listener.
++    pub fn native_drag(&self, app_id: Option<AppId>) {
++        let _ = self.sender.send(Outbound::NativeDrag(app_id));
++    }
+ }
+ 
+ impl OutboundReceiver {
+diff --git a/packages/domicile-compositor/src/selections.rs b/packages/domicile-compositor/src/selections.rs
+index 5257abef..c11f2fee 100644
+--- a/packages/domicile-compositor/src/selections.rs
++++ b/packages/domicile-compositor/src/selections.rs
+@@ -6,6 +6,9 @@ use std::os::fd::OwnedFd;
+ use std::thread;
+ 
+ use smithay::input::Seat;
++use smithay::reexports::wayland_server::protocol::{
++    wl_data_source::WlDataSource, wl_surface::WlSurface,
++};
+ use smithay::wayland::{
+     selection::data_device::{
+         current_data_device_selection_userdata, request_data_device_client_selection,
+@@ -127,7 +130,27 @@ impl WlrDataControlHandler for DomicileCompositor {
+ 
+ delegate_data_control!(DomicileCompositor);
+ 
+-impl ClientDndGrabHandler for DomicileCompositor {}
++impl ClientDndGrabHandler for DomicileCompositor {
++    fn started(
++        &mut self,
++        _source: Option<WlDataSource>,
++        _icon: Option<WlSurface>,
++        seat: Seat<Self>,
++    ) {
++        // Smithay calls this only after validating the implicit grab serial.
++        let origin = seat
++            .get_pointer()
++            .and_then(|pointer| pointer.grab_start_data())
++            .and_then(|grab| grab.focus.map(|(surface, _)| surface));
++        if let Some(app_id) = origin.and_then(|surface| self.window_of(&surface)) {
++            self.hub.outbound.native_drag(Some(app_id));
++        }
++    }
++
++    fn dropped(&mut self, _target: Option<WlSurface>, _validated: bool, _seat: Seat<Self>) {
++        self.hub.outbound.native_drag(None);
++    }
++}
+ 
+ impl ServerDndGrabHandler for DomicileCompositor {}
+ 
+diff --git a/packages/domicile-host/src/lib.rs b/packages/domicile-host/src/lib.rs
+index 7741beeb..64b13f30 100644
+--- a/packages/domicile-host/src/lib.rs
++++ b/packages/domicile-host/src/lib.rs
+@@ -43,6 +43,7 @@ pub mod keymaps;
+ pub mod launcher_icon;
+ mod lock_screen_readouts;
+ pub mod mime_apps;
++pub mod native_drags;
+ pub mod notifications;
+ mod png;
+ pub mod portal_notifications;
+diff --git a/packages/domicile-host/src/native_drags.rs b/packages/domicile-host/src/native_drags.rs
+new file mode 100644
+index 00000000..a501d822
+--- /dev/null
++++ b/packages/domicile-host/src/native_drags.rs
+@@ -0,0 +1,7 @@
++//! The pages listening for validated native drag lifecycle events.
++
++use crate::fanout::Fanout;
++use crate::AppId;
++
++/// A native drag starts from one window and ends with `None`.
++pub type NativeDrags = Fanout<Option<AppId>>;
+diff --git a/packages/domicile-host/src/system.rs b/packages/domicile-host/src/system.rs
+index c7de1aed..742f3739 100644
+--- a/packages/domicile-host/src/system.rs
++++ b/packages/domicile-host/src/system.rs
+@@ -46,6 +46,7 @@ use crate::idle_holds::{self, IdleHolds};
+ use crate::idle_warnings::{self, IdleWarnings};
+ use crate::keymaps::Keymaps;
+ use crate::lock_screen_readouts::is_a_readout;
++use crate::native_drags::NativeDrags;
+ use crate::priority;
+ use crate::shell_commands::ShellCommands;
+ use crate::unlock_refusals::UnlockRefusals;
+@@ -95,6 +96,7 @@ pub struct System {
+     set_window_states: Option<SetWindowStates>,
+     /// The pages that hear a client's window requests.
+     window_requests: WindowRequests,
++    native_drags: NativeDrags,
+     /// The keymaps, and the pages that hear them change.
+     keymaps: Keymaps,
+     /// Switches the keymap; `None` on a system that switches none.
+@@ -264,6 +266,7 @@ pub fn reach(request: &SystemRequest) -> Reach {
+         | SystemRequest::IdleHolds
+         | SystemRequest::UnlockRefusals
+         | SystemRequest::WindowRequests
++        | SystemRequest::NativeDragEvents
+         | SystemRequest::Keymaps => Reach::Listens,
+         SystemRequest::SetWindowStates { .. } | SystemRequest::ResizeVirtualMonitor { .. } => {
+             Reach::Arranges
+@@ -309,6 +312,7 @@ pub fn locked_out(id: u32, request: &SystemRequest) -> Option<HostMessage> {
+         | SystemRequest::SetWindowStates { .. }
+         | SystemRequest::SetColorTemperature { .. }
+         | SystemRequest::WindowRequests
++        | SystemRequest::NativeDragEvents
+         | SystemRequest::VirtualMonitor { .. }
+         | SystemRequest::Keymaps
+         | SystemRequest::SelectKeymap { .. } => Some(HostMessage::SystemReply {
+@@ -359,6 +363,7 @@ pub fn refused_to_an_app(id: u32, request: &SystemRequest) -> Option<HostMessage
+         | SystemRequest::SetWindowStates { .. }
+         | SystemRequest::SetColorTemperature { .. }
+         | SystemRequest::WindowRequests
++        | SystemRequest::NativeDragEvents
+         | SystemRequest::VirtualMonitor { .. }
+         | SystemRequest::ResizeVirtualMonitor { .. }
+         | SystemRequest::Keymaps
+@@ -405,6 +410,7 @@ impl System {
+             unlock_refusals: UnlockRefusals::default(),
+             set_window_states: None,
+             window_requests: WindowRequests::default(),
++            native_drags: NativeDrags::default(),
+             add_virtual_monitor: None,
+             keymaps: Keymaps::default(),
+             select_keymap: None,
+@@ -456,6 +462,12 @@ impl System {
+         self
+     }
+ 
++    /// This system, hearing validated native drag lifecycle events.
++    pub fn sharing_native_drags(mut self, drags: NativeDrags) -> System {
++        self.native_drags = drags;
++        self
++    }
++
+     /// This system, hearing idle warnings through `warnings` instead of its
+     /// own, which never warns.
+     pub fn sharing_idle_warnings(mut self, warnings: IdleWarnings) -> System {
+@@ -983,6 +995,24 @@ impl System {
+                 (self.tell)(HostMessage::SystemReply { id, reply });
+                 Handled::Done
+             }
++            SystemRequest::NativeDragEvents => self.starting(id, |system| {
++                let (tell, running) = (system.tell.clone(), Arc::downgrade(&system.running));
++                let listener = system.native_drags.listen(Arc::new(move |app_id| {
++                    let Some(running) = running.upgrade() else {
++                        return;
++                    };
++                    let running = running.lock().unwrap();
++                    if matches!(running.get(&id), Some(Running::Listening(_))) {
++                        tell(HostMessage::SystemEvent {
++                            id,
++                            event: SystemEvent::NativeDrag {
++                                app_id: app_id.clone(),
++                            },
++                        });
++                    }
++                }));
++                Ok((Running::Listening(listener), Box::new(|| {})))
++            }),
+             SystemRequest::WindowRequests => self.starting(id, |system| {
+                 let (tell, running) = (system.tell.clone(), Arc::downgrade(&system.running));
+                 let listener = system
+diff --git a/packages/domicile-host/tests/system.rs b/packages/domicile-host/tests/system.rs
+index 69863f4e..841242ba 100644
+--- a/packages/domicile-host/tests/system.rs
++++ b/packages/domicile-host/tests/system.rs
+@@ -2010,3 +2010,38 @@ mod virtual_monitors {
+         assert_eq!(failure(reply(&heard, 1)), SystemErrorKind::Other);
+     }
+ }
++
++mod native_drags {
++    use super::*;
++    use domicile_host::native_drags::NativeDrags;
++
++    #[test]
++    fn validated_native_drag_lifecycle_is_scoped_to_a_subscription() {
++        let drags = NativeDrags::default();
++        let (system, heard) = system_in(&std::env::temp_dir());
++        let page = system.sharing_native_drags(drags.clone());
++        page.handle(7, SystemRequest::NativeDragEvents);
++        assert_eq!(reply(&heard, 7), SystemReply::Started);
++        for app_id in [Some("app-7".into()), None] {
++            drags.send(&app_id);
++            assert_eq!(
++                next(&heard),
++                HostMessage::SystemEvent {
++                    id: 7,
++                    event: SystemEvent::NativeDrag { app_id },
++                }
++            );
++        }
++        page.handle(7, SystemRequest::Unwatch);
++        assert_eq!(
++            next(&heard),
++            HostMessage::SystemEnd {
++                id: 7,
++                end: SystemEnd::Stopped
++            }
++        );
++        assert_eq!(drags.send(&Some("app-8".into())), 0);
++        assert_eq!(reach(&SystemRequest::NativeDragEvents), Reach::Listens);
++        assert!(refused_to_an_app(8, &SystemRequest::NativeDragEvents).is_some());
++    }
++}
+diff --git a/packages/domicile-launch/src/bin/domicile-native-drag-events.rs b/packages/domicile-launch/src/bin/domicile-native-drag-events.rs
+new file mode 100644
+index 00000000..97b6fd55
+--- /dev/null
++++ b/packages/domicile-launch/src/bin/domicile-native-drag-events.rs
+@@ -0,0 +1,25 @@
++//! Reports this desktop's validated native drag lifecycle as JSON lines.
++
++use std::path::PathBuf;
++use std::process::ExitCode;
++
++use domicile_launch::native_drag::{watch, SOCKET};
++
++fn main() -> ExitCode {
++    let socket = match std::env::var_os(SOCKET) {
++        Some(socket) => PathBuf::from(socket),
++        None => {
++            eprintln!(
++                "domicile-native-drag-events: {SOCKET} is not set; run inside the intended desktop"
++            );
++            return ExitCode::FAILURE;
++        }
++    };
++    match watch(&socket, &mut std::io::stdout().lock()) {
++        Ok(()) => ExitCode::SUCCESS,
++        Err(why) => {
++            eprintln!("domicile-native-drag-events: {why}");
++            ExitCode::FAILURE
++        }
++    }
++}
+diff --git a/packages/domicile-launch/src/bin/domicile.rs b/packages/domicile-launch/src/bin/domicile.rs
+index fd319521..966adb55 100644
+--- a/packages/domicile-launch/src/bin/domicile.rs
++++ b/packages/domicile-launch/src/bin/domicile.rs
+@@ -692,6 +692,11 @@ fn desktop(shell: Option<&str>, flag: Option<&Path>) -> Result<ExitCode, String>
+     // This desktop's own `domicile`, whatever is installed: the launcher
+     // asks it what `open` would run.
+     shim(&places.shims, "domicile", &binary)?;
++    shim(
++        &places.shims,
++        "domicile-native-drag-events",
++        &binary.with_file_name("domicile-native-drag-events"),
++    )?;
+     // Domicile's apps spawn their host by name.
+     shim(
+         &places.shims,
+diff --git a/packages/domicile-launch/src/lib.rs b/packages/domicile-launch/src/lib.rs
+index b093190e..2a2b50b4 100644
+--- a/packages/domicile-launch/src/lib.rs
++++ b/packages/domicile-launch/src/lib.rs
+@@ -58,6 +58,7 @@ pub mod install_app;
+ pub mod media_devices;
+ pub mod milestones;
+ pub mod monitor_lending;
++pub mod native_drag;
+ pub mod notification;
+ pub mod open;
+ pub mod platform;
+diff --git a/packages/domicile-launch/src/native_drag.rs b/packages/domicile-launch/src/native_drag.rs
+new file mode 100644
+index 00000000..329ddc42
+--- /dev/null
++++ b/packages/domicile-launch/src/native_drag.rs
+@@ -0,0 +1,81 @@
++//! Streams validated native drag lifecycle events for the desktop shell.
++
++use std::io::{BufRead, BufReader, Read, Write};
++use std::os::unix::net::UnixStream;
++use std::path::Path;
++use std::time::Duration;
++
++use domicile_protocol::{ChromeMessage, HostMessage, SystemEvent, SystemReply, SystemRequest};
++
++/// The compositor socket of the desktop that spawned this process.
++pub const SOCKET: &str = "DOMICILE_NATIVE_DRAG_SOCKET";
++
++/// Connects to one desktop and writes its native drag events as JSON lines.
++pub fn watch(socket: &Path, output: &mut impl Write) -> Result<(), String> {
++    if !socket.is_absolute() {
++        return Err(format!("{SOCKET} must be an absolute socket path"));
++    }
++    let mut connection = UnixStream::connect(socket)
++        .map_err(|why| format!("cannot connect to {}: {why}", socket.display()))?;
++    connection
++        .set_read_timeout(Some(Duration::from_secs(5)))
++        .map_err(|why| format!("cannot set native drag startup timeout: {why}"))?;
++    serde_json::to_writer(
++        &mut connection,
++        &ChromeMessage::SystemRequest {
++            id: 1,
++            request: SystemRequest::NativeDragEvents,
++        },
++    )
++    .map_err(|why| format!("cannot send native drag subscription: {why}"))?;
++    connection
++        .write_all(b"\n")
++        .map_err(|why| format!("cannot send native drag subscription: {why}"))?;
++    let mut reader = BufReader::new(connection);
++    match next(&mut reader)? {
++        HostMessage::SystemReply {
++            id: 1,
++            reply: SystemReply::Started,
++        } => {}
++        other => return Err(format!("native drag subscription was refused: {other:?}")),
++    }
++    reader
++        .get_ref()
++        .set_read_timeout(None)
++        .map_err(|why| format!("cannot wait for native drag events: {why}"))?;
++    output
++        .write_all(b"{\"kind\":\"ready\"}\n")
++        .and_then(|()| output.flush())
++        .map_err(|why| format!("cannot report native drag readiness: {why}"))?;
++    loop {
++        match next(&mut reader)? {
++            HostMessage::SystemEvent {
++                id: 1,
++                event: event @ SystemEvent::NativeDrag { .. },
++            } => {
++                serde_json::to_writer(&mut *output, &event)
++                    .map_err(|why| format!("cannot write native drag event: {why}"))?;
++                output
++                    .write_all(b"\n")
++                    .and_then(|()| output.flush())
++                    .map_err(|why| format!("cannot write native drag event: {why}"))?;
++            }
++            other => return Err(format!("unexpected native drag message: {other:?}")),
++        }
++    }
++}
++
++fn next(reader: &mut BufReader<UnixStream>) -> Result<HostMessage, String> {
++    let mut wire = Vec::new();
++    reader
++        .take(4097)
++        .read_until(b'\n', &mut wire)
++        .map_err(|why| format!("cannot read native drag event: {why}"))?;
++    if wire.is_empty() {
++        return Err("the native drag compositor connection closed".into());
++    }
++    if wire.len() > 4096 || wire.last() != Some(&b'\n') {
++        return Err("a native drag event exceeds 4096 bytes".into());
++    }
++    serde_json::from_slice(&wire).map_err(|why| format!("invalid native drag event: {why}"))
++}
+diff --git a/packages/domicile-launch/src/spawn.rs b/packages/domicile-launch/src/spawn.rs
+index da7fdaf9..31a71033 100644
+--- a/packages/domicile-launch/src/spawn.rs
++++ b/packages/domicile-launch/src/spawn.rs
+@@ -261,6 +261,10 @@ pub fn compositor(
+         args,
+         env: vec![
+             (VARIABLE.to_string(), runtime.control.clone().into()),
++            (
++                crate::native_drag::SOCKET.to_string(),
++                runtime.chrome_socket.clone().into(),
++            ),
+             ("BROWSER".to_string(), browser.into()),
+             ("PATH".to_string(), path),
+             ("XDG_DATA_DIRS".to_string(), data_dirs),
+diff --git a/packages/domicile-launch/tests/native_drag.rs b/packages/domicile-launch/tests/native_drag.rs
+new file mode 100644
+index 00000000..4b315624
+--- /dev/null
++++ b/packages/domicile-launch/tests/native_drag.rs
+@@ -0,0 +1,60 @@
++use std::io::{BufRead, BufReader, Write};
++use std::os::unix::net::UnixListener;
++use std::thread;
++
++use domicile_launch::native_drag::watch;
++
++#[test]
++fn the_cli_stream_reports_readiness_then_native_events_and_connection_loss() {
++    let directory = tempfile::tempdir().unwrap();
++    let socket = directory.path().join("chrome.sock");
++    let listener = UnixListener::bind(&socket).unwrap();
++    let server = thread::spawn(move || {
++        let (mut stream, _) = listener.accept().unwrap();
++        let mut request = String::new();
++        BufReader::new(stream.try_clone().unwrap())
++            .read_line(&mut request)
++            .unwrap();
++        assert_eq!(
++            serde_json::from_str::<serde_json::Value>(&request).unwrap(),
++            serde_json::json!({"type":"system_request", "id":1, "request":{"call":"native_drag_events"}})
++        );
++        stream.write_all(b"{\"type\":\"system_reply\",\"id\":1,\"reply\":{\"kind\":\"started\"}}\n{\"type\":\"system_event\",\"id\":1,\"event\":{\"kind\":\"native_drag\",\"app_id\":\"app-7\"}}\n{\"type\":\"system_event\",\"id\":1,\"event\":{\"kind\":\"native_drag\",\"app_id\":null}}\n").unwrap();
++    });
++    let mut output = Vec::new();
++    let error = watch(&socket, &mut output).unwrap_err();
++    server.join().unwrap();
++    assert!(error.contains("connection closed"));
++    let events: Vec<serde_json::Value> = String::from_utf8(output)
++        .unwrap()
++        .lines()
++        .map(|line| serde_json::from_str(line).unwrap())
++        .collect();
++    assert_eq!(
++        events,
++        vec![
++            serde_json::json!({"kind":"ready"}),
++            serde_json::json!({"kind":"native_drag", "app_id":"app-7"}),
++            serde_json::json!({"kind":"native_drag", "app_id":null})
++        ]
++    );
++}
++
++#[test]
++fn an_unterminated_large_native_drag_message_is_bounded() {
++    let directory = tempfile::tempdir().unwrap();
++    let socket = directory.path().join("chrome.sock");
++    let listener = UnixListener::bind(&socket).unwrap();
++    let server = thread::spawn(move || {
++        let (mut stream, _) = listener.accept().unwrap();
++        let mut request = String::new();
++        BufReader::new(stream.try_clone().unwrap())
++            .read_line(&mut request)
++            .unwrap();
++        stream.write_all(&[b'x'; 4097]).unwrap();
++    });
++    assert!(watch(&socket, &mut Vec::new())
++        .unwrap_err()
++        .contains("4096 bytes"));
++    server.join().unwrap();
++}
+diff --git a/packages/domicile-launch/tests/spawn.rs b/packages/domicile-launch/tests/spawn.rs
+index 2186197e..58998c94 100644
+--- a/packages/domicile-launch/tests/spawn.rs
++++ b/packages/domicile-launch/tests/spawn.rs
+@@ -43,6 +43,24 @@ fn env_of(spawn: &domicile_launch::spawn::Spawn, name: &str) -> Option<String> {
+         .map(|(_, value)| value.to_string_lossy().into_owned())
+ }
+ 
++#[test]
++fn native_drag_helpers_reach_only_the_desktop_that_spawned_them() {
++    let spawned = compositor(
++        Path::new("/d/bin/domicile-compositor"),
++        Path::new("/d/engine"),
++        Path::new("/d/browser"),
++        Path::new("/d/data"),
++        &runtime(),
++        None,
++        false,
++        &|_| None,
++    );
++    assert_eq!(
++        env_of(&spawned, domicile_launch::native_drag::SOCKET),
++        Some("/run/d/chrome.sock".into())
++    );
++}
++
+ fn args_of(spawn: &domicile_launch::spawn::Spawn) -> Vec<String> {
+     spawn
+         .args
+diff --git a/packages/domicile-protocol/src/lib.rs b/packages/domicile-protocol/src/lib.rs
+index f617e81f..860da5da 100644
+--- a/packages/domicile-protocol/src/lib.rs
++++ b/packages/domicile-protocol/src/lib.rs
+@@ -1894,6 +1894,10 @@ pub enum SystemRequest {
+     /// with [`SystemReply::Started`], then a [`SystemEvent::WindowRequest`]
+     /// per request. [`SystemRequest::Unwatch`] ends it.
+     WindowRequests,
++
++    /// Report validated client drag starts and pointer-button drop completion.
++    /// A shell releases its native app's DOM pointer capture when a drag starts.
++    NativeDragEvents,
+     /// Add a monitor with no connector, `width`×`height` pixels at
+     /// `refresh_mhz`, which the desk extends onto and only a capture shows:
+     /// casting to a TV. `name` becomes its description. Answered with
+@@ -2087,6 +2091,8 @@ pub enum FileType {
+ #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(tag = "kind", rename_all = "snake_case")]
+ pub enum SystemEvent {
++    /// A validated native drag started from `app_id`, or ended (`None`).
++    NativeDrag { app_id: Option<String> },
+     /// Bytes a process wrote, base64, in the order it wrote them on each
+     /// stream.
+     Output { stream: Stream, data: String },
+diff --git a/packages/domicile-protocol/tests/native_drag.rs b/packages/domicile-protocol/tests/native_drag.rs
+new file mode 100644
+index 00000000..ad2b7264
+--- /dev/null
++++ b/packages/domicile-protocol/tests/native_drag.rs
+@@ -0,0 +1,24 @@
++use domicile_protocol::{HostMessage, SystemRequest};
++
++#[test]
++fn native_drag_events_is_a_typed_subscription() {
++    let request: SystemRequest = serde_json::from_str(r#"{"call":"native_drag_events"}"#)
++        .expect("the desktop can subscribe to native drag lifecycle events");
++    assert_eq!(
++        serde_json::to_value(request).unwrap(),
++        serde_json::json!({"call": "native_drag_events"})
++    );
++}
++
++#[test]
++fn native_drag_start_and_end_are_typed_events() {
++    for event in [
++        serde_json::json!({"kind": "native_drag", "app_id": "app-7"}),
++        serde_json::json!({"kind": "native_drag", "app_id": null}),
++    ] {
++        let message = serde_json::json!({"type": "system_event", "id": 7, "event": event});
++        let parsed: HostMessage = serde_json::from_value(message.clone())
++            .expect("the desktop receives native drag lifecycle events");
++        assert_eq!(serde_json::to_value(parsed).unwrap(), message);
++    }
++}
+diff --git a/packages/e2e-harness/src/protocol.test.ts b/packages/e2e-harness/src/protocol.test.ts
+index ed6362c2..9f0c6e4e 100644
+--- a/packages/e2e-harness/src/protocol.test.ts
++++ b/packages/e2e-harness/src/protocol.test.ts
+@@ -7,6 +7,16 @@ import {
+ } from "./protocol";
+ 
+ describe("parseHostMessage", () => {
++  it("decodes native drag starts and completion from the typed stream", () => {
++    for (const appId of ["app-7", null]) {
++      const message = {
++        event: { app_id: appId, kind: "native_drag" },
++        id: 1,
++        type: "system_event",
++      };
++      expect(parseHostMessage(JSON.stringify(message))).toEqual(message);
++    }
++  });
+   it("decodes a welcome frame", () => {
+     expect(
+       parseHostMessage(
+diff --git a/packages/e2e-harness/src/protocol.ts b/packages/e2e-harness/src/protocol.ts
+index 56ed03ad..d08fbf70 100644
+--- a/packages/e2e-harness/src/protocol.ts
++++ b/packages/e2e-harness/src/protocol.ts
+@@ -554,6 +554,10 @@ const systemReplySchema = z.looseObject({
+ // client's window request, or the keymaps.
+ const systemEventSchema = z.looseObject({
+   event: z.discriminatedUnion("kind", [
++    z.looseObject({
++      app_id: z.string().nullable(),
++      kind: z.literal("native_drag"),
++    }),
+     z.looseObject({
+       data: z.string(),
+       kind: z.literal("output"),
+-- 
+2.54.0
+

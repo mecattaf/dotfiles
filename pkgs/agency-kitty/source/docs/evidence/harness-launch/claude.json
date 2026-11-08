@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "claude": "2.1.319 (Claude Code)",
+  "binary": "/nix/store/d8cvfdx7ma0zh5rvz5831jmr7ca6n9gv-claude-code-2.1.319/bin/claude",
+  "private_network_namespace": true,
+  "credentials_and_config_masked": true,
+  "dummy_fixture_key_only": true,
+  "home_environment_unchanged": true,
+  "actual_image_path_autoattached": true,
+  "paste_did_not_submit": true,
+  "actual_request_image": true,
+  "actual_session_start_stop_end": true,
+  "actual_production_hook_osc": true,
+  "semantic_history_beyond_viewport": true,
+  "typed_rebind": true,
+  "export_messages": 3,
+  "offline_requests": 1,
+  "managed_launcher": true,
+  "existing_user_hooks_preserved": true
+}

@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/neurosnap/zmx",
+  "commit": "a35f00a2118b15a5e9d522a43035c8d7487df9b7",
+  "upstream_version": "1.0.1",
+  "fork_version": "1.0.1-agency.3",
+  "fork_protocol_version": 203,
+  "license": "MIT",
+  "ghostty_commit": "53e55147bbbb0157672dac0228aa7744e881f1fa",
+  "zig_version": "0.17.0",
+  "zig_url": "https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz",
+  "zig_sha256": "1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026",
+  "target": "x86_64-linux-musl",
+  "optimization": "ReleaseSafe",
+  "build_host": "strix-coordinator",
+  "runtime_isolation": "runtime-test"
+}

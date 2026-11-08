@@ -1,0 +1,49 @@
+{
+  "as_of_utc": "2026-11-08T00:58:30Z",
+  "build_host": "strix-coordinator",
+  "version": "1.0.1-agency.4-vt1",
+  "recipe": "backend/zmx/source-build.nix",
+  "recipe_sha256": "d28622187b6182408e533c675f1ccc81c817d33306ef371790332d901e4cb1c4",
+  "upstream_commit": "a35f00a2118b15a5e9d522a43035c8d7487df9b7",
+  "upstream_source_nar_hash": "sha256-aud/azC9TpnKs4jJrXBWO0LXWUFgu7u6Gg2z9jgc79g=",
+  "ghostty_commit": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
+  "patch_sha256": "739582745d1167118c2e6917e47930d2ad5b741b08b2ad891bc0fae553bea9a3",
+  "compiler": {
+    "version": "0.17.0",
+    "official_archive_url": "https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz",
+    "official_archive_sha256": "1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026"
+  },
+  "dependency_nar_hash": "sha256-/5RgHb3mceLj1j3u5OG2xbyVCGCN0bvf7EErCGzbVcY=",
+  "dependency_packages": [
+    "aro-0.0.0-JSD1QtuBNwCASyBtNF3pqTl_W3oAJQGEVyFAtrBSE_Pa",
+    "aro-0.0.0-JSD1QvCRNwC2O1Jkop9TO6sXb1U1vhrH8FnYK1VdEMKn",
+    "ghostty-1.4.1-dev-5UdBC58_nQWN3FHzqvvLtKzhOKptGc_uH9t7ejdTBGd3",
+    "N-V-__8AAGmZhABbsPJLfbqrh6JTHsXhY6qCaLAQyx25e0XE",
+    "N-V-__8AAP5JWgCGP_AD0teWpa4krRvE9VPZzvviGdbmN4jI",
+    "translate_c-2.0.0-Q_BUWltOBwBYABF84EUL208pIFeUIwbBs29FmVBaafN5",
+    "translate_c-2.0.2-Q_BUWvBNBwDnyehSiuAJmdFcMYHYGA-Jc3KiYdrV2Dqx",
+    "uucode-0.2.0-ZZjBPm6FVgBcY-79AHV8ckQj86z0JwOyVyj89VeZrEiv"
+  ],
+  "target": "x86_64-linux-musl",
+  "optimization": "ReleaseSafe",
+  "nix_sandbox": true,
+  "final_compiler_network_access": false,
+  "derivation": "/nix/store/sblzp5bhdy66kascax7sfx7nnkyhmif7-agency-zmx-1.0.1-agency.4-vt1.drv",
+  "out": "/nix/store/afv0p0qmy90dihrzmarnbfwjkjdc70w6-agency-zmx-1.0.1-agency.4-vt1",
+  "debug": "/nix/store/zprxr4s031r330hwxb39sslhv38nnqcz-agency-zmx-1.0.1-agency.4-vt1-debug",
+  "binary_sha256": "204fe21bebcbdd3e9d2d4efa8713f669c269384c2b1b383b6705413ff9df988f",
+  "binary_bytes": 3638432,
+  "nar_hash": "sha256-e90VwqscCN67HXP7UvJOPjCrhxWpSuHxlMEn80aAoxI=",
+  "runtime_closure_bytes": 3782168,
+  "runtime_references": [],
+  "elf_interpreter": null,
+  "debug_symbols": "separate optional output; runtime retains ReleaseSafe checks and unwind data",
+  "installed_or_activated": false,
+  "qualification": {
+    "backend/results/source-nix-functional-v4-vt1.json": "f90f4f35ac5c76f3ddc16f99b32ab4187c3d047cf3e601212542922de206153d",
+    "backend/results/source-nix-graphics-v4-vt1.json": "feba58fffba0084759a83b1124a1ddc44bb65d0c50f86efeef8eb60203da8972",
+    "backend/results/source-nix-snapshot-v4-vt1.json": "7fc67fc03f7475647717888fb74e5688de753675a84ba58bb1967228995ac867"
+  },
+  "qualification_status": "passed: exact installed source-build binary, strict unsupported-state admission, lossless protocols/input/output, native current Codex and4K fresh reconnect/replacement/deletion, native colors/wrap/KKP with final Kitty and mapped official Domicile engine",
+  "scope": "Private frozen integration fixture source hashes are recorded in graphics receipt; current root CLI/DSH integration has separate gates. No timing benchmark in this qualification."
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@agency/kitty-native",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Native Kitty terminal identities linked to DSH chats and Imagine workspaces",
+  "main": "index.mjs",
+  "exports": {".": "./index.mjs"},
+  "dsh": {"bundle": {"patch": "./cordis.patch.yml"}},
+  "files": ["index.mjs", "README.md", "cordis.patch.yml"],
+  "engines": {"node": ">=24", "dsh": ">=0.2.1-0 <0.3.0-0"},
+  "private": true,
+  "scripts": {"test": "node --test test.mjs"}
+}

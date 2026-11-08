@@ -1,0 +1,85 @@
+{
+  "translate-c-2.0.0/LICENSE": {
+    "package_archive": "translate_c-2.0.0-Q_BUWltOBwBYABF84EUL208pIFeUIwbBs29FmVBaafN5.tar.gz",
+    "member": "translate_c-2.0.0-Q_BUWltOBwBYABF84EUL208pIFeUIwbBs29FmVBaafN5/LICENSE",
+    "sha256": "5c537d6853e005298a285d508cff9ac7192cea23576c840d485b2b586a7ff177"
+  },
+  "ghostty/LICENSE": {
+    "package_archive": "ghostty-1.4.1-dev-5UdBC-9XmgVchRr0CfxYzSRUiww0EdU1WAR3WwtMsqql.tar.gz",
+    "member": "ghostty-1.4.1-dev-5UdBC-9XmgVchRr0CfxYzSRUiww0EdU1WAR3WwtMsqql/LICENSE",
+    "sha256": "386211873e5b7a02f663ae4d7adf96285999f91608f8f9f31fecfd0f4095e6f1"
+  },
+  "ghostty/deps/libghostty-vt-third-party.json": {
+    "package_archive": "ghostty-1.4.1-dev-5UdBC-9XmgVchRr0CfxYzSRUiww0EdU1WAR3WwtMsqql.tar.gz",
+    "member": "ghostty-1.4.1-dev-5UdBC-9XmgVchRr0CfxYzSRUiww0EdU1WAR3WwtMsqql/deps/libghostty-vt-third-party.json",
+    "sha256": "906597cbab60aa3bd433a203018e38dffbe8c665fff79cddaaaf447c78651970"
+  },
+  "ghostty/pkg/simdutf/vendor/LICENSE-APACHE": {
+    "package_archive": "ghostty-1.4.1-dev-5UdBC-9XmgVchRr0CfxYzSRUiww0EdU1WAR3WwtMsqql.tar.gz",
+    "member": "ghostty-1.4.1-dev-5UdBC-9XmgVchRr0CfxYzSRUiww0EdU1WAR3WwtMsqql/pkg/simdutf/vendor/LICENSE-APACHE",
+    "sha256": "3d34610fc6b5e1b0bfe4e2f36171c2d62c28ef05cb8d704f5a0073be41a43b3d"
+  },
+  "ghostty/pkg/simdutf/vendor/LICENSE-MIT": {
+    "package_archive": "ghostty-1.4.1-dev-5UdBC-9XmgVchRr0CfxYzSRUiww0EdU1WAR3WwtMsqql.tar.gz",
+    "member": "ghostty-1.4.1-dev-5UdBC-9XmgVchRr0CfxYzSRUiww0EdU1WAR3WwtMsqql/pkg/simdutf/vendor/LICENSE-MIT",
+    "sha256": "fc8dbc04e03ad4efc08a647ffe7f995b811a95bc04c0e85a56d5277c6593fa5f"
+  },
+  "uucode/LICENSE.md": {
+    "package_archive": "uucode-0.2.0-ZZjBPm6FVgBcY-79AHV8ckQj86z0JwOyVyj89VeZrEiv.tar.gz",
+    "member": "uucode-0.2.0-ZZjBPm6FVgBcY-79AHV8ckQj86z0JwOyVyj89VeZrEiv/LICENSE.md",
+    "sha256": "312e901e142be2477b4ca859e9311f9e3f80d33372991759b7921c1893605f33"
+  },
+  "translate-c-2.0.2/LICENSE": {
+    "package_archive": "translate_c-2.0.2-Q_BUWvBNBwDnyehSiuAJmdFcMYHYGA-Jc3KiYdrV2Dqx.tar.gz",
+    "member": "translate_c-2.0.2-Q_BUWvBNBwDnyehSiuAJmdFcMYHYGA-Jc3KiYdrV2Dqx/LICENSE",
+    "sha256": "5c537d6853e005298a285d508cff9ac7192cea23576c840d485b2b586a7ff177"
+  },
+  "wuffs/LICENSE": {
+    "package_archive": "N-V-__8AAP5JWgCGP_AD0teWpa4krRvE9VPZzvviGdbmN4jI.tar.gz",
+    "member": "N-V-__8AAP5JWgCGP_AD0teWpa4krRvE9VPZzvviGdbmN4jI/LICENSE",
+    "sha256": "f8ac2c75e7f629a87565c80d61ff9fe5aa15cdea0bda997d52a4dc13fdbd19cb"
+  },
+  "wuffs/LICENSE-APACHE": {
+    "package_archive": "N-V-__8AAP5JWgCGP_AD0teWpa4krRvE9VPZzvviGdbmN4jI.tar.gz",
+    "member": "N-V-__8AAP5JWgCGP_AD0teWpa4krRvE9VPZzvviGdbmN4jI/LICENSE-APACHE",
+    "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+  },
+  "wuffs/LICENSE-MIT": {
+    "package_archive": "N-V-__8AAP5JWgCGP_AD0teWpa4krRvE9VPZzvviGdbmN4jI.tar.gz",
+    "member": "N-V-__8AAP5JWgCGP_AD0teWpa4krRvE9VPZzvviGdbmN4jI/LICENSE-MIT",
+    "sha256": "bb811a4b485eac3caeb8bdc58bbafb355fbcb6116010a7ea9179e5c70b0bc878"
+  },
+  "highway/LICENSE": {
+    "package_archive": "N-V-__8AAGmZhABbsPJLfbqrh6JTHsXhY6qCaLAQyx25e0XE.tar.gz",
+    "member": "N-V-__8AAGmZhABbsPJLfbqrh6JTHsXhY6qCaLAQyx25e0XE/LICENSE",
+    "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1"
+  },
+  "highway/LICENSE-BSD3": {
+    "package_archive": "N-V-__8AAGmZhABbsPJLfbqrh6JTHsXhY6qCaLAQyx25e0XE.tar.gz",
+    "member": "N-V-__8AAGmZhABbsPJLfbqrh6JTHsXhY6qCaLAQyx25e0XE/LICENSE-BSD3",
+    "sha256": "d25e82e26acd42ca3ccc9993622631163425b869b9e16284226d534cff6470f2"
+  },
+  "highway/debian/copyright": {
+    "package_archive": "N-V-__8AAGmZhABbsPJLfbqrh6JTHsXhY6qCaLAQyx25e0XE.tar.gz",
+    "member": "N-V-__8AAGmZhABbsPJLfbqrh6JTHsXhY6qCaLAQyx25e0XE/debian/copyright",
+    "sha256": "6e4ecf1cae052b678ea3178dd4b3652d581ee66a82d58db8800dd7d80dd6de76"
+  },
+  "zig/LICENSE": {
+    "source": "toolchain/zig-x86_64-linux-0.17.0/LICENSE",
+    "sha256": "5c537d6853e005298a285d508cff9ac7192cea23576c840d485b2b586a7ff177"
+  },
+  "musl/COPYRIGHT": {
+    "source": "toolchain/zig-x86_64-linux-0.17.0/lib/libc/musl/COPYRIGHT",
+    "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af"
+  },
+  "uucode/licenses/LICENSE_unicode": {
+    "url": "https://raw.githubusercontent.com/jacobsandlund/uucode/1fb73433bba5d93366c57f23ff2e9d7939746500/licenses/LICENSE_unicode",
+    "sha256": "1eda5a3b026870c737b22e8bcd4954338612c790db688242e003f41a4fa95175",
+    "reason": "Referenced by upstream LICENSE.md but omitted from Zig package archive"
+  },
+  "uucode/licenses/LICENSE_Bjoern_Hoehrmann": {
+    "url": "https://raw.githubusercontent.com/jacobsandlund/uucode/1fb73433bba5d93366c57f23ff2e9d7939746500/licenses/LICENSE_Bjoern_Hoehrmann",
+    "sha256": "de219cece932aad5a817bf763393d8d149d378a15d2ad5320e3331eac07626dd",
+    "reason": "Referenced by upstream LICENSE.md but omitted from Zig package archive"
+  }
+}

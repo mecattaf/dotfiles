@@ -1,0 +1,28 @@
+{
+  "evidence_recorded_utc": "2026-11-08T00:36:39.139885+00:00",
+  "build_host": "strix-coordinator",
+  "holder_version": "1.0.1-agency.4-vt1",
+  "binary_sha256": "2dc79e81add4ab50a202ea1b8189d2f6daf1b7d5a11148a27c788fec236044d6",
+  "package": "/nix/store/5g0w90cbffz6f1sm4d1lb7hkfjcdj402-agency-zmx-1.0.1-agency.4-vt1",
+  "derivation": "/nix/store/lg0i9nnd892a0sjh6w4fbl6x01aaql59-agency-zmx-1.0.1-agency.4-vt1.drv",
+  "nixpkgs": "/nix/store/6ki6bvn3klq68d41y35k4378nxvcbfbd-llgwlxshmy0ifvxh7f8wq53vk5x7vd13-source",
+  "recipe": "backend/zmx/package.nix",
+  "receipt_file": "build-receipt-v4-vt1.json",
+  "patch_file": "agency-v4-vt1.patch",
+  "notice_file": "NOTICE.v4",
+  "build_returncode": 0,
+  "wrong_binary_rejected": true,
+  "installed_live": false,
+  "official_engine_attestation": {
+    "requestedEngine": "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244",
+    "loadedLibraries": [
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/libdomicile_engine.so"
+    ],
+    "librarySha256": {
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/libdomicile_engine.so": "43f0dc75132f7ab3ae7042a75d7c19b88e89a9e10a4850a656a06bcda623c02f"
+    },
+    "chromeExecutables": [
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/.chrome-unwrapped"
+    ]
+  }
+}

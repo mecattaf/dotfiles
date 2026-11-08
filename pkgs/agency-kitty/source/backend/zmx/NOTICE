@@ -1,0 +1,22 @@
+Agency zmx 1.0.1-agency.3 modifies MIT-licensed zmx 1.0.1.
+Its own upstream notice is in LICENSE.upstream.
+
+The static executable also contains libghostty-vt and runtime/dependency code.
+The accompanying licenses directory retains notices from the exact pinned
+Ghostty and Zig package caches used for qualification. The uucode Unicode and
+UTF-8 decoder notices, omitted from its package archive but referenced by its
+LICENSE, are retained from the exact pinned upstream commit:
+
+* Ghostty: MIT, copyright Mitchell Hashimoto and Ghostty contributors.
+* simdutf: Apache-2.0 OR MIT; both supplied notices are retained.
+* Highway: Apache-2.0 OR BSD-3-Clause; supplied notices are retained.
+* uucode: MIT AND Unicode-3.0, plus its included UTF-8 decoder notice.
+* translate-c helpers: MIT (both cached 2.0.0 and 2.0.2 notices retained).
+* Wuffs: Apache-2.0 OR MIT; both supplied notices are retained.
+* Zig runtime/standard library: MIT.
+* musl: MIT and the additional notices in its COPYRIGHT file.
+
+licenses/provenance.json identifies the cached source member and SHA-256 of
+every copied notice. Ghostty's own generated third-party dependency report is
+included as source provenance; build-only Aro is not part of the executable.
+The original copyrights and permission notices govern their respective code.

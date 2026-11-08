@@ -1,0 +1,431 @@
+diff --git a/build.zig.zon b/build.zig.zon
+index 3e5f0be..dfdc002 100644
+--- a/build.zig.zon
++++ b/build.zig.zon
+@@ -1,6 +1,6 @@
+ .{
+     .name = .zmx,
+-    .version = "1.0.1",
++    .version = "1.0.1-agency.2",
+     .fingerprint = 0x28aad87005052b4e, // Changing this has security and trust implications.
+     .minimum_zig_version = "0.17.0",
+     .dependencies = .{
+diff --git a/src/client.zig b/src/client.zig
+index 7248aff..3923c9a 100644
+--- a/src/client.zig
++++ b/src/client.zig
+@@ -148,7 +148,8 @@ pub fn attach(alloc: Allocator, io: Io, name: []const u8, opts: AttachOptions) !
+     const socket_path = try socket.getSocketPath(alloc, cfg.socket_dir, sesh);
+     defer alloc.free(socket_path);
+ 
+-    if (has_daemon) {
++    const attach_only = if (lib_posix.getenv("ZMX_ATTACH_ONLY")) |value| std.mem.eql(u8, value, "1") else false;
++    if (has_daemon and !attach_only) {
+         var daemon = Daemon.init(io, &cfg, sesh, socket_path);
+         daemon.command = opts.command;
+         if (opts.cwd) |cwd| daemon.setCwd(cwd);
+diff --git a/src/ipc.zig b/src/ipc.zig
+index ad05c2b..03e4def 100644
+--- a/src/ipc.zig
++++ b/src/ipc.zig
+@@ -3,7 +3,8 @@ const cross = @import("cross");
+ const socket = @import("socket.zig");
+ const lib_posix = @import("posix.zig");
+ 
+-pub const PROTOCOL_VERSION: u8 = 1;
++// Dedicated protocol namespace: stock zmx clients must not drive this holder.
++pub const PROTOCOL_VERSION: u8 = 202;
+ 
+ pub const Tag = enum(u8) {
+     Input = 0,
+@@ -31,6 +32,7 @@ pub const Tag = enum(u8) {
+     /// Scoped history: the active screen plus a bounded number of
+     /// preceding scrollback rows. Request payload is `Capture`.
+     Capture = 22,
++    StreamEnd = 23,
+     Unsupported = 255,
+     // Non-exhaustive: this enum comes off the wire via bytesToValue and
+     // @enumFromInt, so out-of-range values are representable
+@@ -97,7 +99,8 @@ pub fn getTerminalSize(fd: i32) Resize {
+     return .{ .rows = 24, .cols = 120 };
+ }
+ 
+-pub const MAX_PAYLOAD_LEN: usize = 64 * 1024 * 1024;
++pub const MAX_PAYLOAD_LEN: usize = 4 * 1024 * 1024;
++pub const MAX_QUEUE_LEN: usize = 4 * 1024 * 1024;
+ pub const MAX_CMD_LEN = 256;
+ pub const MAX_CWD_LEN = 256;
+ 
+@@ -136,6 +139,8 @@ pub fn appendMessage(
+     tag: Tag,
+     data: []const u8,
+ ) !void {
++    if (data.len > MAX_PAYLOAD_LEN or list.items.len + @sizeOf(Header) + data.len > MAX_QUEUE_LEN)
++        return error.QueueLimitExceeded;
+     const header = Header{
+         .tag = tag,
+         .len = @intCast(data.len),
+diff --git a/src/loop.zig b/src/loop.zig
+index f5d6708..7c4038c 100644
+--- a/src/loop.zig
++++ b/src/loop.zig
+@@ -74,22 +74,33 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+ 
+     const detach_key_disabled = util.isDetachKeyDisabled();
+ 
++    const stdout_orig_flags = try lib_posix.fcntl(lib_posix.STDOUT_FILENO, lib_posix.F.GETFL, 0);
++    _ = try lib_posix.fcntl(lib_posix.STDOUT_FILENO, lib_posix.F.SETFL, stdout_orig_flags | lib_posix.O_NONBLOCK);
++    defer _ = lib_posix.fcntl(lib_posix.STDOUT_FILENO, lib_posix.F.SETFL, stdout_orig_flags) catch {};
++
++    var stream_closed = false;
++    var normal_end = false;
++
+     while (true) {
++        if (stream_closed and stdout_buf.items.len == 0) {
++            if (normal_end) return ClientResult{ .kind = .detach, .session_name = null };
++            return error.StreamDisconnected;
++        }
+         poll_fds.clearRetainingCapacity();
+ 
+         try poll_fds.append(gpa, .{
+-            .fd = stdin_fd,
+-            .events = lib_posix.POLL.IN,
++            .fd = if (stream_closed) -1 else stdin_fd,
++            .events = if (sock_write_buf.items.len < 256 * 1024) lib_posix.POLL.IN else 0,
+             .revents = 0,
+         });
+ 
+         // Poll socket for read, and also for write if we have pending data
+-        var sock_events: i16 = lib_posix.POLL.IN;
++        var sock_events: i16 = if (stdout_buf.items.len < 8 * 1024 * 1024 - ipc.MAX_PAYLOAD_LEN) lib_posix.POLL.IN else 0;
+         if (sock_write_buf.items.len > 0) {
+             sock_events |= lib_posix.POLL.OUT;
+         }
+         try poll_fds.append(gpa, .{
+-            .fd = client_sock_fd,
++            .fd = if (stream_closed) -1 else client_sock_fd,
+             .events = sock_events,
+             .revents = 0,
+         });
+@@ -108,6 +119,7 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+ 
+         if (poll_fds.items[2].revents & lib_posix.POLL.IN != 0) {
+             try signal.drainSignalPipe();
++            if (stream_closed) continue;
+             const next_size = ipc.getTerminalSize(lib_posix.STDOUT_FILENO);
+             try ipc.appendMessage(
+                 gpa,
+@@ -148,15 +160,15 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+             const n = read_buf.read(client_sock_fd) catch |err| {
+                 if (err == error.WouldBlock) continue;
+                 if (err == error.ConnectionResetByPeer or err == error.BrokenPipe) {
+-                    return ClientResult{ .kind = .detach, .session_name = null };
++                    stream_closed = true;
++                    continue;
+                 }
+                 std.log.err("daemon read err={s}", .{@errorName(err)});
+                 return err;
+             };
+             if (n == 0) {
+                 std.log.info("server closed connection", .{});
+-                // Server closed connection
+-                return ClientResult{ .kind = .detach, .session_name = null };
++                stream_closed = true;
+             }
+ 
+             while (read_buf.next()) |msg| {
+@@ -166,6 +178,10 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+                             try stdout_buf.appendSlice(gpa, msg.payload);
+                         }
+                     },
++                    .StreamEnd => {
++                        normal_end = true;
++                        stream_closed = true;
++                    },
+                     .Resize => {
+                         // daemon is asking for the client's window size usually in response
+                         // to this client being set as leader.
+@@ -202,7 +218,8 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+                     if (err == error.WouldBlock) break :blk 0;
+                     if (err == error.ConnectionResetByPeer or err == error.BrokenPipe) {
+                         std.log.info("connection reset or broken pipe", .{});
+-                        return ClientResult{ .kind = .detach, .session_name = null };
++                        stream_closed = true;
++                        continue;
+                     }
+                     return err;
+                 };
+@@ -224,7 +241,9 @@ pub fn clientLoop(client_sock_fd: i32, env_str: []const u8) !ClientResult {
+ 
+         if (poll_fds.items[1].revents & (lib_posix.POLL.HUP | lib_posix.POLL.ERR | lib_posix.POLL.NVAL) != 0) {
+             std.log.info("poll hup|err|nval", .{});
+-            return ClientResult{ .kind = .detach, .session_name = null };
++            // HUP can arrive together with unread data. Drain the socket to
++            // EOF and then drain stdout; never throw away the final frame.
++            if (poll_fds.items[1].revents & lib_posix.POLL.IN == 0) stream_closed = true;
+         }
+     }
+ }
+@@ -234,7 +253,7 @@ fn initTerminal(gpa: std.mem.Allocator, io: std.Io, size: ipc.Resize, cfg: *cons
+         .cols = size.cols,
+         .rows = size.rows,
+         .max_scrollback_lines = cfg.max_scrollback_lines,
+-        .max_scrollback_bytes = null, // Let the line limit control scrollback.
++        .max_scrollback_bytes = 64 * 1024 * 1024,
+     });
+ }
+ 
+@@ -261,8 +280,24 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+     var marker_carry_len: usize = 0;
+ 
+     var had_terminal_client = daemon.hasTerminalClient();
++    var pty_eof = false;
++    var eof_notice_sent = false;
+ 
+     daemon_loop: while (daemon.running) {
++        if (pty_eof) {
++            var pending = false;
++            for (daemon.clients.items) |client| {
++                if (client.write_buf.items.len > 0) pending = true;
++            }
++            if (!pending) {
++                if (eof_notice_sent or daemon.clients.items.len == 0) break :daemon_loop;
++                for (daemon.clients.items) |client| {
++                    try ipc.appendMessage(gpa, &client.write_buf, .StreamEnd, "");
++                    client.has_pending_output = true;
++                }
++                eof_notice_sent = true;
++            }
++        }
+         // If the program asked for focus reports (DECSET 1004), send focus-out
+         // when the last attached client leaves and focus-in when one returns,
+         // as a terminal would when its window loses/gains focus.
+@@ -280,12 +315,19 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+             .revents = 0,
+         });
+ 
+-        var pty_events: i16 = lib_posix.POLL.IN;
++        // A foreground terminal is lossless: when its queue fills, backpressure
++        // the PTY. A nonreading observer must not impose that pause and is
++        // disconnected independently at its own queue limit below.
++        const leader_can_read = if (daemon.getLeaderClient()) |leader|
++            leader.write_buf.items.len < ipc.MAX_QUEUE_LEN - 65536
++        else
++            true;
++        var pty_events: i16 = if (leader_can_read) lib_posix.POLL.IN else 0;
+         if (daemon.pty_write_buf.items.len > 0) {
+             pty_events |= lib_posix.POLL.OUT;
+         }
+         try poll_fds.append(gpa, .{
+-            .fd = pty_fd,
++            .fd = if (pty_eof or (!leader_can_read and daemon.pty_write_buf.items.len == 0)) -1 else pty_fd,
+             .events = pty_events,
+             .revents = 0,
+         });
+@@ -293,7 +335,10 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+         try poll_fds.append(gpa, .{ .fd = signal.sig_pipe[0], .events = lib_posix.POLL.IN, .revents = 0 });
+ 
+         for (daemon.clients.items) |client| {
+-            var events: i16 = lib_posix.POLL.IN;
++            // Reserve a prior partial message plus one 4KiB read per admitted
++            // client, and room for focus reports. Pause reads until the PTY drains; never discard
++            // the tail of a paste because the application stopped reading.
++            var events: i16 = if (daemon.pty_write_buf.items.len < Daemon.PTY_WRITE_BUF_MAX - (16 * 8192 + 64)) lib_posix.POLL.IN else 0;
+             if (client.has_pending_output) {
+                 events |= lib_posix.POLL.OUT;
+             }
+@@ -325,6 +370,11 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+                 null,
+                 lib_posix.SOCK.NONBLOCK | lib_posix.SOCK.CLOEXEC,
+             );
++            if (daemon.clients.items.len >= 16) {
++                std.log.err("client limit reached; rejecting new connection", .{});
++                lib_posix.close(client_fd);
++                continue :daemon_loop;
++            }
+             const client = try gpa.create(Client);
+             client.* = Client{
+                 .alloc = gpa,
+@@ -345,7 +395,7 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+         }
+ 
+         const inp_flags = lib_posix.POLL.IN | lib_posix.POLL.HUP | lib_posix.POLL.ERR | lib_posix.POLL.NVAL;
+-        if (poll_fds.items[1].revents & inp_flags != 0) {
++        if (leader_can_read and poll_fds.items[1].revents & inp_flags != 0) {
+             // Read from PTY. Buffer is sized to N_TTY_BUF_SIZE (4096): the hard
+             // kernel limit for the N_TTY line discipline. A larger buffer doesn't
+             // help: each read() from a PTY master returns at most 4096 bytes
+@@ -360,10 +410,10 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+                 if (n == 0) {
+                     // EOF: Shell exited
+                     std.log.info("shell exited pty_fd={d}", .{pty_fd});
+-                    // Let the rest of this poll iteration complete so client
+-                    // write buffers are flushed via the normal POLLOUT path.
+-                    // On the next iteration, daemon.running will be false.
+-                    daemon.running = false;
++                    // The application can exit while several MiB are still
++                    // queued. Keep polling clients until every byte and the
++                    // normal-end notice have reached their socket queues.
++                    pty_eof = true;
+                 } else {
+                     // Feed PTY output to terminal emulator for state tracking
+                     vt_stream.nextSlice(buf[0..n]);
+@@ -417,11 +467,13 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+                     const broadcast_data = util.rewritePromptRedraw(gpa, buf[0..n]) orelse buf[0..n];
+                     defer if (broadcast_data.ptr != buf[0..n].ptr) gpa.free(broadcast_data);
+                     for (daemon.clients.items) |client| {
++                        if (client.overflowed) continue;
+                         ipc.appendMessage(gpa, &client.write_buf, .Output, broadcast_data) catch |err| {
+-                            std.log.warn(
+-                                "failed to buffer output for client err={s}",
++                            std.log.err(
++                                "disconnecting slow client: output queue limit err={s}",
+                                 .{@errorName(err)},
+                             );
++                            client.overflowed = true;
+                             continue;
+                         };
+                         client.has_pending_output = true;
+@@ -459,6 +511,10 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+             i -= 1;
+             const client = daemon.clients.items[i];
+             const revents = poll_fds.items[i + 3].revents;
++            if (client.overflowed) {
++                _ = daemon.closeClient(gpa, client, i, false);
++                continue;
++            }
+ 
+             if (revents & lib_posix.POLL.IN != 0) {
+                 const n = client.read_buf.read(client.socket_fd) catch |err| {
+@@ -481,11 +537,25 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+ 
+                 while (client.read_buf.next()) |msg| {
+                     switch (msg.header.tag) {
+-                        .Input => try daemon.handleInput(gpa, client, msg.payload),
+-                        .Send => daemon.handleSend(gpa, msg.payload),
+-                        .Output => try daemon.handleOutput(gpa, msg.payload, &term, &vt_stream),
+-                        .Init => try daemon.handleInit(gpa, client, pty_fd, &term, msg.payload),
+-                        .Switch => try daemon.handleSwitch(gpa, msg.payload),
++                        .Input => {
++                            if (msg.payload.len > 4096) {
++                                std.log.err("rejecting oversized terminal input message", .{});
++                                client.overflowed = true;
++                                break;
++                            }
++                            try daemon.handleInput(gpa, client, msg.payload);
++                        },
++                        // This dedicated holder has no command injection or
++                        // multiplexer API. Files use the explicit capability
++                        // sidechannel, not generated shell commands in a PTY.
++                        .Send, .Output, .Switch, .Run, .Write => {
++                            try ipc.appendMessage(gpa, &client.write_buf, .Unsupported, "");
++                            client.has_pending_output = true;
++                        },
++                        .Init => daemon.handleInit(gpa, client, pty_fd, &term, msg.payload) catch {
++                            std.log.err("disconnecting client: terminal snapshot exceeds queue limit", .{});
++                            client.overflowed = true;
++                        },
+                         .Resize => try daemon.handleResize(gpa, client, pty_fd, &term, msg.payload),
+                         .Detach => {
+                             daemon.handleDetach(gpa, client, i);
+@@ -504,11 +574,15 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+                         .LabelClear => try daemon.handleLabelClear(gpa, client),
+                         .EnvGet => try daemon.handleEnvGet(gpa, client),
+                         .EnvSet => try daemon.handleEnvSet(gpa, client, msg.payload),
+-                        .History => try daemon.handleHistory(gpa, client, &term, msg.payload),
+-                        .Capture => try daemon.handleCapture(gpa, client, &term, msg.payload),
+-                        .Run => try daemon.handleRun(gpa, io, client, msg.payload),
+-                        .Ack, .TaskComplete, .LabelData, .EnvData, .Unsupported => {},
+-                        .Write => try daemon.handleWrite(gpa, client, msg.payload),
++                        .History => daemon.handleHistory(gpa, client, &term, msg.payload) catch {
++                            std.log.err("history response exceeds queue limit", .{});
++                            client.overflowed = true;
++                        },
++                        .Capture => daemon.handleCapture(gpa, client, &term, msg.payload) catch {
++                            std.log.err("capture response exceeds queue limit", .{});
++                            client.overflowed = true;
++                        },
++                        .Ack, .TaskComplete, .LabelData, .EnvData, .Unsupported, .StreamEnd => {},
+                         _ => {
+                             std.log.warn(
+                                 "ignoring unknown IPC tag={d}",
+@@ -521,6 +595,11 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+                 }
+             }
+ 
++            if (client.overflowed) {
++                _ = daemon.closeClient(gpa, client, i, false);
++                continue;
++            }
++
+             if (revents & lib_posix.POLL.OUT != 0) {
+                 // Flush pending output buffers
+                 const n = lib_posix.write(client.socket_fd, client.write_buf.items) catch |err| blk: {
+@@ -570,6 +649,7 @@ pub const Client = struct {
+     alloc: std.mem.Allocator,
+     socket_fd: i32,
+     has_pending_output: bool = false,
++    overflowed: bool = false,
+     is_terminal: bool = false, // sent .Init (a `zmx attach`), not a run/send/tail client
+     read_buf: ipc.SocketBuffer,
+     write_buf: std.ArrayList(u8),
+@@ -894,29 +974,18 @@ pub const Daemon = struct {
+     const PTY_WRITE_BUF_MAX = 256 * 1024;
+ 
+     /// Queue bytes for the PTY's stdin. Flushed by daemonLoop on POLLOUT.
+-    /// Drops the payload if the buffer is over cap -- same failure mode as
+-    /// the old direct-write ptyWrite (drop on EAGAIN), just at a 64x higher
+-    /// threshold. Capping avoids OOM when the shell stops reading; dropping
+-    /// new (not old) bytes avoids tearing a partially-accepted sequence.
++    /// The polling loop applies backpressure before this queue can fill.
++    /// A violated invariant is a hard error, never a silently truncated paste.
+     fn queuePtyInput(self: *Daemon, gpa: std.mem.Allocator, data: []const u8) void {
+         if (data.len == 0) return;
+         if (self.pty_write_buf.items.len + data.len > PTY_WRITE_BUF_MAX) {
+-            std.log.warn(
+-                "pty input dropped {d} bytes (buffer full, shell not reading)",
+-                .{data.len},
+-            );
+-            return;
++            @panic("PTY input backpressure invariant violated");
+         }
+ 
+         // NOTE: for local dev only
+         // std.log.debug("buffering pty input data={x}", .{data});
+ 
+-        self.pty_write_buf.appendSlice(gpa, data) catch |err| {
+-            std.log.warn(
+-                "pty input dropped {d} bytes: {s}",
+-                .{ data.len, @errorName(err) },
+-            );
+-        };
++        self.pty_write_buf.appendSlice(gpa, data) catch @panic("PTY input allocation failed");
+     }
+ 
+     pub fn handleInput(self: *Daemon, gpa: std.mem.Allocator, client: *Client, payload: []const u8) !void {
+@@ -1020,7 +1089,8 @@ pub const Daemon = struct {
+                 defer gpa.free(term_output);
+                 defer if (restore_data.ptr != term_output.ptr) gpa.free(restore_data);
+                 ipc.appendMessage(gpa, &client.write_buf, .Output, restore_data) catch |err| {
+-                    std.log.warn(
++                    client.overflowed = true;
++                    std.log.err(
+                         "failed to buffer terminal state for client err={s}",
+                         .{@errorName(err)},
+                     );
+diff --git a/src/main.zig b/src/main.zig
+index 183b736..c068b3b 100644
+--- a/src/main.zig
++++ b/src/main.zig
+@@ -69,6 +69,11 @@ fn mainImpl(init: std.process.Init) !void {
+         return list(gpa, io, &cfg, false);
+     };
+ 
++    for ([_][]const u8{ "run", "r", "send", "s", "print", "p", "write", "wr" }) |disabled| {
++        if (std.mem.eql(u8, cmd, disabled))
++            return printError(io, "command is disabled in the dedicated Agency PTY holder: {s}", .{cmd});
++    }
++
+     if (std.mem.eql(u8, cmd, "version") or std.mem.eql(u8, cmd, "v") or std.mem.eql(u8, cmd, "-v") or std.mem.eql(u8, cmd, "--version")) {
+         return printVersion(io, &cfg);
+     } else if (std.mem.eql(u8, cmd, "help") or std.mem.eql(u8, cmd, "h") or std.mem.eql(u8, cmd, "-h")) {

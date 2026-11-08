@@ -1,0 +1,34 @@
+{
+  "scope": "installed Kitty native C state engine, headless/private API; no display or GPU",
+  "completed": true,
+  "executable": "/nix/store/rs4s3ggn03a65bbwj9r1ps20d4kichm1-kitty-0.50.0/bin/.kitty-wrapped",
+  "screen_type": "<class 'fast_data_types.Screen'>",
+  "native_unicode_and_truecolor": true,
+  "native_osc66_multicell": true,
+  "native_kkp_flags": 31,
+  "native_png_decoded_without_gpu": true,
+  "image": {
+    "width": 2,
+    "height": 2,
+    "placement_count": 1,
+    "rgba_sha256": "50c3618d17fcb4251513a0f4eb6b344bb600b903d284a5f5324dba8fd35b56cb"
+  },
+  "ansi_text_roundtrip": true,
+  "ansi_export_restores_images": false,
+  "callbacks_called": [
+    "on_activity_since_last_focus",
+    "on_activity_since_last_focus",
+    "on_activity_since_last_focus",
+    "on_activity_since_last_focus",
+    "on_activity_since_last_focus"
+  ],
+  "not_proven": [
+    "full state serialization",
+    "PTY persistence",
+    "latency",
+    "stable public ABI",
+    "graphics placement serialization",
+    "animation restore"
+  ],
+  "terminal_replacement": false
+}

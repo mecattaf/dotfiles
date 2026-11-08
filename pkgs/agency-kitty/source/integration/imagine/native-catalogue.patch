@@ -1,0 +1,223 @@
+diff --git a/src/imagine/SessionCatalogue.test.ts b/src/imagine/SessionCatalogue.test.ts
+index 4503263..92f2cc6 100644
+--- a/src/imagine/SessionCatalogue.test.ts
++++ b/src/imagine/SessionCatalogue.test.ts
+@@ -48,3 +48,34 @@ test("relay exit cancels open readers and promptly marks cached metadata unavail
+   expect(frames.some(f => f.type === "unavailable")).toBeTrue();
+   expect(cancelled).toBe(2);
+ });
++
++const nativeRoute = (changes: Record<string, unknown> = {}) => ({version:1,provider:"agency-kitty",server:"agency-web",host:"nas",session:"session-test",terminal:"11111111-1111-4111-8111-111111111111",windowClass:"agencykitty-11111111111141118111111111111111",mode:"persistent",resumable:true,...changes});
++const withNative = (route = nativeRoute()) => receive(baseline(),{type:"native-terminals",available:true,terminals:[{title:"Native agent",route}]},"agency-web");
++test("native provider joins by chat id while keeping its terminal UUID and existing DSH provider distinct",()=>{
++  let cat=withNative();
++  cat=receive(cat,{type:"terminals",available:true,terminals:[{title:"DSH PTY",route:{version:1,server:"agency-web",epoch:"epoch",session:"session-test",terminal:"dsh-owned",windowClass:"dsh-terminal-"+"a".repeat(20)}}]},"agency-web");
++  const terminals=projectCatalogue(cat,initialAgencyState())[0]!.terminals;
++  expect(terminals).toHaveLength(2);expect(terminals[1]!.route.terminal).toBe(nativeRoute().terminal);
++  expect(terminals[1]!.canOpen).toBeTrue();
++  expect(()=>withNative(nativeRoute({windowClass:"dsh-terminal-"+"a".repeat(20)}))).toThrow();
++  expect(()=>withNative(nativeRoute({host:"client"}))).toThrow();
++});
++test("live direct windows can focus but absent or ambiguous windows never trigger a replacement",()=>{
++  const route=nativeRoute({mode:"direct",resumable:false});
++  const cat=withNative(route);
++  expect(projectCatalogue(cat,initialAgencyState())[0]!.terminals[0]!.canOpen).toBeFalse();
++  let state=reduce(initialAgencyState(),A.AppAppeared("app-one","Kitty"));
++  state=reduce(state,A.AppDesktopIdChanged("app-one",route.windowClass));
++  expect(projectCatalogue(cat,state)[0]!.terminals[0]!.id).toBe("app:app-one");
++  expect(projectCatalogue(cat,state)[0]!.terminals[0]!.canOpen).toBeTrue();
++  state=reduce(state,A.AppAppeared("app-two","Kitty"));
++  state=reduce(state,A.AppDesktopIdChanged("app-two",route.windowClass));
++  expect(projectCatalogue(cat,state)[0]!.terminals[0]!.ambiguous).toBeTrue();
++  expect(projectCatalogue(cat,state)[0]!.terminals[0]!.canOpen).toBeFalse();
++  expect(()=>withNative(nativeRoute({mode:"direct",resumable:true}))).toThrow();
++});
++test("metadata transport loss clears native launch availability and malformed duplicates are refused",()=>{
++  const cat=receive(withNative(),{type:"native-terminals",available:false},"agency-web");
++  expect(cat.nativeTerminals).toHaveLength(0);
++  expect(()=>receive(baseline(),{type:"native-terminals",available:true,terminals:[{title:"one",route:nativeRoute()},{title:"two",route:nativeRoute()}]},"agency-web")).toThrow();
++});
+diff --git a/src/imagine/SessionCatalogue.ts b/src/imagine/SessionCatalogue.ts
+index 054ff2b..c2d3a0c 100644
+--- a/src/imagine/SessionCatalogue.ts
++++ b/src/imagine/SessionCatalogue.ts
+@@ -2,10 +2,12 @@ import { WindowKind } from "@domicile-desktop/manganese-window-management/window
+ import { workspaceHolding } from "@domicile-desktop/manganese-window-management/window-state";
+ import type { WindowState } from "@domicile-desktop/manganese-window-management/window-state";
+ 
+-export type CatalogueOptions = { readonly relay: string; readonly server: string; readonly terminalLauncher?: string };
++export type CatalogueOptions = { readonly relay: string; readonly server: string; readonly terminalLauncher?: string;
++  readonly nativeTerminalLauncher?: string };
+ export const catalogueConfig = (value?: CatalogueOptions): CatalogueOptions | undefined => {
+   if (value === undefined) return undefined;
+-  if (!/^[\w-]{1,128}$/.test(value.server) || [value.relay, value.terminalLauncher].some((word) =>
++  if (value.nativeTerminalLauncher !== undefined && !value.nativeTerminalLauncher.startsWith("/")) throw Error("Native terminal launcher must be installed at an absolute path");
++  if (!/^[\w-]{1,128}$/.test(value.server) || [value.relay, value.terminalLauncher, value.nativeTerminalLauncher].some((word) =>
+     word !== undefined && (!word || /[\s\0?#]/u.test(word) || word.includes("://")))) throw Error("Invalid session catalogue configuration");
+   return Object.freeze({ ...value });
+ };
+@@ -15,11 +17,15 @@ export type AttentionStatus = keyof typeof ATTENTION_LABELS;
+ export type SessionRow = { sessionId: string; title: string; status: AttentionStatus; revision: number; attentionRevision: number;
+   pendingApprovals: number; pendingQuestions: number; updatedAt: number };
+ export type TerminalRoute = { version: 1; server: string; epoch: string; session: string; terminal: string; windowClass: string };
+-export type TerminalEntry = { route: TerminalRoute; title: string };
++export type NativeTerminalRoute = { version: 1; provider: "agency-kitty"; server: string; host: "nas";
++  session: string; terminal: string; windowClass: string | null; mode: "direct" | "persistent"; resumable: boolean };
++export type TerminalEntry = { route: TerminalRoute | NativeTerminalRoute; title: string };
++export const nativeTerminal = (route: TerminalEntry["route"]): route is NativeTerminalRoute => "provider" in route && route.provider === "agency-kitty";
+ export type Viewer = { sessionId: string; tag: string };
+ export type CatalogueState = { available: boolean; epoch?: string; seq: number; rows: Readonly<Record<string, SessionRow>>;
+-  seen: Readonly<Record<string, number>>; viewers: readonly Viewer[]; viewersAvailable: boolean; mainViewers: readonly string[]; terminalsAvailable: boolean; terminals: readonly TerminalEntry[] };
+-export const EMPTY_CATALOGUE: CatalogueState = { available: false, seq: -1, rows: {}, seen: {}, viewers: [], viewersAvailable: false, mainViewers: [], terminalsAvailable: false, terminals: [] };
++  seen: Readonly<Record<string, number>>; viewers: readonly Viewer[]; viewersAvailable: boolean; mainViewers: readonly string[]; terminalsAvailable: boolean; terminals: readonly TerminalEntry[];
++  nativeTerminalsAvailable: boolean; nativeTerminals: readonly TerminalEntry[] };
++export const EMPTY_CATALOGUE: CatalogueState = { available: false, seq: -1, rows: {}, seen: {}, viewers: [], viewersAvailable: false, mainViewers: [], terminalsAvailable: false, terminals: [], nativeTerminalsAvailable: false, nativeTerminals: [] };
+ const object = (value: unknown): Record<string, unknown> => {
+   if (value === null || typeof value !== "object" || Array.isArray(value)) throw Error("Invalid catalogue frame");
+   return value as Record<string, unknown>;
+@@ -48,6 +54,17 @@ export const terminalRoute = (value: unknown, server: string): TerminalRoute =>
+   if (row.version !== 1 || row.server !== server || typeof row.windowClass !== "string" || !/^dsh-terminal-[a-f0-9]{20}$/.test(row.windowClass)) throw Error("Invalid terminal route");
+   return { version: 1, server, epoch: identity(row.epoch), session: identity(row.session), terminal: identity(row.terminal), windowClass: row.windowClass };
+ };
++const uuid4 = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
++export const nativeTerminalRoute = (value: unknown, server: string): NativeTerminalRoute => {
++  const row = object(value);
++  if (row.version !== 1 || row.provider !== "agency-kitty" || row.host !== "nas" || row.server !== server ||
++      typeof row.terminal !== "string" || !uuid4.test(row.terminal) ||
++      !["direct", "persistent"].includes(row.mode as string) || row.resumable !== (row.mode === "persistent") ||
++      (row.mode === "persistent" ? row.windowClass !== `agencykitty-${row.terminal.replaceAll("-", "")}` :
++        row.windowClass !== null && (typeof row.windowClass !== "string" || !/^agencykitty-[a-f0-9]{32}$/.test(row.windowClass)))) throw Error("Invalid native terminal route");
++  return { version: 1, provider: "agency-kitty", server, host: "nas", session: identity(row.session),
++    terminal: row.terminal, windowClass: row.windowClass as string | null, mode: row.mode as NativeTerminalRoute["mode"], resumable: row.resumable as boolean };
++};
+ const bounded = (value: unknown): unknown[] => {
+   if (!Array.isArray(value) || value.length > 4096) throw Error("Catalogue exceeds its limit");
+   return value;
+@@ -70,6 +87,15 @@ export function receiveCatalogue(before: CatalogueState, value: unknown, server:
+       const terminal = object(value);
+       return { route: terminalRoute(terminal.route, server), title: title(terminal.title) };
+     }) : [] };
++  if (frame.type === "native-terminals") {
++    const terminals = frame.available === true ? bounded(frame.terminals).map(value => {
++      const terminal = object(value);
++      return { route: nativeTerminalRoute(terminal.route, server), title: title(terminal.title) };
++    }) : [];
++    const keys = terminals.map(({ route }) => `${route.session}:${route.terminal}`);
++    if (new Set(keys).size !== keys.length) throw Error("Duplicate native terminal route");
++    return { ...before, nativeTerminalsAvailable: frame.available === true, nativeTerminals: terminals };
++  }
+   if (frame.version !== 1) throw Error("Unknown catalogue protocol");
+   const epoch = identity(frame.epoch), seq = natural(frame.seq);
+   if (frame.type === "snapshot") {
+@@ -113,10 +139,12 @@ export function projectCatalogue(catalogue: CatalogueState, state: WindowState)
+       row.attentionRevision > (Object.hasOwn(catalogue.seen, row.sessionId) ? catalogue.seen[row.sessionId]! : -1),
+     viewers: catalogue.viewers.filter((viewer) => viewer.sessionId === row.sessionId).flatMap(({ tag }) =>
+       native.filter((window) => window.desktopId.includes(tag)).map(({ id }) => ({ id, tag, workspace: location(id) }))),
+-    terminals: catalogue.terminals.filter(({ route }) => route.session === row.sessionId).map((terminal) => {
+-      const windows = native.filter((window) => window.desktopId === terminal.route.windowClass);
++    terminals: [...catalogue.terminals, ...catalogue.nativeTerminals].filter(({ route }) => route.session === row.sessionId).map((terminal) => {
++      const windows = terminal.route.windowClass === null ? [] : native.filter((window) => window.desktopId === terminal.route.windowClass);
+       const id = windows.length === 1 ? windows[0]!.id : undefined;
+-      return { ...terminal, id, workspace: id === undefined ? undefined : location(id) };
++      return { ...terminal, id, ambiguous: windows.length > 1,
++        canOpen: windows.length === 1 || windows.length === 0 && (nativeTerminal(terminal.route) ? catalogue.nativeTerminalsAvailable && terminal.route.resumable : catalogue.terminalsAvailable),
++        workspace: id === undefined ? undefined : location(id) };
+     }),
+   }));
+ }
+diff --git a/src/imagine/SessionCatalogueView.tsx b/src/imagine/SessionCatalogueView.tsx
+index c6c3572..28908d3 100644
+--- a/src/imagine/SessionCatalogueView.tsx
++++ b/src/imagine/SessionCatalogueView.tsx
+@@ -27,11 +27,11 @@ export function SessionCatalogue({ controller, blocked }: {
+         </span>
+         {row.unseen && <span className="agency-urgent-dot" aria-label="New attention" />}
+       </button>
+-      {row.terminals.map((terminal) => <button type="button" className="agency-chat-terminal" key={terminal.route.windowClass}
+-        disabled={blocked || busy !== undefined || (!row.available && terminal.id === undefined)}
++      {row.terminals.map((terminal) => <button type="button" className="agency-chat-terminal" key={`${"provider" in terminal.route ? terminal.route.provider : "dsh"}:${terminal.route.terminal}`}
++        disabled={blocked || busy !== undefined || terminal.ambiguous || !terminal.canOpen || (!row.available && terminal.id === undefined)}
+         onClick={() => { void open(row, terminal); }} title={terminal.title}>
+         <span className="agency-row-title">{terminal.title}</span>
+-        <span className="agency-row-detail">{terminal.workspace ? `Workspace ${terminal.workspace}` : "Open terminal"}</span>
++        <span className="agency-row-detail">{terminal.ambiguous ? "Window identity is ambiguous" : terminal.workspace ? `Workspace ${terminal.workspace}` : !terminal.canOpen ? "provider" in terminal.route && terminal.route.mode === "direct" ? "Direct SSH session has ended" : "Terminal unavailable" : "provider" in terminal.route ? "Resume native terminal" : "Open terminal"}</span>
+       </button>)}
+     </div>)}
+     {error && <p className="agency-source-status" role="alert">{error}</p>}
+diff --git a/src/imagine/useSessionCatalogue.ts b/src/imagine/useSessionCatalogue.ts
+index adac25e..6a2c205 100644
+--- a/src/imagine/useSessionCatalogue.ts
++++ b/src/imagine/useSessionCatalogue.ts
+@@ -6,7 +6,7 @@ import { WindowKind } from "@domicile-desktop/manganese-window-management/window
+ import { chatOrigin, chatLaunchTag, emptyChatWorkspace } from "./ChatWindow";
+ import type { ChatOrigin, ChatPlacement, ChatReservation } from "./ChatWindow";
+ import { runHelperRequest } from "./HelperRequest";
+-import { EMPTY_CATALOGUE, markSessionSeen, projectCatalogue, receiveCatalogue } from "./SessionCatalogue";
++import { EMPTY_CATALOGUE, markSessionSeen, nativeTerminal, projectCatalogue, receiveCatalogue } from "./SessionCatalogue";
+ import type { CatalogueOptions, CatalogueRow, CatalogueState } from "./SessionCatalogue";
+ 
+ /** Stream frames across arbitrary UTF-8/chunk boundaries; no unbounded line buffer. */
+@@ -39,7 +39,7 @@ export function watchCatalogue(domicile: Domicile, config: CatalogueOptions, rec
+     .match({ Ok: (value) => value, Err: () => undefined });
+   let stopped = false, process: Awaited<ReturnType<typeof spawn>>;
+   let timer: ReturnType<typeof setTimeout> | undefined;
+-  const unavailable = () => { if (!stopped) { receive({ type: "unavailable" }); receive({ type: "terminals", available: false }); } };
++  const unavailable = () => { if (!stopped) { receive({ type: "unavailable" }); receive({ type: "terminals", available: false }); receive({ type: "native-terminals", available: false }); } };
+   const start = async () => {
+     let current: typeof process;
+     try {
+@@ -76,7 +76,7 @@ const consumeCatalogueErrors = async (stream: ReadableStream<Uint8Array>, signal
+ };
+ 
+ 
+-type PendingView = { session: string; identity: string; workspace: string; origin: ChatOrigin; allowOccupied: boolean; reveal: boolean; accepted: boolean };
++type PendingView = { session: string; identity: string; exactIdentity: boolean; workspace: string; origin: ChatOrigin; allowOccupied: boolean; reveal: boolean; accepted: boolean };
+ export function useSessionCatalogue({ domicile, config, chatLauncher, state, blocked, act, reserve, place }: {
+   domicile: Domicile; config?: CatalogueOptions; chatLauncher?: string; state: WindowState; blocked: boolean;
+   act: (action: WindowAction) => void; reserve: (identity: string, placement: ChatReservation | undefined) => void;
+@@ -110,7 +110,7 @@ export function useSessionCatalogue({ domicile, config, chatLauncher, state, blo
+     waiting.reveal &&= stillHere(waiting.origin);
+     if (!waiting.reveal) reserve(waiting.identity, { chatPlacement: true, workspace: waiting.workspace, origin: waiting.origin, reveal: false, allowOccupied: waiting.allowOccupied });
+     if (!waiting.accepted) return;
+-    const matches = state.windows.filter((window) => window.kind === WindowKind.App && window.desktopId.includes(waiting.identity));
++    const matches = state.windows.filter((window) => window.kind === WindowKind.App && (waiting.exactIdentity ? window.desktopId === waiting.identity : window.desktopId.includes(waiting.identity)));
+     if (matches.length === 1) {
+       reserve(waiting.identity, undefined);
+       place({ chatPlacement: true, id: matches[0]!.id, workspace: waiting.workspace, origin: waiting.origin, reveal: waiting.reveal, allowOccupied: waiting.allowOccupied });
+@@ -128,27 +128,32 @@ export function useSessionCatalogue({ domicile, config, chatLauncher, state, blo
+     const session = row?.sessionId ?? "$web";
+     const main = row === undefined ? state.windows.filter(w => w.kind === WindowKind.App && catalogue.mainViewers.some(tag => w.desktopId.includes(tag))) : [];
+     if (main.length > 1) { setError("More than one DSH web window matched."); return; }
++    if (terminal?.ambiguous) { setError("More than one native terminal window matched. No window was moved."); return; }
+     const id = row === undefined ? main[0]?.id : terminal ? terminal.id : row.viewers[0]?.id;
+     if (id !== undefined) { focus(id, session); return; }
++    if (terminal && !terminal.canOpen) return;
+     if (config === undefined || blocked || inFlight.current || busy || (row !== undefined && !row.available)) return;
+-    const launcher = terminal ? config.terminalLauncher : chatLauncher;
++    const isNative = terminal !== undefined && nativeTerminal(terminal.route);
++    const launcher = terminal ? isNative ? config.nativeTerminalLauncher : config.terminalLauncher : chatLauncher;
+     if (!launcher) return;
+     const origin = chatOrigin(state), workspace = row === undefined ? origin?.workspace : terminal ? row.viewers[0]?.workspace ?? emptyChatWorkspace(state) : emptyChatWorkspace(state);
+     if (origin === undefined || workspace === undefined) { setError("No workspace is available for this viewer."); return; }
+     const viewerId = crypto.randomUUID(), identity = terminal?.route.windowClass ?? chatLaunchTag(viewerId);
+-    const request: PendingView = { session, identity, workspace, origin, allowOccupied: row === undefined || (terminal !== undefined && row.viewers.length > 0), reveal: true, accepted: false };
++    if (terminal && terminal.route.windowClass === null) return;
++    const request: PendingView = { session, identity, exactIdentity: isNative, workspace, origin, allowOccupied: row === undefined || (terminal !== undefined && row.viewers.length > 0), reveal: true, accepted: false };
+     pending.current = request;
+     reserve(identity, { chatPlacement: true, workspace, origin, reveal: true, allowOccupied: request.allowOccupied });
+     inFlight.current = true; setBusy(session); setError(undefined);
+     try {
+-      const receipt = await runHelperRequest(domicile, terminal ? [launcher] : [launcher, row === undefined ? "--main" : "--session"], terminal ? terminal.route : row === undefined ? { viewerId } : { sessionId: row.sessionId, viewerId });
++      const receipt = await runHelperRequest(domicile, terminal ? isNative ? [launcher, "desktop-resume-request"] : [launcher] : [launcher, row === undefined ? "--main" : "--session"], terminal ? terminal.route : row === undefined ? { viewerId } : { sessionId: row.sessionId, viewerId });
+       const tag = terminal ? receipt.windowClass : receipt.tag;
+       if ((row !== undefined && (terminal ? receipt.session : receipt.sessionId) !== row.sessionId) || (terminal ? tag !== terminal.route.windowClass : !/^agencychat[0-9a-f]{32}$/.test(tag))) throw Error("Viewer identity mismatch");
++      if (isNative && (receipt.version !== 1 || receipt.provider !== "agency-kitty" || receipt.host !== "nas" || receipt.terminalId !== terminal!.route.terminal)) throw Error("Native terminal receipt mismatch");
+       if (!alive.current) return;
+       request.accepted = true; request.reveal &&= stillHere(origin);
+       if (tag !== identity) {
+         reserve(identity, undefined);
+-        const existing = latest.current.state.windows.filter((window) => window.kind === WindowKind.App && window.desktopId.includes(tag));
++        const existing = latest.current.state.windows.filter((window) => window.kind === WindowKind.App && (isNative ? window.desktopId === tag : window.desktopId.includes(tag)));
+         if (existing.length === 1) { if (request.reveal) focus(existing[0]!.id, session); pending.current = undefined; setBusy(undefined); return; }
+         request.identity = tag;
+         reserve(tag, { chatPlacement: true, workspace, origin, reveal: request.reveal, allowOccupied: request.allowOccupied });

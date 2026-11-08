@@ -1,0 +1,394 @@
+From 8affac9b705f7af18b603dc1ba793389b72c1590 Mon Sep 17 00:00:00 2001
+From: mecattaf <thomas@mecattaf.dev>
+Date: Sun, 8 Nov 2026 01:30:43 +0100
+Subject: [PATCH] Release native source capture for validated file drags
+
+Consume the matching desktop lifecycle helper through the public process API. Release only the captured pointer of the compositor-confirmed native source, rebind on compositor replacement, and stop owned helpers on cleanup.
+
+Validate all 127 Imagine tests and the pinned bundle, plus actual cross-application drag, SSH image staging and stale-target refusal on the official 63db244 engine.
+---
+ package.json                              |   3 +-
+ src/imagine/ImagineShell.tsx              |   2 +
+ src/imagine/NativeFileDrag.test.ts        |  87 +++++++++++++
+ src/imagine/NativeFileDrag.ts             | 149 ++++++++++++++++++++++
+ src/imagine/NativeFileDragCapture.test.ts |  31 +++++
+ src/imagine/NativeFileDragCapture.ts      |  31 +++++
+ tools/prove-pinned.py                     |   2 +
+ 7 files changed, 304 insertions(+), 1 deletion(-)
+ create mode 100644 src/imagine/NativeFileDrag.test.ts
+ create mode 100644 src/imagine/NativeFileDrag.ts
+ create mode 100644 src/imagine/NativeFileDragCapture.test.ts
+ create mode 100644 src/imagine/NativeFileDragCapture.ts
+
+diff --git a/package.json b/package.json
+index c8025f6..06cd05e 100644
+--- a/package.json
++++ b/package.json
+@@ -48,7 +48,8 @@
+     "@domicile-desktop/system-audio": "0.0.0-alpha-75708d763800",
+     "@domicile-desktop/system-backlight": "0.0.0-alpha-75708d763800",
+     "react": "19.2.8",
+-    "react-dom": "19.2.8"
++    "react-dom": "19.2.8",
++    "zod": "4.5.4"
+   },
+   "devDependencies": {
+     "vite": "8.2.2"
+diff --git a/src/imagine/ImagineShell.tsx b/src/imagine/ImagineShell.tsx
+index 4e46357..a1738c4 100644
+--- a/src/imagine/ImagineShell.tsx
++++ b/src/imagine/ImagineShell.tsx
+@@ -19,6 +19,7 @@ import { hostTheme, rememberedTheme } from "./theme";
+ import { ambientChatConfig } from "./AmbientChat";
+ import { chatWindowConfig } from "./ChatWindow";
+ import { catalogueConfig } from "./SessionCatalogue";
++import { installNativeFileDrag } from "./NativeFileDrag";
+ 
+ // Imagine owns the Settings declaration copied from the pinned baseline.
+ export { options } from "./options";
+@@ -37,6 +38,7 @@ export const runImagine = (options: ImagineOptions = {}): Shell => {
+     const theme = useMemo(() => hostTheme(domicile), [domicile]);
+     const displays = useMemo(() => hostDisplays(domicile), [domicile]);
+     useLayoutEffect(() => applyAppearance(appearance), [appearance]);
++    useLayoutEffect(() => installNativeFileDrag(document.body, domicile), [domicile]);
+     return <Provider theme={theme}>
+       <DisplayProvider source={displays}>
+         <Desktop applications={applications} floating={floating}
+diff --git a/src/imagine/NativeFileDrag.test.ts b/src/imagine/NativeFileDrag.test.ts
+new file mode 100644
+index 0000000..b609f51
+--- /dev/null
++++ b/src/imagine/NativeFileDrag.test.ts
+@@ -0,0 +1,87 @@
++import { expect, test } from "bun:test";
++import { Ok } from "@cprussin/option-result";
++import type { Domicile } from "@domicile-desktop/sdk/desktop/desktop";
++import type { Subprocess } from "@domicile-desktop/sdk/system";
++
++import { installNativeFileDrag } from "./NativeFileDrag";
++
++const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
++const fixture = () => {
++  const root = Object.assign(new EventTarget(), { dataset: {} }) as HTMLElement;
++  const children: ReturnType<typeof process>[] = [];
++  const errors: unknown[] = [];
++  let replaced = () => {};
++  const domicile = {
++    processes: { spawn: async (argv: string[]) => {
++      expect(argv).toEqual(["domicile-native-drag-events"]);
++      const child = process(); children.push(child); return Ok(child.value);
++    } },
++    on: (name: string, receive: () => void) => {
++      expect(name).toBe("compositorreplaced"); replaced = receive;
++      return () => { replaced = () => {}; };
++    },
++  } as unknown as Domicile;
++  return { root, domicile, children, errors, replace: () => replaced() };
++};
++
++const process = () => {
++  let stdout!: ReadableStreamDefaultController<Uint8Array>;
++  let stderr!: ReadableStreamDefaultController<Uint8Array>;
++  let killed = 0, closed = false;
++  let finish!: (value: ReturnType<typeof Ok<{ code: number; signal: undefined }>>) => void;
++  const close = () => {
++    if (!closed) {
++      closed = true; stdout.close(); stderr.close(); finish(Ok({ code: 0, signal: undefined }));
++    }
++  };
++  const value: Subprocess = {
++    stdout: new ReadableStream({ start: (controller) => { stdout = controller; } }),
++    stderr: new ReadableStream({ start: (controller) => { stderr = controller; } }),
++    exited: new Promise((resolve) => { finish = resolve; }),
++    write: () => {}, closeStdin: () => {},
++    kill: () => { killed++; close(); },
++  };
++  return { value, killed: () => killed, close,
++    send: (line: string) => stdout.enqueue(new TextEncoder().encode(line)) };
++};
++
++test("compositor replacement rebinds one native drag helper and cleanup stops it", async () => {
++  const f = fixture();
++  const dispose = installNativeFileDrag(f.root, f.domicile, (error) => f.errors.push(error));
++  await tick();
++  f.children[0]!.send('{"kind":"ready"}\n'); await tick();
++  expect(f.root.dataset.nativeFileDrag).toBe("ready");
++  f.replace(); await tick();
++  expect(f.children[0]!.killed()).toBe(1);
++  expect(f.children).toHaveLength(2);
++  expect(f.root.dataset.nativeFileDrag).toBeUndefined();
++  f.children[1]!.send('{"kind":"ready"}\n'); await tick();
++  expect(f.root.dataset.nativeFileDrag).toBe("ready");
++  dispose(); await tick(); f.replace(); await tick();
++  expect(f.children[1]!.killed()).toBe(1);
++  expect(f.children).toHaveLength(2);
++  expect(f.errors).toEqual([]);
++});
++
++test("oversized native drag output fails closed and stops its helper", async () => {
++  const f = fixture();
++  const dispose = installNativeFileDrag(f.root, f.domicile, (error) => f.errors.push(error));
++  await tick(); f.children[0]!.send("x".repeat(4097)); await tick();
++  expect(f.errors).toHaveLength(1);
++  expect(String(f.errors[0])).toContain("4096");
++  expect(f.children[0]!.killed()).toBe(1);
++  expect(f.root.dataset.nativeFileDrag).toBeUndefined();
++  dispose();
++});
++
++test("a helper acknowledged after disposal is killed without subscribing", async () => {
++  const f = fixture();
++  const child = process();
++  let acknowledge!: (value: ReturnType<typeof Ok<Subprocess>>) => void;
++  f.domicile.processes.spawn = () => new Promise((resolve) => { acknowledge = resolve; });
++  const dispose = installNativeFileDrag(f.root, f.domicile, (error) => f.errors.push(error));
++  dispose(); acknowledge(Ok(child.value)); await tick();
++  expect(child.killed()).toBe(1);
++  expect(f.root.dataset.nativeFileDrag).toBeUndefined();
++  expect(f.errors).toEqual([]);
++});
+diff --git a/src/imagine/NativeFileDrag.ts b/src/imagine/NativeFileDrag.ts
+new file mode 100644
+index 0000000..4065aa8
+--- /dev/null
++++ b/src/imagine/NativeFileDrag.ts
+@@ -0,0 +1,149 @@
++import type { Domicile } from "@domicile-desktop/sdk/desktop/desktop";
++import type { Subprocess } from "@domicile-desktop/sdk/system";
++import { z } from "zod";
++
++import { trackNativeFileDragCapture } from "./NativeFileDragCapture";
++
++const eventSchema = z.discriminatedUnion("kind", [
++  z.object({ kind: z.literal("ready") }),
++  z.object({ kind: z.literal("native_drag"), app_id: z.string().max(128).nullable() }),
++]);
++
++/** Native data-device drags must hit-test other apps after the source press. */
++export const installNativeFileDrag = (root: HTMLElement, domicile: Domicile,
++  report: (error: unknown) => void = reportFailure) => {
++  const captures = trackNativeFileDragCapture();
++  let child: Subprocess | undefined;
++  let disposed = false;
++  let generation = 0;
++  let startup: ReturnType<typeof setTimeout> | undefined;
++  const press = (event: PointerEvent) => {
++    const app = event.target instanceof Element ? event.target.closest("app") : null;
++    const appId = app?.getAttribute("app-id");
++    if (app !== null && appId !== null && appId !== undefined) {
++      captures.press(event.pointerId, {
++        appId,
++        captured: () => app.isConnected && app.hasPointerCapture(event.pointerId),
++        release: () => app.releasePointerCapture(event.pointerId),
++      });
++    }
++  };
++  const finish = (event: PointerEvent) => captures.finish(event.pointerId);
++  root.addEventListener("pointerdown", press, true);
++  root.addEventListener("pointerup", finish, true);
++  root.addEventListener("pointercancel", finish, true);
++  const run = async (currentGeneration: number) => {
++    const started = await domicile.processes.spawn(["domicile-native-drag-events"]);
++    const current = started.match({
++      Ok: (value) => value,
++      Err: (error) => { throw new Error(`Native file drag subscription failed: ${error.message}`); },
++    });
++    if (disposed || currentGeneration !== generation) {
++      current.kill();
++    } else {
++      child = current;
++      const errors = readBoundedLines(current.stderr, (line) => {
++        throw new Error(`Native file drag helper: ${line}`);
++      });
++      const events = readBoundedLines(current.stdout, (line) => {
++        const event = eventSchema.parse(JSON.parse(line));
++        if (!disposed && currentGeneration === generation) {
++          switch (event.kind) {
++            case "ready":
++              clearTimeout(startup);
++              root.dataset.nativeFileDrag = "ready";
++              break;
++            case "native_drag":
++              if (event.app_id !== null) {
++                captures.drag(event.app_id);
++              }
++              break;
++          }
++        }
++      });
++      await Promise.all([events, errors, current.exited.then((ended) => ended.match({
++        Ok: (exit) => {
++          if (!disposed && currentGeneration === generation && (exit.code !== 0 || exit.signal !== undefined)) {
++            throw new Error("Native file drag helper exited unexpectedly");
++          }
++        },
++        Err: (error) => { throw new Error(`Native file drag helper failed: ${error.message}`); },
++      }))]);
++      if (!disposed && currentGeneration === generation) {
++        throw new Error("Native file drag subscription ended unexpectedly");
++      }
++    }
++  };
++  const failed = (currentGeneration: number, error: unknown) => {
++    if (!disposed && currentGeneration === generation) {
++      generation++;
++      clearTimeout(startup);
++      child?.kill();
++      delete root.dataset.nativeFileDrag;
++      report(error);
++    }
++  };
++  const start = () => {
++    const currentGeneration = ++generation;
++    clearTimeout(startup);
++    child?.kill();
++    child = undefined;
++    captures.clear();
++    delete root.dataset.nativeFileDrag;
++    startup = setTimeout(() => failed(currentGeneration, new Error("Native file drag startup timed out")), 6000);
++    run(currentGeneration).catch((error: unknown) => failed(currentGeneration, error));
++  };
++  const stopReplacing = domicile.on("compositorreplaced", start);
++  start();
++  return () => {
++      disposed = true;
++      generation++;
++      clearTimeout(startup);
++      stopReplacing();
++      root.removeEventListener("pointerdown", press, true);
++      root.removeEventListener("pointerup", finish, true);
++      root.removeEventListener("pointercancel", finish, true);
++      captures.clear();
++      delete root.dataset.nativeFileDrag;
++      child?.kill();
++  };
++};
++
++const reportFailure = (error: unknown) => {
++  console.error("Imagine native file drag failed", error);
++};
++
++const readBoundedLines = async (stream: ReadableStream<Uint8Array>, receive: (line: string) => void) => {
++  const reader = stream.getReader();
++  const decoder = new TextDecoder("utf-8", { fatal: true });
++  let pending = "";
++  try {
++    for (;;) {
++      const part = await reader.read();
++      if (part.done) {
++        pending += decoder.decode();
++        if (pending.length !== 0) {
++          throw new Error("Native file drag helper ended in a partial message");
++        }
++        break;
++      }
++      pending += decoder.decode(part.value, { stream: true });
++      for (;;) {
++        const end = pending.indexOf("\n");
++        if (end === -1) {
++          break;
++        }
++        if (end > 4096) {
++          throw new Error("Native file drag helper message exceeds 4096 characters");
++        }
++        receive(pending.slice(0, end));
++        pending = pending.slice(end + 1);
++      }
++      if (pending.length > 4096) {
++        throw new Error("Native file drag helper message exceeds 4096 characters");
++      }
++    }
++  } finally {
++    reader.releaseLock();
++  }
++};
+diff --git a/src/imagine/NativeFileDragCapture.test.ts b/src/imagine/NativeFileDragCapture.test.ts
+new file mode 100644
+index 0000000..940b79e
+--- /dev/null
++++ b/src/imagine/NativeFileDragCapture.test.ts
+@@ -0,0 +1,31 @@
++import { expect, test } from "bun:test";
++import { trackNativeFileDragCapture } from "./NativeFileDragCapture";
++
++test("a confirmed native drag releases only its source capture once", () => {
++  const captures = trackNativeFileDragCapture();
++  const released: string[] = [];
++  for (const [pointerId, appId] of [[1, "app-1"], [2, "app-2"]] as const) {
++    captures.press(pointerId, { appId, captured: () => true,
++      release: () => { released.push(appId); } });
++  }
++  captures.drag("app-1");
++  captures.drag("app-1");
++  captures.drag("app-99");
++  expect(released).toEqual(["app-1"]);
++  captures.drag("app-2");
++  expect(released).toEqual(["app-1", "app-2"]);
++});
++
++test("finished or absent DOM captures are never released", () => {
++  const captures = trackNativeFileDragCapture();
++  let released = 0;
++  captures.press(1, { appId: "app-1", captured: () => true, release: () => { released++; } });
++  captures.finish(1);
++  captures.drag("app-1");
++  captures.press(2, { appId: "app-2", captured: () => false, release: () => { released++; } });
++  captures.drag("app-2");
++  captures.press(3, { appId: "app-3", captured: () => true, release: () => { released++; } });
++  captures.clear();
++  captures.drag("app-3");
++  expect(released).toBe(0);
++});
+diff --git a/src/imagine/NativeFileDragCapture.ts b/src/imagine/NativeFileDragCapture.ts
+new file mode 100644
+index 0000000..27f886d
+--- /dev/null
++++ b/src/imagine/NativeFileDragCapture.ts
+@@ -0,0 +1,31 @@
++/** Match compositor-confirmed native drags to the DOM pointer that began them. */
++export const trackNativeFileDragCapture = () => {
++  const pressed = new Map<number, {
++    appId: string;
++    captured: () => boolean;
++    release: () => void;
++  }>();
++  return {
++    press: (pointerId: number, capture: {
++      appId: string;
++      captured: () => boolean;
++      release: () => void;
++    }) => {
++      pressed.set(pointerId, capture);
++    },
++    finish: (pointerId: number) => {
++      pressed.delete(pointerId);
++    },
++    drag: (appId: string) => {
++      for (const [pointerId, capture] of pressed) {
++        if (capture.appId === appId) {
++          if (capture.captured()) {
++            capture.release();
++          }
++          pressed.delete(pointerId);
++        }
++      }
++    },
++    clear: () => pressed.clear(),
++  };
++};
+diff --git a/tools/prove-pinned.py b/tools/prove-pinned.py
+index baf0952..0b569ea 100644
+--- a/tools/prove-pinned.py
++++ b/tools/prove-pinned.py
+@@ -34,6 +34,8 @@ for name in ("react", "react-dom", "@cprussin/option-result"):
+     target = anchor / name
+     package = json.loads((target / "package.json").read_text())
+     installed[name] = (target.resolve(), package["version"])
++zod = args.workspace / "packages/chrome-sdk/node_modules/zod"
++installed["zod"] = (zod.resolve(), json.loads((zod / "package.json").read_text())["version"])
+ vite = args.workspace / "packages/domicile-builder/node_modules/vite"
+ installed["vite"] = (vite.resolve(), json.loads((vite / "package.json").read_text())["version"])
+ links = {}
+-- 
+2.54.0
+

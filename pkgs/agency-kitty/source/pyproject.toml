@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agency-kitty"
+version = "0.1.0"
+description = "Native Kitty transport and workflow integration for Domicile and DSH"
+requires-python = ">=3.11"
+license = "MIT"
+
+[project.scripts]
+agency-kitty = "agency_kitty.cli:main"
+agency-kitty-native-forward = "agency_kitty.native_forward:main"
+agency-kitty-native-control = "agency_kitty.native_forward_control:main"
+
+[tool.setuptools.packages.find]
+include = ["agency_kitty*"]

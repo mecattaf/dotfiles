@@ -1,0 +1,15 @@
+{
+  "sourceRevision": "943175b0884b81bbbcfbcd8506a88afb1d959ebd",
+  "sourceDirtyRevision": null,
+  "candidate": {
+    "kitty": "0.50.0",
+    "system": "/nix/store/cpn7dg6mrf70a5d7zli6pi61nyc3qhg5-nixos-system-strix-coordinator-26.11.20260723.e2587ca"
+  },
+  "current": "/nix/store/6m77q0vachggfb7fbgbgr3nn4r1z9c4n-nixos-system-strix-coordinator-26.11.20260723.e2587ca",
+  "oldKernel": "/nix/store/wjng0666yjjchqkf4dhhksaahhmr0dzz-linux-7.3/bzImage",
+  "newKernel": "/nix/store/wjng0666yjjchqkf4dhhksaahhmr0dzz-linux-7.3/bzImage",
+  "closureDiff": "dsh: \u2205 \u2192 \u03b5, \u001b[31;1m8.8 KiB\u001b[0m\ndsh-editor: \u2205 \u2192 \u03b5\nglslang: \u2205 \u2192 16.6.0, \u001b[31;1m11.7 MiB\u001b[0m\niana-etc: \u001b[31;1m557.8 KiB\u001b[0m\nkitty: 0.48.0 \u2192 0.50.0, \u001b[31;1m15.8 MiB\u001b[0m\nlibx11: \u2205 \u2192 1.8.14, \u001b[31;1m2.6 MiB\u001b[0m\nlibxau: \u001b[31;1m27.1 KiB\u001b[0m\nlibxcb: \u001b[31;1m1.4 MiB\u001b[0m\nlibxdmcp: \u001b[31;1m31.2 KiB\u001b[0m\nlz4: \u001b[31;1m260.0 KiB\u001b[0m\nmailcap: \u001b[31;1m116.6 KiB\u001b[0m\nnvim: \u001b[31;1m18.4 KiB\u001b[0m\nseats: \u001b[31;1m38.9 KiB\u001b[0m\nshader-slang: \u2205 \u2192 2026.19, \u001b[31;1m67.5 MiB\u001b[0m\ntzdata: \u2205 \u2192 2026e, \u001b[31;1m2.0 MiB\u001b[0m\nzen: \u2205 \u2192 \u03b5\n",
+  "keyReadableAsTom": false,
+  "failedUnitsBefore": "\u25cf thunderbolt-ibverbs-check.service loaded failed failed Validate thunderbolt_ibverbs runtime state\n",
+  "space": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/nvme0n1p2  915G  828G   41G  96% /\n"
+}

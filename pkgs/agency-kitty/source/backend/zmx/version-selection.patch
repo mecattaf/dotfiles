@@ -1,0 +1,111 @@
+--- a/agency_kitty/server.py
++++ b/agency_kitty/server.py
+@@ -20,6 +20,11 @@
+ from .sessions import Session, SessionError, SessionStore, validate_cwd, validate_id
+ 
+ ZMX_VERSION = "1.0.1-agency.3"
++HOLDER_NAMESPACES = {
++    "1.0.1-agency.3": "zmx-3",
++    "1.0.1-agency.4": "zmx-4",
++    "1.0.1-agency.4-vt1": "zmx-4-vt1",
++}
+ MAX_RESPONSE_BYTES = 1024 * 1024
+ 
+ 
+@@ -93,11 +98,14 @@
+ class HolderBackend:
+     """Pinned zmx adapter; never shares sockets with a general zmx installation."""
+ 
+-    def __init__(self, *, binary: str | None = None, env: dict | None = None):
++    def __init__(self, *, binary: str | None = None, env: dict | None = None, version: str | None = None):
+         self.binary = binary or os.environ.get("AGENCY_KITTY_ZMX_BINARY", "zmx")
+         self.env = dict(os.environ if env is None else env)
++        self.version = version or self.env.get("AGENCY_KITTY_HOLDER_VERSION", ZMX_VERSION)
++        if self.version not in HOLDER_NAMESPACES:
++            raise SessionError("unsupported holder version selection")
+         runtime = Path(self.env.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+-        directory = runtime / "agency-kitty" / "zmx-3"
++        directory = runtime / "agency-kitty" / HOLDER_NAMESPACES[self.version]
+         # UUIDs plus this prefix must fit sockaddr_un on Linux (107 bytes).
+         if len(os.fsencode(directory)) + 1 + 36 > 107:
+             raise SessionError("private holder socket path is too long")
+@@ -109,13 +117,13 @@
+         try:
+             return bounded_run([self.binary, *args], env=self.env, max_bytes=max_bytes)
+         except FileNotFoundError as exc:
+-            raise SessionError(f"zmx {ZMX_VERSION} is required for persistent attachment") from exc
++            raise SessionError(f"zmx {self.version} is required for persistent attachment") from exc
+ 
+     def check_version(self) -> None:
+         result = self._run("version", max_bytes=16384)
+         first = result.stdout.decode("utf-8", "replace").splitlines()[:1]
+-        if result.returncode or not first or first[0].split() != ["zmx", ZMX_VERSION]:
+-            raise SessionError(f"holder must be exactly zmx {ZMX_VERSION}; stock zmx does not enforce attachment and queue guarantees")
++        if result.returncode or not first or first[0].split() != ["zmx", self.version]:
++            raise SessionError(f"holder must be exactly zmx {self.version}; stock zmx does not enforce attachment and queue guarantees")
+ 
+     def names(self) -> set[str]:
+         result = self._run("list", "--short", max_bytes=65536)
+@@ -127,13 +135,12 @@
+     def describe(self, session: Session) -> dict:
+         self.require_session_version(session)
+         value = session.to_dict()
+-        value.update(provider="agency-kitty", transport="zmx", holder_version=ZMX_VERSION,
++        value.update(provider="agency-kitty", transport="zmx", holder_version=self.version,
+                      live=session.id in self.names(), cached_status=session.status)
+         return value
+ 
+-    @staticmethod
+-    def require_session_version(session: Session) -> None:
+-        if session.holder_version != ZMX_VERSION:
++    def require_session_version(self, session: Session) -> None:
++        if session.holder_version != self.version:
+             raise SessionError(f"session needs holder {session.holder_version}; its matching package must be retained")
+ 
+     def prepare_attach(self, session: Session, store: SessionStore) -> tuple[list[str], dict]:
+@@ -240,15 +247,16 @@
+             if not Path(args.cwd).is_dir():
+                 raise SessionError("NAS directory is unavailable")
+             value = store.create(session_id=args.id, cwd=args.cwd, title=args.title,
+-                                 workspace_id=args.workspace_id, chat_ids=args.chat_id).to_dict()
++                                 workspace_id=args.workspace_id, chat_ids=args.chat_id,
++                                 holder_version=backend.version).to_dict()
+         elif args.action == "health":
+             backend.check_version()
+-            value = {"host": "nas", "holder": "zmx", "version": ZMX_VERSION,
++            value = {"host": "nas", "holder": "zmx", "version": backend.version,
+                      "socket_dir": str(backend.socket_dir), "persistent_default": False}
+         elif args.action == "list":
+             backend.check_version()
+             live = backend.names()
+-            value = [{**s.to_dict(), "live": s.id in live if s.holder_version == ZMX_VERSION else None}
++            value = [{**s.to_dict(), "live": s.id in live if s.holder_version == backend.version else None}
+                      for s in store.list()]
+         else:
+             if args.action == "attach" and args.create:
+@@ -257,7 +265,7 @@
+                 metadata = json.loads(args.metadata)
+                 if not isinstance(metadata, dict) or metadata.keys() - {"title", "workspace_id", "chat_ids"}:
+                     raise SessionError("invalid creation metadata")
+-                store.create(session_id=args.id, cwd=args.cwd, **metadata)
++                store.create(session_id=args.id, cwd=args.cwd, holder_version=backend.version, **metadata)
+             session = store.get(args.id)
+             if args.action == "attach":
+                 if not sys.stdin.isatty() or not sys.stdout.isatty():
+--- a/agency_kitty/sessions.py
++++ b/agency_kitty/sessions.py
+@@ -202,11 +202,12 @@
+                 os.unlink(name)
+ 
+     def create(self, *, cwd: str = "/home/tom/today", title: str = "", workspace_id: str | None = None,
+-               chat_ids: tuple[str, ...] | list[str] = (), session_id: str | None = None) -> Session:
++               chat_ids: tuple[str, ...] | list[str] = (), session_id: str | None = None,
++               holder_version: str = "1.0.1-agency.3") -> Session:
+         timestamp = _now()
+         session = Session(id=session_id or str(uuid.uuid4()), cwd=cwd, title=title,
+                           workspace_id=workspace_id, chat_ids=tuple(chat_ids), created_at=timestamp,
+-                          updated_at=timestamp)
++                          updated_at=timestamp, holder_version=holder_version)
+         with self._lock():
+             if self._path(session.id).exists():
+                 raise SessionError(f"session already exists: {session.id}")

@@ -1,0 +1,70 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "launcher": "cc",
+      "managed": false,
+      "passed": true
+    },
+    {
+      "launcher": "cac",
+      "managed": false,
+      "passed": true
+    },
+    {
+      "launcher": "cc2",
+      "managed": false,
+      "passed": true
+    },
+    {
+      "launcher": "cac2",
+      "managed": false,
+      "passed": true
+    },
+    {
+      "launcher": "cx",
+      "managed": false,
+      "passed": true
+    },
+    {
+      "launcher": "cax",
+      "managed": false,
+      "passed": true
+    },
+    {
+      "launcher": "cc",
+      "managed": true,
+      "passed": true
+    },
+    {
+      "launcher": "cac",
+      "managed": true,
+      "passed": true
+    },
+    {
+      "launcher": "cc2",
+      "managed": true,
+      "passed": true
+    },
+    {
+      "launcher": "cac2",
+      "managed": true,
+      "passed": true
+    },
+    {
+      "launcher": "cx",
+      "managed": true,
+      "passed": true
+    },
+    {
+      "launcher": "cax",
+      "managed": true,
+      "passed": true
+    }
+  ],
+  "calls": 12,
+  "fragmentSha256": "1e79430290ac9d469e235c09e5d78934bb2d98d0323284aa5a152fadc570e087",
+  "liveConfigurationSourced": false,
+  "credentialsRead": false,
+  "homeEnvironmentChanged": false
+}

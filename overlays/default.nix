@@ -49,6 +49,7 @@ final: _prev: {
   # Cloud as the default, Gufo for local picks, every DeepSeek-bound row off,
   # a hardened bwrap runner. Needs the flake's `llm-agents` overlay. See pkgs/dsh, home/dsh.nix.
   dsh = final.callPackage ../pkgs/dsh { };
+  agency-kitty = final.callPackage ../pkgs/agency-kitty { };
   mnemon = final.callPackage ../pkgs/mnemon { };
   # Pinned plugins selected by the hand-run `herdr` and `mnemon` profiles.
   # An attrset, not a package; pkgs/dsh picks them up.

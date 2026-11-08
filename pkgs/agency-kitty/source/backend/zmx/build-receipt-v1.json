@@ -1,0 +1,25 @@
+{
+  "as_of_utc": "2026-11-07T22:27:21.697204+00:00",
+  "build_host": "strix-coordinator",
+  "upstream_commit": "a35f00a2118b15a5e9d522a43035c8d7487df9b7",
+  "fork_version": "1.0.1-agency.1",
+  "fork_protocol_version": 201,
+  "patch_sha256": "75cc5f89062f35795c0391c967e2f850b72fb2c47419bf0c7454acd565af00b9",
+  "zig_version": "0.17.0",
+  "zig_sha256": "1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026",
+  "target": "x86_64-linux-musl",
+  "optimization": "ReleaseSafe",
+  "binary_sha256": "017ed24acfbaffad9649141a14b6c92c5afb7b8bf5b8e1bc1f4689b1b87101bd",
+  "binary_bytes": 17531592,
+  "elf_interpreter": null,
+  "compute_binary": "/home/tom/.wt/kitty-consolidation/transport-qualification/zmx-agency/zig-out/bin/zmx",
+  "review_copy": "/home/tom/.wt/kitty-consolidation/artifacts/agency-zmx",
+  "installed": false,
+  "source_unit_tests": {
+    "command": "runtime-test -- zig build test -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl --summary all",
+    "returncode": 0,
+    "build_steps_succeeded": 66
+  },
+  "runtime_qualification": "backend/results/agency-results-final.json",
+  "herdr_comparison": "backend/results/herdr-comparison-with-raw.json"
+}

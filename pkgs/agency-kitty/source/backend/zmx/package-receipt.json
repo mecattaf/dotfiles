@@ -1,0 +1,19 @@
+{
+  "evidence_recorded_utc": "2026-11-07T23:27:13.828979+00:00",
+  "build_host": "strix-coordinator",
+  "holder_version": "1.0.1-agency.3",
+  "binary_sha256": "b5bb5951c0103c7403e29dabcb11b82867d3813d097ce5ba7820233f0d0f466f",
+  "package": "/nix/store/79f8gw01gb2j91cjwx94g7h586py0vyd-agency-zmx-1.0.1-agency.3",
+  "derivation": "/nix/store/0g682fb469axxgm0ay1f6cc132p0ggp5-agency-zmx-1.0.1-agency.3.drv",
+  "nixpkgs": "/nix/store/6ki6bvn3klq68d41y35k4378nxvcbfbd-llgwlxshmy0ifvxh7f8wq53vk5x7vd13-source",
+  "recipe": "backend/zmx/package.nix",
+  "build_returncode": 0,
+  "wrong_binary_rejected": true,
+  "wrong_binary_diagnostic": "Agency zmx binary does not match the reviewed build receipt",
+  "wrong_binary_returncode": 1,
+  "installed_live": false,
+  "previous_package_without_dependency_notices": "/nix/store/f8cqsdsmd8hwy1n6a3sxdy0rrg174b8y-agency-zmx-1.0.1-agency.3",
+  "dependency_notices": "licenses/provenance.json",
+  "binary_sha256_unchanged": true,
+  "previous_package_with_partial_dependency_notices": "/nix/store/y0ibwdlz1xvnld7bnyj8awipd5b4anda-agency-zmx-1.0.1-agency.3"
+}

@@ -1,0 +1,46 @@
+{
+  "as_of_utc": "2026-11-08T00:20:19.385394+00:00",
+  "build_host": "strix-coordinator",
+  "upstream_commit": "a35f00a2118b15a5e9d522a43035c8d7487df9b7",
+  "fork_version": "1.0.1-agency.4-vt1",
+  "fork_protocol_version": 204,
+  "patch_sha256": "739582745d1167118c2e6917e47930d2ad5b741b08b2ad891bc0fae553bea9a3",
+  "zig_version": "0.17.0",
+  "zig_sha256": "1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026",
+  "target": "x86_64-linux-musl",
+  "optimization": "ReleaseSafe",
+  "binary_sha256": "2dc79e81add4ab50a202ea1b8189d2f6daf1b7d5a11148a27c788fec236044d6",
+  "binary_bytes": 17663936,
+  "elf_interpreter": null,
+  "compute_binary": "/home/tom/.wt/kitty-consolidation/transport-qualification/zmx-agency-v4-vt1/zig-out/bin/zmx",
+  "review_copy": "/home/tom/.wt/kitty-consolidation/artifacts/agency-zmx-v4-vt1",
+  "installed": false,
+  "source_unit_tests": {
+    "command": "runtime-test -- zig build test -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl --summary all",
+    "returncode": 0,
+    "build_steps_succeeded": 68,
+    "baseline_tests_passed": 108,
+    "additional_osc66_tests": 2,
+    "final_result": "success; cached run result"
+  },
+  "runtime_qualification": "backend/results/agency-functional-v4-vt1.json",
+  "herdr_comparison": "backend/results/herdr-comparison-with-raw.json",
+  "native_kitty_snapshot_qualification": "backend/results/kitty-snapshot-v4-vt1-final.json",
+  "ghostty_commit": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
+  "native_kitty_graphics_qualification": "backend/results/native-graphics-v4-vt1-admit.json",
+  "qualification_status": "passed: final OSC66-guard source units, official-engine native graphics/admission, protocol/data/lifecycle, native palette/wrap/KKP",
+  "official_engine_attestation": {
+    "requestedEngine": "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244",
+    "loadedLibraries": [
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/libdomicile_engine.so"
+    ],
+    "librarySha256": {
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/libdomicile_engine.so": "43f0dc75132f7ab3ae7042a75d7c19b88e89a9e10a4850a656a06bcda623c02f"
+    },
+    "chromeExecutables": [
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/.chrome-unwrapped"
+    ]
+  },
+  "kitty_binary": "/nix/store/rs4s3ggn03a65bbwj9r1ps20d4kichm1-kitty-0.50.0/bin/kitty",
+  "kitty_binary_sha256": "d0565fa5f55341068f2354e0c4444a16cfa268e1c08701f3c59b2bfc8fefa918"
+}

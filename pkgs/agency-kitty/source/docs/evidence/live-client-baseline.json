@@ -1,0 +1,29 @@
+{
+  "read_only": true,
+  "capturedUtc": "2026-11-08T00:33:11.651771+00:00",
+  "host": "client",
+  "renderer": "Kitty0.48.0",
+  "rendererExecutable": "/nix/store/jvhn8sy84klkfkd4az26m5nkjbma7ni3-kitty-0.48.0/bin/.kitty-wrapped",
+  "launcher": "/home/tom/.local/bin/domicile-terminal",
+  "launcher_sha256": "f40ee14285001bdb49c93ede1f9714e8b4f9a0fc530010d0335469218f948b20",
+  "launcher_uses_plain_openssh": true,
+  "launcher_uses_ssh_kitten": false,
+  "python_launcher_relays_terminal_bytes": false,
+  "herdr_in_launch_route": false,
+  "sshExecutable": "/nix/store/cxkwj5gfyzjc6pw9yzy135zl5547y3d5-openssh-10.4p1/bin/ssh",
+  "kitty_config_sha256": "a87ebc1c07273b77fdc36f060f96a95c7ea07c10ba28ccbfd898e442293c9c1e",
+  "explicit_kitty_settings": [
+    "font_family      family=\"AnthropicMono Nerd Font\"",
+    "font_size        16.0",
+    "shell_integration enabled"
+  ],
+  "effective_ssh_settings": [
+    "hostname 100.65.85.114",
+    "compression no",
+    "controlmaster false",
+    "requesttty force",
+    "obscurekeystroketiming yes",
+    "ipqos ef cs0"
+  ],
+  "physical_latency_measured": false
+}

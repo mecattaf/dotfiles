@@ -1,0 +1,15 @@
+{
+  "evidence_recorded_utc": "2026-11-07T22:42:01.831079+00:00",
+  "build_host": "strix-coordinator",
+  "holder_version": "1.0.1-agency.2",
+  "binary_sha256": "44ea58fb4767171f786fe6a9a48972ebadea335923d3eef7fe36b5519a0f5300",
+  "package": "/nix/store/y32ncz29fg220970wk7vx5b92k64i393-agency-zmx-1.0.1-agency.2",
+  "derivation": "/nix/store/ji3ah3igb4r5419r6bgld5xy5p0kdizy-agency-zmx-1.0.1-agency.2.drv",
+  "nixpkgs": "/nix/store/6ki6bvn3klq68d41y35k4378nxvcbfbd-llgwlxshmy0ifvxh7f8wq53vk5x7vd13-source",
+  "recipe": "backend/zmx/package.nix",
+  "build_returncode": 0,
+  "wrong_binary_rejected": true,
+  "wrong_binary_diagnostic": "Agency zmx binary does not match the reviewed build receipt",
+  "wrong_binary_returncode": 1,
+  "installed_live": false
+}

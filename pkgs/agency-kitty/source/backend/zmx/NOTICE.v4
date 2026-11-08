@@ -1,0 +1,17 @@
+Agency zmx 1.0.1-agency.4 modifies MIT-licensed zmx 1.0.1.
+Upstream: https://github.com/neurosnap/zmx
+Pinned upstream commit: a35f00a2118b15a5e9d522a43035c8d7487df9b7.
+
+Changes include strict attach-only, restricted IPC, bounded flow control and
+history, lossless EOF drain, terminal protocol/theme/wrapping restoration,
+static Kitty graphics replay from the existing VT shadow, and explicit
+restore admission/refusal/image-free recovery. See agency-v4.patch and its
+build receipt. Graphics restoration code is MIT-licensed under the same terms
+as upstream; the small PNG decoder adapter follows Ghostty sys.zig (MIT).
+
+No terminal renderer is replaced. The native Kitty renderer and stock SSH
+kitten remain the local display/transport. Retained image bytes are decoded
+once in the NAS-side shadow, then streamed on reconnect without another
+image-sized snapshot allocation.
+
+The statically linked dependency notices are included under licenses/.
