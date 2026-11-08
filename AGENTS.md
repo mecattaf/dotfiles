@@ -53,8 +53,11 @@ repo holds the logic: `update-check` (home/dot_local/bin) reads
 use, rebuilds the rolling branch `update/<input>` from main, runs the gate and
 opens or refreshes one PR. The PR is a draft when the gate fails. The check
 skips the bump when no watched program changed version, and closes the PR
-once main carries the input. Fish, kitty and Wrangler ride the existing nixpkgs-fresh leaf overlay;
-new stable kernel major.minor series are issue watches. The Projects
+once main carries the input. Fish and Wrangler ride the existing nixpkgs-fresh
+leaf overlay. Kitty is source-pinned separately; its official stable GitHub
+releases are issue watches, including patch releases. Adoption updates its
+source and Go vendor hashes explicitly; see `docs/kitty-updates.md`. New stable
+kernel major.minor series are also issue watches. The Projects
 floor routine uses `update-check --if-idle --background --json`: soft hourly opportunities,
 load/Nix/Herdr admission checks and one completed attempt per Paris night.
 Every defer and failure is recorded. The detached worker survives the Floor

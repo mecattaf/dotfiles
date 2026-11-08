@@ -1,5 +1,5 @@
 {
-  "_comment": "What the nightly update check (home/dot_local/bin/update-check, #550) watches. One entry per flake input, one rolling PR per entry (branch update/<input>). follow = branch: the input tracks a branch and `nix flake update <input>` moves it. follow = release: flake.nix pins a tag or a commit, and the check moves the pin to the newest stable GitHub release. versions are flake attribute paths read before and after; notes name the GitHub releases whose bodies go into the PR for the version range. hosts are the closures the gate builds; build names any further flake output it builds (a package no host enables yet). switch is what a switch to the bump restarts, written for Tom. Adding a program is an edit here. The clock is a routine on the substrate floor (substrate T-7); nothing in this repo schedules it. issues watches report new upstream kernel series without changing the selected series; kernel compares major.minor only and ignores release candidates.",
+  "_comment": "What the nightly update check (home/dot_local/bin/update-check, #550) watches. One entry per flake input, one rolling PR per entry (branch update/<input>). follow = branch: the input tracks a branch and `nix flake update <input>` moves it. follow = release: flake.nix pins a tag or a commit, and the check moves the pin to the newest stable GitHub release. versions are flake attribute paths read before and after; notes name the GitHub releases whose bodies go into the PR for the version range. hosts are the closures the gate builds; build names any further flake output it builds (a package no host enables yet). switch is what a switch to the bump restarts, written for Tom. Adding a program is an edit here. The clock is a routine on the substrate floor (substrate T-7); nothing in this repo schedules it. issues watches report upstream releases without changing source pins. Kitty compares complete official stable GitHub versions independently of its fixed source recipe; kernel compares major.minor only and ignores release candidates.",
   "inputs": [
     {
       "name": "llm-agents",
@@ -127,7 +127,6 @@
         "linux (nas)": "nixosConfigurations.nas.config.boot.kernelPackages.kernel.version",
         "linux (client)": "nixosConfigurations.client.config.boot.kernelPackages.kernel.version",
         "fish": "nixosConfigurations.strix-coordinator.pkgs.fish.version",
-        "kitty": "nixosConfigurations.client.pkgs.kitty.version",
         "wrangler": "nixosConfigurations.strix-coordinator.pkgs.wrangler.version",
         "linux (worker)": "nixosConfigurations.strix-worker.config.boot.kernelPackages.kernel.version"
       },
@@ -135,10 +134,6 @@
         "fish": {
           "repo": "fish-shell/fish-shell",
           "tagPrefix": ""
-        },
-        "kitty": {
-          "repo": "kovidgoyal/kitty",
-          "tagPrefix": "v"
         },
         "wrangler": {
           "repo": "cloudflare/workers-sdk",
@@ -160,6 +155,17 @@
         "linux (worker)": "nixosConfigurations.strix-worker.config.boot.kernelPackages.kernel.version"
       },
       "reason": "This is a new stable major.minor series, not a point release. The fleet currently selects its kernel from nixpkgs-fresh. Kernel-series adoption and reboot are explicit daytime decisions; this watcher changes neither."
+    },
+    {
+      "name": "kitty",
+      "source": "github",
+      "repo": "kovidgoyal/kitty",
+      "tagPrefix": "v",
+      "versions": {
+        "kitty (client)": "nixosConfigurations.client.pkgs.kitty.version",
+        "kitty (nas)": "nixosConfigurations.nas.pkgs.kitty.version"
+      },
+      "reason": "Kitty is source-pinned in pkgs/kitty-0.50.nix, independently of nixpkgs-fresh. Review this official stable release before changing its version, fetchFromGitHub source hash and Go vendorHash; retain or rebase the procfs patch and run the native terminal/editor gates. The manual source/hash/vendor-hash workflow is documented in https://github.com/mecattaf/dotfiles/blob/main/docs/kitty-updates.md . This watch opens or reuses a review issue only: it never edits the recipe, builds a candidate, advances a pin or deploys."
     }
   ]
 }

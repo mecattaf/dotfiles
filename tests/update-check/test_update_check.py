@@ -381,6 +381,21 @@ class WatchFile(unittest.TestCase):
                 for out in e.get("build", []):
                     self.assertRegex(out, r"^\.#[\w.-]+$")
 
+    def test_source_pinned_kitty_has_an_independent_official_release_watch(self):
+        watch = json.loads(WATCH.read_text())
+        fresh = next(entry for entry in watch['inputs'] if entry['name'] == 'nixpkgs-fresh')
+        self.assertNotIn('kitty', fresh['versions'])
+        self.assertNotIn('kitty', fresh.get('notes', {}))
+        kitty = [entry for entry in watch['issues'] if entry['name'] == 'kitty']
+        self.assertEqual(len(kitty), 1)
+        self.assertEqual((kitty[0]['source'], kitty[0]['repo'], kitty[0]['tagPrefix']),
+                         ('github', 'kovidgoyal/kitty', 'v'))
+        self.assertFalse(kitty[0].get('seriesOnly', False))
+        self.assertEqual(set(kitty[0]['versions'].values()), {
+            'nixosConfigurations.client.pkgs.kitty.version',
+            'nixosConfigurations.nas.pkgs.kitty.version'})
+        self.assertIn('vendorHash', kitty[0]['reason'])
+
 
 class Run(unittest.TestCase):
     def setUp(self) -> None:
@@ -852,6 +867,67 @@ class IssueWatch(unittest.TestCase):
                 result = run.check_issue(entry)
                 self.assertEqual((result["status"], result["available"]), ("would-open-issue", "4.9.3"))
                 sh.assert_not_called()
+
+    def kitty_watch(self, directory):
+        entry = next(entry for entry in json.loads(WATCH.read_text())['issues'] if entry['name'] == 'kitty')
+        run = self.make_run(directory)
+        run.eval_versions.return_value = {'kitty (client)': '0.50.0', 'kitty (nas)': '0.50.0'}
+        run.releases = Mock(return_value=[
+            release('v0.50.0', 'today', 'current'),
+            release('v0.50.1', 'today', 'patch release'),
+            release('v0.51.0', 'today', 'preview', True),
+            {**release('v9.0.0', 'today', 'draft'), 'draft': True},
+            release('v0.52.0-rc1', 'today', 'not stable'),
+        ])
+        return run, entry
+
+    def test_kitty_patch_release_opens_review_without_pin_or_build_commands(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run, entry = self.kitty_watch(directory)
+            with patch.object(uc, 'gh_json', return_value=[]), \
+                    patch.object(uc, 'sh', return_value='https://github.com/example/issues/kitty') as sh, \
+                    patch.object(uc, 'git', side_effect=AssertionError('no pin/worktree mutation')):
+                result = run.check_issue(entry)
+            self.assertEqual((result['status'], result['available']), ('issue-opened', '0.50.1'))
+            run.releases.assert_called_once_with('kovidgoyal/kitty')
+            self.assertEqual(sh.call_count, 1)
+            self.assertEqual(sh.call_args.args[0][:3], ['gh', 'issue', 'create'])
+            body = (Path(directory) / 'kitty.issue.md').read_text()
+            self.assertIn('https://github.com/kovidgoyal/kitty/releases/tag/v0.50.1', body)
+            self.assertIn('fetchFromGitHub source hash and Go vendorHash', body)
+            self.assertIn('never edits the recipe', body)
+
+    def test_kitty_closed_issue_is_not_reopened(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run, entry = self.kitty_watch(directory)
+            with patch.object(uc, 'gh_json', return_value=[{
+                    'title': 'update: kitty 0.50.1 available', 'url': 'closed-issue', 'state': 'CLOSED'}]), \
+                    patch.object(uc, 'sh') as sh:
+                result = run.check_issue(entry)
+            self.assertEqual((result['status'], result['issue_state']), ('issue-exists', 'CLOSED'))
+            sh.assert_not_called()
+
+    def test_kitty_dry_run_and_current_release_have_no_remote_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run, entry = self.kitty_watch(directory)
+            run.args.dry_run = True
+            with patch.object(uc, 'gh_json', return_value=[]), patch.object(uc, 'sh') as sh:
+                self.assertEqual(run.check_issue(entry)['status'], 'would-open-issue')
+                sh.assert_not_called()
+            self.assertFalse((Path(directory) / 'kitty.issue.md').exists())
+            run.releases.return_value = [release('v0.50.0', 'today', 'current')]
+            with patch.object(uc, 'gh_json') as gh, patch.object(uc, 'sh') as sh:
+                self.assertEqual(run.check_issue(entry)['status'], 'current')
+                gh.assert_not_called(); sh.assert_not_called()
+
+    def test_kitty_unreadable_upstream_is_an_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run, entry = self.kitty_watch(directory)
+            run.releases.side_effect = uc.CheckError('official releases unavailable')
+            with patch.object(uc, 'gh_json') as gh, patch.object(uc, 'sh') as sh:
+                with self.assertRaisesRegex(uc.CheckError, 'official releases unavailable'):
+                    run.check_issue(entry)
+                gh.assert_not_called(); sh.assert_not_called()
 
 
 if __name__ == "__main__":
