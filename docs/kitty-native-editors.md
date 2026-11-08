@@ -124,6 +124,19 @@ which may have run before any UI existed. A fresh UI invalidates the upstream
 transmit cache and receives the retained image again. Changed upstream hashes
 fail with an explicit qualification error rather than silently hiding images.
 
+Multiple local terminal UIs can attach to one directory editor. Each receives
+a separately addressed native cell query with an echoed nonce, including on
+Neovim 0.12 where the response event does not identify its RPC channel. The
+first remaining native UI anchors Neovim's shared logical image layout.
+Original source pixels are retained and Kitty's native cell-relative graphics
+placements scale them separately for each terminal's font/DPI. This avoids
+enlarging a bitmap that was already downsampled for a smaller font. Viewport
+crops are converted back to original source coordinates; upstream document
+discovery, layout and backend remain in use. Native proof-35 attached two
+actual UIs with 9x19 and 14x30 cells, verified the original 1280x640 pixels in
+both graphics managers, preserved aspect ratio through a real split crop,
+and retained correct geometry when the first UI closed.
+
 ## Ctrl+B and the left file tree
 
 Dotfiles commit `d4bfa5ef79e5b80f8b4b670d794c451033cfce94` introduced the
