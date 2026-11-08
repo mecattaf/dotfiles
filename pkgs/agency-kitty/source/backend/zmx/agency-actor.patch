@@ -308,7 +308,7 @@ index ad05c2b..27ac509 100644
          .tag = tag,
          .len = @intCast(data.len),
 diff --git a/src/loop.zig b/src/loop.zig
-index f5d6708..64e87db 100644
+index f5d6708..efd3b38 100644
 --- a/src/loop.zig
 +++ b/src/loop.zig
 @@ -13,6 +13,9 @@ const daemonize = @import("daemonize.zig");
@@ -484,12 +484,11 @@ index f5d6708..64e87db 100644
  
      // Carries the tail of the previous PTY read so the task-exit marker
      // search below can see across a read() boundary. Sized to comfortably
-@@ -261,17 +309,64 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -261,17 +309,63 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
      var marker_carry_len: usize = 0;
  
      var had_terminal_client = daemon.hasTerminalClient();
 +    var pty_eof = false;
-+    var eof_notice_sent = false;
  
      daemon_loop: while (daemon.running) {
 -        // If the program asked for focus reports (DECSET 1004), send focus-out
@@ -539,17 +538,17 @@ index f5d6708..64e87db 100644
 +        if (borrowed and !need_pause) shadow.resumeParsing();
 +        const restoring_leader = if (daemon.getLeaderClient()) |leader| leader.isRestoring() else false;
 +        if (pty_eof) {
-+            var pending = false;
++            if (daemon.clients.items.len == 0) break :daemon_loop;
++            // Completion is per client: a stalled observer must never hold a
++            // healthy foreground open. Queue the end notice after this client's
++            // complete snapshot/final bytes, without requiring RestoreReady.
 +            for (daemon.clients.items) |client| {
-+                if (client.write_buf.items.len > 0 or client.isRestoring()) pending = true;
-+            }
-+            if (!pending) {
-+                if (eof_notice_sent or daemon.clients.items.len == 0) break :daemon_loop;
-+                for (daemon.clients.items) |client| {
-+                    try ipc.appendMessage(gpa, &client.write_buf, .StreamEnd, "");
-+                    client.has_pending_output = true;
-+                }
-+                eof_notice_sent = true;
++                if (client.close_after_flush or client.restore != null or
++                    client.graphics_restore_state != null or client.pending_vt != null) continue;
++                if (client.write_buf.items.len > ipc.MAX_QUEUE_LEN - @sizeOf(ipc.Header)) continue;
++                try ipc.appendMessage(gpa, &client.write_buf, .StreamEnd, "");
++                client.has_pending_output = true;
++                client.close_after_flush = true;
 +            }
          }
 -        had_terminal_client = has_terminal_client;
@@ -557,7 +556,7 @@ index f5d6708..64e87db 100644
          poll_fds.clearRetainingCapacity();
  
          try poll_fds.append(gpa, .{
-@@ -280,20 +375,33 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -280,20 +374,33 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
              .revents = 0,
          });
  
@@ -594,7 +593,7 @@ index f5d6708..64e87db 100644
              if (client.has_pending_output) {
                  events |= lib_posix.POLL.OUT;
              }
-@@ -304,7 +412,12 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -304,7 +411,12 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
              });
          }
  
@@ -608,7 +607,7 @@ index f5d6708..64e87db 100644
  
          if (poll_fds.items[2].revents & lib_posix.POLL.IN != 0) {
              signal.drainSignalPipe() catch {};
-@@ -325,6 +438,11 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -325,6 +437,11 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
                  null,
                  lib_posix.SOCK.NONBLOCK | lib_posix.SOCK.CLOEXEC,
              );
@@ -620,7 +619,7 @@ index f5d6708..64e87db 100644
              const client = try gpa.create(Client);
              client.* = Client{
                  .alloc = gpa,
-@@ -345,7 +463,7 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -345,7 +462,7 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
          }
  
          const inp_flags = lib_posix.POLL.IN | lib_posix.POLL.HUP | lib_posix.POLL.ERR | lib_posix.POLL.NVAL;
@@ -629,7 +628,7 @@ index f5d6708..64e87db 100644
              // Read from PTY. Buffer is sized to N_TTY_BUF_SIZE (4096): the hard
              // kernel limit for the N_TTY line discipline. A larger buffer doesn't
              // help: each read() from a PTY master returns at most 4096 bytes
-@@ -360,14 +478,14 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -360,14 +477,14 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
                  if (n == 0) {
                      // EOF: Shell exited
                      std.log.info("shell exited pty_fd={d}", .{pty_fd});
@@ -650,7 +649,7 @@ index f5d6708..64e87db 100644
                      daemon.has_pty_output = true;
  
                      // When no real terminal client has attached yet, respond to
-@@ -417,11 +535,13 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -417,11 +534,13 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
                      const broadcast_data = util.rewritePromptRedraw(gpa, buf[0..n]) orelse buf[0..n];
                      defer if (broadcast_data.ptr != buf[0..n].ptr) gpa.free(broadcast_data);
                      for (daemon.clients.items) |client| {
@@ -666,7 +665,7 @@ index f5d6708..64e87db 100644
                              continue;
                          };
                          client.has_pending_output = true;
-@@ -448,7 +568,7 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -448,7 +567,7 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
          // Only iterate over clients that were present when poll_fds was constructed
          // poll_fds contains [server, pty, sig_pipe, client0, client1, ...]
          // So number of clients in poll_fds is poll_fds.items.len - 3
@@ -675,7 +674,7 @@ index f5d6708..64e87db 100644
          if (i > num_polled_clients) {
              // If we have more clients than polled (i.e. we just accepted one), start from the
              // polled ones
-@@ -459,34 +579,74 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -459,34 +578,74 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
              i -= 1;
              const client = daemon.clients.items[i];
              const revents = poll_fds.items[i + 3].revents;
@@ -773,7 +772,7 @@ index f5d6708..64e87db 100644
                          .Detach => {
                              daemon.handleDetach(gpa, client, i);
                              break :clients_loop;
-@@ -498,17 +658,12 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -498,17 +657,12 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
                          .Kill => {
                              break :daemon_loop;
                          },
@@ -792,7 +791,7 @@ index f5d6708..64e87db 100644
                          _ => {
                              std.log.warn(
                                  "ignoring unknown IPC tag={d}",
-@@ -521,6 +676,11 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -521,6 +675,11 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
                  }
              }
  
@@ -804,7 +803,7 @@ index f5d6708..64e87db 100644
              if (revents & lib_posix.POLL.OUT != 0) {
                  // Flush pending output buffers
                  const n = lib_posix.write(client.socket_fd, client.write_buf.items) catch |err| blk: {
-@@ -537,6 +697,10 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -537,6 +696,10 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
  
                  if (client.write_buf.items.len == 0) {
                      client.has_pending_output = false;
@@ -815,7 +814,7 @@ index f5d6708..64e87db 100644
                  }
              }
  
-@@ -563,6 +727,40 @@ const ClientResult = struct {
+@@ -563,6 +726,40 @@ const ClientResult = struct {
      cwd: ?[]const u8 = null,
  };
  
@@ -856,7 +855,7 @@ index f5d6708..64e87db 100644
  /// Client represents each terminal that has connected to a session.
  ///
  /// Multiple Clients can connect to a single session.
-@@ -570,16 +768,71 @@ pub const Client = struct {
+@@ -570,16 +767,71 @@ pub const Client = struct {
      alloc: std.mem.Allocator,
      socket_fd: i32,
      has_pending_output: bool = false,
@@ -928,7 +927,7 @@ index f5d6708..64e87db 100644
      }
  
      fn setEnv(self: *Client, gpa: std.mem.Allocator, env_str: []const u8) !void {
-@@ -623,6 +876,8 @@ pub const Daemon = struct {
+@@ -623,6 +875,8 @@ pub const Daemon = struct {
      cwd_buf: [std.fs.max_path_bytes]u8 = undefined,
      cwd_path_buf: [std.fs.max_path_bytes]u8 = undefined,
      has_pty_output: bool = false,
@@ -937,7 +936,7 @@ index f5d6708..64e87db 100644
      created_at: u64, // unix timestamp (ns)
      is_task_mode: bool = false, // flag for when session is run as a task
      task_id: [4]u8 = undefined,
-@@ -674,7 +929,17 @@ pub const Daemon = struct {
+@@ -674,7 +928,17 @@ pub const Daemon = struct {
          const saved = term.flags.shell_redraws_prompt;
          term.flags.shell_redraws_prompt = .false;
          defer term.flags.shell_redraws_prompt = saved;
@@ -955,7 +954,7 @@ index f5d6708..64e87db 100644
      }
  
      /// True while a client that sent .Init (a real `zmx attach`) is connected.
-@@ -843,7 +1108,7 @@ pub const Daemon = struct {
+@@ -843,7 +1107,7 @@ pub const Daemon = struct {
  
          const gpa: std.mem.Allocator = blk: {
              if (builtin.mode == .debug) {
@@ -964,7 +963,7 @@ index f5d6708..64e87db 100644
                  const Static = struct {
                      var gpa: GPA = .{};
                  };
-@@ -894,29 +1159,18 @@ pub const Daemon = struct {
+@@ -894,29 +1158,18 @@ pub const Daemon = struct {
      const PTY_WRITE_BUF_MAX = 256 * 1024;
  
      /// Queue bytes for the PTY's stdin. Flushed by daemonLoop on POLLOUT.
@@ -998,7 +997,7 @@ index f5d6708..64e87db 100644
      }
  
      pub fn handleInput(self: *Daemon, gpa: std.mem.Allocator, client: *Client, payload: []const u8) !void {
-@@ -981,6 +1235,18 @@ pub const Daemon = struct {
+@@ -981,6 +1234,18 @@ pub const Daemon = struct {
          pty_fd: i32,
          term: *ghostty_vt.Terminal,
          payload: []const u8,
@@ -1017,7 +1016,7 @@ index f5d6708..64e87db 100644
      ) !void {
          if (payload.len != @sizeOf(ipc.Resize)) return;
  
-@@ -989,6 +1255,8 @@ pub const Daemon = struct {
+@@ -989,6 +1254,8 @@ pub const Daemon = struct {
              client.has_pending_output = false;
          }
          client.is_terminal = true;
@@ -1026,7 +1025,7 @@ index f5d6708..64e87db 100644
  
          if (self.leader_client_fd == null) {
              try self.setLeader(gpa, client);
-@@ -1006,29 +1274,50 @@ pub const Daemon = struct {
+@@ -1006,29 +1273,50 @@ pub const Daemon = struct {
              try resizeTerm(gpa, term, resize.cols, resize.rows);
          }
  
@@ -1090,7 +1089,7 @@ index f5d6708..64e87db 100644
          // only resize if leader
          if (is_leader) {
              var ws = resize.winsize();
-@@ -1576,3 +1865,80 @@ test "handleEnvGet returns leader client's environment variables including unset
+@@ -1576,3 +1864,80 @@ test "handleEnvGet returns leader client's environment variables including unset
      const pay3 = client_req.write_buf.items[@sizeOf(ipc.Header)..];
      try std.testing.expectEqualStrings("DISPLAY=:99\n", pay3);
  }

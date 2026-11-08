@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 
-from . import harness, harness_state, images, notifications, targets, transcripts
+from . import harness, harness_process, harness_state, images, notifications, targets, transcripts
 from ..transport import NAS_HOST, ssh_command_argv
 
 
@@ -21,12 +21,14 @@ def _target(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--kitty-socket", required=True)
     parser.add_argument("--kitten-path", required=True)
     parser.add_argument("--harness-session", default="")
+    parser.add_argument("--harness-invocation", default="")
 
 
 def _snapshot(args) -> targets.Target:
     if args.window_id <= 0 or args.child_pid <= 0 or not args.host or not args.session:
         raise ValueError("the target must name a window, child, remote host and session")
-    target = targets.Target(args.window_id, args.child_pid, args.host, args.session, args.harness_session)
+    target = targets.Target(args.window_id, args.child_pid, args.host, args.session, args.harness_session,
+                            getattr(args,'harness_invocation',''))
     target.validate()
     return target
 
@@ -36,7 +38,8 @@ def _deliver(args, kind: str, value: str) -> None:
         # Explicit gesture work only, after staging and before the nonblocking
         # GUI callback. This is not an atomic cross-host input transaction.
         command = ssh_command_argv([getattr(args,'remote_program','agency-kitty'),'capability','validate-harness',
-                                   '--session-id',args.session,'--harness-session',args.harness_session])
+                                   '--session-id',args.session,'--harness-session',args.harness_session,
+                                   '--harness-invocation',getattr(args,'harness_invocation','')])
         result = json.loads(images.command_bytes(command,4096,timeout=6))
         if result != {'version':1,'valid':True}:
             raise RuntimeError('harness is no longer verified foreground; zero input sent')
@@ -91,6 +94,7 @@ def parser() -> argparse.ArgumentParser:
     validity = commands.add_parser('validate-harness',help='bounded metadata check for an explicit pending paste')
     validity.add_argument('--session-id',required=True)
     validity.add_argument('--harness-session',required=True)
+    validity.add_argument('--harness-invocation',default='')
     for verb in ("bind-harness", "harness-event"):
         bind = commands.add_parser(verb, help="harness hook: exact transcript binding or turn completion/attention metadata")
         bind.add_argument("--harness", choices=("claude", "codex"), required=True)
@@ -153,7 +157,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == 'validate-harness':
             if not args.harness_session or len(args.harness_session)>256 or any(ord(c)<32 for c in args.harness_session):
                 raise ValueError('invalid exact harness session identity')
-            print(json.dumps({'version':1,'valid':harness_state.can_target(args.session_id,args.harness_session)}))
+            print(json.dumps({'version':1,'valid':harness_state.can_target(args.session_id,args.harness_session,
+                                                                         invocation=args.harness_invocation)}))
         elif args.command in {"bind-harness", "harness-event"}:
             # No transcript content is read, and no hook output enters model context.
             managed = os.environ.get("AGENCY_KITTY_SESSION", "")
@@ -161,7 +166,8 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             payload = json.loads(images.read_bounded(sys.stdin.buffer, 2 * 1024 * 1024))
             emit = harness.binding if args.command == "bind-harness" else harness.attention
-            wire = emit(payload, args.harness, managed, os.environ.get("CODEX_THREAD_ID", ""))
+            generation = harness_process.invocation(os.environ.get(harness_process.ENVIRONMENT,''),args.harness)
+            wire = emit(payload, args.harness, managed, os.environ.get("CODEX_THREAD_ID", ""),invocation=generation)
             if wire:
                 harness_state.record_event(payload, args.harness, managed,
                                            inherited_id=os.environ.get("CODEX_THREAD_ID", ""))

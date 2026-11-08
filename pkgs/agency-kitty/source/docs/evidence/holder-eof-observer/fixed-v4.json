@@ -1,0 +1,13 @@
+{
+  "binary": "/home/tom/work/kitty-consolidation/eof-review/stable/zig-out/bin/zmx",
+  "sha256": "ef206dd5bf09e20f71f895c46818e7f53e54bcb29632d79e8052ee87872d82b9",
+  "protocol": 204,
+  "latencySamplesCollected": false,
+  "expectBlockedBaseline": false,
+  "observerRestoreDoneWithoutReady": true,
+  "foregroundFinalBytesReceived": true,
+  "foregroundExitedBeforeObserverClose": true,
+  "observerFinalBytesThenStreamEndThenEof": true,
+  "passed": true,
+  "cleanupOwnedChildrenEmpty": true
+}

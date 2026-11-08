@@ -84,12 +84,25 @@ Apply the following order to that isolated descendant:
    owner's relative-dependency bundling, entry stamp, checked config, recovery
    paths and staged snapshot identity. A source pin alone does not select an
    engine, and placing binaries on disk does not replace the loaded engine.
-6. Apply [client-entry.patch](client-entry.patch) only after checking the exact
+6. Admit the NAS role before changing client launch routes. A package built on
+   Strix is not automatically installed or on PATH on NAS. The default remote
+   command is bare `agency-kitty`; make the reviewed matching NAS helper and
+   holder available there first, or explicitly pin
+   `AGENCY_KITTY_REMOTE_PROGRAM` to its already-present NAS-role executable.
+   That override alone does not install the editor: `editor-local-attach`
+   separately calls `dsh-editor`. Admit matching NAS terminfo/fish integration,
+   `dsh-editor`, the full Neovim configuration and the new-shell
+   `DSH_EDITOR_VI`/`DSH_EDITOR_ROLE` environment as one reviewed role. Preserve
+   live Herdr, harness and existing editor processes; inspect activation deltas
+   rather than assuming a whole NAS switch is harmless. Existing retained
+   shells do not retroactively gain new session variables. Qualify fresh
+   managed direct and retained shells separately, including primary `vi`.
+7. Apply [client-entry.patch](client-entry.patch) only after checking the exact
    original entry hash in [its provenance](client-entry-provenance.json).
    It changes Mod+Enter, Mod+Ctrl+Shift+Enter and Mod+Shift+Enter through the
    public `ImagineOptions.keybindings` seam. It changes no Imagine Desktop,
    AgencyKeys, internal reducer, window class convention or other key.
-7. If adopting the native chat catalogue too, compose its separately reviewed
+8. If adopting the native chat catalogue too, compose its separately reviewed
    NAS catalogue companion and Imagine change, then set the existing public
    `sessionCatalogue.nativeTerminalLauncher` to the absolute installed helper.
    The original entry lacks that optional field. The separately optional

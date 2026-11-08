@@ -1,0 +1,14 @@
+{
+  "stable": {
+    "binary": "/home/tom/work/kitty-consolidation/eof-review/stable/zig-out/bin/zmx",
+    "sha256": "ef206dd5bf09e20f71f895c46818e7f53e54bcb29632d79e8052ee87872d82b9",
+    "bytes": 17654472,
+    "sourceArchiveSha256": "1eaa1bc2a059d7fff2239262719290765465f1463cf73a8e308ac86308653c20"
+  },
+  "actor": {
+    "binary": "/home/tom/work/kitty-consolidation/eof-review/actor/zig-out/bin/zmx",
+    "sha256": "6d3df52b9b6451cdee819934d7d4ab74027d15214c8357d07ca6cfc6ec9c929e",
+    "bytes": 17695912,
+    "sourceArchiveSha256": "38401af370cdfa823a86dbc131a034f1285529f5cf06473252826ecd16afd616"
+  }
+}

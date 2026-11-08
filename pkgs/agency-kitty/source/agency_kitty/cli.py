@@ -55,7 +55,7 @@ def emit_metadata(session: Session, *, persistent: bool = True) -> None:
     values["agency_chat"] = session.chat_ids[0] if session.chat_ids else ""
     values["agency_chats"] = json.dumps(session.chat_ids, ensure_ascii=False, separators=(",", ":"))
     values["agency_workspace"] = session.workspace_id or ""
-    for key in ("agency_harness", "agency_harness_session", "agency_transcript", "agency_attention", "agency_status", "agency_program_status", "agency_editor_request"):
+    for key in ("agency_harness", "agency_harness_session", "agency_harness_invocation", "agency_transcript", "agency_attention", "agency_status", "agency_program_status", "agency_editor_request"):
         values[key] = ""
     for key, value in values.items():
         encoded = base64.b64encode(value.encode()).decode()

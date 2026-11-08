@@ -1,0 +1,38 @@
+{
+  "baseline-actor.json": {
+    "sha256": "3610872912dcd75b972eac5faa7e8d9dbccb29c78ebf02914cf0a2643e5f388f",
+    "bytes": 508
+  },
+  "baseline-v4.json": {
+    "sha256": "1672763fde2fb37723cab437cbaa5b2707cb580c9f985f9e589f5eb207ea3c29",
+    "bytes": 500
+  },
+  "binaries.json": {
+    "sha256": "6def7f4de415449dda16f091f4e03b41688f16b68d94bd610af8d7f6e1f9961a",
+    "bytes": 609
+  },
+  "build.json": {
+    "sha256": "1f09a92c80c3f6998b7423f554adc78456440cebe5231755a198bd4fc44d8257",
+    "bytes": 1486
+  },
+  "fixed-actor.json": {
+    "sha256": "4cc0dc7394807bf022bdf15e72a7fc25ad3216a467925dbbe818740849dd22ff",
+    "bytes": 490
+  },
+  "fixed-v4.json": {
+    "sha256": "9ded5d8635903de36437a04d13ed7ac50d453217b5aa673820ca1ec16682baab",
+    "bytes": 491
+  },
+  "functional-actor.json": {
+    "sha256": "4dc2be6d8bf8c6b72dff4e260a7e6ddde7736c24ac752de1a08a68b7b180f5e4",
+    "bytes": 2265
+  },
+  "functional-v4.json": {
+    "sha256": "311d9de1f093e2b029dba04a3275bfce08a1c4c809fadff88d08ef1e3296755e",
+    "bytes": 2266
+  },
+  "stopped-worker-actor.json": {
+    "sha256": "eeb03ce462b0a802a2baa8d34a78b01dcf8c97959a5ad7f6e18d579442dab09a",
+    "bytes": 679
+  }
+}

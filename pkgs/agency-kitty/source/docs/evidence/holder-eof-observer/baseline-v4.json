@@ -1,0 +1,13 @@
+{
+  "binary": "/nix/store/h2c9h8k94v9qqzxj5aii4v0lvn5jl417-agency-zmx-1.0.1-agency.4-vt1/bin/zmx",
+  "sha256": "6a217563b790487c80dddae9f30bf06c26c5f8faaa6c4fff02f2b5e551aeed02",
+  "protocol": 204,
+  "latencySamplesCollected": false,
+  "expectBlockedBaseline": true,
+  "observerRestoreDoneWithoutReady": true,
+  "foregroundFinalBytesReceived": true,
+  "foregroundExitedBeforeObserverClose": false,
+  "foregroundExitedAfterObserverClose": true,
+  "passed": true,
+  "cleanupOwnedChildrenEmpty": true
+}

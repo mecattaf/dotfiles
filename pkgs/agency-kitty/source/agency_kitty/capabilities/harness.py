@@ -13,7 +13,7 @@ def user_var(name: str, value: str) -> bytes:
     return b"\x1b]1337;SetUserVar=" + name.encode() + b"=" + base64.b64encode(value.encode()) + b"\x07"
 
 
-def binding(payload: dict, harness: str, managed_session: str, inherited_id: str = "") -> bytes:
+def binding(payload: dict, harness: str, managed_session: str, inherited_id: str = "", *, invocation: str = "") -> bytes:
     if harness not in {"claude", "codex"}:
         raise ValueError("unsupported harness")
     if not managed_session:
@@ -27,6 +27,8 @@ def binding(payload: dict, harness: str, managed_session: str, inherited_id: str
     if harness == "codex" and inherited_id and identity != inherited_id:
         return b""  # a background/subagent session cannot rebind its parent's UI
     event_data = {"harness": harness, "session_id": identity, "managed_session": managed_session}
+    if invocation:
+        event_data['invocation'] = invocation
     if event == "SessionStart":
         path = payload.get("transcript_path")
         if path is not None and (not isinstance(path, str) or not Path(path).is_absolute() or len(path) > 4096 or any(ord(c) < 32 for c in path)):
@@ -38,7 +40,7 @@ def binding(payload: dict, harness: str, managed_session: str, inherited_id: str
     return user_var(key, json.dumps(event_data, ensure_ascii=False))
 
 
-def attention(payload: dict, harness: str, managed_session: str, inherited_id: str = "") -> bytes:
+def attention(payload: dict, harness: str, managed_session: str, inherited_id: str = "", *, invocation: str = "") -> bytes:
     """Turn completion/attention are distinct from process or session exit."""
     if harness not in {"claude", "codex"}:
         raise ValueError("unsupported harness")
@@ -60,6 +62,8 @@ def attention(payload: dict, harness: str, managed_session: str, inherited_id: s
         return b""  # SessionEnd is not a completed turn
     data = {"managed_session": managed_session, "harness": harness, "session_id": identity,
             "state": state, "event": event}
+    if invocation:
+        data['invocation'] = invocation
     turn = payload.get("turn_id")
     if isinstance(turn, str) and len(turn) <= 256:
         data["turn_id"] = turn

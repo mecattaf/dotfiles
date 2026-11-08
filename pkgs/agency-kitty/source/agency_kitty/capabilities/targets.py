@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 from dataclasses import asdict, dataclass
 import json
+import re
 from pathlib import Path
 import socket as sockets
 
@@ -18,11 +19,14 @@ class Target:
     host: str
     session: str
     harness_session: str = ""
+    harness_invocation: str = ""
 
     def validate(self) -> None:
         if self.host != NAS_HOST or self.window_id <= 0 or self.child_pid <= 0:
             raise ValueError("target must name one window and the pinned NAS identity")
         validate_id(self.session)
+        if self.harness_invocation and not re.fullmatch(r'[0-9a-f]{64}',self.harness_invocation):
+            raise ValueError('invalid captured harness invocation')
 
     def matches(self, window) -> bool:
         return (window is not None and not getattr(window, "destroyed", False)
@@ -30,7 +34,8 @@ class Target:
                 and getattr(window.child, "root_pid", window.child.pid) == self.child_pid
                 and window.user_vars.get("agency_host", "") == self.host
                 and window.user_vars.get("agency_session", "") == self.session
-                and window.user_vars.get("agency_harness_session", "") == self.harness_session)
+                and window.user_vars.get("agency_harness_session", "") == self.harness_session
+                and window.user_vars.get("agency_harness_invocation", "") == self.harness_invocation)
 
 
 def encode(target: Target, kind: str, value: str) -> str:

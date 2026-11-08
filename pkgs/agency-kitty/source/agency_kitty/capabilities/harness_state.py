@@ -114,6 +114,7 @@ def record_event(payload: dict, name: str, identity: str, *, store: SessionStore
     if event!='SessionEnd':
         harness.validate_terminal_context(context)
     token = os.environ.get(harness_process.ENVIRONMENT,'') if process_token is None else process_token
+    generation = harness_process.invocation(token,name)
     with _directory(store, True) as directory:
         lock = os.open(identity + ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=directory)
         try:
@@ -129,7 +130,8 @@ def record_event(payload: dict, name: str, identity: str, *, store: SessionStore
                     time.sleep(0.01)
             current = _read(directory, identity)
             exact = (current is not None and current.get("harness") == name
-                     and current.get("session_id") == payload["session_id"] and current.get("terminal_context") == context)
+                     and current.get("session_id") == payload["session_id"] and current.get("terminal_context") == context
+                     and current.get('invocation','') == generation)
             if exact and current.get('process') is not None:
                 parsed = harness_process.parse(token,name)
                 exact = parsed is not None and all(current['process'].get(key)==value for key,value in parsed.items())
@@ -137,6 +139,7 @@ def record_event(payload: dict, name: str, identity: str, *, store: SessionStore
                 value = {"version": 1, "terminal_id": identity, "harness": name,
                          "session_id": payload["session_id"], "path": payload.get("transcript_path"),
                          "terminal_context": context, "ended": False, "attention": None,
+                         "invocation":generation,
                          "process":harness_process.attest(token,name)}
             elif event == "SessionEnd":
                 if not exact:
@@ -195,11 +198,13 @@ def status(identity: str, *, store: SessionStore | None = None) -> dict | None:
     return {'version':1,'harness':name,'state':state,'foreground':active,'verified':verified}
 
 
-def can_target(identity: str, harness_session: str, *, store: SessionStore | None = None) -> bool:
+def can_target(identity: str, harness_session: str, *, invocation: str = "", store: SessionStore | None = None) -> bool:
     """Explicit gesture validation, independent of possibly stale local tags."""
     validate_id(identity)
     value = _saved(identity,store or SessionStore())
-    return (value is not None and not value['ended'] and value.get('session_id')==harness_session
+    return (isinstance(invocation,str) and len(invocation)==64
+            and value is not None and not value['ended'] and value.get('session_id')==harness_session
+            and value.get('invocation')==invocation
             and harness_process.foreground(value.get('process'),value['terminal_context'],value.get('harness'))=='foreground')
 
 
@@ -229,10 +234,11 @@ def read_rebind(identity: str, *, store: SessionStore | None = None) -> bytes:
         return b''
     payload = {"session_id": value.get("session_id"), "transcript_path": value.get("path"),
                "hook_event_name": "SessionStart"}
-    wire = harness.binding(payload, value.get("harness"), identity)
+    generation = value.get('invocation','')
+    wire = harness.binding(payload, value.get("harness"), identity, invocation=generation)
     attention = value.get("attention")
     if attention is not None:
         if not isinstance(attention, dict):
             raise ValueError("invalid saved harness attention state")
-        wire += harness.attention({**attention, "session_id": value["session_id"]}, value["harness"], identity)
+        wire += harness.attention({**attention, "session_id": value["session_id"]}, value["harness"], identity, invocation=generation)
     return wire

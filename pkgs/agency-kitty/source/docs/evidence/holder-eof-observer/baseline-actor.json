@@ -1,0 +1,13 @@
+{
+  "binary": "/nix/store/dk79ahln6h6p0323yby3gc5a5gck9w6p-agency-zmx-actor-1.0.1-agency.5-actor/bin/zmx",
+  "sha256": "4cbf364bbe9649187132265661cbaedeec13d36f47998a57cb1d75086dea7d61",
+  "protocol": 205,
+  "latencySamplesCollected": false,
+  "expectBlockedBaseline": true,
+  "observerRestoreDoneWithoutReady": true,
+  "foregroundFinalBytesReceived": true,
+  "foregroundExitedBeforeObserverClose": false,
+  "foregroundExitedAfterObserverClose": true,
+  "passed": true,
+  "cleanupOwnedChildrenEmpty": true
+}

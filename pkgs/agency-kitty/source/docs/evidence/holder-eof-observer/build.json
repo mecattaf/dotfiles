@@ -1,0 +1,39 @@
+{
+  "compiler": "/nix/store/fwa2gmh73w52zs758gjlz07jnxvdydv5-agency-zig-0.17.0/zig",
+  "sha256": "7c61539af19fa4082c94848f1c2b57b89e76dc6cfd5bd4c57764c3caf8f82272",
+  "version": "0.17.0",
+  "target": "x86_64-linux-musl",
+  "optimization": "ReleaseSafe",
+  "nixBuilds": 0,
+  "runtimeIsolation": "runtime-test",
+  "bothBuildsSucceeded": true,
+  "buildSummary": "68/68 steps succeeded for each candidate",
+  "latencySamplesCollected": 0,
+  "sourceBase": "c750c99684314495a5a73797526a5a88dae0c42f",
+  "fixCommit": "b05f293eb155121b5e0b69f1ceb0c0fec4bf7a2d",
+  "upstreamCommit": "a35f00a2118b15a5e9d522a43035c8d7487df9b7",
+  "ghosttyCommit": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
+  "argv": [
+    "runtime-test",
+    "--",
+    "zig",
+    "build",
+    "-j4",
+    "-Doptimize=ReleaseSafe",
+    "-Dtarget=x86_64-linux-musl",
+    "--summary",
+    "all"
+  ],
+  "sourcePatches": {
+    "agency-v4-vt1.patch": "7de15ee00079a06cf5dbfe06940e91d200698953a59d692b7138bccfb7069814",
+    "agency-actor.patch": "adf64ad66ab7e9e43831475a91f057f01f06c1fcc5796e66c942d521030fded1"
+  },
+  "fixtures": {
+    "qualify_eof_observer.py": "98a77514606f30a96775cf06c3c024d1c38f415585f50d020bf8aaf85c844e47",
+    "qualify_transport.py": "7b01f54c35b71926bfb115e2c310c8ab3a7368e784766c4d8053ad4e75ecf10e",
+    "actor_qualification.py": "ab1657e023c78a3fc06f998064e30f67f0c263aa89af8d91ed9cbb417f675974"
+  },
+  "nativeGuiRerun": false,
+  "frozenTimingArtifactUnchanged": true,
+  "productionPolicyChanged": false
+}

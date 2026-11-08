@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import os
 from pathlib import Path
 import sys
@@ -62,7 +63,8 @@ def _target(window) -> dict:
     return {"window_id": window.id, "child_pid": getattr(window.child, "root_pid", window.child.pid),
             "host": window.user_vars.get("agency_host", ""),
             "session": window.user_vars.get("agency_session", ""),
-            "harness_session": window.user_vars.get("agency_harness_session", "")}
+            "harness_session": window.user_vars.get("agency_harness_session", ""),
+            "harness_invocation": window.user_vars.get("agency_harness_invocation", "")}
 
 
 def _matches(window, target: dict) -> bool:
@@ -113,6 +115,8 @@ def _deliver(boss, callback_window, envelope: str) -> bool:
     kind, value = message["kind"], message["value"]
     if not isinstance(value, str):
         raise ValueError("capability value must be text")
+    if kind == 'paste' and target.get('harness_session') and not re.fullmatch(r'[0-9a-f]{64}',target.get('harness_invocation','')):
+        return False  # old bound targets have no invocation identity to compare
     if kind == "paste-clipboard":
         from kitty.clipboard import get_clipboard_string
         value = get_clipboard_string()
@@ -200,12 +204,16 @@ def apply_harness_binding(boss, window, value: str, unbind: bool = False) -> Non
     if event.get("managed_session") != window.user_vars.get("agency_session"):
         return
     identity, name = event.get("session_id"), event.get("harness")
+    invocation = event.get('invocation','')
+    if not isinstance(invocation,str) or invocation and not re.fullmatch(r'[0-9a-f]{64}',invocation):
+        raise ValueError('invalid harness invocation generation')
     if not isinstance(identity, str) or not identity or name not in {"claude", "codex"}:
         raise ValueError("invalid harness binding")
     if unbind:
-        if window.user_vars.get("agency_harness_session") != identity or window.user_vars.get("agency_harness") != name:
+        if (window.user_vars.get("agency_harness_session") != identity or window.user_vars.get("agency_harness") != name
+                or window.user_vars.get('agency_harness_invocation','') != invocation):
             return  # an old or background session cannot clear a newer binding
-        for key in ("agency_harness", "agency_transcript", "agency_harness_session"):
+        for key in ("agency_harness", "agency_transcript", "agency_harness_session", "agency_harness_invocation"):
             window.set_user_var(key, None)
     else:
         path = event.get("path")
@@ -214,6 +222,7 @@ def apply_harness_binding(boss, window, value: str, unbind: bool = False) -> Non
         window.set_user_var("agency_harness", name)
         window.set_user_var("agency_transcript", path)
         window.set_user_var("agency_harness_session", identity)
+        window.set_user_var('agency_harness_invocation',invocation or None)
     # Completion belongs to one occupant, and is restored separately on
     # reconnect. A new/start or matching/end must not retain an old cue.
     window.set_user_var("agency_attention", None)
@@ -226,6 +235,7 @@ def apply_harness_event(boss, window, value: str) -> None:
     event = json.loads(value)
     if (event.get("managed_session") != window.user_vars.get("agency_session")
             or event.get("session_id") != window.user_vars.get("agency_harness_session")
+            or event.get('invocation','') != window.user_vars.get('agency_harness_invocation','')
             or event.get("harness") != window.user_vars.get("agency_harness")):
         return
     state = event.get("state")

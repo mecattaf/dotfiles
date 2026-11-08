@@ -6,6 +6,7 @@ does not parse screens, watch processes, or participate in ordinary key input.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import uuid
@@ -63,6 +64,14 @@ def attest(token: str, name: str) -> dict | None:
         raise ValueError('managed harness invocation ended or changed')
     executable = Path(f'/proc/{value["pid"]}/exe').stat()
     return {**value,'executable_device':executable.st_dev,'executable_inode':executable.st_ino}
+
+
+def invocation(token: str, name: str) -> str:
+    """Stable generation for one launcher exec, not its reusable conversation."""
+    value = parse(token,name)
+    if value is None:
+        return ''
+    return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
 
 
 def foreground(value: dict | None, context: str, name: str) -> str:
