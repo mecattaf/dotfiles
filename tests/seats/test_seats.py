@@ -1028,7 +1028,7 @@ class BurndownLedgerTest(unittest.TestCase):
         self.assertEqual(seats["gemini-1"]["state"], "unauth")
         self.assertEqual(seats["mistral-1"]["state"], "n/a")
         self.assertEqual(seats["hf-1"]["state"], "n/a")
-        self.assertEqual(seats["ds4"]["state"], "n/a")
+        self.assertNotIn("ds4", seats, "retired local DeepSeek has no selectable or ledger lane")
         self.assertEqual(seats["vercel-1"]["state"], "n/a")
         self.assertEqual(seats["grok-1"]["state"], "n/a")
         self.assertEqual(seats["cerebras-1"]["models"], ["qwen-3.8-27b", "gpt-oss-120b"])

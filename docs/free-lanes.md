@@ -207,7 +207,7 @@ one row per key (`gemini-1..3`, `zen-1..4`, `groq-1..3`, `mistral-1..3`,
 `cohere-1..5`, `nvidia-1`, `cloudflare-1`, `hf-1`), the two cloud-credit
 rows (`cc-credit`, `cc2-credit`, parsed from the usage payload the `cc`
 rows already fetch, so the endpoint is never asked twice), and the local
-rows (`gpu-strix`, `ds4`, `codex`). Each column says what kind of fact it
+rows (`gpu-strix`, `codex`). Each column says what kind of fact it
 is: ALLOWANCE is the provider's published tier typed into the script on
 2026-11-03 (static, never measured); RESET is computed from the provider's
 rule (Gemini midnight Pacific, Cloudflare 00:00 UTC, Cohere the calendar
@@ -269,7 +269,6 @@ directory for tests.
 | Vercel AI Gateway | `DSH_ROUTE=vercel` (alibaba/qwen3.8-27b, catalog id, not measured) | the gateway's catalog; one id declared | credits balance 0 today: nothing answers until topped up | HTTP 402/403 on a 0 balance (text not captured); dsh QUOTA | vercel.com AI Gateway billing page | `vercel-ai-gateway-key-1` (slot 1 only) |
 | Grok (xAI) | none | — | the stored key is rejected by xAI as an API key | — | — | `grok-api-key-1` (stored, no reader) |
 | Gufo (local) | `DSH_ROUTE=gufo` | qwen3.8-flash-next, qwen3.8-27b | local, no quota | wrong-id 404, cold-load latency | `seats` row `gpu-strix` | none (LAN) |
-| ds4 (local) | route `ds4` | DeepSeek V4.1 Flash 1017 | local | down: strix-worker dormant | no row | none |
 | OpenRouter | parked, no dsh route | — | $27.16 of $40.00 left; free lane parked 0/1000 | — | `seats` rows `openrouter`, `openrouter-free` | agenix openrouter-token |
 | DeepSeek Flash1017 token plan | — | — | exhausted 04:22Z, resets 7 Nov 16:00Z (reported, not re-measured) | — | — | — |
 

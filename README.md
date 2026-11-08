@@ -75,12 +75,11 @@ mechanism (it impersonates the OpenCode CLI) and the first commands are in
 `docs/free-lanes.md`.
 
 Dsh follows the fleet's brain role to the NAS with its Nix-pinned plugins.
-Gemini is the default. Two explicit local routes read
-`lib/local-model.nix` for the endpoint and exact served model IDs: `gufo`
-(`http://strix-coordinator:8731`, `qwen3.8-flash-next`; the `qwen3.8-27b`
-alternate needs an operator `gufo-switch` first) and `ds4`
-(`http://10.42.0.5:8732`, `deepseek-v4.1-flash`, answering only while an
-operator runs `ds4.service` on strix-worker). The DeepSeek harness replaces
+Gemini is the default. The local `gufo` route reads
+`lib/local-model.nix` for its endpoint and exact served model IDs
+(`http://strix-coordinator:8731`, `qwen3.8-flash-next`, with `qwen3.8-27b`
+as its alternate). Local DeepSeek is retired and absent from DSH's model
+catalog; remote DeepSeek API routes remain available. The DeepSeek harness replaces
 the retired Halogen runtime (Tom, 2026-10-25).
 
 ## OpenRouter key

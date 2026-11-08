@@ -92,7 +92,8 @@ def main(dump_path, expect_path):
         text = json.dumps(got, default=str)
         check("{CLOUDFLARE_ACCOUNT_ID}" not in text, f"{name}: names the Cloudflare placeholder in the policy")
         check("/run/agenix" not in text, f"{name}: names an agenix path")
-    # The retired route must not survive in any layer.
+    # Retired providers must not survive in a composed profile.
+    check("ds4" not in providers, "local ds4 provider still selectable")
     check("qwen-token-plan" not in providers, "qwen-token-plan provider still declared")
 
     sessions = (by_id.get("session-persistence-jsonl") or {}).get("config") or {}

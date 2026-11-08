@@ -85,7 +85,7 @@ THE SEATS, and where each one's truth lives:
                 already fetch: dollars used, dollars left, and the expiry. A
                 credit expires; it does not reset, so the row has no free_at.
 
-  gemini-N, zen-N, groq-N, mistral-N, cohere-N, nvidia-N, cloudflare-N, hf-N, ds4
+  gemini-N, zen-N, groq-N, mistral-N, cohere-N, nvidia-N, cloudflare-N, hf-N
                 THE BURNDOWN LEDGER (Tom, 2026-11-03): one row per free-lane
                 key, strongest model first, so the lanes can be spent in order
                 until each dries up. Four facts sit on a row and each is
@@ -407,13 +407,10 @@ LANE_FAMILIES = {
 }
 
 # Local rows in the same ledger: no key, no quota. The gpu-strix row probes
-# its server already; ds4's server is down while strix-worker is dormant, so
-# its row is static until that host returns.
+# the retained Gufo server; retired local DeepSeek has no lane.
 LOCAL_LANES = {
     "gpu-strix": {"models": ["qwen3.8-flash-next", "qwen3.8-27b"], "allowance": "local, no quota",
                   "run": "DSH_ROUTE=gufo dsh headless"},
-    "ds4": {"models": ["deepseek-v4.1-flash-1017"], "allowance": "local, no quota",
-            "run": "route ds4 (10.42.0.5:8732)"},
     "codex": {"models": ["gpt-6.1-sol", "gpt terra"], "allowance": "weekly window (plan)"},
 }
 
@@ -472,8 +469,6 @@ DEFAULT_SEATS = [
     lane_spec("cerebras", 1),
     lane_spec("vercel", 1),
     lane_spec("grok", 1),
-    {"id": "ds4", "provider": "none", "label": "Local GPU (ds4, strix-worker)", "owner": "kernel",
-     "reason": "strix-worker is dormant until its replacement arrives; no server behind this row"},
 ]
 
 
