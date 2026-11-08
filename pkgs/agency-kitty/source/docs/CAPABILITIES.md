@@ -20,7 +20,10 @@ Kitty 0.48's behind-overlay mechanism buffers typing until the overlay is ready.
 Background workers instead return through a remote-control custom-kitten
 callback addressed to one window. Large payloads use Kitty's public Unix socket
 protocol, avoiding operating-system argv limits. The callback compares window id, child pid,
-host, managed terminal id and harness session id immediately before insertion.
+host, managed terminal id, harness session id and exact invocation generation
+immediately before insertion. A new process resuming the same conversation
+cannot inherit a pending action; [the regression and native proof](INVOCATION-GENERATION.md)
+retain the reproduced failure and corrected behavior.
 A closed, rebound or replaced destination receives nothing. It never chooses
 the window currently in focus as a fallback.
 

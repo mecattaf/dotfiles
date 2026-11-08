@@ -1,0 +1,8 @@
+{
+  "manifest.json": "0f20b05ee246165bbbc186226a93bef65d010d6b1f25145a767856c42c9ceb79",
+  "aggregate.json": "b0a019f9bbf7d91f71e1fece3e7a40410f5211c8c40c7d09b1830faceb4ddc9f",
+  "managed-claude/receipt.json": "47497ea0a32889e059ef5408d427ad434b18904d19a14738c4cd1001d5161af5",
+  "managed-codex/receipt.json": "eb30579eb8a66381030b269daffc175142d836d28bb4befef93cf025ad347542",
+  "native-race-2/receipt.json": "57104f435d9e8137e5a7af9c3924e93873a51751852671baa85faa5caaeb8f02",
+  "regression-before.json": "801e6fb89916db9f75ac388b075bd574b8d5d0081dbdf32df8702ce13bd72ce4"
+}

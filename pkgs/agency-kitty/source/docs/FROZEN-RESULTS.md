@@ -132,3 +132,22 @@ All are under the report's `research/measurements/` directory:
 all samples, reports p50/p95/p99/max and round-summary differences, and generates
 standalone SVG/PNG plots with matplotlib. Changing plot labels after collection
 does not change a collector or the underlying measurements.
+
+## Later correctness fixes have different artifacts
+
+The final EOF review happened after this comparison closed. It reproduced an
+unready-observer completion hang and corrected stable/actor queue completion.
+The fixed Nix stable binary is SHA256
+`bb7a0906728a14d9b6313ac6aeb2f2717e9d6c84eb0350f83670454d4fb3483a`;
+the fixed Nix actor is
+`09946ecdfccdf754ed4ac5b2b96b146c64b51de3345cf1ffd3dbdeebedd6b39e`.
+Both passed their own EOF and nine functional gates; the actor also passed
+worker-stop ordering. These are correctness admissions with no new timing
+samples. Their earlier rows above retain the exact earlier binary identities
+in the frozen receipts. See [the EOF review](HOLDER-EOF-REVIEW.md).
+
+The pending-image invocation-generation fix likewise has separate source and
+native graphical receipts. It changes event/gesture validation, outside the
+ordinary key stream. That architecture is not a substitute for measuring a
+changed artifact: this report does not relabel old measurements as final-binary
+measurements. See [the invocation review](INVOCATION-GENERATION.md).

@@ -25,7 +25,11 @@ Async image/file/voice paste work captured for a bound harness performs one
 bounded pinned-NAS validity query after staging, before callback delivery. A
 background, ended or unverified occupant receives zero input. The Kitty GUI
 callback remains nonblocking and rechecks its exact window, SSH child, terminal
-UUID and harness session. The NAS check precedes callback delivery; it is not
+UUID, harness conversation and invocation generation. The generation is a
+digest of the exact launcher process identity, including boot, PID and process
+start. Resuming the same conversation in another process does not retain input
+authority. Both the NAS validity query and GUI callback compare the captured
+generation; legacy bound targets without it refuse insertion. The NAS check precedes callback delivery; it is not
 an atomic cross-host input compare-and-swap. Shell-command-stop watchers are
 unchanged, so historical OSC133 markers during reconnect cannot erase a fresh
 binding. New tracked background/dead invocations do not replay stale bindings.
@@ -50,3 +54,7 @@ endpoint runs as a real helper child; only the test SSH endpoint is redirected
 locally and GUI delivery is observed by a spy. They establish the foreground
 decision and worker refusal, alongside the already qualified native Kitty
 callback. They do not claim a new physical GUI or fresh-SSH reconnect gate.
+
+The later [invocation replacement gate](INVOCATION-GENERATION.md) adds an actual
+native Kitty same-conversation restart with a pending production image worker.
+It also reruns both managed offline harness gates and 154 aggregate tests.

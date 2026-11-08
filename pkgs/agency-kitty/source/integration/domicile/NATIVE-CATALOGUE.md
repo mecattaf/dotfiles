@@ -51,7 +51,7 @@ resulting real entry through the installed SDK/full Imagine bundle, exercises
 all three engine chords, fills the ten configured workspaces, and clicks one
 actual explicitly linked native row through trusted pointer routing. The exact
 NAS fish PID/start survives, the new native window joins the current occupied
-workspace, existing windows stay put and no holder is allocated. The actual
+workspace, existing windows stay put and no new holder is allocated. The actual
 helper receipt completes; no fixture launcher wrapper supplies that field.
 
 This is entry/configuration qualification, not a full client deployment. The
@@ -60,3 +60,7 @@ fixture. No live client, baseline startup command or legacy desktop entry was
 changed. The proof uses private runtime/network/home state and no real provider
 or credential request. Source/rendered/compiled hashes are recorded separately
 because the rendered entry correctly depends on the selected package path.
+
+Follow adoption and evidence links from this source checkout. Installed runtime
+assets omit the broader research/proof tree; their presence in the package
+does not make that documentation tree self-contained.

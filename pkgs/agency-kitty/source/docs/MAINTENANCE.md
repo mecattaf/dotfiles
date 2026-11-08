@@ -9,25 +9,25 @@ records file counts, hashes and input revisions. Physical lines include blanks,
 comments and docstrings; these are not executable-statement counts. Tests,
 research, docs, receipts and upstream dependency source are excluded.
 
-- `agency_kitty/`: 4,279 lines in 27 Python files. Of these, 302 belong to the
+- `agency_kitty/`: 4,309 lines in 27 Python files. Of these, 302 belong to the
   explicit native-forward/control prototype; the default direct SSH route
   does not use it. The package also owns metadata, lifecycle, target validation,
   image/transcript capabilities, editor requests and reconnect supervision.
-- `kitty/`: 734 lines in four Python adapters.
+- `kitty/`: 744 lines in four Python adapters.
 - Dotfiles editor launchers: 243 Python lines in `dsh-editor` and
   `dsh-editor-tree`; four new editor Lua modules add 523 lines, including the
   259-line image adapter. Existing full Neovim configuration/plugins are not
   counted as newly owned code.
 - Three fish integration files add 31 lines. The executable DSH tool and NAS
-  native-catalogue companion add 171 lines. These categories total 5,981 lines.
+  native-catalogue companion add 171 lines. These categories total 6,021 lines.
 - The eight-line example keybinding module and 264 lines of Nix wiring are
   separate deployment/example glue, excluded from that runtime subtotal.
 
 Patch ownership is incremental, not the size of the upstream projects:
 
-- `backend/zmx/agency-v4-vt1.patch`: 1,269 physical patch lines, +645/-90
+- `backend/zmx/agency-v4-vt1.patch`: 1,268 physical patch lines, +644/-90
   overall. After excluding build/dependency metadata and embedded tests, the
-  runtime Zig delta is +555/-87; another 83 additions are tests and seven are
+  runtime Zig delta is +554/-87; another 83 additions are tests and seven are
   build/dependency lines. This patch owns queue/backpressure correctness,
   attach-only/version isolation, snapshot admission and native state replay.
 - Imagine native catalogue: +112/-44 production lines. Native drag handling:

@@ -1,0 +1,135 @@
+{
+  "kittyBinary": "/nix/store/rs4s3ggn03a65bbwj9r1ps20d4kichm1-kitty-0.50.0/bin/kitty",
+  "kittyBinarySha256": "d0565fa5f55341068f2354e0c4444a16cfa268e1c08701f3c59b2bfc8fefa918",
+  "codexBinary": "/nix/store/22139ip2k5dfc272a1nv0br2ms0nymbv-codex-0.167.0/libexec/codex/bin/codex",
+  "codexBinarySha256": "13fc360e1eb73eeabeda7e2d9c6294aa56a0b062adc54a681b9d687a2e905b10",
+  "stockKittySsh": true,
+  "productionHostTranslatedOnlyByTestSshShim": true,
+  "throwawayKeysOnly": true,
+  "homeEnvironmentUnchanged": true,
+  "realHomeFilesystemMasked": true,
+  "zmxSha256": "6a217563b790487c80dddae9f30bf06c26c5f8faaa6c4fff02f2b5e551aeed02",
+  "source": "/home/tom/kitty-consolidation/invocation-generation-review",
+  "privateRootSshdSupervisor": true,
+  "externalNetworkBlocked": true,
+  "sourceSha256": {
+    "agency_kitty/cli.py": "1887cbdaa157b3ede1f2052daf8736ac473549da8717835dcc61978138f7da0d",
+    "agency_kitty/transport.py": "f440d6c952b4396330e7f6f00018c0739b494a281c750ddc5aefc0e6e068e761",
+    "agency_kitty/server.py": "ba397a26fb027fb807eaf770441fa94a0850ad0633383dd621bb7429733d64b0",
+    "agency_kitty/sessions.py": "40ca21993bd81ed07f7a425c7ddb4adbb133dfb287fffc3dc132893f68edda45"
+  },
+  "officialEngineAttestation": {
+    "requestedEngine": "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244",
+    "loadedLibraries": [
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/libdomicile_engine.so"
+    ],
+    "librarySha256": {
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/libdomicile_engine.so": "43f0dc75132f7ab3ae7042a75d7c19b88e89a9e10a4850a656a06bcda623c02f"
+    },
+    "chromeExecutables": [
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/.chrome-unwrapped"
+    ]
+  },
+  "kittyShellIntegrationAtPrompt": true,
+  "session": "df0a99d0-a039-4f92-b650-e84273150754",
+  "fishPid": 1415,
+  "singleKeyWithoutEnter": {
+    "hex": "6b",
+    "isatty": true
+  },
+  "directoryHookAfterCd": "/home/tom/kitty-consolidation/invocation-generation-review/invocation-proof/native-race-2/project/nested",
+  "directoryMetadataImmediatelyAfterResume": "/home/tom/kitty-consolidation/invocation-generation-review/invocation-proof/native-race-2/project",
+  "sameChildAfterDisconnectResume": true,
+  "codexGraphicsBeforeAttachment": {
+    "image_count": 0,
+    "cache_bytes": 0
+  },
+  "actualCodexImagePasteWaitedForExplicitEnter": true,
+  "codexGraphicsInitiallyAttached": {
+    "image_count": 1,
+    "cache_bytes": 12312,
+    "width": 54,
+    "height": 57,
+    "client_id": 49408,
+    "refs.count": 1,
+    "decoded_pixels_sha256": "81a3a3316320cf051f4be36041b1f302fa748ac40c4ef8d3163b0b8aba9d40c3",
+    "placements": [
+      {
+        "src_rect": {
+          "left": 0.0,
+          "top": 0.0,
+          "right": 1.0,
+          "bottom": 1.0
+        },
+        "dest_rect": {
+          "left": -0.9741935729980469,
+          "top": 0.1489362120628357,
+          "right": -0.896774172782898,
+          "bottom": 0.021276652812957764
+        },
+        "z_index": 0,
+        "indexed_px_sz": 0
+      }
+    ]
+  },
+  "codexUnsentDraftAndSamePidAfterFreshKitty": true,
+  "codexGraphicsImmediatelyAfterResume": {
+    "image_count": 1,
+    "cache_bytes": 12312,
+    "width": 54,
+    "height": 57,
+    "client_id": 49408,
+    "refs.count": 1,
+    "decoded_pixels_sha256": "81a3a3316320cf051f4be36041b1f302fa748ac40c4ef8d3163b0b8aba9d40c3",
+    "placements": [
+      {
+        "src_rect": {
+          "left": 0.0,
+          "top": 0.0,
+          "right": 1.0,
+          "bottom": 1.0
+        },
+        "dest_rect": {
+          "left": -0.9741935729980469,
+          "top": 0.1489362120628357,
+          "right": -0.896774172782898,
+          "bottom": 0.021276652812957764
+        },
+        "z_index": 0,
+        "indexed_px_sz": 0
+      }
+    ]
+  },
+  "codexGraphicsExactAfterResume": true,
+  "actualCodexImageReachedOfflineProvider": true,
+  "actualCodexPid": 2173,
+  "actualCodexHarnessId": "01a1b987-33cf-7923-8283-a4f89da8bb6d",
+  "actualCodexTranscript": "/home/tom/.codex/sessions/2026/11/08/rollout-2026-11-08T06-00-08-01a1b987-33cf-7923-8283-a4f89da8bb6d.jsonl",
+  "actualCodexSameProcessAndBindingAfterFreshSshResume": true,
+  "actualCodexSemanticHistoryBeyondViewport": {
+    "first": "000",
+    "last": "299",
+    "bytes": 8170
+  },
+  "sameConversationInvocationRace": {
+    "sameConversation": "01a1b987-33cf-7923-8283-a4f89da8bb6d",
+    "oldPid": 2173,
+    "newPid": 3721,
+    "sameKittyWindowAndSshChild": true,
+    "oldGeneration": "c2a572b3683569a76e5227ba9908fb3be5190fb0d31563325dcb36fd66c63846",
+    "newGeneration": "ef137895746241bbff6e62c09370ee6887a372891f4c5027ea8b32be1c0ae15e",
+    "productionImageWorkerHeldAfterStaging": true,
+    "oldWorkerNasValidityRefused": true,
+    "oldCallbackNativeKittyRefused": true,
+    "freshImageAcceptedWithoutEnter": true,
+    "actualOfflineCodexResume": true,
+    "externalProviderCalls": 0,
+    "latencySamplesCollected": 0
+  },
+  "unknownResumeRefusedWithoutAllocation": true,
+  "kittyVersion": "kitty 0.50.0 created by Kovid Goyal",
+  "fixtureSha256": "07bc346dbd0ca8e43af10867f72c9e02606924fecefbb93b69d34b8af8c06a33",
+  "passed": true,
+  "desktopExitAfterExplicitTeardown": 1,
+  "sshdExitAfterExplicitTeardown": -15
+}
