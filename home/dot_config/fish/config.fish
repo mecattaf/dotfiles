@@ -64,8 +64,8 @@ function __claude_seat --description 'start one Claude seat outside $HOME'
         builtin cd $CLAUDE_ENVELOPE
         echo "($seat: started in $CLAUDE_ENVELOPE, not in ~)" >&2
     end
-    # Agent view off for both seats (2026-10-12): herdr is the multiplexer, and
-    # finished background sessions sat in "Needs input" for weeks. The 2.1.287
+    # Agent view off for both seats (2026-10-12): finished background sessions
+    # sat in "Needs input" for weeks. The 2.1.287
     # binary describes the switch as "Disable agent view (`claude agents`,
     # `--bg`, /background, the on-demand daemon)". The env var form needs no
     # edit to the seeded ~/.local/state/claude/settings.json.
@@ -73,10 +73,14 @@ function __claude_seat --description 'start one Claude seat outside $HOME'
     # A terminal opened from inside a cc2 session already carries
     # CLAUDE_CONFIG_DIR, so `cc` must clear it explicitly or it silently starts
     # cc2 (measured 2026-09-22). Each seat sets its own value or none.
+    set -l runner claude
+    if set -q AGENCY_KITTY_SESSION; and test -n "$AGENCY_KITTY_SESSION"; and set -q AGENCY_KITTY_COMMAND
+        set runner $AGENCY_KITTY_COMMAND harness claude --
+    end
     if test -n "$config_dir"
-        env CLAUDE_CONFIG_DIR=$config_dir claude --dangerously-skip-permissions $args
+        env CLAUDE_CONFIG_DIR=$config_dir $runner --dangerously-skip-permissions $args
     else
-        env -u CLAUDE_CONFIG_DIR claude --dangerously-skip-permissions $args
+        env -u CLAUDE_CONFIG_DIR $runner --dangerously-skip-permissions $args
     end
 end
 function cc;   __claude_seat cc  "" $argv; end
@@ -91,8 +95,15 @@ function cac2; __claude_seat cc2 $HOME/.claude-work --continue $argv; end
 # codex 0.162.1 ships the manifest (libexec/codex/codex-package.json), so the
 # flag is now a choice rather than a workaround; it stays until Tom decides on
 # the shared daemon.
-alias cx='codex --disable daemon_auto_start --dangerously-bypass-approvals-and-sandbox'
-alias cax='codex resume --last --disable daemon_auto_start --dangerously-bypass-approvals-and-sandbox'
+function __agency_codex
+    if set -q AGENCY_KITTY_SESSION; and test -n "$AGENCY_KITTY_SESSION"; and set -q AGENCY_KITTY_COMMAND
+        command $AGENCY_KITTY_COMMAND harness codex -- $argv
+    else
+        command codex $argv
+    end
+end
+function cx; __agency_codex --disable daemon_auto_start --dangerously-bypass-approvals-and-sandbox $argv; end
+function cax; __agency_codex resume --last --disable daemon_auto_start --dangerously-bypass-approvals-and-sandbox $argv; end
 
 # ── Music ────────────────────────────────────────────────────────────────
 # The library lives on the NAS and is served by Navidrome (hosts/nas/media.nix).
