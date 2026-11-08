@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""Select a permanent journal-day cwd; only the convenience link rotates."""
+import argparse
+from datetime import datetime
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import tempfile
+from zoneinfo import ZoneInfo
+
+
+def atomic_json(path, value):
+    fd, name = tempfile.mkstemp(prefix='.' + path.name, dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as out:
+            json.dump(value, out, indent=2)
+            out.write('\n')
+        os.replace(name, path)
+    finally:
+        if os.path.lexists(name):
+            os.unlink(name)
+
+
+def dated_path(root, path):
+    path = Path(path).resolve(strict=True)
+    parts = path.relative_to(root).parts
+    if len(parts) != 3 or not path.is_dir():
+        raise ValueError('Workspace must be an existing journal year/month/day directory')
+    datetime.strptime('/'.join(parts), '%Y/%m/%d')
+    return path
+
+
+def select(config, seat=None, resume=False, now=None):
+    root = Path(config['journal_root']).expanduser().resolve(strict=True)
+    alias = Path(config['today_link']).expanduser().absolute()
+    if not root.is_dir() or not alias.parent.is_dir():
+        raise ValueError('Journal root and alias parent must already exist')
+    if seat is not None and not re.fullmatch(r'[a-zA-Z0-9_-]+', seat):
+        raise ValueError('Invalid seat name')
+    state_root = Path(config.get('state_dir', Path(os.environ.get(
+        'XDG_STATE_HOME', Path.home() / '.local/state')) / 'journal-day')).expanduser()
+    if state_root.is_symlink():
+        raise ValueError('State directory must not be a symlink')
+    state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if state_root.stat().st_uid != os.getuid():
+        raise ValueError('State directory belongs to another user')
+    os.chmod(state_root, 0o700)
+    # The external scheduler can call this same helper. No timer is installed.
+    with (state_root / 'lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        state_path = state_root / 'state.json'
+        state = json.loads(state_path.read_text()) if state_path.exists() else {'seats': {}}
+        previous = None
+        previous_link = None
+        if alias.is_symlink():
+            previous_link = os.readlink(alias)
+            previous = dated_path(root, alias)
+        elif alias.exists():
+            raise ValueError('Refusing to replace an existing non-symlink workspace')
+
+        if resume:
+            saved = state['seats'].get(seat) or state.get('legacy_envelope') or previous
+            if saved is None:
+                raise ValueError('No saved workspace for this seat; resume from its original cwd')
+            return dated_path(root, saved)
+
+        zone = ZoneInfo(config.get('timezone', 'Europe/Paris'))
+        day = (now or datetime.now(zone)).astimezone(zone)
+        destination = root / day.strftime('%Y/%m/%d')
+        destination.mkdir(parents=True, exist_ok=True)
+        destination = dated_path(root, destination)
+        if previous is not None:
+            state.setdefault('legacy_envelope', str(previous))
+        # Save recovery cwd before rotating the alias. Existing day contents and
+        # running processes are never moved, copied, sourced or reconfigured.
+        atomic_json(state_path, state)
+        if previous != destination:
+            fd, name = tempfile.mkstemp(prefix='.' + alias.name + '.', dir=alias.parent)
+            os.close(fd)
+            os.unlink(name)
+            try:
+                os.symlink(destination, name)
+                if previous_link is None:
+                    if os.path.lexists(alias):
+                        raise ValueError('Workspace alias changed during selection')
+                elif not alias.is_symlink() or os.readlink(alias) != previous_link:
+                    raise ValueError('Workspace alias changed during selection')
+                os.replace(name, alias)
+            finally:
+                if os.path.lexists(name):
+                    os.unlink(name)
+        if seat is not None:
+            state['seats'][seat] = str(destination)
+            atomic_json(state_path, state)
+        return destination
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--config', type=Path, default=Path(os.environ.get(
+        'JOURNAL_DAY_CONFIG', Path(os.environ.get('XDG_CONFIG_HOME',
+        Path.home() / '.config')) / 'journal-day.json')))
+    parser.add_argument('--seat', help='Remember the physical cwd for a fresh seat launch')
+    parser.add_argument('--resume-seat', help='Return the last seat cwd without rotating today')
+    args = parser.parse_args()
+    if args.seat and args.resume_seat:
+        parser.error('--seat and --resume-seat are mutually exclusive')
+    try:
+        print(select(json.loads(args.config.read_text()), args.seat or args.resume_seat,
+                     args.resume_seat is not None))
+    except (OSError, ValueError, KeyError) as error:
+        print('journal-day: ' + str(error), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
