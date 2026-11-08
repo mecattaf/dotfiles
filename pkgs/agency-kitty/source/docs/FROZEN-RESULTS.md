@@ -70,6 +70,7 @@ Each path/workload has 240 ongoing samples and 15 quiet first keys. Idle/busy
 ongoing median and p95, in milliseconds:
 
 - Plain default: median 13.1067 / 10.3728; p95 22.7801 / 21.3788.
+- Holder default protected SSH: median 13.2650 / 13.3510; p95 22.1128 / 22.1799.
 - Plain timing protection disabled: median 3.0673 / 2.1631; p95 4.4337 / 3.0996.
 - Holder timing protection disabled: median 3.2362 / 2.3943; p95 4.9763 / 3.3601.
 - Forwarding-only native client: median 3.3402 / 2.1711; p95 5.4990 / 3.3384.
@@ -79,9 +80,11 @@ policy penalty in that small sample. Existing SSH timing protection remains
 enabled by default. Forwarding-only channels do not receive interactive
 padding, so comparison against default interactive SSH changes two things.
 The unpadded holder's matched-round median overhead is about 0.13–0.27 ms.
-Unpadded forwarding does not consistently beat unpadded ordinary SSH. Padded
-holder differences include pacing/batching interactions and cannot all be
-assigned to standalone VT parsing.
+Unpadded forwarding does not consistently beat unpadded ordinary SSH. The protected holder’s busy median was about 3 ms above protected plain SSH.
+The three round-median differences were all positive, 1.66–3.26 ms.
+Those differences include pacing/batching interactions and cannot all be
+assigned to standalone VT parsing; identical latency under every policy was
+not demonstrated.
 
 ## Post-collection pacing check
 
@@ -137,9 +140,9 @@ does not change a collector or the underlying measurements.
 
 The final EOF review happened after this comparison closed. It reproduced an
 unready-observer completion hang and corrected stable/actor queue completion.
-The fixed Nix stable binary is SHA256
+The first EOF-fix Nix stable binary is SHA256
 `bb7a0906728a14d9b6313ac6aeb2f2717e9d6c84eb0350f83670454d4fb3483a`;
-the fixed Nix actor is
+the first EOF-fix Nix actor is
 `09946ecdfccdf754ed4ac5b2b96b146c64b51de3345cf1ffd3dbdeebedd6b39e`.
 Both passed their own EOF and nine functional gates; the actor also passed
 worker-stop ordering. These are correctness admissions with no new timing
@@ -151,3 +154,8 @@ native graphical receipts. It changes event/gesture validation, outside the
 ordinary key stream. That architecture is not a substitute for measuring a
 changed artifact: this report does not relabel old measurements as final-binary
 measurements. See [the invocation review](INVOCATION-GENERATION.md).
+
+A still later concurrent-restore lease correction has another artifact identity.
+Its socket/functional checks do not add samples to these frozen rows. Final
+package hashes and the corresponding regression receipts are separately indexed
+in the main report.

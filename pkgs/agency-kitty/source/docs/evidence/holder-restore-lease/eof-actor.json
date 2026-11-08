@@ -1,0 +1,13 @@
+{
+  "binary": "/home/tom/work/kitty-consolidation/restore-review/actor/zig-out/bin/zmx",
+  "sha256": "36117104995844da3d93adf7857a8bc1050e0d4cae721da096c1b8c32138175c",
+  "protocol": 205,
+  "latencySamplesCollected": false,
+  "expectBlockedBaseline": false,
+  "observerRestoreDoneWithoutReady": true,
+  "foregroundFinalBytesReceived": true,
+  "foregroundExitedBeforeObserverClose": true,
+  "observerFinalBytesThenStreamEndThenEof": true,
+  "passed": true,
+  "cleanupOwnedChildrenEmpty": true
+}

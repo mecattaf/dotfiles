@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "protocol": 205,
+  "zmxSha256": "36117104995844da3d93adf7857a8bc1050e0d4cae721da096c1b8c32138175c",
+  "fixtureSha256": "ab1657e023c78a3fc06f998064e30f67f0c263aa89af8d91ed9cbb417f675974",
+  "holderVersion": "1.0.1-agency.5-actor",
+  "ghosttyCommit": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
+  "workerOnlyPtraceStop": true,
+  "ownedPrivateDaemon": true,
+  "rawOutputWhileWorkerStopped": true,
+  "ptyInputWhileSnapshotBarrierPending": true,
+  "snapshotWaitedForWorker": true,
+  "snapshotIncludedExactlyEarlierOutput": true,
+  "laterOutputDeliveredAfterBarrier": true,
+  "observerWithheldAckCannotPauseForeground": true,
+  "latencySamplesCollected": false
+}

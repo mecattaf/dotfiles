@@ -1,0 +1,70 @@
+{
+  "type": "software PTY echo, no physical screen",
+  "zmx": "/home/tom/work/kitty-consolidation/restore-review/actor/zig-out/bin/zmx",
+  "samples_per_case": 0,
+  "cases": {
+    "immediate_resume_input": {
+      "completed": true,
+      "first_input_before_reading_snapshot": true,
+      "input_preserved_once": true
+    },
+    "explicit_text_recovery": {
+      "completed": true,
+      "strict_restore_refused": true,
+      "typed_error": "GraphicsPlacementUnsupported",
+      "attached_osc66_passthrough": null,
+      "explicit_warning": true,
+      "same_application_pid_start": true,
+      "input_after_explicit_recovery": true
+    },
+    "osc66_strict_restore_guard": {
+      "completed": true,
+      "strict_restore_refused": true,
+      "typed_error": "KittyTextSizingRestoreUnsupported",
+      "attached_osc66_passthrough": true,
+      "explicit_warning": true,
+      "same_application_pid_start": true,
+      "input_after_explicit_recovery": true
+    },
+    "attached_protocols": {
+      "completed": true,
+      "attached_byte_equal": true,
+      "expected_sha256": "93981207810c3a17495e8d9509458f371a4abd4b1c992d044bc96717431dbd45",
+      "actual_sha256": "93981207810c3a17495e8d9509458f371a4abd4b1c992d044bc96717431dbd45",
+      "bytes": 249
+    },
+    "reconnect": {
+      "completed": true,
+      "same_process_echo_after_resume": true,
+      "fullscreen_state_restored": true,
+      "kitty_keyboard_restored": true,
+      "no_synchronized_output_replay": true,
+      "capture_contains_detached_text": true
+    },
+    "bulk_input": {
+      "completed": true,
+      "bytes": 4194304,
+      "sha256": "3cab7815c40973b8fb036c7a2a69b3649882622a4a0a2f1a980efa4ef8545577",
+      "lossless": true
+    },
+    "attach_only": {
+      "completed": true,
+      "unknown_id_refused": true,
+      "no_replacement_created": true,
+      "returncode": 1
+    },
+    "slow_observer": {
+      "completed": true,
+      "foreground_continues": true,
+      "slow_observer_disconnected": true,
+      "observer_buffered_bytes": 49237,
+      "bounded_below_8MiB": true
+    },
+    "final_output_before_exit": {
+      "completed": true,
+      "bytes": 4194304,
+      "lossless": true,
+      "sha256": "3cab7815c40973b8fb036c7a2a69b3649882622a4a0a2f1a980efa4ef8545577"
+    }
+  }
+}

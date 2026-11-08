@@ -1,0 +1,22 @@
+{
+  "binary": "/home/tom/work/kitty-consolidation/restore-review/stable/zig-out/bin/zmx",
+  "sha256": "5fea15264ac26a1be6f86f8f8c15db60ff505b889617198a0d98187bbf9b57a7",
+  "fixtureSha256": "255906fa9c7f366c1bbb7e8aec748880b0902fa1aee3790c11facd27e955262f",
+  "latencySamplesCollected": false,
+  "cases": [
+    {
+      "name": "same-buffer-resize",
+      "passed": true
+    },
+    {
+      "name": "same-buffer-init",
+      "passed": true
+    },
+    {
+      "name": "leader-lease",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "cleanupOwnedChildrenEmpty": true
+}

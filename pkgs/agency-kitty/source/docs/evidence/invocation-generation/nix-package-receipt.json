@@ -1,0 +1,169 @@
+{
+  "kittyBinary": "/nix/store/rs4s3ggn03a65bbwj9r1ps20d4kichm1-kitty-0.50.0/bin/kitty",
+  "kittyBinarySha256": "d0565fa5f55341068f2354e0c4444a16cfa268e1c08701f3c59b2bfc8fefa918",
+  "codexBinary": "/nix/store/22139ip2k5dfc272a1nv0br2ms0nymbv-codex-0.167.0/libexec/codex/bin/codex",
+  "codexBinarySha256": "13fc360e1eb73eeabeda7e2d9c6294aa56a0b062adc54a681b9d687a2e905b10",
+  "stockSshTransport": "plain unless explicitly overridden; see production-ssh-argv.jsonl",
+  "productionHostTranslatedOnlyByTestSshShim": true,
+  "throwawayKeysOnly": true,
+  "homeEnvironmentUnchanged": true,
+  "realHomeFilesystemMasked": true,
+  "zmxSha256": "bb7a0906728a14d9b6313ac6aeb2f2717e9d6c84eb0350f83670454d4fb3483a",
+  "source": "/home/tom/kitty-consolidation/invocation-generation-review",
+  "privateRootSshdSupervisor": true,
+  "externalNetworkBlocked": true,
+  "installedNasPackage": "/nix/store/s2bxfpwr06fhywzcvbjgvqrrpkh8dnm3-agency-kitty-0.1.0",
+  "installedSeatPackage": "/nix/store/iqafij5q90h5i2d6h4pzal1l9bbf3glh-agency-kitty-0.1.0",
+  "privatePackagedSshMount": {
+    "mounts": [
+      "/nix/store/cxkwj5gfyzjc6pw9yzy135zl5547y3d5-openssh-10.4p1/bin/ssh",
+      "/nix/store/k1ac1aqh0cb2xxph82l9c19yv32a7lyn-openssh-10.4p1/bin/ssh"
+    ],
+    "originalElfSha256": "4a92d9aa2c2484101c42ad029fb498a03acf0d78808bd6a15febf18e7ade2866",
+    "originalElfSource": "/nix/store/cxkwj5gfyzjc6pw9yzy135zl5547y3d5-openssh-10.4p1/bin/ssh",
+    "scope": "private bwrap mounts only; production capability code and command construction unchanged",
+    "endpointShimSha256": "82ddf691e9b2d3d34544afeed45a985be2b48d7ddbffcae576844425322bf8bd"
+  },
+  "installedCodeSha256": {
+    "nas": {
+      "/nix/store/s2bxfpwr06fhywzcvbjgvqrrpkh8dnm3-agency-kitty-0.1.0/bin/agency-kitty": "dd8ee10e3099507fd78797f1dd8b003840a52b289e7bedbfdd226eba81e9c2b4",
+      "/nix/store/s2bxfpwr06fhywzcvbjgvqrrpkh8dnm3-agency-kitty-0.1.0/lib/python3.13/site-packages/agency_kitty/capabilities/harness_process.py": "45f55ca99dc6590ef611444ac7dc76a7b7152da1403b34b7834c68d6bb0467ff",
+      "/nix/store/s2bxfpwr06fhywzcvbjgvqrrpkh8dnm3-agency-kitty-0.1.0/lib/python3.13/site-packages/agency_kitty/capabilities/cli.py": "88e927f74f7ac8acc29ed67900fbd5abe4d90655af5776047a4cbcdee7d07bf9",
+      "/nix/store/s2bxfpwr06fhywzcvbjgvqrrpkh8dnm3-agency-kitty-0.1.0/lib/python3.13/site-packages/agency_kitty/capabilities/targets.py": "c012894e566a9149f9fd3dfbea20916229e4d94003a396f946e50916bd7bf56a",
+      "/nix/store/s2bxfpwr06fhywzcvbjgvqrrpkh8dnm3-agency-kitty-0.1.0/lib/python3.13/site-packages/agency_kitty/capabilities/harness.py": "fcbac1499e1bd29c77dba2413964472cd60718d5a45c696611ddf14d400929e8",
+      "/nix/store/s2bxfpwr06fhywzcvbjgvqrrpkh8dnm3-agency-kitty-0.1.0/lib/python3.13/site-packages/agency_kitty/capabilities/harness_state.py": "5010cfd54442dffc26a2d24ed2ed63192aaf5958817218eb4d8514770c0ae6ce"
+    },
+    "seat": {
+      "/nix/store/iqafij5q90h5i2d6h4pzal1l9bbf3glh-agency-kitty-0.1.0/bin/agency-kitty": "993ab366b1e683552e989027d2124aa69dd53c18c63ed401f5e4f709fe88329a",
+      "/nix/store/iqafij5q90h5i2d6h4pzal1l9bbf3glh-agency-kitty-0.1.0/lib/python3.14/site-packages/agency_kitty/capabilities/harness_process.py": "45f55ca99dc6590ef611444ac7dc76a7b7152da1403b34b7834c68d6bb0467ff",
+      "/nix/store/iqafij5q90h5i2d6h4pzal1l9bbf3glh-agency-kitty-0.1.0/lib/python3.14/site-packages/agency_kitty/capabilities/cli.py": "88e927f74f7ac8acc29ed67900fbd5abe4d90655af5776047a4cbcdee7d07bf9",
+      "/nix/store/iqafij5q90h5i2d6h4pzal1l9bbf3glh-agency-kitty-0.1.0/lib/python3.14/site-packages/agency_kitty/capabilities/targets.py": "c012894e566a9149f9fd3dfbea20916229e4d94003a396f946e50916bd7bf56a",
+      "/nix/store/iqafij5q90h5i2d6h4pzal1l9bbf3glh-agency-kitty-0.1.0/lib/python3.14/site-packages/agency_kitty/capabilities/harness.py": "fcbac1499e1bd29c77dba2413964472cd60718d5a45c696611ddf14d400929e8",
+      "/nix/store/iqafij5q90h5i2d6h4pzal1l9bbf3glh-agency-kitty-0.1.0/lib/python3.14/site-packages/agency_kitty/capabilities/harness_state.py": "5010cfd54442dffc26a2d24ed2ed63192aaf5958817218eb4d8514770c0ae6ce"
+    }
+  },
+  "nativeKittenAssets": {
+    "agency.py": "4d8e0de3eb508914bee950cc6b2be6389381aba4df1a00981536180e005a6c36",
+    "agency_watch.py": "a11bc9c863c80e518a819b52d2860492877038e7165ae1f77c7725e22f12f1bb"
+  },
+  "sourceSha256": {
+    "agency_kitty/cli.py": "1887cbdaa157b3ede1f2052daf8736ac473549da8717835dcc61978138f7da0d",
+    "agency_kitty/transport.py": "f440d6c952b4396330e7f6f00018c0739b494a281c750ddc5aefc0e6e068e761",
+    "agency_kitty/server.py": "ba397a26fb027fb807eaf770441fa94a0850ad0633383dd621bb7429733d64b0",
+    "agency_kitty/sessions.py": "40ca21993bd81ed07f7a425c7ddb4adbb133dfb287fffc3dc132893f68edda45"
+  },
+  "officialEngineAttestation": {
+    "requestedEngine": "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244",
+    "loadedLibraries": [
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/libdomicile_engine.so"
+    ],
+    "librarySha256": {
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/libdomicile_engine.so": "43f0dc75132f7ab3ae7042a75d7c19b88e89a9e10a4850a656a06bcda623c02f"
+    },
+    "chromeExecutables": [
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/.chrome-unwrapped"
+    ]
+  },
+  "kittyShellIntegrationAtPrompt": true,
+  "session": "b5ef5594-3f7a-4e47-9306-21372749a0e0",
+  "fishPid": 1068,
+  "singleKeyWithoutEnter": {
+    "hex": "6b",
+    "isatty": true
+  },
+  "directoryHookAfterCd": "/home/tom/kitty-consolidation/invocation-generation-review/invocation-proof/native-nix-race-3/project/nested",
+  "directoryMetadataImmediatelyAfterResume": "/home/tom/kitty-consolidation/invocation-generation-review/invocation-proof/native-nix-race-3/project",
+  "sameChildAfterDisconnectResume": true,
+  "codexGraphicsBeforeAttachment": {
+    "image_count": 0,
+    "cache_bytes": 0
+  },
+  "actualCodexImagePasteWaitedForExplicitEnter": true,
+  "codexGraphicsInitiallyAttached": {
+    "image_count": 1,
+    "cache_bytes": 12312,
+    "width": 54,
+    "height": 57,
+    "client_id": 49408,
+    "refs.count": 1,
+    "decoded_pixels_sha256": "81a3a3316320cf051f4be36041b1f302fa748ac40c4ef8d3163b0b8aba9d40c3",
+    "placements": [
+      {
+        "src_rect": {
+          "left": 0.0,
+          "top": 0.0,
+          "right": 1.0,
+          "bottom": 1.0
+        },
+        "dest_rect": {
+          "left": -0.9741935729980469,
+          "top": 0.10638302564620972,
+          "right": -0.896774172782898,
+          "bottom": -0.02127659320831299
+        },
+        "z_index": 0,
+        "indexed_px_sz": 0
+      }
+    ]
+  },
+  "codexUnsentDraftAndSamePidAfterFreshKitty": true,
+  "codexGraphicsImmediatelyAfterResume": {
+    "image_count": 1,
+    "cache_bytes": 12312,
+    "width": 54,
+    "height": 57,
+    "client_id": 49408,
+    "refs.count": 1,
+    "decoded_pixels_sha256": "81a3a3316320cf051f4be36041b1f302fa748ac40c4ef8d3163b0b8aba9d40c3",
+    "placements": [
+      {
+        "src_rect": {
+          "left": 0.0,
+          "top": 0.0,
+          "right": 1.0,
+          "bottom": 1.0
+        },
+        "dest_rect": {
+          "left": -0.9741935729980469,
+          "top": 0.10638302564620972,
+          "right": -0.896774172782898,
+          "bottom": -0.02127659320831299
+        },
+        "z_index": 0,
+        "indexed_px_sz": 0
+      }
+    ]
+  },
+  "codexGraphicsExactAfterResume": true,
+  "actualCodexImageReachedOfflineProvider": true,
+  "actualCodexPid": 1822,
+  "actualCodexHarnessId": "01a1b995-08bd-7d10-b3a1-c429f34a6b3a",
+  "actualCodexTranscript": "/home/tom/.codex/sessions/2026/11/08/rollout-2026-11-08T06-15-14-01a1b995-08bd-7d10-b3a1-c429f34a6b3a.jsonl",
+  "actualCodexSameProcessAndBindingAfterFreshSshResume": true,
+  "actualCodexSemanticHistoryBeyondViewport": {
+    "first": "000",
+    "last": "299",
+    "bytes": 8174
+  },
+  "sameConversationInvocationRace": {
+    "sameConversation": "01a1b995-08bd-7d10-b3a1-c429f34a6b3a",
+    "oldPid": 1822,
+    "newPid": 3360,
+    "sameKittyWindowAndSshChild": true,
+    "oldGeneration": "687de3710b19d56d34c007185883cf8f506949db34397d0e816f03bb6162a1c4",
+    "newGeneration": "b0ca14eb0355ab0458fea1fa0881e674571037cfca9d67a1a0a235de6119c22f",
+    "productionImageWorkerHeldAfterStaging": true,
+    "oldWorkerNasValidityRefused": true,
+    "oldCallbackNativeKittyRefused": true,
+    "freshImageAcceptedWithoutEnter": true,
+    "actualOfflineCodexResume": true,
+    "externalProviderCalls": 0,
+    "latencySamplesCollected": 0
+  },
+  "unknownResumeRefusedWithoutAllocation": true,
+  "kittyVersion": "kitty 0.50.0 created by Kovid Goyal",
+  "fixtureSha256": "41a4d1e755335e58f88ff1b490f5da22db9ed2f30c90fcad55a89b1f14472597",
+  "passed": true,
+  "desktopExitAfterExplicitTeardown": 1,
+  "sshdExitAfterExplicitTeardown": -15
+}

@@ -61,7 +61,8 @@ artifacts. This pass qualifies the changed EOF path and existing functional
 contracts. The root integration owns the final source recipe rebuild and
 final package receipt. The actor remains optional and unpromoted.
 
-The independent review found no additional new blocker in the attached path:
+At that EOF-only review checkpoint, no additional attached-path blocker was
+identified:
 actor model access remains worker-owned or protected by a completed pause,
 the fixed-node queue counts the in-flight decoder chunk, and worker join
 precedes terminal destruction. Existing limits remain explicit: a stalled
@@ -69,3 +70,12 @@ foreground applies backpressure, unsupported restoration is refused, snapshot
 formatting consumes owner CPU, and an in-flight decode has no hard join
 deadline. This EOF fix does not broaden the supported graphics/protocol set
 or provide a latency guarantee.
+
+A subsequent exact Nix admission at source/export `90b005e`/`5abc06f5`
+passed the same EOF regression and nine functional gates on stable
+`3cnv7p…` (SHA256 `bb7a0906…`) and actor `s2rnlr…` (`09946ecd…`).
+The actor also passed stopped-worker ordering. The [exact-artifact receipt](evidence/holder-eof-observer/nix-qualification-5abc06f5.json)
+retains immutable paths/hashes before and after, fixture identities and zero
+latency samples. This later checkpoint does not rewrite the direct-compiler
+identities above. A further concurrent-restore review is a separate correctness
+change with its own source and artifact receipts.

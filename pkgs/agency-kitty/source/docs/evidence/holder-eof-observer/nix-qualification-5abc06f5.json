@@ -1,0 +1,205 @@
+{
+  "startedUtc": "2026-11-08T05:02:04.992913+00:00",
+  "buildReceipt": "/home/tom/work/kitty-consolidation/final-build-5abc06f5/receipt.json",
+  "buildReceiptSha256": "d950931b5d298c0a4eb9844bc311008ef423ca646322363499e10998cc643abe",
+  "sourceRevision": "5abc06f586638961f08390003bba10bff921ba63",
+  "sourceRepoRevision": "90b005e8eb1127eac64d778c1a93f0d028b40dc3",
+  "runtimeIsolation": "runtime-test for every runtime action",
+  "fixtures": "/home/tom/work/kitty-consolidation/eof-review",
+  "fixtureSha256": {
+    "qualify_eof_observer.py": "98a77514606f30a96775cf06c3c024d1c38f415585f50d020bf8aaf85c844e47",
+    "qualify_transport.py": "7b01f54c35b71926bfb115e2c310c8ab3a7368e784766c4d8053ad4e75ecf10e",
+    "actor_qualification.py": "ab1657e023c78a3fc06f998064e30f67f0c263aa89af8d91ed9cbb417f675974"
+  },
+  "homeEnvironmentUnchanged": true,
+  "latencySamplesCollected": 0,
+  "nixBuilds": 0,
+  "activationPerformed": false,
+  "actorPromoted": false,
+  "holders": {
+    "stableHolder": {
+      "binary": "/nix/store/3cnv7p155liqbzwn34ppj72a4bvh0l48-agency-zmx-1.0.1-agency.4-vt1/bin/zmx",
+      "sha256": "bb7a0906728a14d9b6313ac6aeb2f2717e9d6c84eb0350f83670454d4fb3483a",
+      "protocol": 204,
+      "sourceBuild": {
+        "version": "1.0.1-agency.4-vt1",
+        "upstream_commit": "a35f00a2118b15a5e9d522a43035c8d7487df9b7",
+        "ghostty_commit": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
+        "patch_sha256": "7de15ee00079a06cf5dbfe06940e91d200698953a59d692b7138bccfb7069814",
+        "zig_version": "0.17.0",
+        "target": "x86_64-linux-musl",
+        "optimization": "ReleaseSafe",
+        "dependency_hash": "sha256-/5RgHb3mceLj1j3u5OG2xbyVCGCN0bvf7EErCGzbVcY="
+      },
+      "cases": {
+        "stableHolder-version": {
+          "argv": [
+            "/home/tom/.local/bin/runtime-test",
+            "--",
+            "env",
+            "ZMX_DIR=/home/tom/work/kitty-consolidation/final-holders-5abc06f5/stableHolder/version-sockets",
+            "XDG_STATE_HOME=/home/tom/work/kitty-consolidation/final-holders-5abc06f5/stableHolder/state",
+            "XDG_CONFIG_HOME=/home/tom/work/kitty-consolidation/final-holders-5abc06f5/stableHolder/config",
+            "XDG_CACHE_HOME=/home/tom/work/kitty-consolidation/final-holders-5abc06f5/stableHolder/cache",
+            "/nix/store/3cnv7p155liqbzwn34ppj72a4bvh0l48-agency-zmx-1.0.1-agency.4-vt1/bin/zmx",
+            "version"
+          ],
+          "timeoutSeconds": 15,
+          "runtimeIsolation": true,
+          "exitCode": 0,
+          "wallSeconds": 0.015556498197838664,
+          "stdoutSha256": "3dcc1a21ed84c2a98a1c55c69acd0510a70ab0093d9aae845e4da02c74c24890",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stableHolder-eof": {
+          "argv": [
+            "/home/tom/.local/bin/runtime-test",
+            "--",
+            "/etc/profiles/per-user/tom/bin/python3",
+            "/home/tom/work/kitty-consolidation/eof-review/qualify_eof_observer.py",
+            "--zmx",
+            "/nix/store/3cnv7p155liqbzwn34ppj72a4bvh0l48-agency-zmx-1.0.1-agency.4-vt1/bin/zmx",
+            "--protocol",
+            "204",
+            "--output",
+            "/home/tom/work/kitty-consolidation/final-holders-5abc06f5/stableHolder/eof.json"
+          ],
+          "timeoutSeconds": 30,
+          "runtimeIsolation": true,
+          "exitCode": 0,
+          "wallSeconds": 0.7151409189682454,
+          "stdoutSha256": "d8d1428a81be9c3fedc283f1d0d5a68b1b810069a213da8f1bea5c4ffd846c9d",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stableHolder-functional": {
+          "argv": [
+            "/home/tom/.local/bin/runtime-test",
+            "--",
+            "/etc/profiles/per-user/tom/bin/python3",
+            "/home/tom/work/kitty-consolidation/eof-review/qualify_transport.py",
+            "--functional-only",
+            "--samples",
+            "0",
+            "--zmx",
+            "/nix/store/3cnv7p155liqbzwn34ppj72a4bvh0l48-agency-zmx-1.0.1-agency.4-vt1/bin/zmx",
+            "--output",
+            "/home/tom/work/kitty-consolidation/final-holders-5abc06f5/stableHolder/functional.json"
+          ],
+          "timeoutSeconds": 150,
+          "runtimeIsolation": true,
+          "exitCode": 0,
+          "wallSeconds": 4.922418746864423,
+          "stdoutSha256": "90c860f58650792447801f71ba21dfa50908d7d23801bc2bda723c0ab8eb48c5",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "actualVersion": "zmx\t\t1.0.1-agency.4-vt1\nghostty_vt\tghostty-1.4.1-dev-5UdBC58_nQWN3FHzqvvLtKzhOKptGc_uH9t7ejdTBGd3\nsocket_dir\t/home/tom/work/kitty-consolidation/final-holders-5abc06f5/stableHolder/version-sockets\nlog_dir\t\t/home/tom/work/kitty-consolidation/final-holders-5abc06f5/stableHolder/version-sockets/logs",
+      "passed": true,
+      "sha256After": "bb7a0906728a14d9b6313ac6aeb2f2717e9d6c84eb0350f83670454d4fb3483a",
+      "functionalCasesPassed": 9,
+      "eofPassed": true
+    },
+    "actorHolder": {
+      "binary": "/nix/store/s2rnlrpc46swrcsipdx8gh6jnnn591dm-agency-zmx-actor-1.0.1-agency.5-actor/bin/zmx",
+      "sha256": "09946ecdfccdf754ed4ac5b2b96b146c64b51de3345cf1ffd3dbdeebedd6b39e",
+      "protocol": 205,
+      "sourceBuild": {
+        "version": "1.0.1-agency.5-actor",
+        "upstream_commit": "a35f00a2118b15a5e9d522a43035c8d7487df9b7",
+        "ghostty_commit": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
+        "patch_sha256": "adf64ad66ab7e9e43831475a91f057f01f06c1fcc5796e66c942d521030fded1",
+        "zig_version": "0.17.0",
+        "target": "x86_64-linux-musl",
+        "optimization": "ReleaseSafe",
+        "dependency_hash": "sha256-/5RgHb3mceLj1j3u5OG2xbyVCGCN0bvf7EErCGzbVcY="
+      },
+      "cases": {
+        "actorHolder-version": {
+          "argv": [
+            "/home/tom/.local/bin/runtime-test",
+            "--",
+            "env",
+            "ZMX_DIR=/home/tom/work/kitty-consolidation/final-holders-5abc06f5/actorHolder/version-sockets",
+            "XDG_STATE_HOME=/home/tom/work/kitty-consolidation/final-holders-5abc06f5/actorHolder/state",
+            "XDG_CONFIG_HOME=/home/tom/work/kitty-consolidation/final-holders-5abc06f5/actorHolder/config",
+            "XDG_CACHE_HOME=/home/tom/work/kitty-consolidation/final-holders-5abc06f5/actorHolder/cache",
+            "/nix/store/s2rnlrpc46swrcsipdx8gh6jnnn591dm-agency-zmx-actor-1.0.1-agency.5-actor/bin/zmx",
+            "version"
+          ],
+          "timeoutSeconds": 15,
+          "runtimeIsolation": true,
+          "exitCode": 0,
+          "wallSeconds": 0.01612960919737816,
+          "stdoutSha256": "ba9ac93f527d86554890f78b1ebf0c352ae6c950e86b0321b04032465ae79cc5",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "actorHolder-eof": {
+          "argv": [
+            "/home/tom/.local/bin/runtime-test",
+            "--",
+            "/etc/profiles/per-user/tom/bin/python3",
+            "/home/tom/work/kitty-consolidation/eof-review/qualify_eof_observer.py",
+            "--zmx",
+            "/nix/store/s2rnlrpc46swrcsipdx8gh6jnnn591dm-agency-zmx-actor-1.0.1-agency.5-actor/bin/zmx",
+            "--protocol",
+            "205",
+            "--output",
+            "/home/tom/work/kitty-consolidation/final-holders-5abc06f5/actorHolder/eof.json"
+          ],
+          "timeoutSeconds": 30,
+          "runtimeIsolation": true,
+          "exitCode": 0,
+          "wallSeconds": 0.7156525768805295,
+          "stdoutSha256": "0e5a4ab28126b4fa25bfd43c0b7524fb06c801584d7b144a3bbdffd9366b8245",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "actorHolder-functional": {
+          "argv": [
+            "/home/tom/.local/bin/runtime-test",
+            "--",
+            "/etc/profiles/per-user/tom/bin/python3",
+            "/home/tom/work/kitty-consolidation/eof-review/qualify_transport.py",
+            "--functional-only",
+            "--samples",
+            "0",
+            "--zmx",
+            "/nix/store/s2rnlrpc46swrcsipdx8gh6jnnn591dm-agency-zmx-actor-1.0.1-agency.5-actor/bin/zmx",
+            "--output",
+            "/home/tom/work/kitty-consolidation/final-holders-5abc06f5/actorHolder/functional.json"
+          ],
+          "timeoutSeconds": 150,
+          "runtimeIsolation": true,
+          "exitCode": 0,
+          "wallSeconds": 5.37103963107802,
+          "stdoutSha256": "4b92182199990be3255dde2271af7ed6406f4a738bc268c42cb967db3c700739",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "actorHolder-stopped-worker": {
+          "argv": [
+            "/home/tom/.local/bin/runtime-test",
+            "--",
+            "/etc/profiles/per-user/tom/bin/python3",
+            "/home/tom/work/kitty-consolidation/eof-review/actor_qualification.py",
+            "--zmx",
+            "/nix/store/s2rnlrpc46swrcsipdx8gh6jnnn591dm-agency-zmx-actor-1.0.1-agency.5-actor/bin/zmx",
+            "--output",
+            "/home/tom/work/kitty-consolidation/final-holders-5abc06f5/actorHolder/stopped-worker.json"
+          ],
+          "timeoutSeconds": 60,
+          "runtimeIsolation": true,
+          "exitCode": 0,
+          "wallSeconds": 0.21389260794967413,
+          "stdoutSha256": "1567c548bd61283c8bbd71921625378c41b44c132c60d11e1cd2ce3d59e64f4c",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "actualVersion": "zmx\t\t1.0.1-agency.5-actor\nghostty_vt\tghostty-1.4.1-dev-5UdBC58_nQWN3FHzqvvLtKzhOKptGc_uH9t7ejdTBGd3\nsocket_dir\t/home/tom/work/kitty-consolidation/final-holders-5abc06f5/actorHolder/version-sockets\nlog_dir\t\t/home/tom/work/kitty-consolidation/final-holders-5abc06f5/actorHolder/version-sockets/logs",
+      "passed": true,
+      "sha256After": "09946ecdfccdf754ed4ac5b2b96b146c64b51de3345cf1ffd3dbdeebedd6b39e",
+      "functionalCasesPassed": 9,
+      "eofPassed": true
+    }
+  },
+  "passed": true,
+  "endedUtc": "2026-11-08T05:02:16.980854+00:00"
+}

@@ -25,9 +25,9 @@ research, docs, receipts and upstream dependency source are excluded.
 
 Patch ownership is incremental, not the size of the upstream projects:
 
-- `backend/zmx/agency-v4-vt1.patch`: 1,268 physical patch lines, +644/-90
+- `backend/zmx/agency-v4-vt1.patch`: 1,412 physical patch lines, +728/-99
   overall. After excluding build/dependency metadata and embedded tests, the
-  runtime Zig delta is +554/-87; another 83 additions are tests and seven are
+  runtime Zig delta is +638/-96; another 83 additions are tests and seven are
   build/dependency lines. This patch owns queue/backpressure correctness,
   attach-only/version isolation, snapshot admission and native state replay.
 - Imagine native catalogue: +112/-44 production lines. Native drag handling:

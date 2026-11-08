@@ -308,7 +308,7 @@ index ad05c2b..12d951c 100644
          .tag = tag,
          .len = @intCast(data.len),
 diff --git a/src/loop.zig b/src/loop.zig
-index f5d6708..980cafc 100644
+index f5d6708..0cbb9ee 100644
 --- a/src/loop.zig
 +++ b/src/loop.zig
 @@ -13,6 +13,8 @@ const daemonize = @import("daemonize.zig");
@@ -461,7 +461,7 @@ index f5d6708..980cafc 100644
      });
  }
  
-@@ -261,8 +306,25 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -261,8 +306,48 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
      var marker_carry_len: usize = 0;
  
      var had_terminal_client = daemon.hasTerminalClient();
@@ -470,12 +470,35 @@ index f5d6708..980cafc 100644
      daemon_loop: while (daemon.running) {
 +        for (daemon.clients.items) |client| try client.pumpRestore(gpa);
 +        const restoring_leader = if (daemon.getLeaderClient()) |leader| leader.isRestoring() else false;
++        // Replay owned input before calculating poll capacity. A disconnected
++        // observer still owns its accepted frame until it reaches the PTY.
++        if (!restoring_leader and !pty_eof) {
++            var deferred_index: usize = 0;
++            while (deferred_index < daemon.clients.items.len) {
++                const client = daemon.clients.items[deferred_index];
++                if (client.deferred_input_len > 0 and
++                    daemon.pty_write_buf.items.len < Daemon.PTY_WRITE_BUF_MAX - (16 * 8192 + 64))
++                {
++                    const data = client.deferred_input[0..client.deferred_input_len];
++                    if (client.close_when_input_drained) daemon.queuePtyInput(gpa, data)
++                    else try daemon.handleInput(gpa, client, data);
++                    client.deferred_input_len = 0;
++                    if (client.close_when_input_drained) {
++                        _ = daemon.closeClient(gpa, client, deferred_index, false);
++                        continue;
++                    }
++                    client.resume_buffered = true;
++                }
++                deferred_index += 1;
++            }
++        }
 +        if (pty_eof) {
 +            if (daemon.clients.items.len == 0) break :daemon_loop;
 +            // Completion is per client: a stalled observer must never hold a
 +            // healthy foreground open. Queue the end notice after this client's
 +            // complete snapshot/final bytes, without requiring RestoreReady.
 +            for (daemon.clients.items) |client| {
++                client.deferred_input_len = 0; // The application has exited.
 +                if (client.close_after_flush or client.restore != null or
 +                    client.graphics_restore_state != null) continue;
 +                if (client.write_buf.items.len > ipc.MAX_QUEUE_LEN - @sizeOf(ipc.Header)) continue;
@@ -487,7 +510,7 @@ index f5d6708..980cafc 100644
          // If the program asked for focus reports (DECSET 1004), send focus-out
          // when the last attached client leaves and focus-in when one returns,
          // as a terminal would when its window loses/gains focus.
-@@ -280,12 +342,19 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -280,31 +365,44 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
              .revents = 0,
          });
  
@@ -509,11 +532,13 @@ index f5d6708..980cafc 100644
              .events = pty_events,
              .revents = 0,
          });
-@@ -293,7 +362,11 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+ 
          try poll_fds.append(gpa, .{ .fd = signal.sig_pipe[0], .events = lib_posix.POLL.IN, .revents = 0 });
  
++        var buffered_work = false;
          for (daemon.clients.items) |client| {
 -            var events: i16 = lib_posix.POLL.IN;
++            if (client.resume_buffered and client.deferred_input_len == 0) buffered_work = true;
 +            // Reserve a prior partial message plus one 4KiB read per admitted
 +            // client, and room for focus reports. Pause reads until the PTY drains; never discard
 +            // the tail of a paste because the application stopped reading.
@@ -522,7 +547,20 @@ index f5d6708..980cafc 100644
              if (client.has_pending_output) {
                  events |= lib_posix.POLL.OUT;
              }
-@@ -325,6 +398,11 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+             try poll_fds.append(gpa, .{
+-                .fd = client.socket_fd,
++                .fd = if (client.deferred_input_len > 0) -1 else client.socket_fd,
+                 .events = events,
+                 .revents = 0,
+             });
+         }
+ 
+-        _ = try lib_posix.poll(poll_fds.items, -1);
++        _ = try lib_posix.poll(poll_fds.items, if (buffered_work) 0 else -1);
+ 
+         if (poll_fds.items[2].revents & lib_posix.POLL.IN != 0) {
+             signal.drainSignalPipe() catch {};
+@@ -325,6 +423,11 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
                  null,
                  lib_posix.SOCK.NONBLOCK | lib_posix.SOCK.CLOEXEC,
              );
@@ -534,7 +572,7 @@ index f5d6708..980cafc 100644
              const client = try gpa.create(Client);
              client.* = Client{
                  .alloc = gpa,
-@@ -345,7 +423,7 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -345,7 +448,7 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
          }
  
          const inp_flags = lib_posix.POLL.IN | lib_posix.POLL.HUP | lib_posix.POLL.ERR | lib_posix.POLL.NVAL;
@@ -543,7 +581,7 @@ index f5d6708..980cafc 100644
              // Read from PTY. Buffer is sized to N_TTY_BUF_SIZE (4096): the hard
              // kernel limit for the N_TTY line discipline. A larger buffer doesn't
              // help: each read() from a PTY master returns at most 4096 bytes
-@@ -360,12 +438,13 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -360,12 +463,13 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
                  if (n == 0) {
                      // EOF: Shell exited
                      std.log.info("shell exited pty_fd={d}", .{pty_fd});
@@ -561,7 +599,7 @@ index f5d6708..980cafc 100644
                      vt_stream.nextSlice(buf[0..n]);
                      daemon.setPwd(&term);
                      daemon.has_pty_output = true;
-@@ -417,11 +496,13 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -417,11 +521,13 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
                      const broadcast_data = util.rewritePromptRedraw(gpa, buf[0..n]) orelse buf[0..n];
                      defer if (broadcast_data.ptr != buf[0..n].ptr) gpa.free(broadcast_data);
                      for (daemon.clients.items) |client| {
@@ -577,22 +615,37 @@ index f5d6708..980cafc 100644
                              continue;
                          };
                          client.has_pending_output = true;
-@@ -459,6 +540,10 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -459,8 +565,15 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
              i -= 1;
              const client = daemon.clients.items[i];
              const revents = poll_fds.items[i + 3].revents;
 +            if (client.overflowed) {
++                if (client.deferred_input_len > 0) continue;
 +                _ = daemon.closeClient(gpa, client, i, false);
 +                continue;
 +            }
  
-             if (revents & lib_posix.POLL.IN != 0) {
+-            if (revents & lib_posix.POLL.IN != 0) {
++            if ((revents & lib_posix.POLL.IN != 0 or client.resume_buffered) and client.deferred_input_len == 0) {
++                client.resume_buffered = false;
++                if (revents & lib_posix.POLL.IN != 0) {
                  const n = client.read_buf.read(client.socket_fd) catch |err| {
-@@ -480,12 +565,47 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+                     if (err == error.WouldBlock) continue;
+                     std.log.debug(
+@@ -479,13 +592,67 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+                     continue;
                  }
  
++                }
                  while (client.read_buf.next()) |msg| {
 +                    if (client.close_after_flush) break;
++                    // Never replace a partially written snapshot frame with an
++                    // error header. Refuse a repeated Init by closing this peer
++                    // before mutating any restoration or terminal state.
++                    if ((msg.header.tag == .Init or msg.header.tag == .InitTextOnly) and client.isRestoring()) {
++                        client.overflowed = true;
++                        break;
++                    }
                      switch (msg.header.tag) {
 -                        .Input => try daemon.handleInput(gpa, client, msg.payload),
 -                        .Send => daemon.handleSend(gpa, msg.payload),
@@ -605,6 +658,10 @@ index f5d6708..980cafc 100644
 +                                break;
 +                            }
 +                            client.awaiting_restore_ack = false;
++                            if (client.deferred_resize) |resize| {
++                                client.deferred_resize = null;
++                                try daemon.handleResize(gpa, client, pty_fd, &term, std.mem.asBytes(&resize));
++                            }
 +                        },
 +                        .Input => {
 +                            if (client.awaiting_restore_ack) {
@@ -616,6 +673,13 @@ index f5d6708..980cafc 100644
 +                                std.log.err("rejecting oversized terminal input message", .{});
 +                                client.overflowed = true;
 +                                break;
++                            }
++                            if (daemon.getLeaderClient()) |leader| {
++                                if (leader != client and leader.isRestoring() and msg.payload.len > 0) {
++                                    @memcpy(client.deferred_input[0..msg.payload.len], msg.payload);
++                                    client.deferred_input_len = msg.payload.len;
++                                    break;
++                                }
 +                            }
 +                            try daemon.handleInput(gpa, client, msg.payload);
 +                        },
@@ -641,7 +705,7 @@ index f5d6708..980cafc 100644
                          .Resize => try daemon.handleResize(gpa, client, pty_fd, &term, msg.payload),
                          .Detach => {
                              daemon.handleDetach(gpa, client, i);
-@@ -504,11 +624,15 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -504,11 +671,15 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
                          .LabelClear => try daemon.handleLabelClear(gpa, client),
                          .EnvGet => try daemon.handleEnvGet(gpa, client),
                          .EnvSet => try daemon.handleEnvSet(gpa, client, msg.payload),
@@ -662,11 +726,12 @@ index f5d6708..980cafc 100644
                          _ => {
                              std.log.warn(
                                  "ignoring unknown IPC tag={d}",
-@@ -521,6 +645,11 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -521,6 +692,12 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
                  }
              }
  
 +            if (client.overflowed) {
++                if (client.deferred_input_len > 0) continue;
 +                _ = daemon.closeClient(gpa, client, i, false);
 +                continue;
 +            }
@@ -674,7 +739,7 @@ index f5d6708..980cafc 100644
              if (revents & lib_posix.POLL.OUT != 0) {
                  // Flush pending output buffers
                  const n = lib_posix.write(client.socket_fd, client.write_buf.items) catch |err| blk: {
-@@ -537,6 +666,10 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
+@@ -537,6 +714,10 @@ fn daemonLoop(daemon: *Daemon, gpa: std.mem.Allocator, io: std.Io, server_sock_f
  
                  if (client.write_buf.items.len == 0) {
                      client.has_pending_output = false;
@@ -685,7 +750,7 @@ index f5d6708..980cafc 100644
                  }
              }
  
-@@ -570,16 +703,67 @@ pub const Client = struct {
+@@ -570,16 +751,72 @@ pub const Client = struct {
      alloc: std.mem.Allocator,
      socket_fd: i32,
      has_pending_output: bool = false,
@@ -694,6 +759,11 @@ index f5d6708..980cafc 100644
      is_terminal: bool = false, // sent .Init (a `zmx attach`), not a run/send/tail client
      read_buf: ipc.SocketBuffer,
      write_buf: std.ArrayList(u8),
++    deferred_input: [4096]u8 = undefined,
++    deferred_input_len: usize = 0,
++    close_when_input_drained: bool = false,
++    deferred_resize: ?ipc.Resize = null,
++    resume_buffered: bool = false,
      env_str: ?[]u8 = null,
 +    // Only the leader may stream a >queue snapshot. One immutable, bounded
 +    // restore exists per daemon; observers never pause the foreground PTY.
@@ -753,7 +823,7 @@ index f5d6708..980cafc 100644
      }
  
      fn setEnv(self: *Client, gpa: std.mem.Allocator, env_str: []const u8) !void {
-@@ -623,6 +807,8 @@ pub const Daemon = struct {
+@@ -623,6 +860,8 @@ pub const Daemon = struct {
      cwd_buf: [std.fs.max_path_bytes]u8 = undefined,
      cwd_path_buf: [std.fs.max_path_bytes]u8 = undefined,
      has_pty_output: bool = false,
@@ -762,7 +832,7 @@ index f5d6708..980cafc 100644
      created_at: u64, // unix timestamp (ns)
      is_task_mode: bool = false, // flag for when session is run as a task
      task_id: [4]u8 = undefined,
-@@ -674,7 +860,17 @@ pub const Daemon = struct {
+@@ -674,7 +913,17 @@ pub const Daemon = struct {
          const saved = term.flags.shell_redraws_prompt;
          term.flags.shell_redraws_prompt = .false;
          defer term.flags.shell_redraws_prompt = saved;
@@ -780,7 +850,32 @@ index f5d6708..980cafc 100644
      }
  
      /// True while a client that sent .Init (a real `zmx attach`) is connected.
-@@ -894,29 +1090,18 @@ pub const Daemon = struct {
+@@ -686,6 +935,12 @@ pub const Daemon = struct {
+     }
+ 
+     pub fn closeClient(self: *Daemon, gpa: std.mem.Allocator, client: *Client, i: usize, shutdown_on_last: bool) bool {
++        if (client.deferred_input_len > 0) {
++            client.close_when_input_drained = true;
++            client.overflowed = true;
++            client.is_terminal = false;
++            return false;
++        }
+         const fd = client.socket_fd;
+         // leader is disconnected, remove ref and let another client claim leader on input
+         if (self.leader_client_fd == client.socket_fd) {
+@@ -875,10 +1130,10 @@ pub const Daemon = struct {
+ 
+     fn setLeader(self: *Daemon, gpa: std.mem.Allocator, client: *Client) !void {
+         std.log.info("setting new leader client_fd={d}", .{client.socket_fd});
+-        self.leader_client_fd = client.socket_fd;
+         // Send a resize message to the client so it can send us back their window size
+         // so we can resize the pty and ghostty state.
+         try ipc.appendMessage(gpa, &client.write_buf, .Resize, "");
++        self.leader_client_fd = client.socket_fd;
+         client.has_pending_output = true;
+     }
+ 
+@@ -894,29 +1149,18 @@ pub const Daemon = struct {
      const PTY_WRITE_BUF_MAX = 256 * 1024;
  
      /// Queue bytes for the PTY's stdin. Flushed by daemonLoop on POLLOUT.
@@ -814,7 +909,23 @@ index f5d6708..980cafc 100644
      }
  
      pub fn handleInput(self: *Daemon, gpa: std.mem.Allocator, client: *Client, payload: []const u8) !void {
-@@ -981,6 +1166,18 @@ pub const Daemon = struct {
+@@ -931,7 +1175,14 @@ pub const Daemon = struct {
+ 
+         // check if leader needs to be updated by detecting any user input
+         if (util.isUserInput(payload)) {
+-            try self.setLeader(gpa, client);
++            self.setLeader(gpa, client) catch |err| {
++                if (err == error.QueueLimitExceeded) {
++                    client.overflowed = true;
++                    self.queuePtyInput(gpa, payload);
++                    return;
++                }
++                return err;
++            };
+             self.queuePtyInput(gpa, payload);
+         }
+     }
+@@ -981,14 +1232,29 @@ pub const Daemon = struct {
          pty_fd: i32,
          term: *ghostty_vt.Terminal,
          payload: []const u8,
@@ -832,8 +943,10 @@ index f5d6708..980cafc 100644
 +        text_only: bool,
      ) !void {
          if (payload.len != @sizeOf(ipc.Resize)) return;
++        if (client.isRestoring()) return error.RestoreAlreadyPending;
  
-@@ -989,6 +1186,8 @@ pub const Daemon = struct {
+         if (!client.is_terminal) {
+             client.write_buf.clearRetainingCapacity();
              client.has_pending_output = false;
          }
          client.is_terminal = true;
@@ -842,7 +955,7 @@ index f5d6708..980cafc 100644
  
          if (self.leader_client_fd == null) {
              try self.setLeader(gpa, client);
-@@ -1006,29 +1205,50 @@ pub const Daemon = struct {
+@@ -1006,29 +1272,50 @@ pub const Daemon = struct {
              try resizeTerm(gpa, term, resize.cols, resize.rows);
          }
  
@@ -906,6 +1019,37 @@ index f5d6708..980cafc 100644
          // only resize if leader
          if (is_leader) {
              var ws = resize.winsize();
+@@ -1058,8 +1345,15 @@ pub const Daemon = struct {
+         payload: []const u8,
+     ) !void {
+         if (payload.len != @sizeOf(ipc.Resize)) return;
++        if (client.isRestoring()) {
++            client.deferred_resize = std.mem.bytesToValue(ipc.Resize, payload);
++            return;
++        }
+         if (self.leader_client_fd == null) {
+-            try self.setLeader(gpa, client);
++            self.setLeader(gpa, client) catch |err| {
++                if (err == error.QueueLimitExceeded) { client.overflowed = true; return; }
++                return err;
++            };
+         }
+         // only leader can resize
+         if (self.leader_client_fd != client.socket_fd) return;
+@@ -1079,9 +1373,10 @@ pub const Daemon = struct {
+     pub fn handleDetachAll(self: *Daemon, gpa: std.mem.Allocator) void {
+         std.log.info("detach all clients={d}", .{self.clients.items.len});
+         // Go through closeClient so the leader is cleared like any other detach.
+-        while (self.clients.items.len > 0) {
+-            const last = self.clients.items.len - 1;
+-            _ = self.closeClient(gpa, self.clients.items[last], last, false);
++        var remaining = self.clients.items.len;
++        while (remaining > 0) {
++            remaining -= 1;
++            _ = self.closeClient(gpa, self.clients.items[remaining], remaining, false);
+         }
+     }
+ 
 diff --git a/src/main.zig b/src/main.zig
 index 183b736..e029fc3 100644
 --- a/src/main.zig

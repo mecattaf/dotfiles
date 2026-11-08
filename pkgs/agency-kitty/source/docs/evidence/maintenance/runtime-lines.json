@@ -1,6 +1,6 @@
 {
   "kind": "read-only source inventory; no runtime/test/build executed",
-  "dedicatedRevision": "90b005e8eb1127eac64d778c1a93f0d028b40dc3",
+  "dedicatedRevision": "1af9798fec7875ad7ebbb3dce10399c650fb4be0",
   "dotfilesReadTreeHead": "5abc06f586638961f08390003bba10bff921ba63",
   "countMethod": "len(read_text().splitlines()); physical lines including comments, docstrings and blanks; test/docs/research/build metadata excluded from full-runtime subtotal",
   "groups": {
@@ -255,11 +255,11 @@
   "separatePatchOwnership": {
     "stableZmxV4Vt1": {
       "path": "backend/zmx/agency-v4-vt1.patch",
-      "patchPhysicalLines": 1268,
-      "allAdditions": 644,
-      "allRemovals": 90,
-      "runtimeZigAdditions": 554,
-      "runtimeZigRemovals": 87,
+      "patchPhysicalLines": 1412,
+      "allAdditions": 728,
+      "allRemovals": 99,
+      "runtimeZigAdditions": 638,
+      "runtimeZigRemovals": 96,
       "buildDependencyAdditions": 7,
       "buildDependencyRemovals": 3,
       "testAdditions": 83,

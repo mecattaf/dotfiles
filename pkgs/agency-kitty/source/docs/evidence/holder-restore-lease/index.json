@@ -1,0 +1,16 @@
+{
+  "receiptsSha256": {
+    "lease-baseline.json": "e42cd71c9b7993fefb499e74f5fe48dea1281ac0aa6b1f38ed1a367b026b7b4e",
+    "lease-stable.json": "f4b3b5e3860c288e2914b875500aacabe5b0100f047437d4b50a15a4f9c7f2c6",
+    "lease-actor.json": "d0a71ba2531a1e1bd0021f772175df71cb9ca3928a35201153e2623754822d51",
+    "eof-stable.json": "0300f8c36f64c169e933056115f417a042898a43e5481a216bbbe5eacb03833a",
+    "eof-actor.json": "5c9ebcd6c7b911582b401be6413fdb535a977a9d5ca6d9f718cf869a7b7c5807",
+    "functional-stable.json": "9b60aab8e0f079460c4394848113891fb6b12b72684f3d26df187c0a51b08d53",
+    "functional-actor.json": "7002be1a67574e4154d9270dd93c9183a8bdf4f8863f1d69fe4016ddfeee986f",
+    "actor-ordering.json": "b91c02d455ac26deb35069b5e8040861dd575d1e964fd9392b7d1d1150fec9d5"
+  },
+  "upstreamCommit": "a35f00a2118b15a5e9d522a43035c8d7487df9b7",
+  "ghosttyCommit": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
+  "latencySamplesCollected": false,
+  "note": "Manual ReleaseSafe x86_64-linux-musl binaries. Exact Nix artifact follow-up is separate; no GUI/timing evidence relabelled."
+}

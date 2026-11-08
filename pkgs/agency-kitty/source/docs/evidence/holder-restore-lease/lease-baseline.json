@@ -1,0 +1,10 @@
+{
+  "binary": "/nix/store/3cnv7p155liqbzwn34ppj72a4bvh0l48-agency-zmx-1.0.1-agency.4-vt1/bin/zmx",
+  "sha256": "bb7a0906728a14d9b6313ac6aeb2f2717e9d6c84eb0350f83670454d4fb3483a",
+  "fixtureSha256": "c83b1575865dee80656cec2480e05f4b2068286bbfd7d5a227e67aa1cbc31d52",
+  "latencySamplesCollected": false,
+  "cases": [],
+  "oldRaceReproduced": true,
+  "passed": true,
+  "cleanupOwnedChildrenEmpty": true
+}

@@ -34,5 +34,6 @@
   "stopped-worker-actor.json": {
     "sha256": "eeb03ce462b0a802a2baa8d34a78b01dcf8c97959a5ad7f6e18d579442dab09a",
     "bytes": 679
-  }
+  },
+  "nix-qualification-5abc06f5.json": "50c0a05bc61c3a0c7f5af018d7d05373d4aabb98fd762935b3dfa4298421d350"
 }
