@@ -474,8 +474,8 @@ in
           enable = lib.mkEnableOption "the on-demand Gufo TP2 rank";
           package = lib.mkOption {
             type = lib.types.package;
-            default = inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.gufo-rdma;
-            defaultText = lib.literalExpression "inputs.self.packages.x86_64-linux.gufo-rdma";
+            default = cfg.package;
+            defaultText = lib.literalExpression "config.services.gufo.package";
           };
           rank = lib.mkOption {
             type = lib.types.enum [
@@ -600,15 +600,8 @@ in
         message = "services.gufo.alternates may not be named `flash` (the primary) or `off` (gufo-switch's stop verb).";
       }
       {
-        assertion =
-          !tp.enable
-          || (
-            tp.bootstrapPort != tp.controlPort
-            && builtins.elem tp.model.artifact [
-              "qwen38-flash-next-gguf"
-            ]
-          );
-        message = "Gufo TP2 requires distinct bootstrap/control ports and the Flash-Next bundle (the fork only supports qwen4exp TP2).";
+        assertion = !tp.enable;
+        message = "Gufo TP2 is retired with the canceled second Strix (#698); use the single-host deployment.";
       }
     ];
 

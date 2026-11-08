@@ -32,7 +32,7 @@ assert lib.versions.majorMinor selected.version == "7.3";
 assert builtins.all (
   name: (kernel name).version == selected.version && (kernel name).drvPath == selected.drvPath
 ) (builtins.attrNames configs);
-assert !configs.strix-coordinator.config.hardware.thunderbolt-ibverbs.enable;
+assert !(configs.strix-coordinator.config.hardware ? thunderbolt-ibverbs);
 assert !configs.strix-coordinator.config.services.gufo.tp2.enable;
 assert !(configs.nas.options.myNas.homeDisk ? partUuid);
 assert nas.myNas.homeDisk.layout == "shared-btrfs";
@@ -63,7 +63,7 @@ assert builtins.elem "subvol=@fast" nas.fileSystems."/mnt/fast".options;
       herdrSwitchMethod = nas.home-manager.users.tom.systemd.user.services.herdr.Unit.X-SwitchMethod;
     };
     singleStrix = {
-      rdmaEnabled = configs.strix-coordinator.config.hardware.thunderbolt-ibverbs.enable;
+      rdmaEnabled = configs.strix-coordinator.config.hardware.thunderbolt-ibverbs.enable or false;
       tp2Enabled = configs.strix-coordinator.config.services.gufo.tp2.enable;
       gufoRevision = flake.inputs.gufo.rev;
       gufoDrv = configs.strix-coordinator.config.services.gufo.package.drvPath;

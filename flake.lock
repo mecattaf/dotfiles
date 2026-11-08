@@ -204,25 +204,6 @@
         "type": "github"
       }
     },
-    "donnerkeule": {
-      "inputs": {
-        "nixpkgs": "nixpkgs"
-      },
-      "locked": {
-        "lastModified": 1792897191,
-        "narHash": "sha256-o7bR0g02d4gD/HxZ4cKFfZMyDpP0tXk5ujv3XkxO6/c=",
-        "owner": "mecattaf",
-        "repo": "donnerkeule",
-        "rev": "31ff86e5478eb3707ea8186891fd4d18b073054b",
-        "type": "github"
-      },
-      "original": {
-        "owner": "mecattaf",
-        "ref": "codex/framework-7-3-host-credits",
-        "repo": "donnerkeule",
-        "type": "github"
-      }
-    },
     "ds4": {
       "flake": false,
       "locked": {
@@ -440,26 +421,6 @@
         "owner": "gufo-org",
         "repo": "gufo",
         "rev": "0c03748a271eab895befc0d2343aa50ca4b6d836",
-        "type": "github"
-      }
-    },
-    "gufo-rdma": {
-      "inputs": {
-        "audio-cpp": "audio-cpp_2",
-        "nixpkgs": "nixpkgs_3"
-      },
-      "locked": {
-        "lastModified": 1792687837,
-        "narHash": "sha256-JK7vPok3ALQrr6bdxPYBzvxpE8XyULmxZmWKwlAofrg=",
-        "owner": "neuhaus",
-        "repo": "gufo",
-        "rev": "39f437cc1316c2b24031fef983462feaac88b9d5",
-        "type": "github"
-      },
-      "original": {
-        "owner": "neuhaus",
-        "ref": "rdma",
-        "repo": "gufo",
         "type": "github"
       }
     },
@@ -1054,11 +1015,9 @@
         "agenix": "agenix",
         "deploy-rs": "deploy-rs",
         "disko": "disko",
-        "donnerkeule": "donnerkeule",
         "flake-utils": "flake-utils",
         "git-ai": "git-ai",
         "gufo": "gufo",
-        "gufo-rdma": "gufo-rdma",
         "herdr": "herdr",
         "home-manager": "home-manager",
         "home-manager-nas": "home-manager-nas",

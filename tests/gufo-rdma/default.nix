@@ -5,7 +5,7 @@ let
   c = self.nixosConfigurations.strix-coordinator.config;
   w = self.nixosConfigurations.strix-worker.config;
   retired = host:
-    !host.hardware.thunderbolt-ibverbs.enable
+    !(host.hardware ? thunderbolt-ibverbs)
     && !host.services.gufo.tp2.enable
     && !(host.systemd.services ? thunderbolt-ibverbs-check)
     && !(host.systemd.services ? gufo-tp2)
