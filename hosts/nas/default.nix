@@ -59,6 +59,14 @@
   ];
   myHeadless.enable = true;
 
+  # Maintenance scope, 2026-11-08: retain the currently deployed transport and
+  # ordinary Neovim entry. Native Kitty/retained-editor adoption is a separate
+  # attended session; the prepared modules remain available for that work.
+  home-manager.users.tom.programs = {
+    agencyKitty.enable = false;
+    agencyEditor.enable = false;
+  };
+
   # Central credentials move here with the brain role. Ciphertexts must be
   # rekeyed by Tom before deployment; see REKEY.md. No compute host receives them.
   mySecrets.enable = true;
