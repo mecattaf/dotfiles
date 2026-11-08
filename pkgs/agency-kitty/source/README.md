@@ -36,3 +36,18 @@ The installed `agency-kitty-native-forward` prototype explicitly attaches a
 local compiled client through an SSH Unix-socket forward. It changes SSH's
 interactive timing-padding policy and does not replace the desktop launcher.
 See [native forwarding usage and requirements](docs/NATIVE_FORWARD.md).
+
+## Review and adoption
+
+[Workflow usage](docs/USAGE.md) covers direct launch, explicit retained sessions,
+primary `vi`, images, selection and history. [Measured results](docs/FROZEN-RESULTS.md)
+separate software echo from physical display latency, and
+[maintenance gates](docs/MAINTENANCE.md) describe the owned compatibility surface.
+
+The client desktop is not activated by this repository. Follow the
+[client composition plan](integration/domicile/CLIENT-ADOPTION.md) before applying
+the exact public-entry patch: canonical dotfiles still selects Sway, while the
+current Domicile owner has separate uncommitted desktop changes. The qualified
+three shortcuts and full Imagine resume clicks are documented in
+[the actual-entry proof](docs/IMAGINE-CLIENT-KEYS-PROOF.md) and
+[the resume proof](docs/IMAGINE-NATIVE-RESUME-PROOF.md).

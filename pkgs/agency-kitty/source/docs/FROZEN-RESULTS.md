@@ -1,8 +1,8 @@
 # Frozen software comparison, November 8, 2026
 
 The paced comparison ran from 03:00:14 to 03:33:46 UTC, inside the predeclared
-45-minute limit. All implementations passed functional admission before the
-window. Collectors, binaries, workload and seeded schedules remained fixed.
+45-minute limit. The frozen worker’s start/echo/cleanup admission passed before the
+window; stock zmx remains a speed diagnostic with known failed correctness gates. Collectors, binaries, workload and seeded schedules remained fixed.
 One predeclared local repeat was used after independently observed background
 browser work; it also overlapped a short background job. Both complete local
 runs remain labelled shared-host. There was no third attempt or sample removal.
@@ -14,9 +14,13 @@ host activity are retained at:
 
 ## Scope and validity
 
-These are software echo paths. The native Kitty C parser verifies the actual
-echo cell; the receive timestamp precedes parsing of the matching chunk.
-Previous parsing still affects read scheduling. Results exclude physical input,
+These are software echo paths. Local and DSH observers use Kitty's native C
+parser to verify the actual echo cell. The network observer instead matches an
+exact per-case UUID, increasing sequence and echoed-key marker emitted by its
+worker; it does not run the Kitty parser. Receive timestamps precede processing
+of the matching chunk. Earlier observation still affects read scheduling.
+These different workloads and observers remain separate cohorts.
+Results exclude physical input,
 Kitty GUI presentation, compositor scheduling and display pixels. Every delta
 uses one observer's monotonic clock, rather than subtracting host wall clocks.
 
@@ -78,6 +82,21 @@ The unpadded holder's matched-round median overhead is about 0.13–0.27 ms.
 Unpadded forwarding does not consistently beat unpadded ordinary SSH. Padded
 holder differences include pacing/batching interactions and cannot all be
 assigned to standalone VT parsing.
+
+## Post-collection pacing check
+
+A separate analysis used all 2,370 adjacent ongoing network pairs, with a fixed
+20 ms period taken from the inspected OpenSSH policy and 1/2 ms distance bands.
+It did not search for a period or remove samples. During busy output, 75.1% of
+padded arrival intervals fell within 2 ms of a 20 ms multiple, versus 22.1% of
+unpadded arrivals; the input schedules themselves were around 22%. Every busy
+padded round showed enrichment. Idle rounds varied substantially. This supports
+the pacing explanation without establishing a universal exact delivery grid
+or replacing a packet trace. Applying a fixed 16 ms diagnostic to the old Herdr
+paths did not reveal a fixed 16 ms arrival clock; its conditional minimum render
+gate should not be described as one. All original sample hashes are unchanged.
+The script, complete per-round output and hash receipt are retained alongside
+the report at `research/measurements/arrival-periodicity/`.
 
 ## DSH-owned paths
 

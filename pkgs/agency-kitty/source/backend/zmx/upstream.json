@@ -1,4 +1,12 @@
 {
+  "_scope": "Historical version-3 baseline for agency.patch/build.py default and its original receipts; not the current source-built packaged variant.",
+  "_current_source_build": {
+    "recipe": "backend/zmx/source-build.nix",
+    "receipt": "backend/zmx/source-build-receipt-v4-vt1.json",
+    "fork_version": "1.0.1-agency.4-vt1",
+    "fork_protocol_version": 204,
+    "ghostty_commit": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec"
+  },
   "repository": "https://github.com/neurosnap/zmx",
   "commit": "a35f00a2118b15a5e9d522a43035c8d7487df9b7",
   "upstream_version": "1.0.1",

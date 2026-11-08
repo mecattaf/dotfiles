@@ -1,6 +1,15 @@
 # Restricted native PTY holder
 
-This is a small MIT patch against zmx 1.0.1, commit
+The current source-built persistent variant is `1.0.1-agency.4-vt1`, protocol
+204, with stable libghostty-vt `0fa3d577`. Its authoritative recipe is
+[`source-build.nix`](source-build.nix), applying
+[`agency-v4-vt1.patch`](agency-v4-vt1.patch); the exact qualification is in
+[`source-build-receipt-v4-vt1.json`](source-build-receipt-v4-vt1.json) and
+[`GRAPHICS-v4.md`](GRAPHICS-v4.md). This source build is what dotfiles packages.
+It does not use a manually copied binary or the older version-3 manifest below.
+Ordinary managed direct SSH does not allocate a holder.
+
+All variants derive from an owned MIT patch against zmx 1.0.1, commit
 `a35f00a2118b15a5e9d522a43035c8d7487df9b7`. Preserve
 `LICENSE.upstream`, `NOTICE`, and `licenses/` when distributing it. The notices
 include the exact pinned Ghostty, Zig, musl and linked dependency copyrights.
@@ -8,12 +17,18 @@ Ghostty/libghostty-vt remains an
 upstream pinned MIT dependency; the binary contains the shadow VT engine,
 while Kitty remains the only attached renderer.
 
-The version is deliberately `1.0.1-agency.3`; the Python endpoint rejects stock
-zmx and other daemon versions. Do not upgrade an executable used by existing
-PTYs in place. Session records retain the holder version they need. The separate
+The following historical baseline description is specifically version 3:
+[`upstream.json`](upstream.json), `agency.patch`, `build.py`'s default patch,
+`build-receipt.json` and the older `package.nix` import path. Its version is
+deliberately `1.0.1-agency.3`, protocol 203; these historical fields are retained
+so their exact existing sessions and evidence remain identifiable. The Python
+endpoint selects and checks the exact configured variant. Do not upgrade an
+executable used by existing PTYs in place. Session records retain the holder
+version they need. The separate
 `agency-kitty/zmx-3` socket directory excludes
 unrelated zmx sessions. The ordinary input and output path is compiled native
-code; Python exits through exec when attachment begins.
+code. Optional reconnect supervision may wait in Python, but no Python process
+reads or relays terminal input/output bytes.
 
 The patch provides `ZMX_ATTACH_ONLY=1`: attach goes directly to an existing
 socket without invoking the create-if-missing code. The endpoint uses this on

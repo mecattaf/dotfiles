@@ -1,0 +1,22 @@
+{
+  "passed": true,
+  "fixtureSourceSha256": "249149662e15ac59a18d550a1a8b51675ca812d7828d6f894ce5e7805ff62b4a",
+  "receiptSha256": "f81c5c8f29b46ce5696bcf565e4a037e5af05d27ef1bc66a110e5f302d58adb4",
+  "clientEntry": {
+    "sourceSha256": "61d031227c1e7f731f72046a148f224a20be2ed4b57a01b6c8a3426a5bd9d72d",
+    "originalDirtyEntrySha256": "b6cf824a58a96efe6ec8f7d4d674e9a2cf9dff771524a81e4ef96033c0ad4fb9",
+    "adoptionPatchSha256": "fac3e885e81011dc005c20775a9d515483930ae9b7fa79422b2c74b0fed6adcd",
+    "compiledShellSha256": "aeaf8c394a52e3240353a5a671c70dcc78de3fb024a870c33b7387c56131ca0a",
+    "compilerWorkspace": "/nix/store/wdalyh44vk2k9ddhla4d2dkx96jwlqxf-domicile-shell-workspace-0.0.0",
+    "startupExportsNotActivated": true,
+    "originalEntryBytesPreserved": true
+  },
+  "sourceArtifact": "/home/tom/.wt/kitty-consolidation/artifacts/client-key-adoption/entry-patched.tsx",
+  "adoptionPatch": "integration/domicile/client-entry.patch (transport_research lane)",
+  "privateComputeProof": "/home/tom/agent-work/kitty-consolidation/imagine-resume/proof-keys-final-20261108-0404",
+  "installedSeatHelper": "/nix/store/gwgza9623ifc8d240hh0kl2s4yx6mbw4-agency-kitty-0.1.0/bin/agency-kitty",
+  "installedNasHelper": "/nix/store/llib0gcdrnr9w5wzjgzz0h664nkl3r89-agency-kitty-0.1.0/bin/agency-kitty",
+  "productionActivation": false,
+  "latencyCollection": false,
+  "automaticChatOrWorkspaceLinkage": false
+}

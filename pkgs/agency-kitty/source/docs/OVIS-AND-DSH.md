@@ -70,8 +70,8 @@ See integration/imagine and docs/DSH-INSTALLED-BUNDLE-PROOF.md.
 ## Status standards
 
 [OSC7501](https://mitchellh.com/writing/program-status-osc7501) is a real generic
-Program Status Protocol, published2026-10-06. The exact installed Codex0.163.0
-emits it in the offline TUI proof; Kitty0.50 has a native parser and public
+Program Status Protocol, published2026-10-06. The early offline TUI proof used the pre-upgrade installed Codex0.163.0
+and observed its emission; Kitty0.50 has a native parser and public
 `on_program_status_change` watcher. Kitty0.48, the live baseline, predates this
 support. The protocol's existence does not prove every installed harness emits
 it or that every desktop already consumes it.

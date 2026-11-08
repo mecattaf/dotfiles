@@ -1,0 +1,14 @@
+{
+  "source": "48307add / af93cf0",
+  "fixtureSourceSha256": "85a76a9fe9a042b8071bc871bfc021965855826582961f353d495a27e4101c2d",
+  "qualifiedInstalledSeat": "/nix/store/gwgza9623ifc8d240hh0kl2s4yx6mbw4-agency-kitty-0.1.0/bin/agency-kitty",
+  "qualifiedInstalledNas": "/nix/store/llib0gcdrnr9w5wzjgzz0h664nkl3r89-agency-kitty-0.1.0/bin/agency-kitty",
+  "receiptSha256": "aa3f07f85905db797df96a10e04cac8fa276230f8ee52ef94bcf9e34f09f77bf",
+  "diagnosticsRegression": {
+    "tests": 2,
+    "passed": true,
+    "log": "diagnostics-regression.log"
+  },
+  "privateComputeProof": "/home/tom/agent-work/kitty-consolidation/imagine-resume/proof-final-20261108-0349",
+  "noProductionActivation": true
+}

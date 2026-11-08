@@ -1,0 +1,15 @@
+--- a/home/dot_config/domicile/domicile.tsx
++++ b/home/dot_config/domicile/domicile.tsx
+@@ -32,9 +32,10 @@
+ );
+ const keybindings = {
+   ...kept,
+-  "Meta+Return": exec("domicile-apps", "terminal"),
++  "Meta+Return": exec("agency-kitty", "desktop", "terminal"),
++  "Meta+Control+Shift+Return": exec("agency-kitty", "menu"),
+   "Alt+space": agency("ambient-chat", "toggle"),
+-  "Meta+Shift+Return": exec("domicile-apps", "rescue"),
++  "Meta+Shift+Return": exec("agency-kitty", "desktop", "rescue"),
+   "Control+n": exec("domicile-apps", "chrome"),
+   "Control+Shift+n": exec("domicile-apps", "chrome", "--incognito"),
+   "Meta+n": exec("domicile-apps", "chrome"),

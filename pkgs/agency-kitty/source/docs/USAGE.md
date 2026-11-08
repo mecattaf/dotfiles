@@ -52,12 +52,14 @@ layout manager, prefix key or terminal renderer. Attached application bytes
 remain native Kitty protocol. Fresh reconnect uses a bounded shadow-state
 snapshot; this has specific limits. Static explicitly identified RGB/RGBA/PNG
 images are qualified, including repeated large-image replacement/deletion.
-Unsupported graphics subsets and OSC66 restoration refuse strict replay.
+Known retained unsupported graphics states and detected OSC66 refuse strict replay.
+Commands discarded by the shadow parser may be invisible to that validation;
+strict mode is not universal protocol certification.
 `ZMX_RESTORE_TEXT_ONLY=1` is an explicit degraded recovery escape, not full
 protocol parity. The unwrapped direct route remains the compatibility baseline.
 
 The existing Kitty configuration keeps 100,000 local scrollback lines while
-attached. The holder retains at most 10,000 lines with a 64 MiB state bound;
+attached. The holder retains at most 10,000 lines with a 64 MiB scrollback bound;
 fresh text snapshots have a separate 32 MiB bound. A new window cannot recover
 more terminal history than its holder retained. Saved semantic harness history
 is a separate view, rather than a substitute for identical terminal scrollback.
@@ -106,9 +108,12 @@ running desktop engine or apply those source patches.
 
 With the fleet editor module enabled, fish `vi` uses a true local Nvim UI over
 SSH/RPC to a retained per-directory NAS editor. In a managed NAS terminal it
-blocks the original shell until that UI explicitly detaches. A lost local UI
-lease preserves the pending request and unsaved remote buffers; reconnecting
-the managed terminal rebinds them. Unmanaged NAS terminals fail with guidance
+blocks the original shell until that UI completes. Native `:detach` returns 0;
+an explicit local window close returns 129. Both preserve the remote editor
+and dirty buffers. An SSH/RPC lease failure instead preserves the pending
+request; reattaching the same surviving retained parent PTY restores it. A lost
+direct SSH PTY cannot preserve that shell request. Unmanaged NAS terminals fail
+with guidance
 before allocating an editor. Run `command nvim` explicitly when a conventional
 NAS TUI is intended.
 

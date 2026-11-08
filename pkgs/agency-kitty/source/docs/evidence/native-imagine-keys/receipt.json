@@ -1,0 +1,705 @@
+{
+  "passed": true,
+  "homeUnchanged": true,
+  "realHomeMasked": true,
+  "privateNetworkAndRuntime": true,
+  "bundleSha256": "191547be9ec4c56a2108c4d82eda5b2f99a501492e0727e9db980cd5f5db1f37",
+  "fullImagineBundle": true,
+  "productionActivated": false,
+  "installedSeatHelper": "/nix/store/gwgza9623ifc8d240hh0kl2s4yx6mbw4-agency-kitty-0.1.0/bin/agency-kitty",
+  "installedNasHelper": "/nix/store/llib0gcdrnr9w5wzjgzz0h664nkl3r89-agency-kitty-0.1.0/bin/agency-kitty",
+  "installedMetadataCompanionSha256": "6d2aa7c62403ea1b188b4616cb2e968754e71d1c7f541b71b668761fafa708bd",
+  "cases": [
+    {
+      "name": "trusted-mod-enter-direct",
+      "windowClass": "agencykitty-7fb7f42c9403427bab39606e676a7f73",
+      "managedUuid": "7fb7f42c-9403-427b-ab39-606e676a7f73",
+      "ordinaryOpenSshArgv": [
+        "-tt",
+        "-o",
+        "Hostname=100.65.85.114",
+        "-o",
+        "HostKeyAlias=nas",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ForwardAgent=no",
+        "-o",
+        "ClearAllForwardings=yes",
+        "-o",
+        "ControlMaster=no",
+        "-o",
+        "ControlPath=none",
+        "-o",
+        "ConnectTimeout=10",
+        "-o",
+        "ServerAliveInterval=15",
+        "-o",
+        "ServerAliveCountMax=3",
+        "--",
+        "nas",
+        "/nix/store/llib0gcdrnr9w5wzjgzz0h664nkl3r89-agency-kitty-0.1.0/bin/agency-kitty remote direct --id 7fb7f42c-9403-427b-ab39-606e676a7f73 --cwd /home/tom --window-class agencykitty-7fb7f42c9403427bab39606e676a7f73 --kitty-window-id 1"
+      ],
+      "noHolderAllocated": true,
+      "nativeOsc133Prompt": true,
+      "nativeOsc7Cwd": "kitty-shell-cwd://nas/home/tom",
+      "nativeTerm": {
+        "pid": 861,
+        "start": "120150075",
+        "term": "xterm-kitty",
+        "terminfo": "/nix/store/ryc1x74bpvnm57lfbj2m3iz08r3551in-kitty-0.50.0/lib/kitty/terminfo"
+      },
+      "exactUserVars": {
+        "agency_attention": "",
+        "agency_chat": "",
+        "agency_chats": "[]",
+        "agency_directory": "/home/tom",
+        "agency_editor_request": "",
+        "agency_harness": "",
+        "agency_harness_session": "",
+        "agency_host": "nas",
+        "agency_mode": "direct",
+        "agency_program_status": "",
+        "agency_resumable": "0",
+        "agency_session": "7fb7f42c-9403-427b-ab39-606e676a7f73",
+        "agency_status": "",
+        "agency_transcript": "",
+        "agency_workspace": ""
+      },
+      "noChatOrWorkspaceLink": true
+    },
+    {
+      "name": "trusted-mod-control-shift-enter-menu",
+      "windowClass": "agencykitty-menu",
+      "nativeFzfUi": true,
+      "selectionInput": "Kitty native remote-control text/key into private fzf UI",
+      "exactSavedUuid": "b8010aec-1d33-42ae-a77d-debaa18c3f48",
+      "savedFishOwnerUnchanged": true,
+      "noNewHolderAllocated": true
+    },
+    {
+      "name": "trusted-mod-shift-enter-rescue",
+      "windowClass": "agencykitty-rescue",
+      "localFishCmdline": [
+        "fish",
+        "--login",
+        "--interactive"
+      ],
+      "additionalSshInvocations": 0,
+      "noManagedNasUuid": true
+    }
+  ],
+  "domicileRuntimeSha256": {
+    "domicile": "288294048c41a2f329126cd3a8c047959a74f4536cf62c5b5ef9280d6a42be22",
+    "domicile-compositor": "5cfad5ab7f4bb436abb8e79fd897edfc5a8b24d0f88b9eed4e886c662bf73df7",
+    "domicile-native-drag-events": "1f509d0319e54f3343a784a5734599cc4cec64024af7ad2548bad1f0ed185d2f"
+  },
+  "seatHelperFromNixStore": true,
+  "fixtureSourceSha256": "249149662e15ac59a18d550a1a8b51675ca812d7828d6f894ce5e7805ff62b4a",
+  "clientEntry": {
+    "sourceSha256": "61d031227c1e7f731f72046a148f224a20be2ed4b57a01b6c8a3426a5bd9d72d",
+    "originalDirtyEntrySha256": "b6cf824a58a96efe6ec8f7d4d674e9a2cf9dff771524a81e4ef96033c0ad4fb9",
+    "adoptionPatchSha256": "fac3e885e81011dc005c20775a9d515483930ae9b7fa79422b2c74b0fed6adcd",
+    "compiledShellSha256": "aeaf8c394a52e3240353a5a671c70dcc78de3fb024a870c33b7387c56131ca0a",
+    "compilerWorkspace": "/nix/store/wdalyh44vk2k9ddhla4d2dkx96jwlqxf-domicile-shell-workspace-0.0.0",
+    "startupExportsNotActivated": true,
+    "originalEntryBytesPreserved": true
+  },
+  "noAutomaticChatOrWorkspaceLinkage": true,
+  "engineAttestation": {
+    "root": "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244",
+    "loadedLibrarySha256": {
+      "/nix/store/9h4xmaqrb1w5hs8f5x4vasbzac7y966z-domicile-engine-63db244/libdomicile_engine.so": "43f0dc75132f7ab3ae7042a75d7c19b88e89a9e10a4850a656a06bcda623c02f"
+    }
+  },
+  "kittyAttestation": {
+    "binary": "/nix/store/rs4s3ggn03a65bbwj9r1ps20d4kichm1-kitty-0.50.0/bin/kitty",
+    "sha256": "d0565fa5f55341068f2354e0c4444a16cfa268e1c08701f3c59b2bfc8fefa918"
+  },
+  "actualEngineKeyDispatches": [
+    {
+      "type": "rawKeyDown",
+      "key": "Enter",
+      "code": "Enter",
+      "windowsVirtualKeyCode": 13,
+      "nativeVirtualKeyCode": 28,
+      "modifiers": 4
+    },
+    {
+      "type": "keyUp",
+      "key": "Enter",
+      "code": "Enter",
+      "windowsVirtualKeyCode": 13,
+      "nativeVirtualKeyCode": 28,
+      "modifiers": 4
+    },
+    {
+      "type": "rawKeyDown",
+      "key": "Enter",
+      "code": "Enter",
+      "windowsVirtualKeyCode": 13,
+      "nativeVirtualKeyCode": 28,
+      "modifiers": 14
+    },
+    {
+      "type": "keyUp",
+      "key": "Enter",
+      "code": "Enter",
+      "windowsVirtualKeyCode": 13,
+      "nativeVirtualKeyCode": 28,
+      "modifiers": 14
+    },
+    {
+      "type": "rawKeyDown",
+      "key": "Enter",
+      "code": "Enter",
+      "windowsVirtualKeyCode": 13,
+      "nativeVirtualKeyCode": 28,
+      "modifiers": 12
+    },
+    {
+      "type": "keyUp",
+      "key": "Enter",
+      "code": "Enter",
+      "windowsVirtualKeyCode": 13,
+      "nativeVirtualKeyCode": 28,
+      "modifiers": 12
+    }
+  ],
+  "retainedNasOwners": {
+    "b8010aec-1d33-42ae-a77d-debaa18c3f48": {
+      "pid": 136,
+      "start": "120149687",
+      "term": "xterm-kitty",
+      "terminfo": "/nix/store/ryc1x74bpvnm57lfbj2m3iz08r3551in-kitty-0.50.0/lib/kitty/terminfo"
+    },
+    "82492dc7-b7c1-4f75-bff9-47daab8b439a": {
+      "pid": 209,
+      "start": "120149738",
+      "term": "xterm-kitty",
+      "terminfo": "/nix/store/ryc1x74bpvnm57lfbj2m3iz08r3551in-kitty-0.50.0/lib/kitty/terminfo"
+    },
+    "ae75c08c-09fe-4848-a015-3d2b81ebdf5c": {
+      "pid": 261,
+      "start": "120149789",
+      "term": "xterm-kitty",
+      "terminfo": "/nix/store/ryc1x74bpvnm57lfbj2m3iz08r3551in-kitty-0.50.0/lib/kitty/terminfo"
+    }
+  },
+  "allNasPidsAndStartsPreserved": true,
+  "finalSnapshot": {
+    "capabilities": {
+      "snapshot": true,
+      "workspaceQuery": true,
+      "pollSnapshots": true,
+      "eventReplay": false,
+      "focus": false,
+      "layout": false,
+      "closeViewer": false,
+      "terminateDshSession": false,
+      "windowTitles": false,
+      "windowUrls": false,
+      "windowContents": false
+    },
+    "coordinates": "desktop-logical",
+    "containerIdentity": "epoch+revision+workspace+layer+floatIndex+path",
+    "outputs": [
+      {
+        "id": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "logicalGeometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 768
+        },
+        "scale": 1,
+        "visibleWorkspace": {
+          "kind": "workspace",
+          "value": "1"
+        },
+        "focused": true
+      }
+    ],
+    "focus": {
+      "output": {
+        "kind": "output",
+        "value": "HEADLESS-1"
+      },
+      "workspace": {
+        "kind": "workspace",
+        "value": "1"
+      },
+      "shellWindow": {
+        "kind": "window",
+        "value": "app:app-4"
+      },
+      "nativeWindow": {
+        "kind": "native-window",
+        "value": "app-4"
+      },
+      "replayed": true
+    },
+    "workspaces": [
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "1"
+        },
+        "name": "1",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [
+          {
+            "kind": "output",
+            "value": "HEADLESS-1"
+          }
+        ],
+        "tiling": {
+          "depth": 2,
+          "root": {
+            "kind": "container",
+            "path": [],
+            "layout": "split-horizontal",
+            "focusedChild": 2,
+            "fractions": [
+              0.3333333333333333,
+              0.3333333333333333,
+              0.3333333333333333
+            ],
+            "children": [
+              {
+                "kind": "container",
+                "path": [
+                  0
+                ],
+                "layout": "tabbed",
+                "focusedChild": 0,
+                "fractions": [
+                  1
+                ],
+                "children": [
+                  {
+                    "kind": "window",
+                    "window": {
+                      "kind": "window",
+                      "value": "app:app-1"
+                    },
+                    "focusedAt": 1
+                  }
+                ]
+              },
+              {
+                "kind": "container",
+                "path": [
+                  1
+                ],
+                "layout": "tabbed",
+                "focusedChild": 0,
+                "fractions": [
+                  1
+                ],
+                "children": [
+                  {
+                    "kind": "window",
+                    "window": {
+                      "kind": "window",
+                      "value": "app:app-3"
+                    },
+                    "focusedAt": 2
+                  }
+                ]
+              },
+              {
+                "kind": "container",
+                "path": [
+                  2
+                ],
+                "layout": "tabbed",
+                "focusedChild": 0,
+                "fractions": [
+                  1
+                ],
+                "children": [
+                  {
+                    "kind": "window",
+                    "window": {
+                      "kind": "window",
+                      "value": "app:app-4"
+                    },
+                    "focusedAt": 3
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": [
+          {
+            "kind": "window",
+            "value": "app:app-1"
+          },
+          {
+            "kind": "window",
+            "value": "app:app-3"
+          },
+          {
+            "kind": "window",
+            "value": "app:app-4"
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "2"
+        },
+        "name": "2",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 0,
+          "root": null
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": []
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "3"
+        },
+        "name": "3",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 0,
+          "root": null
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": []
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "4"
+        },
+        "name": "4",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 0,
+          "root": null
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": []
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "5"
+        },
+        "name": "5",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 0,
+          "root": null
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": []
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "6"
+        },
+        "name": "6",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 0,
+          "root": null
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": []
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "7"
+        },
+        "name": "7",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 0,
+          "root": null
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": []
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "8"
+        },
+        "name": "8",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 0,
+          "root": null
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": []
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "9"
+        },
+        "name": "9",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 0,
+          "root": null
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": []
+      },
+      {
+        "id": {
+          "kind": "workspace",
+          "value": "10"
+        },
+        "name": "10",
+        "homeOutput": {
+          "kind": "output",
+          "value": "HEADLESS-1"
+        },
+        "visibleOn": [],
+        "tiling": {
+          "depth": 0,
+          "root": null
+        },
+        "floats": [],
+        "floatFocus": null,
+        "fullscreen": null,
+        "enclosedWindows": []
+      }
+    ],
+    "windows": [
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-1"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-1"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "agencykitty-7fb7f42c9403427bab39606e676a7f73"
+        },
+        "placements": [
+          {
+            "output": {
+              "kind": "output",
+              "value": "HEADLESS-1"
+            },
+            "frame": {
+              "x": 0,
+              "y": 0,
+              "width": 341,
+              "height": 768
+            },
+            "surface": {
+              "x": 0,
+              "y": 29,
+              "width": 341,
+              "height": 739
+            },
+            "bar": {
+              "x": 0,
+              "y": 0,
+              "width": 240,
+              "height": 30
+            },
+            "bare": false,
+            "depth": 0,
+            "selected": false
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-3"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-3"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "agencykitty-b8010aec1d3342aea77ddebaa18c3f48"
+        },
+        "placements": [
+          {
+            "output": {
+              "kind": "output",
+              "value": "HEADLESS-1"
+            },
+            "frame": {
+              "x": 341,
+              "y": 0,
+              "width": 342,
+              "height": 768
+            },
+            "surface": {
+              "x": 341,
+              "y": 29,
+              "width": 342,
+              "height": 739
+            },
+            "bar": {
+              "x": 341,
+              "y": 0,
+              "width": 240,
+              "height": 30
+            },
+            "bare": false,
+            "depth": 0,
+            "selected": false
+          }
+        ]
+      },
+      {
+        "id": {
+          "kind": "window",
+          "value": "app:app-4"
+        },
+        "kind": "native",
+        "nativeId": {
+          "kind": "native-window",
+          "value": "app-4"
+        },
+        "desktopAppId": {
+          "kind": "desktop-app",
+          "value": "agencykitty-rescue"
+        },
+        "placements": [
+          {
+            "output": {
+              "kind": "output",
+              "value": "HEADLESS-1"
+            },
+            "frame": {
+              "x": 683,
+              "y": 0,
+              "width": 341,
+              "height": 768
+            },
+            "surface": {
+              "x": 683,
+              "y": 29,
+              "width": 341,
+              "height": 739
+            },
+            "bar": {
+              "x": 683,
+              "y": 0,
+              "width": 240,
+              "height": 30
+            },
+            "bare": false,
+            "depth": 0,
+            "selected": false
+          }
+        ]
+      }
+    ],
+    "scratchpad": {
+      "semantics": "hidden queue; shown scratchpad windows are workspace floats with scratchpad=true",
+      "windows": []
+    },
+    "background": [],
+    "unplaced": [],
+    "popups": []
+  },
+  "nasOwnedCleanup": {
+    "escalations": [
+      {
+        "signal": 15,
+        "processes": [
+          {
+            "pid": 260,
+            "start": "120149789",
+            "state": "S"
+          }
+        ]
+      }
+    ],
+    "remainingOwnedProcesses": []
+  },
+  "clientOwnedCleanup": {
+    "escalations": [],
+    "remainingOwnedProcesses": []
+  },
+  "wallSeconds": 8.218401317950338,
+  "sshdExit": -15
+}

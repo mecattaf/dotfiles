@@ -1,0 +1,304 @@
+{
+  "kind": "read-only source inventory; no runtime/test/build executed",
+  "dedicatedRevision": "4e618ba07a10ba391b890dabda1da079c3ecee20",
+  "dotfilesReadTreeHead": "5c03a0c6aeff50fc55a3afa0b1b7498f4e4d2593",
+  "countMethod": "len(read_text().splitlines()); physical lines including comments, docstrings and blanks; test/docs/research/build metadata excluded from full-runtime subtotal",
+  "groups": {
+    "python_package": {
+      "files": 27,
+      "physicalLines": 4279,
+      "members": [
+        {
+          "path": "agency_kitty/__init__.py",
+          "physicalLines": 3,
+          "sha256": "e8524d2f108f950d5e60d15eaff8d8bc7af15cbde934d1ace1bbc9c8c697b366"
+        },
+        {
+          "path": "agency_kitty/__main__.py",
+          "physicalLines": 3,
+          "sha256": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d"
+        },
+        {
+          "path": "agency_kitty/attachment.py",
+          "physicalLines": 207,
+          "sha256": "0aacde0601462af83ef9a1ccb2fa2ce2eaeaddb27a6393423320775b08edea97"
+        },
+        {
+          "path": "agency_kitty/capabilities/__init__.py",
+          "physicalLines": 2,
+          "sha256": "e51b712f10ada2affced65b2428d0ad6060ea995433e99ece45e8cd7c21eb597"
+        },
+        {
+          "path": "agency_kitty/capabilities/__main__.py",
+          "physicalLines": 3,
+          "sha256": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d"
+        },
+        {
+          "path": "agency_kitty/capabilities/chooser.py",
+          "physicalLines": 140,
+          "sha256": "0b5567ad54c74a32c7d938cf6121439bd005637c6c34d06acd84feeb9aa927af"
+        },
+        {
+          "path": "agency_kitty/capabilities/cli.py",
+          "physicalLines": 185,
+          "sha256": "a2f5fd852edd8287d98fcf9beeacd1a12dfab6b81f9afba67130e447909e191a"
+        },
+        {
+          "path": "agency_kitty/capabilities/harness.py",
+          "physicalLines": 162,
+          "sha256": "988820b85e4c03451adf25fb018d6efac607930d1e3281a745e9ea0e371e05bf"
+        },
+        {
+          "path": "agency_kitty/capabilities/harness_process.py",
+          "physicalLines": 92,
+          "sha256": "657468fc99dd63ade4d99a2a5a954bda5f21053d7361be7dd49c5cc689669485"
+        },
+        {
+          "path": "agency_kitty/capabilities/harness_state.py",
+          "physicalLines": 238,
+          "sha256": "ac33983b9952530dc2ffef1c6a23c897650492fbc0a79622ac5135c24301f4f0"
+        },
+        {
+          "path": "agency_kitty/capabilities/images.py",
+          "physicalLines": 206,
+          "sha256": "d973f2ccc9dd0a12712268280139daf9d7015d2da4a90d3f5c654e9af9b4a765"
+        },
+        {
+          "path": "agency_kitty/capabilities/notifications.py",
+          "physicalLines": 45,
+          "sha256": "f2adaec1522d791da627952de5971ecf55306df97311b27e66ea6a43085425fd"
+        },
+        {
+          "path": "agency_kitty/capabilities/targets.py",
+          "physicalLines": 89,
+          "sha256": "ef15f924ed46858999a7bf0ded4254ab222930f7920df6cf47bfa6a10a0bf9b8"
+        },
+        {
+          "path": "agency_kitty/capabilities/transcripts.py",
+          "physicalLines": 135,
+          "sha256": "aeba26dcda93bc65efb12626fd76d1d082fd36f6b73d93fa601bed034223089f"
+        },
+        {
+          "path": "agency_kitty/catalogue.py",
+          "physicalLines": 152,
+          "sha256": "ccc446407c3587412ceeec3a07ca7e7a2095354259dac9a34e13e66406fa2dbe"
+        },
+        {
+          "path": "agency_kitty/cli.py",
+          "physicalLines": 458,
+          "sha256": "7da71599e3f7745b3aa9184987f48a743de274c0985840b5720e5a1874a59365"
+        },
+        {
+          "path": "agency_kitty/desktop_catalogue.py",
+          "physicalLines": 85,
+          "sha256": "844a04ad303bfa60f01ba4418fddc5e9d73e209820e67c981ff975513f789b80"
+        },
+        {
+          "path": "agency_kitty/direct_registry.py",
+          "physicalLines": 328,
+          "sha256": "c49a883440d39ba54585d0b187c4e423ed64a094826add845e409b78ea5b6742"
+        },
+        {
+          "path": "agency_kitty/editor_requests.py",
+          "physicalLines": 277,
+          "sha256": "19c9940c9ed486c478ac5d6796f71940945c2d7acc369e281dd8c07cb77b848e"
+        },
+        {
+          "path": "agency_kitty/editor_ui.py",
+          "physicalLines": 284,
+          "sha256": "797f722ae14ec11fd41c1e6326935261537ab7da69cd756377570b5151b53313"
+        },
+        {
+          "path": "agency_kitty/harness_launch.py",
+          "physicalLines": 104,
+          "sha256": "5ce91e60b77b525a8b1658005be2602ca259570ea8498dc2c3785ba82cc9c5e1"
+        },
+        {
+          "path": "agency_kitty/native_forward.py",
+          "physicalLines": 185,
+          "sha256": "9b30a50bdfda9b11aeb3ce64483afa5c2d4c24eec8577eefc171e03ccc938e6c"
+        },
+        {
+          "path": "agency_kitty/native_forward_control.py",
+          "physicalLines": 117,
+          "sha256": "b3cfb8c06cee62a5d856e40fed8129342fa1f56384f98e11e5691be01bcfe1c7"
+        },
+        {
+          "path": "agency_kitty/server.py",
+          "physicalLines": 368,
+          "sha256": "ba397a26fb027fb807eaf770441fa94a0850ad0633383dd621bb7429733d64b0"
+        },
+        {
+          "path": "agency_kitty/sessions.py",
+          "physicalLines": 290,
+          "sha256": "40ca21993bd81ed07f7a425c7ddb4adbb133dfb287fffc3dc132893f68edda45"
+        },
+        {
+          "path": "agency_kitty/shell.py",
+          "physicalLines": 25,
+          "sha256": "bdb5673bfc0661a786cf57e477f64892cca10db0b2499cbdd1de202e0da2e334"
+        },
+        {
+          "path": "agency_kitty/transport.py",
+          "physicalLines": 96,
+          "sha256": "f440d6c952b4396330e7f6f00018c0739b494a281c750ddc5aefc0e6e068e761"
+        }
+      ]
+    },
+    "kitty_adapters": {
+      "files": 4,
+      "physicalLines": 734,
+      "members": [
+        {
+          "path": "kitty/agency.py",
+          "physicalLines": 336,
+          "sha256": "73b429f28425f114637630b59fb067d884df3a2c10d94973349ea19da5abb978"
+        },
+        {
+          "path": "kitty/agency_editor.py",
+          "physicalLines": 224,
+          "sha256": "3aec9b93a5c53ad99e0a029a1142ab144179ef2bf993252f756209a35eaf644b"
+        },
+        {
+          "path": "kitty/agency_editor_watch.py",
+          "physicalLines": 44,
+          "sha256": "99377bf8141b35f71e8581f69e78e957768dc83b504b289e8d10173dfff05965"
+        },
+        {
+          "path": "kitty/agency_watch.py",
+          "physicalLines": 130,
+          "sha256": "a11bc9c863c80e518a819b52d2860492877038e7165ae1f77c7725e22f12f1bb"
+        }
+      ]
+    },
+    "editor_python_launchers": {
+      "files": 2,
+      "physicalLines": 243,
+      "members": [
+        {
+          "path": "dotfiles/home/dot_local/bin/dsh-editor",
+          "physicalLines": 199,
+          "sha256": "3272b799c3aa9a1a109ba8f43d7f67c0ddae2e22e5f28de306f9cfa004ab9b8f"
+        },
+        {
+          "path": "dotfiles/home/dot_local/bin/dsh-editor-tree",
+          "physicalLines": 44,
+          "sha256": "6f42121c13d0a395e756a5dbb04c544a57d4534e90c1af33f1a8d4e65a9cddf1"
+        }
+      ]
+    },
+    "editor_lua": {
+      "files": 4,
+      "physicalLines": 523,
+      "members": [
+        {
+          "path": "dotfiles/home/dot_local/bin/nvim-lua/dsh_editor.lua",
+          "physicalLines": 188,
+          "sha256": "a96edeb3c8c6d6cb3977123f9655f4ab48394ce8d3d9888a88d4956c0bf91fe4"
+        },
+        {
+          "path": "dotfiles/home/dot_local/bin/nvim-lua/dsh_editor_tree.lua",
+          "physicalLines": 57,
+          "sha256": "a2f7187856aa7a95403cdd28e8de4c20eaa119648579e53bfd081ef1ed612151"
+        },
+        {
+          "path": "dotfiles/home/dot_local/bin/nvim-lua/kitty_editor.lua",
+          "physicalLines": 19,
+          "sha256": "a84e5b44567042b231438cdd2ee53973e2664f691b0538aba9f3759b86640eb9"
+        },
+        {
+          "path": "dotfiles/home/dot_local/bin/nvim-lua/kitty_image_remote.lua",
+          "physicalLines": 259,
+          "sha256": "e9378530e44f866186060b0a76a50281013d1bc13a059634ef80c608af9855f9"
+        }
+      ]
+    },
+    "fish_integration": {
+      "files": 3,
+      "physicalLines": 31,
+      "members": [
+        {
+          "path": "dotfiles/home/dot_config/fish/conf.d/agency-editor.fish",
+          "physicalLines": 10,
+          "sha256": "c5edcb3f93059416e2f55a7464cf13ca02a35078fe866768f9415bff0e851814"
+        },
+        {
+          "path": "dotfiles/home/dot_config/fish/conf.d/agency-kitty.fish",
+          "physicalLines": 10,
+          "sha256": "02ae6d58df462a084d184d89215cf29c7180dfb597908d7a8e9bdbf3819a6752"
+        },
+        {
+          "path": "dotfiles/home/dot_config/fish/functions/vi.fish",
+          "physicalLines": 11,
+          "sha256": "901117f71a7d6b97f2d84afedbf353d2f2bbb2b1a6c41caeaf1311ecf4f2a47c"
+        }
+      ]
+    },
+    "integration_runtime": {
+      "files": 2,
+      "physicalLines": 171,
+      "members": [
+        {
+          "path": "integration/agency-chat-window/native_catalogue.py",
+          "physicalLines": 59,
+          "sha256": "a8c92e64216a83294b5e4b78d6fd6d9b217184b8ddefb1b7bc6ca68a6485f7a3"
+        },
+        {
+          "path": "integration/dsh/index.mjs",
+          "physicalLines": 112,
+          "sha256": "ca6b1c96fd0598b6712d6bdcd829a2e8b741f033c87767a194e4d4a31dd67625"
+        }
+      ]
+    }
+  },
+  "fullRuntimeSourcePhysicalLines": 5981,
+  "separatePatchOwnership": {
+    "stableZmxV4Vt1": {
+      "path": "backend/zmx/agency-v4-vt1.patch",
+      "patchPhysicalLines": 1269,
+      "allAdditions": 645,
+      "allRemovals": 90,
+      "runtimeZigAdditions": 555,
+      "runtimeZigRemovals": 87,
+      "buildDependencyAdditions": 7,
+      "buildDependencyRemovals": 3,
+      "testAdditions": 83,
+      "method": "exclude build.zig/build.zig.zon/src/test.zig; exclude added terminal.zig and snapshot_guard.zig test sections from their first added test declaration onward"
+    },
+    "imagineCatalogue": {
+      "path": "integration/imagine/native-catalogue.patch",
+      "productionAdditions": 112,
+      "productionRemovals": 44
+    },
+    "imagineDrag": {
+      "path": "docs/patches/imagine-native-drag.patch",
+      "productionAdditions": 182,
+      "productionRemovals": 0
+    },
+    "nasCatalogueRelay": {
+      "path": "integration/agency-chat-window/catalogue-nas.patch",
+      "productionAdditions": 17,
+      "productionRemovals": 8
+    },
+    "clientEntry": {
+      "path": "integration/domicile/client-entry.patch",
+      "productionAdditions": 3,
+      "productionRemovals": 2
+    },
+    "domicileDrag": {
+      "path": "docs/patches/domicile-native-drag.patch",
+      "productionRustAdditions": 244,
+      "productionRustRemovals": 1
+    },
+    "kittyProcfs": {
+      "path": "dotfiles/pkgs/kitty-memory-procfs-fallback.patch",
+      "productionPythonAdditions": 22,
+      "productionPythonRemovals": 23
+    }
+  },
+  "excludedExamplesAndBuildGlue": {
+    "integration/domicile/keybindings.ts": 8,
+    "nixFilesPhysicalLines": 264,
+    "notes": "No tests, docs, evidence, backend experiments, prototype actor files, upstream source or existing full user Nvim/Imagine/Kitty config counted as the full runtime subtotal. Optional native-forward/control is included in the Python package total (302 lines). Patch additions are incremental ownership, not complete upstream file sizes."
+  }
+}

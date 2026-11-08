@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "capturedAtUTC": "2026-11-08T03:54:38.048877+00:00",
+  "ownerWorktree": "/home/tom/.wt/dotfiles/domicile-first-pass-20261105",
+  "ownerHead": "87491201700acc5051cb3edfb55f5551a4eb9fbe",
+  "ownerWorktreeDirty": true,
+  "ownerStatusPorcelainZSha256": "5fdcfbb9a1ac7771c6a5cc122c20b8fba34d8122de672e2be432cde81ecf6e9b",
+  "entryRelativePath": "home/dot_config/domicile/domicile.tsx",
+  "entryGitStatus": " M home/dot_config/domicile/domicile.tsx",
+  "originalEntrySha256": "b6cf824a58a96efe6ec8f7d4d674e9a2cf9dff771524a81e4ef96033c0ad4fb9",
+  "originalEntryBytes": 6250,
+  "patchedEntrySha256": "61d031227c1e7f731f72046a148f224a20be2ed4b57a01b6c8a3426a5bd9d72d",
+  "patchSha256": "fac3e885e81011dc005c20775a9d515483930ae9b7fa79422b2c74b0fed6adcd",
+  "validation": {
+    "gitApplyCheckOnExactCopy": true,
+    "gitApplyResultMatchesExpectedBytes": true,
+    "onlyThreeChordsChanged": true,
+    "existingOwnedChordsCallPreserved": true,
+    "existingRunImaginePublicKeybindingsPreserved": true,
+    "ownerEntryUnchangedAfterValidation": true,
+    "sdkCompilation": {
+      "status": "passed private installed-builder/native-key proof",
+      "receipt": "docs/evidence/native-imagine-keys/receipt.json",
+      "receiptSha256": "f81c5c8f29b46ce5696bcf565e4a037e5af05d27ef1bc66a110e5f302d58adb4",
+      "compiledModuleSha256": "aeaf8c394a52e3240353a5a671c70dcc78de3fb024a870c33b7387c56131ca0a",
+      "actualEngineChordsPassed": true,
+      "liveAdoption": false
+    }
+  },
+  "sourceOrRuntimeOwnerFilesEdited": false,
+  "liveClientAdopted": false
+}

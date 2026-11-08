@@ -39,7 +39,7 @@ model response or tool output. Imagine/DSH owns notification and sound policy.
 
 Actual offline TUI proofs on Strix use Codex0.167.0 and Claude2.1.319 with
 private credential/config bindings, private loopback model fixtures and no
-provider calls. Both preserve existing user lifecycle hooks while the scoped
+external provider calls. Both preserve existing user lifecycle hooks while the scoped
 launcher adds its own start/working/stop/end signals. Image pasting attaches
 without submitting, actual mock-model requests contain the image, and exact
 saved transcripts export beyond the viewport. The Codex fixture also keeps a
