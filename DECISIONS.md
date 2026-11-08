@@ -1875,3 +1875,13 @@ the rule in `AGENTS.md` against reintroducing a wake detector, the
 `--hotwords` option of `call-diarize` and `call-diarize-start` (VibeVoice ASR
 vocabulary context, not a wake word), and the dated speech research and
 commissioning records, which keep their history.
+
+2026-11-08 (#698): Tom canceled the replacement Strix. Retire Donnerkeule
+and Gufo TP2 deployment and update watches, the coordinator DS4 TCP rank,
+and TP2-only Flash-Next Q8 catalog/wanted entries. Keep upstream single-host
+Gufo, 27B Q8, Q4, single-host ARA/uncensored models, D3, speech and Immich.
+The original Donnerkeule repository remains; source, all git refs and the
+former update mechanism are copied under notes/references/technical/
+donnerkeule-retired-2026-11-08 before Tom decides whether to delete GitHub.
+Model bytes follow the existing deploy-before-retirement procedure; no
+blanket prune or deletion accompanies this configuration change.

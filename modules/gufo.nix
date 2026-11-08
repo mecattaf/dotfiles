@@ -606,7 +606,6 @@ in
             tp.bootstrapPort != tp.controlPort
             && builtins.elem tp.model.artifact [
               "qwen38-flash-next-gguf"
-              "qwen38-flash-next-q8-gguf"
             ]
           );
         message = "Gufo TP2 requires distinct bootstrap/control ports and the Flash-Next bundle (the fork only supports qwen4exp TP2).";
@@ -738,13 +737,8 @@ in
     }
     // lib.mapAttrs' (name: m: lib.nameValuePair "gufo-llm-${name}" (mkLlmUnit name m)) cfg.alternates;
 
-    # Scoped manifests borrow one bundle alone. Whether a host keeps it is its
-    # services.local-models.artifacts (prune's keep set): both Strix want the
-    # 27B Q8, only the worker Flash-Next Q8. Q8 Flash-Next is TP2-only, never
-    # a single-host alternate.
-    environment.etc."gufo/tp2-q8-wanted.json".source =
-      (pkgs.formats.json { }).generate "gufo-tp2-q8-wanted.json"
-        (modelStore.manifestFor [ "qwen38-flash-next-q8-gguf" ]);
+    # The 27B Q8 remains a supported single-host alternate. Flash-Next Q8
+    # was TP2-only and is retired with the canceled second host (#698).
     environment.etc."gufo/27b-q8-wanted.json".source =
       (pkgs.formats.json { }).generate "gufo-27b-q8-wanted.json"
         (

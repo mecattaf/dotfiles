@@ -63,38 +63,6 @@
       "switch": "The herdr server keeps X-SwitchMethod=keep-old, so a switch never kills a live PTY. The new server runs only after a deliberate `systemctl --user restart herdr`, and existing clients need a new projector launch."
     },
     {
-      "name": "gufo-rdma",
-      "follow": "branch",
-      "hosts": [
-        "strix-coordinator",
-        "strix-worker"
-      ],
-      "build": [
-        ".#packages.x86_64-linux.gufo-rdma"
-      ],
-      "versions": {
-        "gufo-rdma": "packages.x86_64-linux.gufo-rdma.version"
-      },
-      "switch": "Tracks neuhaus/gufo branch rdma. Only the on-demand gufo-tp2.service uses this build; no boot target. The upstream gufo input and single-box :8731 unit stay pinned until hardware qualification. Starting TP2 conflicts with the single-box text/image units. Model revisions remain a separate Library declaration."
-    },
-    {
-      "name": "donnerkeule",
-      "follow": "branch",
-      "hosts": [
-        "strix-coordinator",
-        "strix-worker"
-      ],
-      "build": [
-        ".#packages.x86_64-linux.rdmaCoreUsb4",
-        ".#packages.x86_64-linux.thunderbolt-ibverbs"
-      ],
-      "versions": {
-        "donnerkeule source": "inputs.donnerkeule.rev",
-        "rdma-core-usb4": "packages.x86_64-linux.rdmaCoreUsb4.version"
-      },
-      "switch": "Tracks mecattaf/donnerkeule codex/framework-7-3. Updates the module and matching usb4_rdma provider on both compute hosts. Stage/reboot both onto the same kernel and rerun the attended rail/throughput qualification before TP2 use. Never reload or reboot from the update routine."
-    },
-    {
       "name": "vicinae",
       "follow": "release",
       "hosts": [

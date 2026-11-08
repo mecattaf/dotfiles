@@ -14,11 +14,8 @@
   # (10.42.0.5, modules/fleet-hosts.nix), so no tailscaled, no tailscaled-set
   # and no login to keep alive. modules/fleet-transport.nix leaves it out.
   services.tailscale.enable = false;
-  # The worker also holds Flash-Next Q8 (TP2 only; 191.92 GB with its
-  # projector). The coordinator's disk cannot (108 GB free, D-A), so this is
-  # the worker's alone, ordered after the boot set. ds4's Q2 joins this set
-  # through services.ds4.wanted.
-  services.local-models.artifacts = lib.mkAfter [ "qwen38-flash-next-q8-gguf" ];
+  # The worker is dormant; its former TP2-only Flash-Next Q8 loan is retired
+  # with the canceled replacement (#698). Keep single-host model definitions.
   mySecrets.enable = false;
   # First boot must use the reviewed closure's helpers, not the retired
   # worker's checkout (or a network bootstrap of main).

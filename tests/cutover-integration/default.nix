@@ -6,7 +6,6 @@ let
   configs = flake.nixosConfigurations;
   kernel = host: configs.${host}.config.boot.kernelPackages.kernel;
   selected = kernel "strix-coordinator";
-  rdma = host: configs.${host}.config.hardware.thunderbolt-ibverbs.resolvedPackage;
   nas = configs.nas.config;
   registry = import ../../modules/mesh-registry.nix;
   configFacts =
@@ -33,8 +32,8 @@ assert lib.versions.majorMinor selected.version == "7.3";
 assert builtins.all (
   name: (kernel name).version == selected.version && (kernel name).drvPath == selected.drvPath
 ) (builtins.attrNames configs);
-assert (rdma "strix-coordinator").drvPath == (rdma "strix-worker").drvPath;
-assert (rdma "strix-coordinator").kernelVersion == selected.version;
+assert !configs.strix-coordinator.config.hardware.thunderbolt-ibverbs.enable;
+assert !configs.strix-coordinator.config.services.gufo.tp2.enable;
 assert !(configs.nas.options.myNas.homeDisk ? partUuid);
 assert nas.myNas.homeDisk.layout == "shared-btrfs";
 assert nas.fileSystems."/home".device == "${nas.myNas.homeDisk.device}-part1";
@@ -63,15 +62,11 @@ assert builtins.elem "subvol=@fast" nas.fileSystems."/mnt/fast".options;
       dsh = nas.home-manager.users.tom.programs.dsh.enable;
       herdrSwitchMethod = nas.home-manager.users.tom.systemd.user.services.herdr.Unit.X-SwitchMethod;
     };
-    donnerkeule = {
-      revision = flake.inputs.donnerkeule.rev;
-      drv = (rdma "strix-coordinator").drvPath;
-      kernel = (rdma "strix-coordinator").kernelVersion;
-    };
-    gufoRdma = {
-      revision = flake.inputs.gufo-rdma.rev;
-      drv = flake.packages.x86_64-linux.gufo-rdma.drvPath;
-      cpuDmaLatencyUs = configs.strix-coordinator.config.services.gufo.tp2.cpuDmaLatencyUs;
+    singleStrix = {
+      rdmaEnabled = configs.strix-coordinator.config.hardware.thunderbolt-ibverbs.enable;
+      tp2Enabled = configs.strix-coordinator.config.services.gufo.tp2.enable;
+      gufoRevision = flake.inputs.gufo.rev;
+      gufoDrv = configs.strix-coordinator.config.services.gufo.package.drvPath;
     };
     readiness = {
       workerHostKeyRecorded = registry.strix-worker.hostKey != "";

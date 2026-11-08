@@ -1,3 +1,17 @@
+**Single-Strix correction (Tom, 2026-11-08, #698).** The replacement
+strix-worker is canceled and remains dormant. Donnerkeule/USB4 RDMA and
+Gufo TP2 are disabled, their update watches are retired, and the unused
+coordinator DS4 TCP rank is removed. Gufo uses its separate upstream
+single-host input through llama-swap; do not switch it to the RDMA fork.
+Flash-Next Q8 was TP2-only and leaves the catalog/wanted sets; 27B Q8,
+Flash-Next Q4, ARA/uncensored single-host deployments, D3, speech and
+Immich remain in scope. No deletion or blanket prune is part of activation.
+Earlier dual-host target/qualification instructions below are historical.
+The Donnerkeule repository and its former update mechanism are preserved
+under ~/notes/references/technical/donnerkeule-retired-2026-11-08; do not
+delete its GitHub repository on Tom's behalf. Kernel 7.4 is future work;
+keep the chosen stable series, never an RC, and keep the NPU disabled.
+
 **Claude seats (2026-09-22; fleet target updated 2026-10-23).** Two Claude Code
 logins belong on the NAS agent host: `cc` is `~/.claude` (the personal Claude Max login, config file
 `~/.claude.json`), `cc2` is `~/.claude-work` (the leger.run Claude Max login,

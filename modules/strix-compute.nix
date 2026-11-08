@@ -7,6 +7,10 @@
 }:
 let
   coordinator = config.networking.hostName == "strix-coordinator";
+  # Tom, 2026-11-08 (#698): the second Strix is canceled. Keep the old
+  # transport definitions inert until the separately scoped obsolete-code
+  # sweep; no active or dormant host installs the dual-host stack.
+  dualHost = false;
   rdma = config.hardware.thunderbolt-ibverbs;
   tokenCiphertext = ../secrets/gufo-tp2-control-token.age;
 in
@@ -47,14 +51,14 @@ in
   # Each NHI has two payload ring pairs. Donnerkeule's four-rail mode owns
   # both on each cable: the old tbnet + tbstream consumers cannot share that
   # budget (#272/#276; 77778237). Ethernet carries management/bootstrap.
-  boot.blacklistedKernelModules = [ "thunderbolt_stream" ];
+  boot.blacklistedKernelModules = lib.optionals dualHost [ "thunderbolt_stream" ];
 
   # The lfthht README driver profile (DMA-BUF fast path plus host credits) on
   # both ranks, selected once so the two hosts cannot diverge. Draft until a
   # two-box qualification on 7.3; "phase-a" restores the base options.
-  myCompute.rdmaProfile = "framework-host-credits";
+  myCompute.rdmaProfile = if dualHost then "framework-host-credits" else "phase-a";
 
-  hardware.thunderbolt-ibverbs = {
+  hardware.thunderbolt-ibverbs = lib.mkIf dualHost {
     enable = true;
     blacklist.enable = true;
     # With this false the upstream mkOverride 900 does not apply. The module
@@ -96,7 +100,7 @@ in
 
   # GID metadata only. No IP packets travel over the USB4 cables; bootstrap
   # and control use the existing wired LAN. 10.77/30 is the NAS installer.
-  networking.networkmanager.ensureProfiles.profiles.tbv0 = {
+  networking.networkmanager.ensureProfiles.profiles.tbv0 = lib.mkIf dualHost {
     connection = {
       id = "tbv0";
       type = "dummy";
@@ -111,13 +115,12 @@ in
     ipv6.method = "disabled";
   };
 
-  # The coordinator keeps the TP2 rank shape for when both disks hold the
-  # 340.6 GiB Q2; until then DeepSeek V4.1 runs on the worker alone,
-  # streaming experts from its SSD, with no DSpark (Tom, 2026-10-25: the
-  # DeepSeek harness replaces the Halogen runtime). dsh on the NAS reaches it
-  # at lib/local-model.nix's ds4 endpoint.
+  # Keep the dormant worker's historical single-host DS4 definition. The
+  # coordinator's pair-only TCP rank is retired with the missing second box.
   services.ds4 = {
-    enable = true;
+    # The retained worker definition is single-host SSD streaming. The
+    # coordinator no longer declares a TCP rank waiting for an absent peer.
+    enable = !coordinator;
     role = if coordinator then "coordinator" else "worker";
     peerAddress = if coordinator then "10.42.0.5" else "10.42.0.2";
   }
@@ -128,13 +131,13 @@ in
   };
 
   services.gufo.tp2 = {
-    enable = true;
+    enable = dualHost;
     rank = if coordinator then 0 else 1;
     peerAddress = if coordinator then "10.42.0.5" else "10.42.0.2";
   };
   # A service credential, independent of the disabled operator-secret tier.
   # Tom creates the ciphertext after recording the worker's fresh host key.
-  age.secrets = lib.optionalAttrs (builtins.pathExists tokenCiphertext) {
+  age.secrets = lib.optionalAttrs (dualHost && builtins.pathExists tokenCiphertext) {
     gufo-tp2-control-token = {
       file = tokenCiphertext;
       mode = "0400";

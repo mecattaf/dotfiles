@@ -34,11 +34,9 @@
   };
 
   strix-worker = {
-    # Dormant since 2026-10-27: the Framework went back to Windows Server for
-    # Sodimo, and a replacement Strix Halo takes this name, address and role
-    # (Tom: "i m getting a remplacement strix halo device to become the worker,
-    # very soon"). To reactivate: set false, record the new box's hostKey below,
-    # its MAC in hosts/nas/router.nix, then rekey (REKEY.md).
+    # Dormant since 2026-10-27. Tom canceled the replacement Strix on
+    # 2026-11-08 (#698). Preserve this identity/history, with no builder,
+    # deployment, inference or dual-host transport work assigned to it.
     dormant = true;
     aliases = [
       "strix-worker"

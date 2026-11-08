@@ -2799,7 +2799,6 @@
               nixpkgs.lib.remove "d3-ultra-bf16" strix.services.local-models.artifacts
               ++ [
                 "deepseek-v41-flash-1017-q2-gguf"
-                "qwen38-flash-next-q8-gguf"
               ]
             );
           # The catalogue is the kept estate after Tom's 2026-09-16 ruling,
@@ -2826,7 +2825,6 @@
               "qwen38-27b-gguf"
               "qwen38-27b-q8-gguf"
               "qwen38-flash-next-gguf"
-              "qwen38-flash-next-q8-gguf"
               "vibevoice-asr-streaming-7b-bf16"
             ];
           # No row is gated: Tom accepted the MiniMax H3 licence on 2026-10-25,
