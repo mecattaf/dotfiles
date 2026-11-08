@@ -1885,3 +1885,10 @@ former update mechanism are copied under notes/references/technical/
 donnerkeule-retired-2026-11-08 before Tom decides whether to delete GitHub.
 Model bytes follow the existing deploy-before-retirement procedure; no
 blanket prune or deletion accompanies this configuration change.
+
+2026-11-08, later (#698): Tom identified local DeepSeek as the bundle he
+is permanently evicting. Remove Q2, vision and DSpark from the active local
+catalog and wanted sets and disable dormant DS4 deployment. This prevents
+library-fetch from re-acquiring deleted files. Preserve remote/API provider
+routes. Former exact metadata is in the retirement archive; physical file
+deletion remains Tom's operation, with no agent deletion or blanket prune.

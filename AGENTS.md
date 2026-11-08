@@ -1,3 +1,8 @@
+**Local DeepSeek retirement (Tom, 2026-11-08).** The local DS4 Q2,
+vision and DSpark bundle is permanently retired: no catalog acquisition,
+host wanted set or DS4 unit remains active. Physical Library deletion is
+Tom's operation. Preserve unrelated remote/API DeepSeek provider routes.
+
 **Single-Strix correction (Tom, 2026-11-08, #698).** The replacement
 strix-worker is canceled and remains dormant. Donnerkeule/USB4 RDMA and
 Gufo TP2 are disabled, their update watches are retired, and the unused

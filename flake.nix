@@ -2796,9 +2796,6 @@
                 "qwen38-27b-heretic-ara-q8-gguf"
                 "qwen38-flash-next-abliterated-rocmfp4-gguf"
               ] strix.services.local-models.artifacts
-              ++ [
-                "deepseek-v41-flash-1017-q2-gguf"
-              ]
             );
           # The catalogue is the kept estate after Tom's 2026-09-16 ruling,
           # narrowed on 2026-09-30 (sweep F1: the three Mage rows and the text
@@ -2810,9 +2807,6 @@
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "d3-ultra-bf16"
-              "deepseek-v41-flash-1017-q2-gguf"
-              "deepseek-v41-flash-dspark-gguf"
-              "deepseek-v41-flash-vision-gguf"
               "glm53-flash-iq2-xxs-gguf"
               "minimax-h3-fl2va"
               "qwen-image-2.1"

@@ -44,12 +44,11 @@ in
   # Tom canceled the second Strix (#698). The pair-only driver/profile,
   # metadata interface and credential are archived rather than imported.
 
-  # Keep the dormant worker's historical single-host DS4 definition. The
-  # coordinator's pair-only TCP rank is retired with the missing second box.
+  # Tom permanently retired the local DeepSeek bundle on 2026-11-08.
+  # Preserve historical options, with no deployment or wanted artifacts.
   services.ds4 = {
-    # The retained worker definition is single-host SSD streaming. The
-    # coordinator no longer declares a TCP rank waiting for an absent peer.
-    enable = !coordinator;
+    enable = false;
+    wanted = lib.mkDefault false;
     role = if coordinator then "coordinator" else "worker";
     peerAddress = if coordinator then "10.42.0.5" else "10.42.0.2";
   }
