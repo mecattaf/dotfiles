@@ -66,6 +66,14 @@
     agencyKitty.enable = false;
     agencyEditor.enable = false;
   };
+  # The live skill roots are writable directories. Keep them frozen for the
+  # separate DSH ownership work; activation must not back them up or replace
+  # them with the older whole-directory links.
+  home-manager.users.tom.home.file = {
+    ".agents/skills".enable = lib.mkForce false;
+    ".claude/skills".enable = lib.mkForce false;
+    ".claude-work/skills".enable = lib.mkForce false;
+  };
 
   # Central credentials move here with the brain role. Ciphertexts must be
   # rekeyed by Tom before deployment; see REKEY.md. No compute host receives them.
