@@ -17,7 +17,10 @@
     # Typed model catalog, guarded store materialization, and host projections.
     ./local-models.nix
     ./gufo.nix
+    # Dormant since 2026-11-09 (loan returned); one host line re-enables it.
     ./superroc.nix
+    # Plain llama-server for the Hy-Memory evaluation route (#603).
+    ./hy-memory.nix
     ./d3-decision.nix
     # The utility-model seam (/drain, /print), independent of the engine.
     ./utility-model.nix

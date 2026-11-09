@@ -18,6 +18,14 @@ existing reference voice, ASR and Qwen-Image. The Q8 route is
 This adds a Gufo TTS API choice; the existing production speech queue still
 uses its separately qualified qwentts.cpp voice.
 
+Two non-Gufo backends share the same supervisor on strix-coordinator: D3
+(`d3-ultra`, [`modules/d3-decision.nix`](../modules/d3-decision.nix)) and,
+since 2026-11-09, `hy-memory-30b-a3b`, a plain llama-server child for the
+memory-writer comparison (#603, [`modules/hy-memory.nix`](../modules/hy-memory.nix)).
+Their readiness check is `/health`; Gufo's is `/ready`. The ARA
+(`qwen3.8-27b-ara`) and abliterated Flash-Next (`qwen3.8-flash-next-abliterated`)
+routes were removed the same day; their bytes stay in the Library.
+
 `gufo-switch flash|qwen38-27b|qwen38-27b-q8` explicitly warms a model through
 llama-swap. Ordinary API requests select their model without this command.
 `gufo-switch off` stops the endpoint and its children. Direct Gufo units

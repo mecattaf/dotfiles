@@ -1,3 +1,18 @@
+**Hy-Memory evaluation route; abliterated loans returned (Tom, 2026-11-09, #603).**
+Tencent's official Hy-Memory-30B-A3B Q8_0 GGUF (`hy-memory-30b-a3b-q8-gguf`)
+is served on demand as `hy-memory-30b-a3b` by plain llama.cpp
+(`llama-server` from nixpkgs-fresh) through the existing llama-swap endpoint
+on strix-coordinator (`modules/hy-memory.nix`). It exists for the paired
+memory-writer comparison only: it is not tuned for speed, needs no Gufo port,
+and has no systemd unit, PATH entry or dsh route. Hy keeps a role only if it
+clearly outperforms well-prompted Qwen Flash-Next on a consequential
+memory-writing operation. The Qwen3.8-27B ARA and uncensored Flash-Next bytes
+stay in the NAS Library and their catalogue rows become Library-only; their
+strix-coordinator routes leave with this deploy and their loans leave only by
+an explicit `local-models-prune` after it. The dormant SuperROC module and the
+Gufo ARA route each come back with one host declaration
+(`services.superroc.enable`; the `qwen3.8-27b-ara` block in git history).
+
 **Local DeepSeek retirement (Tom, 2026-11-08).** The local DS4 Q2,
 vision and DSpark bundle is permanently retired: no catalog acquisition,
 host wanted set or DS4 unit remains active. Physical Library deletion is
@@ -9,8 +24,9 @@ Gufo TP2 are disabled, their update watches are retired, and the unused
 coordinator DS4 TCP rank is removed. Gufo uses its separate upstream
 single-host input through llama-swap; do not switch it to the RDMA fork.
 Flash-Next Q8 was TP2-only and leaves the catalog/wanted sets; 27B Q8,
-Flash-Next Q4, ARA/uncensored single-host deployments, D3, speech and
-Immich remain in scope. No deletion or blanket prune is part of activation.
+Flash-Next Q4, D3, speech and Immich remain in scope (the ARA/uncensored
+single-host deployments did until the 2026-11-09 ruling above returned their
+loans). No deletion or blanket prune is part of activation.
 Earlier dual-host target/qualification instructions below are historical.
 The Donnerkeule repository and its former update mechanism are preserved
 under ~/notes/references/technical/donnerkeule-retired-2026-11-08; do not

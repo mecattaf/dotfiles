@@ -3,7 +3,7 @@
     "kind": "model",
     "maker": "mradermacher",
     "quantization": "Q8_0",
-    "notes": "Qwen3.8-27B ARA from trohrbaugh custom Heretic 1.2, Q8 comparison candidate. Qualified on Strix Halo with Gufo 0.22.0 (7b1bf04): 102400-token context, thinking, text generation and structured tool calls, 2026-11-04. Served on demand as qwen3.8-27b-ara; coding benchmark quality remains unmeasured. No qualified matching vision or speculative sidecars.",
+    "notes": "Qwen3.8-27B ARA from trohrbaugh custom Heretic 1.2, Q8 comparison candidate. Qualified on Strix Halo with Gufo 0.22.0 (7b1bf04): 102400-token context, thinking, text generation and structured tool calls, 2026-11-04; coding benchmark quality remains unmeasured. No qualified matching vision or speculative sidecars. Library-only since 2026-11-09: loan returned from strix-coordinator, no automatic borrow or serving; the Gufo qwen3.8-27b-ara route can be re-enabled by one host declaration (in git history).",
     "source": {
       "hfUrl": "https://huggingface.co/mradermacher/Qwen3.8-27B-heretic-ara-GGUF",
       "revision": "f69c978f262c983cb312395d18bbce340260e89f",
@@ -61,7 +61,7 @@
     "kind": "model",
     "maker": "kingjones777",
     "quantization": "ROCmFP4-STRIX_LEAN-imatrix-hcq8-ssmf32",
-    "notes": "OrcaRouter refusal-direction edit, custom ROCmFP4 types 100/101. Served by the separate SuperROC backend, not current Gufo. Qualified on single 128GB Strix Halo on 2026-11-04 with one reserved 32K session, thinking and Q8 MTP depth three: short reasoning, coding, and required tool-call requests passed. PLE stays mmap-backed.",
+    "notes": "OrcaRouter refusal-direction edit, custom ROCmFP4 types 100/101. Needs the separate SuperROC backend, not current Gufo. Qualified on single 128GB Strix Halo on 2026-11-04 with one reserved 32K session, thinking and Q8 MTP depth three: short reasoning, coding, and required tool-call requests passed. PLE stays mmap-backed. Library-only since 2026-11-09: loan returned from strix-coordinator, no automatic borrow or serving; the dormant SuperROC module can be re-enabled by one host line (services.superroc.enable).",
     "source": {
       "hfUrl": "https://huggingface.co/kingjones777/Qwen3.8-Flash-Next-Uncensored-ROCmFP4-STRIX_LEAN-imatrix-GGUF",
       "revision": "737fae2f5ab92c55fde2f4e1da94ad3d17d3d5bb",

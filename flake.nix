@@ -6,19 +6,20 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # nixpkgs-fresh — a second nixpkgs used ONLY to keep a handful of
-    # fast-moving user packages (currently google-chrome and uv, see overlays
-    # list below) and the fleet's linuxPackages_7_3 kernel series current
-    # independent of the `nixpkgs` pin above. That pin is deliberately
-    # lagging — the exact-candidate fleet deploy keeps it as the only door
-    # Mesa/ROCm churn enters through, bumped manually. Browser point releases
-    # and kernel point fixes stay within the selected series, so they shouldn't
-    # have to wait on it.
+    # fast-moving user packages (currently google-chrome, uv and the
+    # Hy-Memory llama.cpp, see overlays list below) and the fleet's
+    # linuxPackages_7_3 kernel series current independent of the `nixpkgs`
+    # pin above. That pin is deliberately lagging — the exact-candidate fleet
+    # deploy keeps it as the only door Mesa/ROCm churn enters through, bumped
+    # manually. Browser point releases and kernel point fixes stay within the
+    # selected series, so they shouldn't have to wait on it.
     #
     # nixos-unstable-SMALL since 2026-08-30 (#244): the same rolling resolver,
     # gated by the same core Hydra jobs, minus the big-channel test set that
     # had nixos-unstable sitting 4+ days behind while 7.2.2 (a kernel point
     # fix the twins wanted) was already through. Everything this input feeds
-    # is either an upstream binary (chrome), a leaf tool (uv), or the
+    # is either an upstream binary (chrome), a leaf tool (uv), a leaf server
+    # behind one on-demand launcher (llama.cpp for Hy-Memory), or the
     # versioned kernel attr whose whole doctrine is point-fix-only advance.
     #
     # The lock entry is the reviewed revision. The Projects nightly checker
@@ -358,6 +359,15 @@
             # the deliberately-lagging main pin (which exists only to gate kernel/
             # Mesa churn — uv carries none of that risk).
             uv = fresh.uv;
+            # llama.cpp for the Hy-Memory evaluation route (modules/hy-memory.nix,
+            # #603) and nothing else. Hy-Memory is the hy_v3 architecture, merged
+            # upstream on 2026-07-13: the fleet's nix-strix-halo llama.cpp (build
+            # 9925) predates that merge, and the main pin's b10063 is 1656 commits
+            # before Tencent's validated 5aeac37a. nixpkgs-fresh carries v0.9.0,
+            # past that commit, and its Vulkan build (= llama-cpp-vulkan) is
+            # served by cache.nixos.org, so the Strix compiles nothing. It is
+            # reached only through the llama-swap launcher, never put on PATH.
+            llama-cpp-hy-memory = fresh.llama-cpp.override { vulkanSupport = true; };
           }
         )
       ];
@@ -2739,13 +2749,16 @@
           # Each list is everything that host holds since the 2026-10-25
           # loans, so a default borrow restores it and prune keeps it. The
           # coordinator's disk cannot hold Flash-Next Q8 or the ds4 Q2 (D-A).
+          # Since 2026-11-09 (#603) the coordinator borrows Hy-Memory for the
+          # memory-writer comparison and returns the ARA and abliterated
+          # Flash-Next loans; their rows stay in the catalogue (Library-only),
+          # so the next prune names exactly those two and never Hy.
           assert
             nixpkgs.lib.sort builtins.lessThan strix.services.local-models.artifacts
             == nixpkgs.lib.sort builtins.lessThan [
               "d3-ultra-bf16"
+              "hy-memory-30b-a3b-q8-gguf"
               "qwen38-flash-next-gguf"
-              "qwen38-flash-next-abliterated-rocmfp4-gguf"
-              "qwen38-27b-heretic-ara-q8-gguf"
               "qwen38-27b-gguf"
               "qwen38-27b-q8-gguf"
               "qwen38-27b-dflash2-gguf"
@@ -2762,8 +2775,7 @@
             == nixpkgs.lib.sort builtins.lessThan (
               nixpkgs.lib.subtractLists [
                 "d3-ultra-bf16"
-                "qwen38-27b-heretic-ara-q8-gguf"
-                "qwen38-flash-next-abliterated-rocmfp4-gguf"
+                "hy-memory-30b-a3b-q8-gguf"
               ] strix.services.local-models.artifacts
             );
           # The catalogue is the kept estate after Tom's 2026-09-16 ruling,
@@ -2777,6 +2789,7 @@
             builtins.attrNames localModelCatalog.artifacts == [
               "d3-ultra-bf16"
               "glm53-flash-iq2-xxs-gguf"
+              "hy-memory-30b-a3b-q8-gguf"
               "minimax-h3-fl2va"
               "qwen-image-2.1"
               "qwen-k2so-midway-b"

@@ -1892,3 +1892,26 @@ catalog and wanted sets and disable dormant DS4 deployment. This prevents
 library-fetch from re-acquiring deleted files. Preserve remote/API provider
 routes. Former exact metadata is in the retirement archive; physical file
 deletion remains Tom's operation, with no agent deletion or blanket prune.
+
+2026-11-09 (#603): Tom approved Tencent's official Hy-Memory-30B-A3B Q8_0
+GGUF as an evaluation route for the paired memory-writer comparison and
+returned the two abliterated loans in the same deploy. The row
+`hy-memory-30b-a3b-q8-gguf` (`lib/memory-writer-models.json`, pinned
+38e10a37; the GGUF embeds the base repository's chat template) joins
+strix-coordinator's wanted set and is served on demand as `hy-memory-30b-a3b`
+by plain llama-server behind the existing llama-swap endpoint
+(`modules/hy-memory.nix`): no systemd unit, no PATH entry, no Gufo port, no
+dsh route, and no tuning for speed. The package is nixpkgs-fresh's llama.cpp
+v0.9.0 Vulkan build, cherry-picked as `llama-cpp-hy-memory` and served from
+cache.nixos.org: the fleet's nix-strix-halo build 9925 predates the hy_v3
+merge of 2026-07-13, and the main pin's b10063 is 1656 commits before
+Tencent's validated 5aeac37a. Hy keeps a role only if it clearly outperforms
+well-prompted Qwen Flash-Next on a consequential memory-writing operation.
+The Qwen3.8-27B ARA and uncensored Flash-Next ROCmFP4 rows stay in the
+catalogue as Library-only; their routes and coordinator wanted entries leave
+together, so the following `local-models-prune --dry-run` names exactly
+those two loans and never Hy. SuperROC (module, package and flake output)
+stays dormant; it and the Gufo ARA route each return with one host
+declaration in `hosts/strix-coordinator/default.nix`.
+This supersedes #568's community Q8 with its hand-run server and the
+dsh-route remainder of #695.

@@ -1,12 +1,13 @@
 # Local AI
 
-The fleet runs two inference engines on the Strix pair and a Library of
+The fleet runs its inference engines on the Strix pair and a Library of
 loanable model artifacts on the NAS. Every claim on this page names the Nix
 file that decides it.
 
 | Engine | Where | Port | Serves | Started by |
 |---|---|---|---|---|
 | Gufo ([`../../modules/gufo.nix`](../../modules/gufo.nix)) | `gufo-llm.service` on both Strix; the fleet endpoint is strix-coordinator's | 8731 | `qwen3.8-flash-next` (resident), `qwen3.8-27b` (alternate) | boot; `gufo-switch` for the alternate |
+| llama-server ([`../../modules/hy-memory.nix`](../../modules/hy-memory.nix)) | a llama-swap child on strix-coordinator | 8731 (llama-swap) | `hy-memory-30b-a3b` (memory-writer comparison only, #603) | the first request naming it; unloaded after 600 s idle |
 | ds4 ([`../../modules/ds4.nix`](../../modules/ds4.nix)) | `ds4.service` on strix-worker, one host with SSD expert streaming | 8732 | `deepseek-v4.1-flash` (DeepSeek V4.1 Flash 1017) | an operator, by hand |
 
 The agent harness that uses them is dsh on the NAS (see [dsh](#dsh-on-the-nas)).
@@ -100,6 +101,30 @@ coordinator keeps the `tp2` rank shape of the same module for the day both
 disks hold the Q2 (each rank needs the full file locally; the TP2 link is TCP
 until the image gains a usb4_rdma provider).
 
+## Hy-Memory, the memory-writer evaluation route
+
+Since 2026-11-09 (#603) llama-swap on strix-coordinator also routes
+`hy-memory-30b-a3b` to a plain `llama-server` child
+([`../../modules/hy-memory.nix`](../../modules/hy-memory.nix)): llama.cpp
+v0.9.0 from nixpkgs-fresh (Vulkan), the first fleet build with Hy-Memory's
+hy_v3 architecture. It serves Tencent's official Q8_0 GGUF
+(`hy-memory-30b-a3b-q8-gguf`) with its embedded chat template, one 65536-token
+slot, no tool calls and no thinking (`reasoning_effort` `no_think`). It exists
+for the paired memory-writer comparison against well-prompted Flash-Next and
+keeps a role only if it clearly wins; it has no systemd unit, PATH entry or
+dsh route. Borrow it first (`sudo local-models-borrow --yes`); the launcher
+refuses a missing or wrong-sized file.
+
+```console
+curl -s http://strix-coordinator:8731/v1/chat/completions -H 'content-type: application/json' \
+  -d '{"model":"hy-memory-30b-a3b","messages":[{"role":"user","content":"ping"}],"max_tokens":16}'
+```
+
+The Qwen3.8-27B ARA (`qwen3.8-27b-ara`) and abliterated Flash-Next
+(`qwen3.8-flash-next-abliterated`, SuperROC) routes left the same day; their
+bytes stay in the NAS Library and their coordinator loans leave by an explicit
+`local-models-prune`.
+
 ## The `utility` slot
 
 Callers name the stable ID `utility`, never a concrete model. The
@@ -179,6 +204,7 @@ runbook for the Library itself.
 | Host | Wanted artifacts | Served by |
 |---|---|---|
 | `strix-coordinator`, `strix-worker` | `qwen38-flash-next-gguf`, `qwen38-27b-gguf`, `qwen38-27b-q8-gguf`, `qwen38-27b-dflash2-gguf`, `qwen3-asr-1.7b`, `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` (exact lists asserted in `flake.nix`) | Gufo Flash-Next resident at boot, the 27B or 27B Q8 after `gufo-switch`, Gufo ASR, TTS and image on demand; streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`) |
+| `strix-coordinator` only | `d3-ultra-bf16`, `hy-memory-30b-a3b-q8-gguf` (since 2026-11-09) | D3 and llama-server for Hy, each on demand through llama-swap |
 | `strix-worker` only | `deepseek-v41-flash-1017-q2-gguf` (via `services.ds4.wanted`), `qwen38-flash-next-q8-gguf` | ds4, by hand; `gufo-tp2` with Q8. The coordinator's disk cannot hold either (D-A) |
 | `client` | none | — |
 | `nas` | none (it holds the Library) | — |
@@ -228,8 +254,9 @@ all.
    catalogue: identity, pinned revision, bytes, hashes.
 2. [`../../lib/local-model.nix`](../../lib/local-model.nix) — the endpoints
    and served model ids every consumer uses.
-3. [`../../modules/gufo.nix`](../../modules/gufo.nix) and
-   [`../../modules/ds4.nix`](../../modules/ds4.nix) — the two engines;
+3. [`../../modules/gufo.nix`](../../modules/gufo.nix),
+   [`../../modules/hy-memory.nix`](../../modules/hy-memory.nix) and
+   [`../../modules/ds4.nix`](../../modules/ds4.nix) — the engines;
    [`../../modules/strix.nix`](../../modules/strix.nix) and
    [`../../modules/strix-compute.nix`](../../modules/strix-compute.nix) —
    their declaration on the Strix pair and the wanted sets.
