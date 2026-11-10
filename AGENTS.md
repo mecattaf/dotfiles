@@ -51,16 +51,15 @@ there is no third seat (Tom, 2026-09-22: "no more cc3"). Logins are hand
 this day). `seats` reads its peer cache from `~/.local/state/tally-rewrite/meters`
 (the directory name outlives Tally, which was removed on 2026-09-30).
 
-**Gemini CLI accounts (Tom, 2026-11-10).** The NAS installs `gemini-cli` from
-the existing llm-agents input. `gmni`, `gmni2` and `gmni3` select three browser
-OAuth logins, using `GEMINI_CLI_HOME` (a parent of `.gemini`) without changing
-the real `HOME` or project cwd. Each keeps its own writable credentials,
-settings and sessions; file storage prevents the shared keychain account from
-colliding. Tom authenticates each once; no delivered secret or model pin.
-This is an explicit exception to the November 3 no-Gemini-CLI policy. Existing
-AI Studio keys and native DSH API routes remain separate. A DSH extension
-wrapping the CLI like `dsh-claude` is separately scoped; the independently
-authenticating OAuth bridge does not reuse these logins. See `docs/gemini-cli.md`.
+**Google CLI accounts (Tom, 2026-11-10).** Antigravity replaces Gemini CLI
+on NAS: Google retired consumer sign-in on Gemini CLI. `agy`, `agy2` and
+`agy3` are Nix-delivered account launchers over llm-agents.antigravity-cli.
+Each has a private data/token root, preserves HOME/cwd, uses the official
+file-store fallback instead of one shared keyring entry, and applies the
+NAS-only RDRAND mask. Tom authenticates with `agy[2|3] acp --login`. Models
+and preferences remain mutable. API keys stay separate. The DSH full-agent
+integration uses official `acp`; preserve the Gemini investigation as lineage.
+See `docs/antigravity-cli.md` and `docs/gemini-cli.md`.
 
 **Model catalog (Tom, 2026-10-10).** Model ids for the factory are runtime data, not nix: they live in `~/.config/substrate/models.toml`, seeded by the substrate-puller unit when the file is absent and never rewritten by nix (`services.substrate.puller.modelsFile`, named in runtimes.toml as `models_file`; the runners re-read it on every call, so a model edit needs no rebuild). Tom: "i dnt think it s a g ood idea to have things like that tied to nixos dotfiles". The openrouter-free lane is parked (no entry in the catalog, so substrate refuses that runtime and route policies fall through) until OpenRouter releases a new stealth model; since pi was retired (2026-10-25) no harness routes to the OpenRouter key, and seats reads it only for the credit row. The puller PATH carries Node 24 and pnpm 11.17.0 (`pkgs.pnpm_11_17`, the stack v1 pin) so a spec-task gate runs `node` and `pnpm` bare.
 
@@ -213,7 +212,7 @@ path. QMD was unused and is removed, with no ingestion or migration step.
 See `docs/dsh-mnemon.md`.
 
 **Free lanes in dsh (Tom, 2026-11-03).** API providers go through dsh; the
-November 10 Gemini CLI experiment is the separate exception above. Gemini's free tier is the
+November 10 official Google CLI experiment is the separate exception above. Gemini's free tier is the
 native pi-ai `google` route and the default (`google/gemini-3.8-flash`; three
 AI Studio keys). OpenCode Zen's free models come through the known workaround
 plugin jiesou/dsh-opencode-zen-free-provider, pinned in `pkgs/dsh-plugins`

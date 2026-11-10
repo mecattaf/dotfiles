@@ -12,12 +12,12 @@
         ".#checks.x86_64-linux.dsh-config",
         ".#checks.x86_64-linux.dsh-plugins",
         ".#checks.x86_64-linux.dsh-zen",
-        ".#checks.x86_64-linux.gemini-seats"
+        ".#checks.x86_64-linux.antigravity-accounts"
       ],
       "versions": {
         "claude-code": "nixosConfigurations.nas.pkgs.llm-agents.claude-code.version",
         "codex": "nixosConfigurations.nas.pkgs.llm-agents.codex.version",
-        "gemini-cli": "nixosConfigurations.nas.pkgs.llm-agents.gemini-cli.version",
+        "antigravity-cli": "nixosConfigurations.nas.pkgs.llm-agents.antigravity-cli.version",
         "claude-agent-acp": "nixosConfigurations.nas.pkgs.llm-agents.claude-agent-acp.version",
         "claude-code-router": "nixosConfigurations.nas.pkgs.llm-agents.claude-code-router.version",
         "ccusage": "nixosConfigurations.nas.pkgs.llm-agents.ccusage.version",
@@ -35,10 +35,6 @@
         "codex": {
           "repo": "openai/codex",
           "tagPrefix": "rust-v"
-        },
-        "gemini-cli": {
-          "repo": "google-gemini/gemini-cli",
-          "tagPrefix": "v"
         },
         "dsh": {
           "repo": "deepseek-ai/deepseek-harness",
