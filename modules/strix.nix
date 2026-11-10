@@ -17,6 +17,8 @@
     # Typed model catalog, guarded store materialization, and host projections.
     ./local-models.nix
     ./gufo.nix
+    # The on-demand embedding route on Gufo v0.33.0 (host-enabled).
+    ./gufo-embedding.nix
     ./superroc.nix
     ./d3-decision.nix
     # The utility-model seam (/drain, /print), independent of the engine.

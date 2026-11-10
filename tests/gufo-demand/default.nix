@@ -1,6 +1,13 @@
-{ pkgs, self }:
+{
+  pkgs,
+  self,
+  inputs,
+}:
 let
   c = self.nixosConfigurations.strix-coordinator.config;
+  worker = self.nixosConfigurations.strix-worker.config;
+  emb = models."qwen3-embedding-8b";
+  embCfg = c.services.gufo-embedding;
   proxy = c.services.llama-swap;
   models = proxy.settings.models;
   extended =
@@ -24,6 +31,7 @@ let
   ids = [
     "Qwen-Image-2.1"
     "qwen3-asr-1.7b"
+    "qwen3-embedding-8b"
     "qwen3-tts-12hz-1.7b-base"
     "qwen3.8-27b"
     "qwen3.8-27b-ara"
@@ -49,6 +57,33 @@ assert
   builtins.length (builtins.filter (id: id == "qwen-k2so-midway-b") c.services.local-models.artifacts)
   == 1;
 assert builtins.all (id: builtins.hasAttr id models) ids;
+# The one embedding route (Tom, 2026-11-10): Gufo v0.33.0 with the vendored
+# Qwen3-Embedding-8B extension compiled in, loaded on demand behind the same
+# endpoint and swapped like every other route (no groups, asserted below), so
+# it is never resident beside Flash-Next.
+assert embCfg.enable;
+assert builtins.elem "qwen3-embedding-8b-q8-gguf" c.services.local-models.artifacts;
+assert emb.checkEndpoint == "/ready" && emb.ttl == 600;
+assert emb.useModelName == "qwen3-embedding-8b";
+assert !(emb ? capabilities);
+assert pkgs.lib.hasSuffix "-gufo-demand-embedding-qwen3-embedding-8b \${PORT}" emb.cmd;
+assert pkgs.lib.hasPrefix "${embCfg.package}/bin/gufo serve " embCfg.command;
+assert pkgs.lib.hasInfix
+  " serve --host 127.0.0.1 --port $GUFO_DEMAND_PORT embedding --model /var/lib/local-models/qwen3-embedding-8b-q8-gguf/Qwen3-Embedding-8B-Q8_0.gguf --served-model-name qwen3-embedding-8b"
+  embCfg.command;
+assert !(pkgs.lib.hasInfix " -hf" embCfg.command);
+# The extension's provider is compiled in: only that form carries the
+# metadata mkGufoServe validates the embedding modality against.
+assert builtins.elem "qwen3-embedding" (map (p: p.id) embCfg.package.extensionMetadata.providers);
+# Engine isolation: the fleet engine is untouched and the embedding engine is
+# reached only through its launcher.
+assert c.services.gufo.package == inputs.gufo.packages.x86_64-linux.default;
+assert embCfg.package != c.services.gufo.package;
+assert !(builtins.elem embCfg.package c.environment.systemPackages);
+# The worker has no embedding route and no loan.
+assert !worker.services.gufo-embedding.enable;
+assert !(worker.services.llama-swap.settings.models ? "qwen3-embedding-8b");
+assert !(builtins.elem "qwen3-embedding-8b-q8-gguf" worker.services.local-models.artifacts);
 assert !(proxy.settings ? hooks) && !(proxy.settings ? groups);
 assert models."qwen3.8-flash-next".ttl == 600;
 assert models."qwen3-tts-12hz-1.7b-base".ttl == 120;

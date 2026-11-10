@@ -11,7 +11,10 @@ The native CLI stores facts, links and recall indexes; the DSH plugin adds
 runtime memory, managed project documents and memory-space tools. The host
 model makes the judgment calls. Neither component needs another model server
 to provide lexical/graph recall. Embeddings are disabled: Gufo has no
-embedding API. This setup does not configure D3-Ultra as a Mnemon judge.
+embedding API. (2026-11-10: the fleet endpoint now has a Gufo embedding route,
+`qwen3-embedding-8b`, from `modules/gufo-embedding.nix`; Mnemon is not pointed
+at it, and its embeddings stay disabled.) This setup does not configure
+D3-Ultra as a Mnemon judge.
 
 ## Nix ownership
 

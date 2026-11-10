@@ -1892,3 +1892,29 @@ catalog and wanted sets and disable dormant DS4 deployment. This prevents
 library-fetch from re-acquiring deleted files. Preserve remote/API provider
 routes. Former exact metadata is in the retirement archive; physical file
 deletion remains Tom's operation, with no agent deletion or blanket prune.
+
+2026-11-10 (T-148): Tom: "i m a gufo maximalist." Text embeddings return as
+one on-demand route served by Gufo, not llama-server. The row
+`qwen3-embedding-8b-q8-gguf` (`lib/embedding-models.json`: Qwen's official
+Q8_0 GGUF of Qwen3-Embedding-8B at files revision 90f57aa3, the same bytes as
+the row retired on 2026-09-30 above, re-acquired into the NAS Library on
+2026-11-10) is wanted on strix-coordinator only and served as
+`qwen3-embedding-8b` (`POST /v1/embeddings`, up to 8192 input tokens, 4096
+dims) by `modules/gufo-embedding.nix`. Tom: "embedder does not stay loaded
+besides flash-next ; no situation where this will be the ase. ... ideally one
+embeding endpoint through llama-swap". The route has no group and no hook, so
+llama-swap swaps it like every other backend and it is never resident beside
+Flash-Next. The engine is Gufo v0.33.0 (flake input `gufo-embedding`, isolated
+from `gufo`: v0.33.0 builds against ROCm 10.1 and every other route stays on
+the qualified pin) with the community Qwen3-Embedding-8B extension compiled in
+from the vendored snapshot `pkgs/gufo-extensions/qwen3-embedding` (its
+`VENDORED.md` names the source commit). Its parity record: token ids equal
+llama.cpp b9925 on 1,419 fixture cases, and on 128 public fixture texts every
+vector has cosine at least 0.999508 to the llama.cpp ROCm "old way" vectors.
+This supersedes DF-136-1's hand-run `llama-server --embeddings` (above): the
+Paperless index and the academic-ocr embed stage can name this route, which is
+a separate change. Mnemon is not pointed at it. Folding the row into
+`modules/gufo-models.nix` (an `embedding` modality, a per-row model path rule)
+is the follow-up when the fleet's `gufo` pin moves to v0.33.0 or later.
+Merging does not make it live: switching, borrowing the artifact and the first
+request are operator steps.

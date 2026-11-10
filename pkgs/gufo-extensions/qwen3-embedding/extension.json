@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "name": "qwen3_embedding",
+  "version": "0.1.0",
+  "api_version": ">= 0.2.21",
+  "entry": "qwen3_embedding_register",
+  "registration_target": "gufo_qwen3_embedding",
+  "depends": [],
+  "platforms": ["linux"],
+  "providers": [
+    {
+      "id": "qwen3-embedding",
+      "capability": "embeddings",
+      "keys": ["gguf:qwen3"],
+      "model_ids": ["qwen3-embedding-8b", "Qwen3-Embedding-8B"],
+      "target": "gufo_qwen3_embedding_hip",
+      "entry": "qwen3_embedding_provider_register"
+    }
+  ],
+  "options": [],
+  "targets": {
+    "gufo_qwen3_embedding": { "requires": [] },
+    "gufo_qwen3_embedding_hip": { "requires": ["hip"] },
+    "qwen3_embedding_config_test": { "requires": ["testing"], "role": "test" },
+    "qwen3_embedding_tokenizer_test": { "requires": ["testing"], "role": "test" },
+    "qwen3_embedding_inputs_test": { "requires": ["testing"], "role": "test" },
+    "qwen3_embedding_batch_scheduler_test": { "requires": ["testing"], "role": "test" },
+    "qwen3_embedding_probe_test": { "requires": ["testing"], "role": "test" },
+    "qwen3_embedding_ops_hip_test": { "requires": ["hip", "testing"], "role": "test" },
+    "qwen3_embedding_golden_hip_test": { "requires": ["hip", "testing"], "role": "test" }
+  },
+  "licenses": ["LICENSE", "THIRD_PARTY_NOTICES.md"],
+  "production_paths": {
+    "include": ["**/*.cpp", "**/*.hpp", "**/*.hip", "extension.*"],
+    "exclude": ["tests/", "functional/", "tools/", "docs/"]
+  },
+  "docs": {
+    "title": "Qwen3-Embedding-8B",
+    "inputs": "Q8_0 GGUF; text to embeddings",
+    "guide": "docs/qwen3-embedding.md"
+  },
+  "tests": [
+    { "target": "qwen3_embedding_config_test", "ctest": "qwen3_embedding.config", "check_pr": true },
+    { "target": "qwen3_embedding_tokenizer_test", "ctest": "qwen3_embedding.tokenizer", "check_pr": true },
+    { "target": "qwen3_embedding_inputs_test", "ctest": "qwen3_embedding.inputs", "check_pr": true },
+    { "target": "qwen3_embedding_batch_scheduler_test", "ctest": "qwen3_embedding.batch_scheduler", "check_pr": true },
+    { "target": "qwen3_embedding_probe_test", "ctest": "qwen3_embedding.probe", "check_pr": true }
+  ],
+  "test_labels": ["qwen3-embedding"],
+  "fixtures": "tests/fixtures/",
+  "functional": "functional/"
+}
