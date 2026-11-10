@@ -27,7 +27,7 @@ assert storeFree timer && storeFree tunnel;
 assert tick.Service.Type == "oneshot";
 assert tick.Unit.X-RestartIfChanged == false;
 assert tick.Unit.StartLimitIntervalSec == 0;
-assert tick.Service.ExecStart == "${lib.getExe scheduled} tick";
+assert lib.toList tick.Service.ExecStart == [ "${lib.getExe scheduled} tick" ];
 assert !(tick ? Install);
 assert builtins.elem scheduled hm.home.packages;
 assert !(lib.any (t: lib.hasPrefix ".agency" t) targets);
