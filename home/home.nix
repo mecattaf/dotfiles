@@ -54,6 +54,9 @@ let
       "mail"
       "crm"
       "project"
+      "gmni"
+      "gmni2"
+      "gmni3"
     ])
   ) (builtins.attrNames (builtins.readDir ./dot_local/bin));
   binDir = pkgs.linkFarm "dotfiles-bin" (
