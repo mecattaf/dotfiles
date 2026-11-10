@@ -43,6 +43,7 @@ final: _prev: {
   # Replaces paper-intake (paper-print-flush). See home/paper.nix.
   paper-daemon = final.callPackage ../pkgs/paper-daemon { };
   paper-render = final.callPackage ../pkgs/paper-render { };
+  scheduled = final.callPackage ../pkgs/scheduled { };
   utility-model = final.callPackage ../pkgs/utility-model { };
 
   # dsh (DeepSeek Harness) from llm-agents.nix behind the fleet policy: Qwen

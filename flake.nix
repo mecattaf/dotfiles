@@ -594,6 +594,7 @@
             mactahoe-claude-gtk-theme
             mactahoe-icon-theme
             music-acquire
+            scheduled
             sfmono-liga
             ;
 
