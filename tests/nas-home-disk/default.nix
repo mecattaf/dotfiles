@@ -29,6 +29,15 @@ let
   alerts = nas.myTripwire;
   tripwireUnit = name: nas.systemd.services."tripwire-${name}";
   envName = lib.replaceStrings [ "-" ] [ "_" ];
+  # O1 (2026-11-10): /var and /tmp onto the pool, evaluated in both states so
+  # these assertions outlive the flip commit.
+  systemOffEmmc =
+    enable:
+    (base.extendModules { modules = [ { myNas.systemOffEmmc.enable = lib.mkForce enable; } ]; }).config;
+  offEmmc = systemOffEmmc true;
+  onEmmc = systemOffEmmc false;
+  offVar = offEmmc.fileSystems."/var";
+  offTmp = offEmmc.fileSystems."/tmp";
 in
 assert home.device == "${disk}-part1";
 assert disk == "/dev/disk/by-id/nvme-WD_BLACK_SN7100_1TB_26051Y809195";
@@ -114,6 +123,48 @@ assert lib.all (mount: lib.elem mount nas.myNas.storageAlerts.requiredMounts) [
 ];
 assert !(lib.elem "/" nas.myNas.storageAlerts.requiredMounts);
 assert lib.hasInfix "SystemMaxUse=4G" nas.services.journald.extraConfig;
+# O1: merging the gate OFF changes no mount (delete these four lines in the flip commit).
+assert !nas.myNas.systemOffEmmc.enable;
+assert !(nas.fileSystems ? "/var") && !(nas.fileSystems ? "/tmp");
+assert !nas.boot.tmp.cleanOnBoot;
+assert nas.system.switch.inhibitors.nas-var-tmp-backing == "eMMC root";
+assert
+  !(onEmmc.fileSystems ? "/var") && !(onEmmc.fileSystems ? "/tmp") && !onEmmc.boot.tmp.cleanOnBoot;
+# Gate on: @var is boot-critical and initrd-mounted, @tmp is not.
+assert offVar.device == "${disk}-part1" && offVar.fsType == "btrfs";
+assert offVar.neededForBoot;
+assert lib.all (option: lib.elem option offVar.options) [
+  "subvol=@var"
+  "compress=zstd:1"
+  "noatime"
+  "x-initrd.mount"
+];
+assert !(lib.elem "nofail" offVar.options);
+assert offTmp.device == offVar.device && offTmp.fsType == "btrfs" && !offTmp.neededForBoot;
+assert lib.all (option: lib.elem option offTmp.options) [
+  "subvol=@tmp"
+  "nofail"
+  "x-systemd.before=local-fs.target"
+];
+assert !(lib.elem "x-initrd.mount" offTmp.options);
+assert offEmmc.boot.tmp.cleanOnBoot;
+assert lib.elem "D! /tmp 1777 root root" offEmmc.systemd.tmpfiles.rules;
+# A live switch between the two states is refused; the existing binds stay.
+assert
+  offEmmc.system.switch.inhibitors.nas-var-tmp-backing
+  != onEmmc.system.switch.inhibitors.nas-var-tmp-backing;
+assert
+  offEmmc.fileSystems."/var/lib/private/atticd" == onEmmc.fileSystems."/var/lib/private/atticd";
+assert
+  offEmmc.fileSystems."/var/log/journal/remote" == onEmmc.fileSystems."/var/log/journal/remote";
+assert offEmmc.fileSystems."/nix" == onEmmc.fileSystems."/nix";
+# nas-mounts derives its list from fileSystems, so it watches the new mounts.
+assert lib.all (mount: lib.elem mount offEmmc.myNas.storageAlerts.requiredMounts) [
+  "/var"
+  "/tmp"
+];
+assert !(lib.elem "/var" onEmmc.myNas.storageAlerts.requiredMounts);
+assert lib.all (entry: entry.assertion) offEmmc.assertions;
 pkgs.runCommand "nas-home-disk"
   (
     {
