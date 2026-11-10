@@ -30,6 +30,9 @@ let
     "spec-kit" # bin: `specify` — GitHub Spec-Kit, spec-driven development bootstrapper
     "cc-switch-cli" # bin: `cc-switch` — switches Claude Code/Codex/Gemini CLI provider configs
     "opencode" # bin: `opencode` — headless client for OpenCode Zen's free models behind the `zen` wrapper (dot_local/bin); NOT a harness
+  ]
+  ++ lib.optionals (osConfig.myFleet.has "brain") [
+    "gemini-cli" # gmni/gmni2/gmni3: three independent Google browser logins on NAS
   ];
   llmAgentsSelected = pkgs.buildEnv {
     name = "llm-agents-selected";

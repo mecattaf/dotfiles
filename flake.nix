@@ -731,6 +731,27 @@
           python3 ${./tests/claude-settings/test_settings.py}
           touch "$out"
         '';
+        gemini-seats =
+          let
+            nas = self.nixosConfigurations.nas;
+            home = nas.config.home-manager.users.tom;
+            selected = builtins.head (
+              builtins.filter (p: pkgs.lib.getName p == "llm-agents-selected") home.home.packages
+            );
+          in
+          assert builtins.elem nas.pkgs.llm-agents.gemini-cli selected.paths;
+          pkgs.runCommand "gemini-seats"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+              ];
+            }
+            ''
+              export GEMINI_LAUNCHERS=${./home/dot_local/bin}
+              python3 ${./tests/gemini-seats/test_launchers.py}
+              touch "$out"
+            '';
 
         # modules/substrate.nix rendered OFF on the strix and armed with
         # fixtures (tests/substrate-modules); every assertion is eval-time.
