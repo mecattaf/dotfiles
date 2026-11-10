@@ -26,7 +26,17 @@ terminal policy is retained. NAS continues to own Herdr and agent sessions.
 Client notification clients use the desktop's notification service.
 
 Duo uses two native DRM displays at scale 2, stacked at (0,0) and (0,900).
-DuoDocked uses only the upper panel. Prior Kanshi panel temperatures are applied
+DuoDocked uses only the upper panel. With the ASUS PA27JCV attached, Duo5k
+and DuoDocked5k keep those panel scales and positions and put the 5120×2880
+external display at (1440,0), to the right of the upper panel, also at scale 2.
+Its confirmed Domicile identity is `drm-1886053529622275`. The larger physical
+text on the ASUS is intentional (Tom, 2026-11-10).
+
+Domicile matches profiles against the exact set of connected monitors.
+Explicit external-monitor profiles prevent hotplug from falling back to the
+engine's default horizontal layout and scale 1. They precede the laptop-only
+profiles; unplugging the monitor restores Duo or DuoDocked without changing
+the laptop's scaling. Prior Kanshi panel temperatures are applied
 through `displays.setColorTemperature(kelvin, displayName)`: upper 3850 K,
 lower 3350 K. The shell applies these when displays appear; the compositor
 retains/reapplies them across modesets. Fixed per-output temperatures replace

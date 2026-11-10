@@ -20,6 +20,9 @@ import { ownedChords } from "@domicile-desktop/sdk/own-keybindings";
 
 const upperPanel = "drm-21536134253248512";
 const lowerPanel = "drm-21536134253248513";
+const external5k = "drm-1886053529622275";
+// Tom prefers 2x on the PA27JCV too: slightly larger physical text is welcome.
+const external5kScale = 2;
 const agency = (...args: string[]) => KeyAction.SendShell(["agency", ...args]);
 
 // Reserve the chords owned by the client shell below.
@@ -108,9 +111,26 @@ export const theme: ThemeConfig = {
   monospace_font_name: "AnthropicMono Nerd Font 11",
 };
 
-// Stock display identities confirmed on the physical Duo panels.
+// More specific external-monitor profiles precede the laptop-only fallbacks.
+// Keep the Duo's original 2x scale and vertical stack on monitor hotplug.
+// The PA27JCV sits to the right of the upper panel, with their tops aligned.
 export const output = {
   profiles: [
+    {
+      name: "Duo5k",
+      displays: [
+        { display: upperPanel, mode: [2880, 1800], scale: 2, position: [0, 0] },
+        { display: lowerPanel, mode: [2880, 1800], scale: 2, position: [0, 900] },
+        { display: external5k, mode: [5120, 2880], scale: external5kScale, position: [1440, 0] },
+      ],
+    },
+    {
+      name: "DuoDocked5k",
+      displays: [
+        { display: upperPanel, mode: [2880, 1800], scale: 2, position: [0, 0] },
+        { display: external5k, mode: [5120, 2880], scale: external5kScale, position: [1440, 0] },
+      ],
+    },
     {
       name: "Duo",
       displays: [

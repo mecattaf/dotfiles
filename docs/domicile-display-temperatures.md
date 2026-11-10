@@ -47,8 +47,10 @@ requires both panel IDs and their configured temperatures.
 
 ## External monitor
 
-Unknown displays are left unchanged. The PA27JCV was not connected during the
-2026-11-08 inspection, so its Domicile identity and subjective preferred
-warmth are unmeasured. Observe that identity before adding a named temperature
-or output profile. A value of 6500 K means unchanged colors in Domicile's
+Unknown displays are left unchanged. The PA27JCV was connected and identified
+on 2026-11-10 as `drm-1886053529622275`, native 5120×2880. Its output profiles
+use scale 2 and place it to the right of the upper Duo panel; both laptop
+panels retain their original scale 2 and vertical stack. Tom confirmed this
+layout live. Its preferred warmth remains unmeasured, so no external color
+temperature is set. A value of 6500 K means unchanged colors in Domicile's
 night-light API; it does not calibrate the display.
