@@ -1,9 +1,4 @@
-{
-  config,
-  lib,
-  options,
-  ...
-}:
+{ config, lib, ... }:
 # ─── /var and /tmp off the eMMC — GATE OFF, REBOOT-ONLY (O1, 2026-11-10) ─────
 #
 # Tom, 2026-11-10: "58gb emmc is still quite large for it to be full. i think
@@ -37,13 +32,6 @@
 let
   cfg = config.myNas.systemOffEmmc;
   pool = "${config.myNas.homeDisk.device}-part1";
-  # myNas.storageAlerts (./storage-alerts.nix, O1 PR-1) owns the mount-presence
-  # tripwire. Extend it when present so this lands in either order.
-  hasStorageAlerts = lib.hasAttrByPath [
-    "myNas"
-    "storageAlerts"
-    "requiredMounts"
-  ] options;
 in
 {
   options.myNas.systemOffEmmc.enable = lib.mkEnableOption "/var and /tmp on the 1TB pool as @var and @tmp (REBOOT-ONLY, docs/nas/system-off-emmc.md)";
@@ -56,68 +44,60 @@ in
         if cfg.enable then "1TB pool @var and @tmp" else "eMMC root";
     }
 
-    (lib.mkIf cfg.enable (
-      lib.mkMerge [
+    (lib.mkIf cfg.enable {
+      assertions = [
         {
-          assertions = [
-            {
-              assertion =
-                config.myNas.homeDisk.enable
-                && config.myNas.homeDisk.layout == "shared-btrfs"
-                && config.myNas.nixOnNvme.enable;
-              message = "myNas.systemOffEmmc needs the shared 1TB pool that already carries /nix and /home.";
-            }
-          ];
-
-          # Do NOT mkForce these: neededForBoot adds x-initrd.mount through the
-          # option merge, and mkForce would drop it (./home-disk.nix /mnt/fast,
-          # the 2026-10-25 19:10 hang).
-          fileSystems."/var" = {
-            device = pool;
-            fsType = "btrfs";
-            options = [
-              "subvol=@var"
-              "compress=zstd:1"
-              "noatime"
-            ];
-            neededForBoot = true;
-          };
-
-          # Not boot-critical: nofail, so a missing @tmp leaves the house router
-          # up on the eMMC directory instead of in emergency mode. nofail alone
-          # also drops the Before=local-fs.target ordering (systemd.mount(5)),
-          # which would let systemd-tmpfiles-setup run cleanOnBoot's `D! /tmp`
-          # against the hidden eMMC /tmp before @tmp is mounted; restore it.
-          fileSystems."/tmp" = {
-            device = pool;
-            fsType = "btrfs";
-            options = [
-              "subvol=@tmp"
-              "noatime"
-              "nosuid"
-              "nodev"
-              "nofail"
-              "x-systemd.device-timeout=10s"
-              "x-systemd.before=local-fs.target"
-            ];
-          };
-
-          # tmpfs rejected: /tmp reached 24G on 2026-11-05 on a 22.9 GiB box.
-          # From the flip on, /tmp is emptied at every boot: nothing that must
-          # survive a reboot belongs there.
-          boot.tmp.cleanOnBoot = true;
+          assertion =
+            config.myNas.homeDisk.enable
+            && config.myNas.homeDisk.layout == "shared-btrfs"
+            && config.myNas.nixOnNvme.enable;
+          message = "myNas.systemOffEmmc needs the shared 1TB pool that already carries /nix and /home.";
         }
+      ];
 
-        # /var/lib/private/atticd (./attic.nix) and /var/log/journal/remote
-        # (./journal.nix) keep their binds from @fast; systemd orders them
-        # after var.mount by path.
-        (lib.optionalAttrs hasStorageAlerts {
-          myNas.storageAlerts.requiredMounts = [
-            "/var"
-            "/tmp"
-          ];
-        })
-      ]
-    ))
+      # Do NOT mkForce these: neededForBoot adds x-initrd.mount through the
+      # option merge, and mkForce would drop it (./home-disk.nix /mnt/fast,
+      # the 2026-10-25 19:10 hang).
+      fileSystems."/var" = {
+        device = pool;
+        fsType = "btrfs";
+        options = [
+          "subvol=@var"
+          "compress=zstd:1"
+          "noatime"
+        ];
+        neededForBoot = true;
+      };
+
+      # Not boot-critical: nofail, so a missing @tmp leaves the house router
+      # up on the eMMC directory instead of in emergency mode. nofail alone
+      # also drops the Before=local-fs.target ordering (systemd.mount(5)),
+      # which would let systemd-tmpfiles-setup run cleanOnBoot's `D! /tmp`
+      # against the hidden eMMC /tmp before @tmp is mounted; restore it.
+      fileSystems."/tmp" = {
+        device = pool;
+        fsType = "btrfs";
+        options = [
+          "subvol=@tmp"
+          "noatime"
+          "nosuid"
+          "nodev"
+          "nofail"
+          "x-systemd.device-timeout=10s"
+          "x-systemd.before=local-fs.target"
+        ];
+      };
+
+      # tmpfs rejected: /tmp reached 24G on 2026-11-05 on a 22.9 GiB box.
+      # From the flip on, /tmp is emptied at every boot: nothing that must
+      # survive a reboot belongs there.
+      boot.tmp.cleanOnBoot = true;
+
+      # /var/lib/private/atticd (./attic.nix) and /var/log/journal/remote
+      # (./journal.nix) keep their binds from @fast; systemd orders them
+      # after var.mount by path. tripwire-nas-mounts (./storage-alerts.nix)
+      # derives its required list from fileSystems, so it watches /var and
+      # /tmp from the flip on with no entry here.
+    })
   ];
 }

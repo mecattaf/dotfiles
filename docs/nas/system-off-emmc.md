@@ -50,8 +50,8 @@ the key.
   belongs there: push branches or leave bundles first.
 - `/var/lib/private/atticd` and `/var/log/journal/remote` keep their binds
   from `@fast`; systemd orders them after `var.mount`.
-- `/var` and `/tmp` join `myNas.storageAlerts.requiredMounts` when the
-  storage-alerts module (O1 PR-1) is present.
+- `tripwire-nas-mounts` (`hosts/nas/storage-alerts.nix`) requires every
+  declared mount, so it watches `/var` and `/tmp` from the flip on.
 
 ## What must survive, and how
 
@@ -141,7 +141,10 @@ the next unplanned boot without the final copy. The commit:
   true;` in `hosts/nas/default.nix`, with the comment "O1 phase 2
   (REBOOT-ONLY, see ./system-off-emmc.nix)";
 - deletes the four "merging the gate OFF changes no mount" assertions in
-  `tests/nas-home-disk/default.nix`.
+  `tests/nas-home-disk/default.nix`;
+- in `home/agent-runtime-rules.md` ("Worktrees live under /tmp"), changes
+  "`/tmp` ages out after 10 days" to "`/tmp` ages out after 10 days and is
+  emptied at every boot".
 
 **2b. Stage it, and set up the one-shot.**
 
