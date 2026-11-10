@@ -16,6 +16,7 @@
     ./display.nix # myDisplay.enable — does a human sit at this box (default true); .session picks the compositor
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
+    ./dshd.nix # durable native DSH sessions on the brain only
     ./user-password.nix # tom's login password via agenix hashedPasswordFile (#54)
     ./rollback-offline.nix # network-free `rollback-offline` command (#106)
     ./fleet-status.nix # graded per-host collector; the fan-out view on the strix (#356)

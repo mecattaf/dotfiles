@@ -140,6 +140,12 @@
     # modules/common.nix). home/home.nix installs the entire set via buildEnv.
     llm-agents.url = "github:numtide/llm-agents.nix";
 
+    # NAS session supervision; DSH itself still comes from llm-agents.
+    dshd = {
+      url = "github:mecattaf/dshd.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # flake-utils — shared by git-ai and deploy-rs through `follows`. It used to
     # be reached as "tally/flake-utils"; the Tally inputs (tally, tally-b,
     # tally-lake) were removed with the Tally sunset on 2026-09-30, and this
@@ -1990,6 +1996,11 @@
         # and carry the policy rows; tests/dsh-config/check_dump.py reads its
         # expectations from pkgs.dsh's passthru. lib/update-watch.json builds
         # this on every llm-agents bump.
+        dshd-nas = import ./tests/dshd-nas {
+          inherit pkgs;
+          configurations = self.nixosConfigurations;
+        };
+
         dsh-config =
           let
             dshPackage = self.nixosConfigurations.nas.pkgs.dsh.override { qwenKeyFile = null; };
