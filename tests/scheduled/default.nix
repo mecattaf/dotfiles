@@ -47,7 +47,7 @@ assert !(builtins.elem "CLAUDE_CONFIG_DIR"
 pkgs.runCommand "scheduled" { nativeBuildInputs = [ scheduled.node ]; } ''
   export HOME=$TMPDIR
   cd ${scheduled}/share/scheduled
-  node --test test/
+  node --test 'test/*.test.mjs'
   ${lib.getExe scheduled} --version
   touch $out
 ''
