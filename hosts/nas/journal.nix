@@ -24,16 +24,24 @@
     ];
   };
 
-  # The local system journal, declared (O1, 2026-11-10). journald's implicit
-  # cap is 10% of the filesystem with a 4G ceiling, which on the 57G eMMC root
-  # was the 4G ceiling (3.9G in use on 2026-11-10). Declared at that same 4G,
-  # the cap the senders already carry (../../modules/journal-upload.nix), so
-  # it stays put when /var moves to the 1TB pool and a switch vacuums nothing.
-  # Not lower: journald restarts on a switch that changes this file and would
-  # delete the oldest local logs down to a smaller cap at once. The eMMC fill
-  # was the hidden pre-cutover home and /tmp, not this bounded journal.
+  # The local system journal has no size cap. Tom, 2026-11-10: "there should
+  # be no size cap on journal or other such crucial directories. otherwise we
+  # lost information." journald's implicit limits are 10% of the filesystem
+  # with a 4G ceiling, and at most 100 archived files. On the 57G eMMC root
+  # the 4G ceiling was reached by 2026-11-08 ("System Journal ... is 3.9G, max
+  # 3.9G, 0B free"), and journald had begun deleting the oldest entries: the
+  # earliest line left on 2026-11-10 is from 2026-08-26. journald accepts no
+  # "infinity", so both limits are set beyond any disk in the fleet.
+  #
+  # The one bound left is journald's SystemKeepFree default, the smaller of 15%
+  # of the filesystem and 4G. It vacuums only when the disk would otherwise
+  # fill. The storage alerts (./storage-alerts.nix) fire long before that: the
+  # eMMC root at 75%. At the measured ~50MB/day the eMMC holds years of
+  # journal, and after the /var move (./system-off-emmc.nix) the 1TB pool
+  # holds it. Raising a limit deletes nothing on a switch.
   services.journald.extraConfig = ''
-    SystemMaxUse=4G
+    SystemMaxUse=16T
+    SystemMaxFiles=1000000
   '';
 
   services.journald.remote = {
@@ -43,9 +51,15 @@
     # transport is the same point-to-point /30 that already carries NFSv4.
     listen = "http";
     settings.Remote = {
-      # ~10% of the 1TB pool (was ~40% of the old 256G NVMe); strix keeps 80 days locally and weekly
-      # archives will land on the HDD, so NVMe loss loses almost nothing.
-      MaxUse = "100G";
+      # No size cap, for the same reason as the local journal above (Tom,
+      # 2026-11-10). This was 100G, with journal-remote's default of at most
+      # 100 archived files; 48 files were in use on 2026-11-10 (41 from the
+      # strix). Both are now set beyond any disk. journal-remote's KeepFree
+      # default still keeps the 1TB pool from filling, and the pool alert
+      # fires first. Rotated files move to the HDD by hand (journal-archive,
+      # ../../modules/journal-upload.nix).
+      MaxUse = "16T";
+      MaxFiles = 1000000;
       SplitMode = "host";
     };
   };
