@@ -122,7 +122,11 @@ assert lib.all (mount: lib.elem mount nas.myNas.storageAlerts.requiredMounts) [
   "/var/lib/private/atticd"
 ];
 assert !(lib.elem "/" nas.myNas.storageAlerts.requiredMounts);
-assert lib.hasInfix "SystemMaxUse=4G" nas.services.journald.extraConfig;
+# No journal size cap (Tom, 2026-11-10), local or remote.
+assert lib.hasInfix "SystemMaxUse=16T" nas.services.journald.extraConfig;
+assert lib.hasInfix "SystemMaxFiles=1000000" nas.services.journald.extraConfig;
+assert nas.services.journald.remote.settings.Remote.MaxUse == "16T";
+assert nas.services.journald.remote.settings.Remote.MaxFiles == 1000000;
 # O1: merging the gate OFF changes no mount (delete these four lines in the flip commit).
 assert !nas.myNas.systemOffEmmc.enable;
 assert !(nas.fileSystems ? "/var") && !(nas.fileSystems ? "/tmp");
