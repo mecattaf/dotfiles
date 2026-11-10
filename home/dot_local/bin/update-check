@@ -11,8 +11,9 @@ this command. One run:
      branch head for an input that follows a branch, the newest stable GitHub
      release for one that flake.nix pins to a tag or a commit;
   3. when that differs from main, rebuilds branch update/<input> from
-     origin/main in a worktree under ~/.wt/dotfiles: the bump commit, then
-     any commit a reviewer added on top in an earlier round (cherry-picked);
+     origin/main in a worktree under ${TMPDIR:-/tmp}/update-check-wt: the
+     bump commit, then any commit a reviewer added on top in an earlier
+     round (cherry-picked);
   4. skips the bump when no watched program changed version;
   5. runs the gate (nixfmt on flake.nix, `nix flake check --no-build`, a build
      of every host closure the input reaches) and opens or refreshes the PR,
@@ -54,7 +55,8 @@ from typing import Any
 
 HOME = Path.home()
 REPO = Path(os.environ.get("UPDATE_CHECK_REPO", HOME / "mecattaf/dotfiles"))
-WORKTREES = Path(os.environ.get("UPDATE_CHECK_WORKTREES", HOME / ".wt/dotfiles"))
+WORKTREES = Path(os.environ.get("UPDATE_CHECK_WORKTREES",
+                                Path(os.environ.get("TMPDIR") or "/tmp") / "update-check-wt"))
 STATE = Path(os.environ.get("UPDATE_CHECK_STATE", HOME / ".local/state/update-check"))
 GH_REPO = os.environ.get("UPDATE_CHECK_GH_REPO", "mecattaf/dotfiles")
 GATE_TIMEOUT = int(os.environ.get("UPDATE_CHECK_GATE_TIMEOUT", str(3 * 3600)))

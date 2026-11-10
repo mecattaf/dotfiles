@@ -17,6 +17,13 @@ files, `/tmp`, and networking remain accessible. Do not suppress unexpected
 coredumps or service failures. Do not restart Herdr or the whole user manager
 to repair a test incident while live agent sessions must be preserved.
 
+# Worktrees live under /tmp
+
+Tom, 2026-10-31 (`~/notes/CLAUDE.md`): "Temporary experiments and worktrees
+belong under /tmp, never a new hidden workspace collection in home." Create
+worktrees and scratch clones under `${TMPDIR:-/tmp}`, never `~/.wt`. `/tmp` ages
+out after 10 days: push or bundle the branch, then `git worktree remove` it.
+
 # NAS agent host: send compute to strix-coordinator
 
 On `nas`, keep Herdr, Claude Code, Codex and dsh sessions and their credentials
