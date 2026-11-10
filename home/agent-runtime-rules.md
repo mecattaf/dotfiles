@@ -24,6 +24,12 @@ belong under /tmp, never a new hidden workspace collection in home." Create
 worktrees and scratch clones under `${TMPDIR:-/tmp}`, never `~/.wt`. `/tmp` ages
 out after 10 days: push or bundle the branch, then `git worktree remove` it.
 
+That only holds if GitHub stays current. Tom, 2026-11-10: "keep everythig
+uptodate with github which is quite a large thing to do.. that i dnt want to
+risk overbuilding." Push your branch at each stopping point, so a worktree
+never holds the only copy of the work. This is a habit, not a mechanism: build
+no sync tool, sweep or schedule for it.
+
 # NAS agent host: send compute to strix-coordinator
 
 On `nas`, keep Herdr, Claude Code, Codex and dsh sessions and their credentials
