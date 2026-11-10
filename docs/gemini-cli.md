@@ -28,7 +28,7 @@ Gemini prints the login URL, you open it in the client browser, and paste the
 authorization code back into the NAS terminal. No callback port forwarding is
 needed. An explicitly supplied `NO_BROWSER` value is preserved.
 
-The shared system-settings policy enforces `oauth-personal` across all CLI
+The root-owned `/etc/gemini-cli/settings.json` policy enforces `oauth-personal` across all CLI
 supervisor restarts, even when a user settings file previously selected an
 API key. The launchers use the supported `GOOGLE_GENAI_USE_GCA=true` selector;
 they do not use the one-shot `GEMINI_CLI_AUTH_OVERRIDE`. The policy also keeps

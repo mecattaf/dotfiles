@@ -753,7 +753,7 @@
               python3 ${./tests/gemini-seats/test_launchers.py}
               node ${./tests/gemini-seats/check_auth.mjs} \
                 ${nas.pkgs.llm-agents.gemini-cli}/share/gemini-cli/node_modules/@google/gemini-cli/dist/src/config/settings.js \
-                ${./home/dot_config/gemini-cli/google-oauth-settings.json}
+                ${./modules/gemini-cli-google-oauth.json}
               touch "$out"
             '';
 

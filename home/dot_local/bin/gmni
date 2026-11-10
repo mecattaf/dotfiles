@@ -23,7 +23,7 @@ chmod 700 "$account_home/.gemini"
 # key or ADC identity. No secret is read or delivered by these launchers.
 exec env -u GEMINI_CLI_AUTH_OVERRIDE \
   GEMINI_CLI_HOME="$account_home" \
-  GEMINI_CLI_SYSTEM_SETTINGS_PATH="$HOME/.config/gemini-cli/google-oauth-settings.json" \
+  GEMINI_CLI_SYSTEM_SETTINGS_PATH=/etc/gemini-cli/settings.json \
   GEMINI_DEFAULT_AUTH_TYPE=oauth-personal \
   GEMINI_FORCE_ENCRYPTED_FILE_STORAGE=false \
   GEMINI_FORCE_FILE_STORAGE=true \

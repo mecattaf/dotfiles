@@ -105,10 +105,4 @@ lib.mkIf (osConfig.myFleet.has "brain" || osConfig.myFleet.has "seat") {
   # collided with his file at activation.
   xdg.configFile."opencode/opencode.json".source = link "dot_config/opencode/opencode.json";
 
-  # Authentication must survive the CLI's supervisor restarts. A one-shot
-  # GEMINI_CLI_AUTH_OVERRIDE is consumed by loadSettings() before a relaunch.
-  xdg.configFile."gemini-cli/google-oauth-settings.json" = lib.mkIf (osConfig.myFleet.has "brain") {
-    source = ./dot_config/gemini-cli/google-oauth-settings.json;
-  };
-
 }

@@ -89,7 +89,7 @@ class GeminiSeats(unittest.TestCase):
         self.assertEqual(actual["mode"], "oauth-personal")
         self.assertIsNone(actual["one_time_override"])
         self.assertEqual(actual["google_auth"], "true")
-        self.assertEqual(actual["policy"], str(self.user_home / ".config/gemini-cli/google-oauth-settings.json"))
+        self.assertEqual(actual["policy"], "/etc/gemini-cli/settings.json")
         self.assertEqual(actual["encrypted"], "false")
         self.assertEqual(actual["file_storage"], "true")
         self.assertEqual(actual["auth"], dict.fromkeys(AUTH_VARS, ""))
