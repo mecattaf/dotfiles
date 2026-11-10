@@ -1,5 +1,6 @@
 { config, lib, ... }:
-# ─── /nix onto the 256G M.2 — GATE OFF, runbook below ───────────────────────
+# ─── /nix onto the NVMe pool (256G until 2026-10-25, now the 1TB SN7100) ───
+# Gate ON since 2026-08-22 (./default.nix); the runbook below is history.
 #
 # THE CAPACITY PROBLEM, stated plainly. ./nix-builds.nix moved build scratch
 # to the NVMe and added min-free/max-free, and that was NOT ENOUGH — it
@@ -61,7 +62,7 @@
 #      (Do NOT delete in the same session that flips the gate — the old copy
 #      is the entire rollback story if step 6 goes wrong.)
 {
-  options.myNas.nixOnNvme.enable = lib.mkEnableOption "back /nix with the 256G M.2 instead of the 57G eMMC (REBOOT-ONLY, see #232)";
+  options.myNas.nixOnNvme.enable = lib.mkEnableOption "back /nix with the NVMe pool (256G until 2026-10-25, now the 1TB SN7100) instead of the 57G eMMC (REBOOT-ONLY, see #232)";
 
   config = lib.mkIf config.myNas.nixOnNvme.enable {
     # Both are neededForBoot: the initrd must mount /mnt/fast before it can

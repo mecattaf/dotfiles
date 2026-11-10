@@ -29,7 +29,7 @@ in
         "legacy-split"
       ];
       default = "shared-btrfs";
-      description = "Shared 500GB primary pool (@home/@fast/@snapshots), or the earlier split home-only layout. Never formats or migrates data.";
+      description = "Shared 1TB primary pool (@home/@fast/@snapshots), or the earlier split home-only layout. Never formats or migrates data.";
     };
     device = lib.mkOption {
       type = lib.types.str;
@@ -58,8 +58,9 @@ in
 
     # Prepared manually only after the incoming serial is verified. A single
     # primary btrfs partition shares capacity between home and old fast state;
-    # eMMC root/boot stays unchanged. Keep the 256GB intact until new @fast
-    # has booted and passed acceptance, then release its memory-only gate.
+    # eMMC root/boot stays unchanged. The 256GB is Immich's since 2026-10-28
+    # (./immich-disk.nix). The cutover kept the pre-cutover eMMC /home hidden
+    # under this mount; reclaiming it is O1 phase 0 (20.9G on 2026-11-10).
     fileSystems."/home" = {
       device = "${cfg.device}-part${partition}";
       fsType = "btrfs";
@@ -98,8 +99,8 @@ in
     };
 
     # Refuse a second agent home on eMMC. In shared mode the same SSD is
-    # additionally boot-critical through @fast/nix; retain the old generation
-    # and untouched 256GB fast tier until that first shared-pool boot passes.
+    # additionally boot-critical through @fast/nix (live since the 2026-10-25
+    # cutover).
     # user@1000 is an instance of systemd's user@.service: asDropinIfExists only
     # matches exact upstream names, so it wrote a full user@1000.service with no
     # ExecStart and the user manager never started (2026-10-25 gen 87 boot).
