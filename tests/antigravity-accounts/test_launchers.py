@@ -50,7 +50,7 @@ class Accounts(unittest.TestCase):
         self.env.update({key:'foreign-account-or-key' for key in REMOVED})
 
     def run_account(self, command, *args, **env):
-        result = subprocess.run([str(self.root / command), *args], env=self.env | env,
+        result = subprocess.run(['bash', str(self.root / command), *args], env=self.env | env,
                                 cwd=self.project, capture_output=True, text=True, timeout=10)
         return result, json.loads(result.stdout)
 
