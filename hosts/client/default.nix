@@ -313,10 +313,12 @@
   # profile_quiet_epp stays Power (what Quiet measured with). profile_balanced_epp
   # is BalancePerformance, the EPP power-profiles-daemon
   # applied with Balanced during the measurement, not asusd's BalancePower.
+  # asusd restores its base limit when external power disconnects. Keep both
+  # thresholds at 60 so a charger/USB-C monitor swap cannot restore 100.
   services.asusd.asusdConfig.text = ''
     (
         charge_control_end_threshold: 60,
-        base_charge_control_end_threshold: 100,
+        base_charge_control_end_threshold: 60,
         disable_nvidia_powerd_on_battery: true,
         ac_command: "",
         bat_command: "",
@@ -379,7 +381,7 @@
   # on the Thunderbolt dock 24/7, so unplugged runtime is not a cost, and a
   # cell held at 60% fades far slower than one held at 100% (health was 85%
   # after 271 cycles when this was set, 2026-09-13). Ordered after asusd so
-  # its stored limit (100, /etc/asusd/asusd.ron) cannot overwrite this on
+  # its stored limit (/etc/asusd/asusd.ron) cannot overwrite this on
   # boot; a udev rule would lose that race.
   systemd.services.battery-charge-limit = {
     description = "Cap BAT0 charge at 60%";
