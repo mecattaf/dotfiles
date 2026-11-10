@@ -731,30 +731,29 @@
           python3 ${./tests/claude-settings/test_settings.py}
           touch "$out"
         '';
-        gemini-seats =
+        antigravity-accounts =
           let
-            nas = self.nixosConfigurations.nas;
-            home = nas.config.home-manager.users.tom;
+            home = self.nixosConfigurations.nas.config.home-manager.users.tom;
             selected = builtins.head (
-              builtins.filter (p: pkgs.lib.getName p == "llm-agents-selected") home.home.packages
+              builtins.filter (p: pkgs.lib.getName p == "antigravity-cli-accounts") home.home.packages
             );
           in
-          assert builtins.elem nas.pkgs.llm-agents.gemini-cli selected.paths;
-          pkgs.runCommand "gemini-seats"
+          pkgs.runCommand "antigravity-accounts"
             {
               nativeBuildInputs = [
                 pkgs.python3
                 pkgs.bash
-                pkgs.nodejs_24
               ];
             }
             ''
-              export GEMINI_LAUNCHERS=${./home/dot_local/bin}
-              python3 ${./tests/gemini-seats/test_launchers.py}
-              node ${./tests/gemini-seats/check_auth.mjs} \
-                ${nas.pkgs.llm-agents.gemini-cli}/share/gemini-cli/node_modules/@google/gemini-cli/dist/src/config/settings.js \
-                ${./modules/gemini-cli-google-oauth.json}
-              touch "$out"
+                export AGY_ACCOUNTS_SCRIPT=${./home/antigravity-accounts.sh}
+                python3 ${./tests/antigravity-accounts/test_launchers.py}
+                test -x ${selected}/bin/agy
+                test -x ${selected}/bin/agy2
+                test -x ${selected}/bin/agy3
+              export AGY_ACCOUNTS_BIN=${selected}/bin
+              python3 ${./tests/antigravity-accounts/check_native.py}
+                touch "$out"
             '';
 
         # modules/substrate.nix rendered OFF on the strix and armed with

@@ -54,9 +54,6 @@ let
       "mail"
       "crm"
       "project"
-      "gmni"
-      "gmni2"
-      "gmni3"
     ])
   ) (builtins.attrNames (builtins.readDir ./dot_local/bin));
   binDir = pkgs.linkFarm "dotfiles-bin" (
@@ -92,6 +89,7 @@ in
   imports = [
     ./browser-trust.nix
     ./agent-tools.nix
+    ./antigravity-accounts.nix
     ./agent-helpers.nix
     ./agency-kitty.nix
     ./agency-editor.nix

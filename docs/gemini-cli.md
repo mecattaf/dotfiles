@@ -1,52 +1,15 @@
-# Gemini CLI accounts on NAS
+# Gemini CLI investigation — retired 2026-11-10
 
-The NAS installs the pinned `llm-agents.nix` Gemini CLI. Launch one account at
-a time and complete **Sign in with Google** in the browser:
+Google rejected personal sign-in on CLI 0.67.0: this client no longer supports Gemini Code Assist for individuals, and directs users to Antigravity. The installed package and gmni launchers were replaced by [Antigravity](antigravity-cli.md). Existing AI Studio API keys remain separate.
 
-| Command | Writable Gemini state |
-| --- | --- |
-| `gmni` | `~/.gemini/` |
-| `gmni2` | `~/.gemini-account-2/.gemini/` |
-| `gmni3` | `~/.gemini-account-3/.gemini/` |
+Retained findings:
 
-Choose a different Google account for each command. Subsequent launches reuse
-that account's saved OAuth credentials. Run the commands on NAS, where the
-harnesses and credentials live. They preserve the real home directory and the
-project directory, and forward every argument. For example, `gmni2 --resume
-latest` resumes that account's latest session for the current project.
+- GEMINI_CLI_HOME names the parent of .gemini, rather than the config directory itself.
+- Google API keys and Google account OAuth are separate authentication offerings.
+- GEMINI_CLI_AUTH_OVERRIDE is one-shot and is consumed by the CLI supervisor/settings loader; it cannot enforce an account method across restarts.
+- Gemini system-policy files and their ancestors must be root-owned. User config paths are rejected; Nix sandbox UID remapping also affects tests of this check.
+- Separate credential files prevent the shared OS-keyring account from colliding.
+- A successful OAuth flow cannot restore an offering that the server has retired.
+- ACP delegates the inner agent; the minimal Gemini SDK is a different implementation.
 
-The wrappers select Google's OAuth method explicitly and use Gemini CLI's
-file-backed credential storage, with private directories and umask 077. They
-clear API-key, ADC and Vertex authentication overrides for the child process.
-Signing into one account does not replace another account's OAuth file, and
-launching `gmni` from inside `gmni2` selects account 1 again. Models, preferences
-and sessions remain writable; Nix does not seed or reset them.
-
-`GEMINI_CLI_HOME` names the parent of `.gemini`. The wrappers set this rather
-than changing `HOME`. They default to `NO_BROWSER=true` on the headless NAS:
-Gemini prints the login URL, you open it in the client browser, and paste the
-authorization code back into the NAS terminal. No callback port forwarding is
-needed. An explicitly supplied `NO_BROWSER` value is preserved.
-
-The root-owned `/etc/gemini-cli/settings.json` policy enforces `oauth-personal` across all CLI
-supervisor restarts, even when a user settings file previously selected an
-API key. The launchers use the supported `GOOGLE_GENAI_USE_GCA=true` selector;
-they do not use the one-shot `GEMINI_CLI_AUTH_OVERRIDE`. The policy also keeps
-automatic in-harness memory processing off; models and other preferences
-remain the CLI's writable settings.
-
-These Google CLI logins are separate from the existing three AI Studio API
-keys used by the native DSH Google provider. No API key is needed by `gmni`.
-Access and quota are determined by Google for each signed-in account; an
-installation or saved login does not prove a particular free allowance.
-
-The `hyqhyq3/dsh-gemini-oauth-bridge` plugin authenticates independently and
-does not invoke Gemini CLI or import these logins. A DSH extension that wraps
-the official CLI, following `Norman-else/dsh-claude`, is a separate integration.
-
-Upstream behavior checked against Gemini CLI v0.67.0:
-
-- [Home override](https://github.com/google-gemini/gemini-cli/blob/v0.67.0/packages/core/src/utils/paths.ts)
-- [OAuth file and alternative credential loading](https://github.com/google-gemini/gemini-cli/blob/v0.67.0/packages/core/src/code_assist/oauth2.ts)
-- [Authentication override](https://github.com/google-gemini/gemini-cli/blob/v0.67.0/packages/cli/src/config/settings.ts)
-- [Shared keychain account](https://github.com/google-gemini/gemini-cli/blob/v0.67.0/packages/core/src/code_assist/oauth-credential-storage.ts)
+The detailed CLI capability map, architecture and source references are preserved in the owned dsh-gemini-cli repository. The earlier implementation is retained in Git history (PRs710 and711); no login data is deleted.
