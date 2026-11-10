@@ -79,7 +79,7 @@ shape:
 ```json
 {"chapter":"email","spec":"agency-agency/email@<sha>:SPEC.md","task":"T1",
  "claims":["C1.1","C1.2","C1.3"],"repo":"agency-agency/email","repoDir":"/home/tom/mecattaf/email-svc",
- "base":"main","branch":"t/email-t1-toolchain","worktree":"/home/tom/.wt/email-svc/t1",
+ "base":"main","branch":"t/email-t1-toolchain","worktree":"/tmp/wt/email-svc-t1",
  "routes":{"impl":"codex-rw","review":"opus","mech":"halogen"},
  "prove":[{"id":"P1.1","cmd":"pnpm -r typecheck"}],"maxFixRounds":2}
 ```
