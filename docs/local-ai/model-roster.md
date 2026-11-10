@@ -2,7 +2,8 @@
 
 The catalogue in [`../../lib/local-models.nix`](../../lib/local-models.nix)
 is summarised here. It merges `lib/speech-intake-models.json`,
-`lib/gufo-models.json`, `lib/ds4-models.json` and a few inline rows. Every byte
+`lib/gufo-models.json`, `lib/ds4-models.json`, `lib/embedding-models.json` and
+a few inline rows. Every byte
 figure is the exact sum of the pinned file sizes (decimal GB), and every
 revision is the pinned Hugging Face commit (abbreviated).
 
@@ -21,6 +22,12 @@ the NAS Library and an operator runs `local-models-borrow` on a host
   `http://10.42.0.5:8732`, single host with SSD expert streaming, started by
   hand.
 
+The text embedder is a Gufo route, not a third engine: Gufo v0.33.0 with the
+vendored Qwen3-Embedding-8B extension
+([`../../modules/gufo-embedding.nix`](../../modules/gufo-embedding.nix)) serves
+`qwen3-embedding-8b-q8-gguf` as `qwen3-embedding-8b` on the same endpoint, on
+demand through llama-swap, never resident beside Flash-Next (since 2026-11-10).
+
 ## Per-host wanted sets
 
 Each Strix's `services.local-models.artifacts` is pinned by a `flake.nix`
@@ -33,6 +40,7 @@ host keeps.
 | Host | Wanted artifacts | Served by |
 |---|---|---|
 | `strix-coordinator`, `strix-worker` | `qwen38-flash-next-gguf`, `qwen38-27b-gguf`, `qwen38-27b-q8-gguf`, `qwen38-27b-dflash2-gguf`, `qwen3-asr-1.7b`, `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` | Gufo (Flash-Next at boot, the 27B or 27B Q8 after `gufo-switch`, ASR, TTS and image on demand); `call-diarize`; Qwen TTS on demand |
+| `strix-coordinator` only | `qwen3-embedding-8b-q8-gguf` (since 2026-11-10) | the Gufo embedding route `qwen3-embedding-8b`, on demand through llama-swap |
 | `strix-worker` only | `deepseek-v41-flash-1017-q2-gguf` (via `services.ds4.wanted`), `qwen38-flash-next-q8-gguf` | ds4; `gufo-tp2` with Q8. The coordinator's disk cannot hold either (D-A) |
 | `nas` | none; it holds the Library | — |
 
@@ -55,12 +63,14 @@ host keeps.
 | `qwen3-tts-1.7b-base-q8-0` | model | Q8_0 | `Serveurperso/Qwen3-TTS-GGUF@b7ee2e8` | 2.08 GB | `modules/qwen-tts.nix`, the one TTS model |
 | `qwen3-tts-tokenizer-f32` | tokenizer | F32 | `Serveurperso/Qwen3-TTS-GGUF@b7ee2e8` | 0.65 GB | its codec |
 | `qwen-k2so-midway-b` | template (voice) | — | local `speech/k2so-midway-b` | 0.003 GB | the one TTS voice |
+| `qwen3-embedding-8b-q8-gguf` | model | Q8_0 | `Qwen/Qwen3-Embedding-8B-GGUF@90f57aa` | 8.05 GB | Gufo embedding route `qwen3-embedding-8b` on strix-coordinator, on demand |
 | `vibevoice-asr-streaming-7b-bf16` | model (17-file snapshot) | BF16 | `microsoft/VibeVoice-ASR-Streaming-7B@60d858b` | 17.36 GB | `call-diarize`; the one diarization model |
 
 Retired from the active catalogue and wanted sets: `deepseek-v4-flash-gguf`
 and `deepseek-v4-flash-dspark-gguf` (2026-10-28, superseded by V4.1), every
 `halogen-*` row (2026-10-23); the Library copies of all of these were deleted
 on 2026-10-28 (`RETIRED-2026-10-28.tsv`), and on 2026-09-30 (sweep F1) `qwen3-embedding-8b-q8-0`
+(the same bytes re-acquired on 2026-11-10 as `qwen3-embedding-8b-q8-gguf`)
 and the three Mage rows. Speech input (Voxtype, Parakeet, the wake listener)
 left the fleet on 2026-09-30 (Tom; see `AGENTS.md`).
 
@@ -73,7 +83,8 @@ answer. `/drain` and `/print` are its callers; their flags are unchanged.
 
 ## Operating rules
 
-- Two declared engines, Gufo and ds4, with one large model on a host's GPU at
+- Two declared engines, Gufo and ds4 (the embedding route is Gufo on its own
+  pinned release, not a third engine), with one large model on a host's GPU at
   a time (`Conflicts=` between their text units). A different engine is a new
   module beside `modules/gufo.nix`, reviewed as such; it is never a row that
   quietly starts serving because it was borrowed.
@@ -82,4 +93,6 @@ answer. `/drain` and `/print` are its callers; their flags are unchanged.
   `local-models-borrow`; `local-models-prune` is the only deleter.
 - One TTS model (Qwen3-TTS with the K-2SO voice) and one diarization model
   (VibeVoice-ASR-Streaming-7B), per Tom's 2026-09-16 ruling in `DECISIONS.md`.
-- There is no embedder row and no embeddings server.
+- One embedder, `qwen3-embedding-8b-q8-gguf`, served only by the on-demand
+  Gufo route `qwen3-embedding-8b`; it never stays loaded beside Flash-Next
+  (Tom, 2026-11-10).

@@ -220,6 +220,14 @@
     # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
     gufo.url = "github:gufo-org/gufo/0c03748a271eab895befc0d2343aa50ca4b6d836";
 
+    # gufo-embedding: Gufo v0.33.0 for the one on-demand embedding route
+    # (modules/gufo-embedding.nix), built with the vendored Qwen3-Embedding-8B
+    # extension (pkgs/gufo-extensions/qwen3-embedding). Isolated from `gufo`
+    # (every other route) until the fleet engine is re-qualified on a newer
+    # release: v0.33.0 builds against ROCm 10.1. No nixpkgs.follows, for the
+    # same reason as `gufo`.
+    gufo-embedding.url = "github:gufo-org/gufo/77dff828be02a498e9951694f31b024e7ac87119";
+
     # The canceled Donnerkeule/TP2 inputs and update mechanism are archived
     # under ~/notes/references/technical/donnerkeule-retired-2026-11-08 (#698).
 
@@ -862,7 +870,7 @@
                 bash ${./tests/util-01/test-token-windows.sh} | tee $out
             '';
 
-        gufo-demand = import ./tests/gufo-demand { inherit pkgs self; };
+        gufo-demand = import ./tests/gufo-demand { inherit pkgs self inputs; };
 
         gufo-unit-policy =
           let
@@ -2756,6 +2764,7 @@
               "qwen3-tts-1.7b-base-q8-0"
               "qwen-k2so-midway-b"
               "qwen3-tts-tokenizer-f32"
+              "qwen3-embedding-8b-q8-gguf"
             ];
           assert
             nixpkgs.lib.sort builtins.lessThan strixWorker.services.local-models.artifacts
@@ -2764,12 +2773,14 @@
                 "d3-ultra-bf16"
                 "qwen38-27b-heretic-ara-q8-gguf"
                 "qwen38-flash-next-abliterated-rocmfp4-gguf"
+                "qwen3-embedding-8b-q8-gguf"
               ] strix.services.local-models.artifacts
             );
           # The catalogue is the kept estate after Tom's 2026-09-16 ruling,
           # narrowed on 2026-09-30 (sweep F1: the three Mage rows and the text
-          # embedder retired); no other top-level attribute — no deployments,
-          # no backend kinds, no utility pointer.
+          # embedder retired); the embedder returned on 2026-11-10 as the
+          # Gufo embedding route's row (coordinator only); no other top-level
+          # attribute — no deployments, no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           # Plus Gufo's collection (lib/gufo-models.json), as gufo-org/gufo
           # v0.22.0 plus Q8 and the separately pinned ds4 V4.1 model.
@@ -2781,6 +2792,7 @@
               "qwen-image-2.1"
               "qwen-k2so-midway-b"
               "qwen3-asr-1.7b"
+              "qwen3-embedding-8b-q8-gguf"
               "qwen3-tts-1.7b-base-q8-0"
               "qwen3-tts-12hz-1.7b-base"
               "qwen3-tts-tokenizer-f32"

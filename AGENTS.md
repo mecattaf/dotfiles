@@ -1,3 +1,17 @@
+**One embedding route on Gufo (Tom, 2026-11-10).** Tom: "i m a gufo
+maximalist." Embeddings are served by Gufo, not llama-server: Qwen3-Embedding-8B
+Q8_0 (`qwen3-embedding-8b-q8-gguf`) is the route `qwen3-embedding-8b`
+(`POST /v1/embeddings`) on the existing llama-swap endpoint on
+strix-coordinator, run by Gufo v0.33.0 with the vendored community extension
+compiled in (`modules/gufo-embedding.nix`, `pkgs/gufo-extensions/qwen3-embedding`,
+flake input `gufo-embedding`). Tom: "embedder does not stay loaded besides
+flash-next ; no situation where this will be the ase. ... ideally one embeding
+endpoint through llama-swap". It is loaded on demand and swapped like every
+other route: no group, no hook, no systemd unit, no PATH entry, never resident
+beside Flash-Next. Only this route uses the v0.33.0 engine; every other route
+keeps the `gufo` input until the fleet engine is re-qualified, and folding the
+row into `modules/gufo-models.nix` is the follow-up then.
+
 **Local DeepSeek retirement (Tom, 2026-11-08).** The local DS4 Q2,
 vision and DSpark bundle is permanently retired: no catalog acquisition,
 host wanted set or DS4 unit remains active. Physical Library deletion is
@@ -137,8 +151,9 @@ model collection is catalogued in
   strix wants it yet: it is 144 GB against 100 GB free on strix-coordinator and
   61 GB on strix-worker, and Gufo's video support is upstream work in progress.
 Gufo answers 404 to a request naming any other model id, so callers send the
-exact served id. It has no `/v1/embeddings` (501), no reranking and no
-diarization.
+exact served id. Its text server has no `/v1/embeddings` (501); embeddings are
+the separate on-demand route `qwen3-embedding-8b` on the same endpoint (never
+resident beside Flash-Next). There is no reranking and no diarization.
 
 **Halogen is fully retired (Tom, 2026-10-23).** Tom: "just read in previous output of yours also: halogen is OUT fullly as inference provider (moving to gufo-rdma) and as models (we use the gufo-specific ones)"
 llama-swap owns port 8731 and starts Gufo on demand with one execution session, 102400 tokens of context,
@@ -265,7 +280,9 @@ the voice has a second verified copy at
 `/mnt/nas/documents/voice-references/qwen-k2so-midway-b/`, because it cannot be
 re-downloaded). VibeVoice-ASR-Streaming-7B is the one diarization model, loaded
 per run by `call-diarize` (Tom, 2026-09-16); Gufo has no diarization, so it
-stays. There is no embedder row in the catalog and no embeddings server.
+stays. The one embedder is `qwen3-embedding-8b-q8-gguf`
+(`lib/embedding-models.json`), served on demand by the Gufo embedding route
+`qwen3-embedding-8b` (`modules/gufo-embedding.nix`).
 
 **Inference scope (Tom, 2026-10-23).** Dual-node inference on strix-coordinator
 and strix-worker, GLM and Flash-Next Q4 and Q8 are allowed. This supersedes

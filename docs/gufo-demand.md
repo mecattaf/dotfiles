@@ -18,6 +18,13 @@ existing reference voice, ASR and Qwen-Image. The Q8 route is
 This adds a Gufo TTS API choice; the existing production speech queue still
 uses its separately qualified qwentts.cpp voice.
 
+Since 2026-11-10 the same supervisor also routes `qwen3-embedding-8b`
+([`modules/gufo-embedding.nix`](../modules/gufo-embedding.nix)): Gufo v0.33.0
+(flake input `gufo-embedding`) with the vendored Qwen3-Embedding-8B extension
+compiled in, answering `POST /v1/embeddings`. It has the text TTL (600 s), the
+`/ready` check and no group, so it is swapped like every other route and never
+resident beside Flash-Next. Every other route keeps the `gufo` input.
+
 `gufo-switch flash|qwen38-27b|qwen38-27b-q8` explicitly warms a model through
 llama-swap. Ordinary API requests select their model without this command.
 `gufo-switch off` stops the endpoint and its children. Direct Gufo units
@@ -54,7 +61,9 @@ services.gufo.models."qwen27-short" = {
 The key is the public API model ID and, by default, Gufo's wire name. Set
 `servedModelName` only when an existing wire name must differ. `modality`
 accepts `llm`, `tts`, `asr`, `image` or `video`, subject to the pinned Gufo
-engine supporting that model. `serve` contains the upstream `mkGufoServe`
+engine supporting that model. `embedding` is not a row modality while the
+fleet pin predates Gufo's embeddings route; the one embedding route lives in
+`modules/gufo-embedding.nix` until the pin moves. `serve` contains the upstream `mkGufoServe`
 options; paths, identity and backend ports are generated.
 
 The row automatically produces:

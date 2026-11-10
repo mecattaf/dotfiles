@@ -38,6 +38,9 @@
   myNasClient.useRemoteStorage = true;
 
   services.utilityModel.enable = true;
+  # The one embedding route behind llama-swap, loaded on demand and swapped
+  # like every other route (Tom, 2026-11-10). Coordinator only.
+  services.gufo-embedding.enable = true;
   services.superroc.enable = true;
   services.gufo.models."qwen3.8-27b-ara" = {
     artifact = "qwen38-27b-heretic-ara-q8-gguf";

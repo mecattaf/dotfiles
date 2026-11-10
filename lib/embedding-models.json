@@ -1,0 +1,26 @@
+{
+  "qwen3-embedding-8b-q8-gguf": {
+    "kind": "model",
+    "maker": "Qwen",
+    "baseCheckpoint": {
+      "url": "https://huggingface.co/Qwen/Qwen3-Embedding-8B",
+      "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af"
+    },
+    "quantization": "Q8_0",
+    "notes": "Qwen's official Q8_0 GGUF of Qwen3-Embedding-8B (Qwen3-8B-Base, last-token pooling, 4096 dims, L2-normalised; Apache-2.0). Served on demand as qwen3-embedding-8b by Gufo v0.33.0 with the vendored community extension (modules/gufo-embedding.nix) through the one llama-swap endpoint; never resident beside Flash-Next. Same bytes the fleet served through llama-server in July 2026 and retired on 2026-09-30 (sweep F1); re-acquired 2026-11-10. baseCheckpoint.revision is carried from the retired row.",
+    "source": {
+      "hfUrl": "https://huggingface.co/Qwen/Qwen3-Embedding-8B-GGUF",
+      "revision": "90f57aa3f809935cd1a85cc0c391d3b23a3bc71c",
+      "layout": "flat",
+      "primary": "Qwen3-Embedding-8B-Q8_0.gguf",
+      "files": [
+        {
+          "path": "Qwen3-Embedding-8B-Q8_0.gguf",
+          "bytes": 8047105824,
+          "oid": "d20ddc71e8a5c4344f2343481e242233a997dc5eaff442427a945836c97b4deb",
+          "hash": "sha256-0g3cceilxDRPI0NIHiQiM6mX3F6v9EJCepRYNsl7Tes="
+        }
+      ]
+    }
+  }
+}

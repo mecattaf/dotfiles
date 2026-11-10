@@ -7,6 +7,7 @@ file that decides it.
 | Engine | Where | Port | Serves | Started by |
 |---|---|---|---|---|
 | Gufo ([`../../modules/gufo.nix`](../../modules/gufo.nix)) | `gufo-llm.service` on both Strix; the fleet endpoint is strix-coordinator's | 8731 | `qwen3.8-flash-next` (resident), `qwen3.8-27b` (alternate) | boot; `gufo-switch` for the alternate |
+| Gufo v0.33.0 + Qwen3-Embedding extension ([`../../modules/gufo-embedding.nix`](../../modules/gufo-embedding.nix)) | a llama-swap child on strix-coordinator | 8731 (llama-swap) | `qwen3-embedding-8b` (`POST /v1/embeddings`) | the first request naming it; unloaded after 600 s idle or by the next route |
 | ds4 ([`../../modules/ds4.nix`](../../modules/ds4.nix)) | `ds4.service` on strix-worker, one host with SSD expert streaming | 8732 | `deepseek-v4.1-flash` (DeepSeek V4.1 Flash 1017) | an operator, by hand |
 
 The agent harness that uses them is dsh on the NAS (see [dsh](#dsh-on-the-nas)).
@@ -32,7 +33,7 @@ if any file is missing or the wrong size.
 | Shape | one session, 102400 tokens of context, thinking off, a 1 GiB prefix cache, `max_tokens` capped at 16384 |
 | Endpoints | OpenAI-compatible `POST /v1/chat/completions` and `GET /v1/models` |
 | Auth | none |
-| Not available | `/v1/embeddings` (501), reranking, diarization |
+| Not available | `/v1/embeddings` on this text server (501; embeddings are the separate `qwen3-embedding-8b` route below), reranking, diarization |
 
 ```console
 curl -s http://strix-coordinator:8731/v1/models
@@ -99,6 +100,34 @@ The fleet endpoint on strix-coordinator is untouched while ds4 runs. The
 coordinator keeps the `tp2` rank shape of the same module for the day both
 disks hold the Q2 (each rank needs the full file locally; the TP2 link is TCP
 until the image gains a usb4_rdma provider).
+
+## Embeddings: the `qwen3-embedding-8b` route
+
+Since 2026-11-10 (Tom: "i m a gufo maximalist") llama-swap on
+strix-coordinator also routes `qwen3-embedding-8b` to a Gufo embedding server
+([`../../modules/gufo-embedding.nix`](../../modules/gufo-embedding.nix)): Gufo
+v0.33.0 (flake input `gufo-embedding`, isolated from the `gufo` input every
+other route uses) with the community Qwen3-Embedding-8B extension compiled in
+from the vendored snapshot
+[`../../pkgs/gufo-extensions/qwen3-embedding`](../../pkgs/gufo-extensions/qwen3-embedding/VENDORED.md).
+It serves Qwen's official Q8_0 GGUF (`qwen3-embedding-8b-q8-gguf`) as
+`POST /v1/embeddings` (and llama.cpp's `POST /embeddings`): up to 8192 input
+tokens per text including the end-of-text token, 4096-dimensional
+L2-normalised vectors from last-token pooling. `dimensions` accepts 128, 256,
+512 and 768 (Gufo's host rule); other Matryoshka widths are client-side
+truncation and renormalisation. There is no `prompt_name`: queries carry the
+`Instruct: <task>\nQuery: <text>` prefix themselves; documents go in plain.
+
+It is loaded on demand and swapped like every other route, so it is never
+resident beside Flash-Next (Tom, 2026-11-10: "embedder does not stay loaded
+besides flash-next ... ideally one embeding endpoint through llama-swap").
+Borrow it first (`sudo local-models-borrow --yes`); the launcher refuses a
+missing or wrong-sized file.
+
+```console
+curl -s http://strix-coordinator:8731/v1/embeddings -H 'content-type: application/json' \
+  -d '{"model":"qwen3-embedding-8b","input":["ping"]}'
+```
 
 ## The `utility` slot
 
@@ -179,6 +208,7 @@ runbook for the Library itself.
 | Host | Wanted artifacts | Served by |
 |---|---|---|
 | `strix-coordinator`, `strix-worker` | `qwen38-flash-next-gguf`, `qwen38-27b-gguf`, `qwen38-27b-q8-gguf`, `qwen38-27b-dflash2-gguf`, `qwen3-asr-1.7b`, `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` (exact lists asserted in `flake.nix`) | Gufo Flash-Next resident at boot, the 27B or 27B Q8 after `gufo-switch`, Gufo ASR, TTS and image on demand; streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`) |
+| `strix-coordinator` only | `qwen3-embedding-8b-q8-gguf` (since 2026-11-10) | the Gufo embedding route, on demand through llama-swap |
 | `strix-worker` only | `deepseek-v41-flash-1017-q2-gguf` (via `services.ds4.wanted`), `qwen38-flash-next-q8-gguf` | ds4, by hand; `gufo-tp2` with Q8. The coordinator's disk cannot hold either (D-A) |
 | `client` | none | — |
 | `nas` | none (it holds the Library) | — |
@@ -228,8 +258,9 @@ all.
    catalogue: identity, pinned revision, bytes, hashes.
 2. [`../../lib/local-model.nix`](../../lib/local-model.nix) — the endpoints
    and served model ids every consumer uses.
-3. [`../../modules/gufo.nix`](../../modules/gufo.nix) and
-   [`../../modules/ds4.nix`](../../modules/ds4.nix) — the two engines;
+3. [`../../modules/gufo.nix`](../../modules/gufo.nix),
+   [`../../modules/gufo-embedding.nix`](../../modules/gufo-embedding.nix) and
+   [`../../modules/ds4.nix`](../../modules/ds4.nix) — the engines;
    [`../../modules/strix.nix`](../../modules/strix.nix) and
    [`../../modules/strix-compute.nix`](../../modules/strix-compute.nix) —
    their declaration on the Strix pair and the wanted sets.
