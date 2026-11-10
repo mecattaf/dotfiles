@@ -1919,16 +1919,33 @@ is the follow-up when the fleet's `gufo` pin moves to v0.33.0 or later.
 Merging does not make it live: switching, borrowing the artifact and the first
 request are operator steps.
 
-2026-11-10 (O1 PR-2): Tom: "58gb emmc is still quite large for it to be full.
-i think that only the nixos flash should be on there?" and "/tmp goes straight
-to the 1tb". `/var` and `/tmp` move to the 1TB pool as the btrfs subvolumes
-`@var` and `@tmp` (`hosts/nas/system-off-emmc.nix`), so the eMMC keeps only
-`/boot` and a root a reflash recreates. Immich stays on the 256GB. The gate
-`myNas.systemOffEmmc.enable` lands off and flips only with `nixos-rebuild boot`
-and a supervised one-shot trial reboot in a window Tom picks, after the full
-`/var` copy in `docs/nas/system-off-emmc.md`; a switch inhibitor refuses a
-live `switch` between the two states. `/var` is boot-critical like `/nix`;
-`/tmp` is `nofail` and emptied at every boot from the flip on (tmpfs was
-rejected: 24G of `/tmp` on a 22.9 GiB box). The hidden eMMC `/var` and `/tmp`
-are the rollback for seven days, then reclaimed after a no-loss check and an
-archive of the old `/tmp`. Merging changes no mount.
+2026-11-10 (O1 PR-1): the NAS watches its own disks. Tom found the eMMC root
+filling ("58gb emmc is still quite large for it to be full. i think that only
+the nixos flash should be on there?"); it reached 97% on 2026-11-05 with no
+alert. `hosts/nas/storage-alerts.nix` adds one tripwire per mount through the
+failure-marker channel (a marker fish prints once at the next login, re-marked
+daily while the condition holds): the eMMC root at 75% (25% after O1 phase 3,
+once /var and /tmp have left it), /boot at 80%, the 1TB pool at 85%,
+`/mnt/immich` at 85% and the HDD at 92%, each re-arming 5 points lower; plus
+`nas-mounts`, which fires when any declared mount is absent, because every
+NAS data mount is `nofail` and its writers would land on the eMMC. These are
+box-upkeep tripwires under D42. The local system journal's cap is declared as
+`SystemMaxUse=4G`, the value journald already applied implicitly, so a switch
+vacuums nothing; Tom asked that the cleanup lose no information. Stale device
+comments (`disko.nix` still describing the Immich disk as `/mnt/fast`, the
+256G and 500GB pool text) are corrected. Merging does not make it live: the
+switch is an operator step.
+
+2026-11-10 (O1 PR-2): the rest of the eMMC leaves it. Tom: "/tmp goes
+straight to the 1tb"; the eMMC should hold only the flashable system. `/var`
+and `/tmp` move to the 1TB pool as the btrfs subvolumes `@var` and `@tmp`
+(`hosts/nas/system-off-emmc.nix`), leaving `/boot` and a root a reflash
+recreates; Immich stays on the 256GB. The gate `myNas.systemOffEmmc.enable`
+lands off and flips only with `nixos-rebuild boot` and a supervised one-shot
+trial reboot in a window Tom picks, after the full `/var` copy in
+`docs/nas/system-off-emmc.md`; a switch inhibitor refuses a live `switch`
+between the two states. `/var` is boot-critical like `/nix`; `/tmp` is
+`nofail` and emptied at every boot from the flip on (tmpfs was rejected: 24G
+of `/tmp` on a 22.9 GiB box). The hidden eMMC `/var` and `/tmp` are the
+rollback for seven days, then reclaimed after a no-loss check and an archive
+of the old `/tmp`. Merging changes no mount.

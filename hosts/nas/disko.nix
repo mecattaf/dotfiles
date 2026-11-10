@@ -1,6 +1,7 @@
-# NEVER run disko for the nas host on a live system: it also owns the eMMC
-# and the boot-critical Fanxiang /mnt/fast + /nix. Prepare the incoming home
-# SSD by hand (#599); it is deliberately absent from this destructive layout.
+# NEVER run disko for the nas host on a live system: it owns the eMMC, and the
+# Fanxiang block below would reformat Immich's database disk. The 1TB pool
+# (/home, /mnt/fast, /nix) was prepared by hand (#599); it is deliberately
+# absent from this destructive layout.
 { ... }:
 {
   # VERIFIED LIVE 2026-08-01 (issue #131 destructive-action gate): 58.3GiB
@@ -35,6 +36,15 @@
     };
   };
 
+  # ── STALE since 2026-10-28 ─────────────────────────────────────────────────
+  # This Fanxiang is /mnt/immich now (ext4, label `immich`, ./immich-disk.nix),
+  # and /mnt/fast is the 1TB pool's @fast (./home-disk.nix mkForces it). This
+  # block is kept only for the dead `legacy-split` layout and the assertions at
+  # tests/nas-home-disk/default.nix (disko.devices.disk.journal, legacy-split
+  # /mnt/fast). Applying it would reformat Immich's database disk. Removing it
+  # is a follow-up that also retires legacy-split and those assertions.
+  # Everything below this line in this comment is the 2026-08/09 history.
+  #
   # VERIFIED LIVE 2026-08-01, same sign-off as the eMMC above: factory-blank
   # 238.5GiB NVMe. Formatted in the same disko run so the first flash is the
   # only flash.
