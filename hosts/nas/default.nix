@@ -24,6 +24,7 @@
     # queue and printed — no keepalive anywhere.
     ./nix-builds.nix # 2026-08-22: build scratch off the eMMC + in-build auto-GC
     ./nix-on-nvme.nix # 2026-08-22: /nix onto the M.2 — GATE OFF, reboot-only (#232)
+    ./system-off-emmc.nix # 2026-11-10: /var and /tmp onto the 1TB pool — GATE OFF, reboot-only (O1)
     ./journal.nix
     ./storage.nix
     ./home-disk.nix # #599, bench-prepared home; stage before the fleet power-off

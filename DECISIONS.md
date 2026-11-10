@@ -1918,3 +1918,17 @@ a separate change. Mnemon is not pointed at it. Folding the row into
 is the follow-up when the fleet's `gufo` pin moves to v0.33.0 or later.
 Merging does not make it live: switching, borrowing the artifact and the first
 request are operator steps.
+
+2026-11-10 (O1 PR-2): Tom: "58gb emmc is still quite large for it to be full.
+i think that only the nixos flash should be on there?" and "/tmp goes straight
+to the 1tb". `/var` and `/tmp` move to the 1TB pool as the btrfs subvolumes
+`@var` and `@tmp` (`hosts/nas/system-off-emmc.nix`), so the eMMC keeps only
+`/boot` and a root a reflash recreates. Immich stays on the 256GB. The gate
+`myNas.systemOffEmmc.enable` lands off and flips only with `nixos-rebuild boot`
+and a supervised one-shot trial reboot in a window Tom picks, after the full
+`/var` copy in `docs/nas/system-off-emmc.md`; a switch inhibitor refuses a
+live `switch` between the two states. `/var` is boot-critical like `/nix`;
+`/tmp` is `nofail` and emptied at every boot from the flip on (tmpfs was
+rejected: 24G of `/tmp` on a 22.9 GiB box). The hidden eMMC `/var` and `/tmp`
+are the rollback for seven days, then reclaimed after a no-loss check and an
+archive of the old `/tmp`. Merging changes no mount.
