@@ -32,6 +32,13 @@ external display at (1440,0), to the right of the upper panel, also at scale 2.
 Its confirmed Domicile identity is `drm-1886053529622275`. The larger physical
 text on the ASUS is intentional (Tom, 2026-11-10).
 
+Meta+1–5 stay on the upper Zenbook panel; Meta+6–9 belong to the ASUS while
+connected, including empty workspaces. Unplugging it returns 6–9 to the upper
+panel; reconnecting restores their ASUS homes without moving their windows
+between workspaces. Meta+0 stays on the lower panel, falling back to the upper
+panel when the keyboard covers the lower one. Windows keep their horizontal
+split layout on every display.
+
 Domicile matches profiles against the exact set of connected monitors.
 Explicit external-monitor profiles prevent hotplug from falling back to the
 engine's default horizontal layout and scale 1. They precede the laptop-only
@@ -43,6 +50,9 @@ retains/reapplies them across modesets. Fixed per-output temperatures replace
 the scheduled global night light on this seat.
 
 Input uses the documented native `input.touchpad` and `input.mouse` settings.
+Keyboard repeat is explicitly 200 ms at 25 repeats per second through
+`input.keyboard.repeat`, preserving Tom's preferred response in native clients
+and browser pages instead of the upstream 500 ms default.
 Touch and stylus devices map to their respective DRM panels. No reconnect
 script is needed: Domicile applies settings to newly discovered devices.
 Tom recovered Magic Trackpad tracking and scrolling by power-cycling it on

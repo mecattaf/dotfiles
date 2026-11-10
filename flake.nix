@@ -164,7 +164,7 @@
 
     # The daily desktop and its SDK use one pinned official upstream release.
     # Keep upstream's nixpkgs and prebuilt engine together.
-    domicile.url = "github:cprussin/domicile/25522ef3543d9f793537b9f834ba66babaac9617";
+    domicile.url = "github:cprussin/domicile/68d579cdfc139060bddd708b6e87ef31cf290598";
     imagine = {
       url = "path:./pkgs/client-desktop/imagine";
       flake = false;

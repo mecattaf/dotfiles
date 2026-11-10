@@ -107,6 +107,52 @@ describe("fixed workspace homes", () => {
     expect(state.homes["1"]).toBe("lower");
     expect(state.homes["10"]).toBe("upper");
   });
+  const external = { name: "asus", box: { x: 1440, y: 0, width: 2560, height: 1440 } };
+  const dockPolicy = {
+    upperDisplay: "upper", lowerDisplay: "lower",
+    workspaceDisplays: { "6": "asus", "7": "asus", "8": "asus", "9": "asus" },
+  };
+  const dockReducer = createAgencyReducer(dockPolicy);
+  const dockReduce = (state: WindowState, ...actions: A[]) => actions.reduce(dockReducer, state);
+  const dockFresh = () => dockReduce(initialAgencyState(dockPolicy), A.ScreensDescribed([...screens, external]));
+
+  test("6..9 reserve the external display even while empty, from every output", () => {
+    const initial = dockFresh();
+    expect(shown(initial)).toEqual([["upper", "1"], ["lower", "10"], ["asus", "6"]]);
+    for (const from of ["1", "10", "6"]) for (let n = 1; n <= 10; n++) {
+      const state = dockReduce(initial, A.WorkspaceSelected(from), A.WorkspaceSelected(String(n)));
+      const home = n === 10 ? "lower" : n >= 6 ? "asus" : "upper";
+      expect(state.homes[String(n)]).toBe(home);
+      expect(state.focused).toBe(home);
+      expect(workspaceHere(state).name).toBe(String(n));
+      expect(new Set(state.screens.map(s => s.current)).size).toBe(3);
+    }
+  });
+  test("unplug/replug preserves the active slot, windows and horizontal split", () => {
+    const before = dockReduce(dockFresh(), A.WorkspaceSelected("9"), opened("a"), opened("b"));
+    const undocked = dockReduce(before, A.ScreensDescribed(screens));
+    expect(undocked.focused).toBe("upper");
+    expect(workspaceHere(undocked).name).toBe("9");
+    for (const name of ["6", "7", "8", "9"]) expect(undocked.homes[name]).toBe("upper");
+    expect(undocked.homes["10"]).toBe("lower");
+    const replugged = dockReduce(undocked, A.ScreensDescribed([external, ...screens.toReversed()]));
+    expect(replugged.focused).toBe("asus");
+    expect(workspaceHere(replugged).name).toBe("9");
+    for (const state of [before, undocked, replugged]) {
+      expect(tiled(state, "9")).toEqual([["app:a"], ["app:b"]]);
+      expect(workspaceNamed(state, "9").tiling).toEqual(workspaceNamed(before, "9").tiling);
+      expect(activeIdOf(state)).toBe("app:b");
+    }
+    expect(dockReduce(replugged, A.WorkspaceSelected("9"))).toBe(replugged);
+  });
+  test("docking the keyboard keeps0 upstairs and6..9 external", () => {
+    const state = dockReduce(dockFresh(), A.ScreensDescribed([external, screens[0]!]));
+    expect(state.homes["10"]).toBe("upper");
+    expect(dockReduce(state, A.WorkspaceSelected("10")).focused).toBe("upper");
+    expect(dockReduce(state, A.WorkspaceSelected("8")).focused).toBe("asus");
+    const single = dockReduce(state, A.ScreensDescribed([screens[0]!]));
+    for (let n = 1; n <= 10; n++) expect(single.homes[String(n)]).toBe("upper");
+  });
 });
 
 describe("split insertion", () => {

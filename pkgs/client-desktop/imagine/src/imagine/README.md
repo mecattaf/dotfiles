@@ -36,7 +36,9 @@ source or engine. The first pass targets stock source
   bar, no outer or split gaps, and no focus glow. Windows open as splits;
   intentional tab groups remain available.
 - **Make workspace homes explicit.** On the Duo, slots 1–9 belong to the upper
-  display and slot 10 (Meta+0) to the lower, including empty slots. A single
+  display and slot 10 (Meta+0) to the lower, including empty slots. The client
+  reserves 6–9 for the ASUS when connected and returns them upstairs when
+  unplugged. A single
   display must still make every slot usable. The rail starts hidden, toggles
   with Meta+B, reserves 256 logical pixels when open, and follows the focused
   output. Finder in the rail searches real applications, workspaces and windows;

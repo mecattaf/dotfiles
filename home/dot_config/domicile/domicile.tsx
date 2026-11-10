@@ -87,7 +87,11 @@ const imagineShell = runImagine({
   sessionCatalogue: { relay: "agency-chat-catalogue", server: "agency-web", terminalLauncher: "agency-chat-terminal" },
   layoutPersistence: { identity: "agency-layout-identity", restartRecovery: true },
   webBrowser: { command: ["domicile-apps", "chrome"] },
-  policy: { upperDisplay: upperPanel, lowerDisplay: lowerPanel },
+  policy: {
+    upperDisplay: upperPanel,
+    lowerDisplay: lowerPanel,
+    workspaceDisplays: { "6": external5k, "7": external5k, "8": external5k, "9": external5k },
+  },
   keybindings: { keybindings },
 
 });
@@ -145,6 +149,8 @@ export const output = {
   ],
 };
 export const input = {
+  // Keep the quick held-key response in native clients and browser pages.
+  keyboard: { repeat: { delay_ms: 200, rate: 25 } },
   "touchpad": {
     "tap": true,
     "tap_button_map": "lrm",

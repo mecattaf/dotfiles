@@ -17,6 +17,8 @@ export type AgencyPolicy = {
   /** Prefer these physical display identities; otherwise use their geometry. */
   readonly upperDisplay?: string;
   readonly lowerDisplay?: string;
+  /** Per-slot display preferences; disconnected displays fall back upstairs. */
+  readonly workspaceDisplays?: Readonly<Record<string, string>>;
   readonly defaultSplitAxis?: Axis;
 };
 export const DEFAULT_AGENCY_POLICY: AgencyPolicy = {};
@@ -25,43 +27,41 @@ type Workspace = WindowState["workspaces"][number];
 type Node = NonNullable<Workspace["tiling"]["root"]>;
 
 /**
- * On the Duo, 1..9 always belong upstairs and 10 downstairs, even while empty.
- * With one screen every workspace remains usable there. Geometry is a fallback
- * for renamed DRM displays; explicit names can make an external layout precise.
+ * Reserve empty slots as well as populated ones. The client can move selected
+ * slots to an external display; unplugging it returns them upstairs.
  */
 export const applyWorkspaceHomes = (
   state: WindowState,
   policy: AgencyPolicy = DEFAULT_AGENCY_POLICY,
+  focusedWorkspace?: string,
 ): WindowState => {
   const ordered = [...state.screens].sort((a, b) =>
     a.box.y - b.box.y || a.box.x - b.box.x || a.name.localeCompare(b.name),
   );
   const upper = ordered.find(({ name }) => name === policy.upperDisplay) ?? ordered[0];
   if (upper === undefined) return state;
-  const lower = ordered.find(({ name }) => name === policy.lowerDisplay && name !== upper.name)
-    ?? ordered.find(({ name }) => name !== upper.name)
-    ?? upper;
+  const lower = policy.lowerDisplay === undefined
+    ? ordered.find(({ name }) => name !== upper.name) ?? upper
+    : ordered.find(({ name }) => name === policy.lowerDisplay) ?? upper;
   const homes = Object.fromEntries(WORKSPACES.map((name) => [
-    name, name === "10" ? lower.name : upper.name,
+    name, ordered.find((screen) => screen.name === policy.workspaceDisplays?.[name])?.name
+      ?? (name === "10" ? lower.name : upper.name),
   ]));
-  // The prototype targets the Duo's one/two-screen topology. Extra monitors
-  // keep their currently shown workspace rather than duplicating a surface.
+  const managed = new Set(Object.values(homes));
+  // Unassigned extra monitors keep their currently shown workspace.
   for (const screen of state.screens) {
-    if (screen.name !== upper.name && screen.name !== lower.name) {
+    if (!managed.has(screen.name)) {
       homes[screen.current] = screen.name;
     }
   }
-  const upperCurrent = upper.current !== "10" && homes[upper.current] === upper.name
-    ? upper.current
-    : WORKSPACES.find((name) => name !== "10" && homes[name] === upper.name) ?? "1";
   const screens = state.screens.map((screen) => {
-    const current = upper.name === lower.name
-      ? screen.current
-      : screen.name === upper.name ? upperCurrent
-      : screen.name === lower.name ? "10" : screen.current;
+    const current = focusedWorkspace !== undefined && homes[focusedWorkspace] === screen.name
+      ? focusedWorkspace
+      : homes[screen.current] === screen.name ? screen.current
+      : WORKSPACES.find((name) => homes[name] === screen.name) ?? screen.current;
     return current === screen.current ? screen : { ...screen, current };
   });
-  const wasCurrent = state.screens.find(({ name }) => name === state.focused)?.current;
+  const wasCurrent = focusedWorkspace ?? state.screens.find(({ name }) => name === state.focused)?.current;
   const focused = wasCurrent !== undefined && homes[wasCurrent] !== state.focused
     ? screens.find(({ current }) => current === wasCurrent)?.name ?? state.focused
     : state.focused;
@@ -81,7 +81,9 @@ const contains = (node: Node | undefined, id: string): boolean =>
 
 /** Wrap every upstream transition so empty workspace reservations survive it. */
 const stock = (state: WindowState, action: WindowAction, policy: AgencyPolicy): WindowState =>
-  applyWorkspaceHomes(reduceWindows(applyWorkspaceHomes(state, policy), action), policy);
+  applyWorkspaceHomes(reduceWindows(applyWorkspaceHomes(state, policy), action), policy,
+    action.kind === WindowActionKind.ScreensDescribed
+      ? state.screens.find(({ name }) => name === state.focused)?.current : undefined);
 
 /**
  * Separate new normal windows using the exported layout actions. Work in reverse
