@@ -100,6 +100,7 @@ in
     ./herdr.nix
     ./nvim.nix
     ./paper.nix
+    ./scheduled.nix
     ./utility-storage.nix
     ./raw-dotfiles-guard.nix
     ./ssh.nix

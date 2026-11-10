@@ -2026,6 +2026,13 @@
           configurations = self.nixosConfigurations;
         };
 
+        # Scheduled (AGENTS.md D52): eval asserts on the real NAS
+        # config, then the package's own tests under its own Node.
+        scheduled = import ./tests/scheduled {
+          inherit pkgs;
+          configurations = self.nixosConfigurations;
+        };
+
         dsh-config =
           let
             dshPackage = self.nixosConfigurations.nas.pkgs.dsh.override { qwenKeyFile = null; };
