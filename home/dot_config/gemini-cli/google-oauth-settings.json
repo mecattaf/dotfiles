@@ -1,0 +1,11 @@
+{
+  "security": {
+    "auth": {
+      "selectedType": "oauth-personal",
+      "enforcedType": "oauth-personal"
+    }
+  },
+  "experimental": {
+    "autoMemory": false
+  }
+}

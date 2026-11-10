@@ -21,13 +21,15 @@ chmod 700 "$account_home/.gemini"
 # File-backed OAuth avoids a shared keychain main-account entry across seats.
 # Empty auth overrides also prevent .env loading from importing another API
 # key or ADC identity. No secret is read or delivered by these launchers.
-exec env \
+exec env -u GEMINI_CLI_AUTH_OVERRIDE \
   GEMINI_CLI_HOME="$account_home" \
-  GEMINI_CLI_AUTH_OVERRIDE=oauth-personal \
+  GEMINI_CLI_SYSTEM_SETTINGS_PATH="$HOME/.config/gemini-cli/google-oauth-settings.json" \
+  GEMINI_DEFAULT_AUTH_TYPE=oauth-personal \
   GEMINI_FORCE_ENCRYPTED_FILE_STORAGE=false \
   GEMINI_FORCE_FILE_STORAGE=true \
   NO_BROWSER="${NO_BROWSER-true}" \
   GEMINI_API_KEY= GOOGLE_API_KEY= GOOGLE_APPLICATION_CREDENTIALS= \
-  GOOGLE_GENAI_USE_VERTEXAI= GOOGLE_GENAI_USE_GCA= GOOGLE_CLOUD_ACCESS_TOKEN= \
+  GOOGLE_GENAI_USE_VERTEXAI= GOOGLE_GENAI_USE_GCA=true GOOGLE_CLOUD_ACCESS_TOKEN= \
+  GOOGLE_GEMINI_BASE_URL= \
   GEMINI_CLI_TRUSTED_FOLDERS_PATH= \
   gemini "$@"
