@@ -1918,3 +1918,20 @@ a separate change. Mnemon is not pointed at it. Folding the row into
 is the follow-up when the fleet's `gufo` pin moves to v0.33.0 or later.
 Merging does not make it live: switching, borrowing the artifact and the first
 request are operator steps.
+
+2026-11-10 (O1 PR-1): the NAS watches its own disks. Tom found the eMMC root
+filling ("58gb emmc is still quite large for it to be full. i think that only
+the nixos flash should be on there?"); it reached 97% on 2026-11-05 with no
+alert. `hosts/nas/storage-alerts.nix` adds one tripwire per mount through the
+failure-marker channel (a marker fish prints once at the next login, re-marked
+daily while the condition holds): the eMMC root at 75% (25% after O1 phase 3,
+once /var and /tmp have left it), /boot at 80%, the 1TB pool at 85%,
+`/mnt/immich` at 85% and the HDD at 92%, each re-arming 5 points lower; plus
+`nas-mounts`, which fires when any declared mount is absent, because every
+NAS data mount is `nofail` and its writers would land on the eMMC. These are
+box-upkeep tripwires under D42. The local system journal's cap is declared as
+`SystemMaxUse=4G`, the value journald already applied implicitly, so a switch
+vacuums nothing; Tom asked that the cleanup lose no information. Stale device
+comments (`disko.nix` still describing the Immich disk as `/mnt/fast`, the
+256G and 500GB pool text) are corrected. Merging does not make it live: the
+switch is an operator step.

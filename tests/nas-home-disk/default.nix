@@ -18,6 +18,17 @@ let
   fast = nas.fileSystems."/mnt/fast";
   fanxiang = "/dev/disk/by-id/nvme-Fanxiang_S500Pro_256GB_26040259615000015";
   disk = nas.myNas.homeDisk.device;
+  # O1 PR-1 (hosts/nas/storage-alerts.nix): trip point per mount.
+  diskAlerts = {
+    disk-root = 75;
+    disk-boot = 80;
+    disk-pool = 85;
+    disk-immich = 85;
+    disk-hdd = 92;
+  };
+  alerts = nas.myTripwire;
+  tripwireUnit = name: nas.systemd.services."tripwire-${name}";
+  envName = lib.replaceStrings [ "-" ] [ "_" ];
 in
 assert home.device == "${disk}-part1";
 assert disk == "/dev/disk/by-id/nvme-WD_BLACK_SN7100_1TB_26051Y809195";
@@ -76,19 +87,64 @@ assert lib.all (entry: entry.assertion) nas.assertions;
 assert lib.any (
   entry: !entry.assertion && lib.hasInfix "verified serial" entry.message
 ) invalid.assertions;
+# O1 PR-1 storage alerts: one usage tripwire per NAS mount, re-arming 5 points
+# lower and re-marking daily; one presence tripwire over every declared mount
+# except /; the local journal cap declared at journald's implicit 4G.
+assert lib.all (
+  name:
+  alerts.${name}.enable
+  && alerts.${name}.threshold == diskAlerts.${name}
+  && alerts.${name}.rearm == diskAlerts.${name} - 5
+  && alerts.${name}.renotifySeconds == 86400
+  && alerts.${name}.intervalSeconds == 600
+  && nas.systemd.timers ? "tripwire-${name}"
+) (lib.attrNames diskAlerts);
+assert alerts.nas-mounts.enable && alerts.nas-mounts.threshold == 1;
+assert alerts.nas-mounts.rearm == 1 && alerts.nas-mounts.renotifySeconds == 86400;
+assert nas.systemd.timers ? tripwire-nas-mounts;
+assert lib.all (mount: lib.elem mount nas.myNas.storageAlerts.requiredMounts) [
+  "/boot"
+  "/home"
+  "/mnt/fast"
+  "/nix"
+  "/mnt/immich"
+  "/mnt/nas"
+  "/var/log/journal/remote"
+  "/var/lib/private/atticd"
+];
+assert !(lib.elem "/" nas.myNas.storageAlerts.requiredMounts);
+assert lib.hasInfix "SystemMaxUse=4G" nas.services.journald.extraConfig;
 pkgs.runCommand "nas-home-disk"
-  {
-    nativeBuildInputs = [
-      pkgs.python3
-      pkgs.bash
-      pkgs.rsync
-      pkgs.shellcheck
-    ];
-    MIGRATE_SOURCE = ../../pkgs/nas-home-migrate;
-  }
+  (
+    {
+      nativeBuildInputs = [
+        pkgs.python3
+        pkgs.bash
+        pkgs.coreutils
+        pkgs.gnugrep
+        pkgs.rsync
+        pkgs.shellcheck
+        pkgs.util-linux
+      ];
+      MIGRATE_SOURCE = ../../pkgs/nas-home-migrate;
+      STORAGE_ALERTS_TEST = ./storage_alerts.sh;
+      TRIPWIRE_POLL = (tripwireUnit "disk-root").serviceConfig.ExecStart;
+      FAILURE_MARKER_RECONCILER = ../../modules/failure-marker-reconcile.sh;
+      FAILURE_MARKER_REPORTER = ../../modules/failure-marker-report.sh;
+      USAGE_NAMES = lib.concatStringsSep " " (lib.attrNames diskAlerts);
+    }
+    // lib.listToAttrs (
+      lib.concatMap (name: [
+        (lib.nameValuePair "SENSOR_${envName name}" (tripwireUnit name).environment.TRIPWIRE_SENSOR)
+        (lib.nameValuePair "ONFIRE_${envName name}" (tripwireUnit name).environment.TRIPWIRE_ONFIRE)
+      ]) (lib.attrNames diskAlerts ++ [ "nas-mounts" ])
+    )
+  )
   ''
     shellcheck "$MIGRATE_SOURCE/migrate.sh"
     ${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.nas-home-migrate} --help > /dev/null
     python3 ${./test_dry_run.py}
+    shellcheck "$STORAGE_ALERTS_TEST"
+    bash "$STORAGE_ALERTS_TEST"
     touch "$out"
   ''

@@ -23,9 +23,10 @@
     # Sleep, CUPS job 88 (model census) woke the printer via the pinned-IP
     # queue and printed — no keepalive anywhere.
     ./nix-builds.nix # 2026-08-22: build scratch off the eMMC + in-build auto-GC
-    ./nix-on-nvme.nix # 2026-08-22: /nix onto the M.2 — GATE OFF, reboot-only (#232)
+    ./nix-on-nvme.nix # /nix on the NVMe pool, gate ON since 2026-08-22; reboot-only (#232)
     ./journal.nix
     ./storage.nix
+    ./storage-alerts.nix # O1 2026-11-10: per-mount usage + mount-presence tripwires
     ./home-disk.nix # #599, bench-prepared home; stage before the fleet power-off
     ./immich-disk.nix # 256GB secondary SSD: Immich fast tier (PostgreSQL + generated media)
     ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)
@@ -127,14 +128,14 @@
   # the pairing is the point. It was briefly turned off that morning when the
   # 57G eMMC could not hold three closures; disabling the build farm made the
   # symptom stop without fixing the siting, which was the wrong answer. The
-  # store now lives on the 256G M.2, so the farm has room to do its job.
+  # store now lives on the 1TB pool (@fast/nix), so the farm has room to do its job.
   myNas.updateCenter.enable = true;
   # Nightly build parked (Tom, 2026-09-28): it peaked at 15.5G + 1.4G swap on
   # this 24G router, and builds belong on the desktops, run by hand. The
   # service stays hand-startable and the candidates keep being served, so
   # update-adopt on the devices sees the last good closure, not an error.
 
-  # ── /nix on the M.2 (#232) ──────────────────────────────────────────────
+  # ── /nix on the NVMe pool (#232) ────────────────────────────────────────
   # Flipped after the runbook in ./nix-on-nvme.nix was walked on the real
   # hardware: store rsync'd with -aHAX, verified, `nixos-rebuild boot`, and a
   # SUPERVISED reboot with a console on the HDMI corner. Never flip this

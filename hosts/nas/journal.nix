@@ -1,7 +1,7 @@
 { config, lib, ... }:
 # Fleet journald substrate, receiver side (issue #135, workstream 1). The NAS
-# holds the fleet's remote journal on the dedicated NVMe (disko mounts it at
-# /var/log/journal/remote — journal-remote's default output). SplitMode = "host"
+# holds the fleet's remote journal on the NVMe pool (@fast/journal-remote,
+# bound at /var/log/journal/remote — journal-remote's default output). SplitMode = "host"
 # below keeps each sender in its own file set, so the strix and the worker
 # (admitted since 2026-08-21, #229) never interleave. Continuous
 # writeback is why this lives on the SSD: it would be wear on the eMMC and
@@ -10,11 +10,11 @@
 # HDD and land with it.
 #
 # Ungated by design: the substrate is not user-facing, costs nothing while
-# idle, and has no device-ID dependency beyond the NVMe disko already asserts.
+# idle, and has no device-ID dependency beyond the pool ./home-disk.nix asserts.
 {
-  # The NVMe mounts at /mnt/fast since the 2026-08-02 role widening
-  # (disko.nix); journal-remote keeps its default output path via this bind.
-  # systemd's fstab generator orders the bind after mnt-fast.mount on its own.
+  # /mnt/fast is the 1TB pool's @fast since the 2026-10-25 home cutover
+  # (./home-disk.nix); journal-remote keeps its default output path via this
+  # bind. systemd's fstab generator orders the bind after mnt-fast.mount on its own.
   fileSystems."/var/log/journal/remote" = {
     device = "/mnt/fast/journal-remote";
     fsType = "none";
@@ -24,6 +24,18 @@
     ];
   };
 
+  # The local system journal, declared (O1, 2026-11-10). journald's implicit
+  # cap is 10% of the filesystem with a 4G ceiling, which on the 57G eMMC root
+  # was the 4G ceiling (3.9G in use on 2026-11-10). Declared at that same 4G,
+  # the cap the senders already carry (../../modules/journal-upload.nix), so
+  # it stays put when /var moves to the 1TB pool and a switch vacuums nothing.
+  # Not lower: journald restarts on a switch that changes this file and would
+  # delete the oldest local logs down to a smaller cap at once. The eMMC fill
+  # was the hidden pre-cutover home and /tmp, not this bounded journal.
+  services.journald.extraConfig = ''
+    SystemMaxUse=4G
+  '';
+
   services.journald.remote = {
     enable = true;
     # Plaintext HTTP is a settled #135 decision: nixpkgs systemd is built
@@ -31,7 +43,7 @@
     # transport is the same point-to-point /30 that already carries NFSv4.
     listen = "http";
     settings.Remote = {
-      # ~40% of the NVMe; strix keeps 80 days locally and weekly
+      # ~10% of the 1TB pool (was ~40% of the old 256G NVMe); strix keeps 80 days locally and weekly
       # archives will land on the HDD, so NVMe loss loses almost nothing.
       MaxUse = "100G";
       SplitMode = "host";

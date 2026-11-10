@@ -3,11 +3,19 @@
 # 2026-10-23: agent-offload.nix sets zero local build jobs and sends builds
 # to the Strix pair. Retain these scratch/store safeguards for orchestration.
 #
-# THE THREE-DEVICE FACT this box kept getting wrong (corrected 2026-08-22):
+# THE DEVICE FACT this box kept getting wrong (corrected 2026-08-22; the
+# table is as of 2026-11-10, O1):
 #
-#   mmcblk0   57G  eMMC   →  /            ← the SMALLEST, SLOWEST device…
-#   nvme0n1  256G  M.2    →  /mnt/fast       …is the one holding /nix/store
-#   sda      3.7T  HDD    →  /mnt/nas
+#   mmcblk0   57G  eMMC         →  /boot, /     ← the SMALLEST, SLOWEST device
+#   nvme0n1  1TB   WD SN7100    →  one btrfs: @home → /home, @fast → /mnt/fast
+#                                  (/nix bound from @fast/nix, attic, the remote
+#                                  journal); boot-critical (./home-disk.nix)
+#   nvme1n1  256G  Fanxiang     →  /mnt/immich  (Immich's PostgreSQL and
+#                                  generated media, ./immich-disk.nix)
+#   sda      3.7T  WD Red HDD   →  /mnt/nas
+#
+# In 2026-08 the 256G was /mnt/fast and held /nix; the 1TB took that role at
+# the 2026-10-25 home cutover.
 #
 # `/` is the eMMC. It is not the M.2. Several modules were written as though
 # "root" and "the 256GB M.2" were the same disk (./attic.nix's header says so
@@ -31,6 +39,7 @@
 # house router unbootable on that disk's failure is a far worse trade than a
 # tight eMMC. So the store stays put and we move what does not need to be
 # there — the scratch — and teach nix to clean up before it dies.
+# Superseded 2026-08-22 by ./nix-on-nvme.nix; the pool is boot-critical.
 {
   systemd.tmpfiles.rules = [
     # Build scratch on the NVMe. If /mnt/fast is absent this silently lands on
