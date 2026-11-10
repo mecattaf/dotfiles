@@ -43,6 +43,9 @@
   # the exec'd dsh only; "" or an unreadable file means no key. Empty here,
   # so a check's wrapper reads nothing.
   keyFiles ? { },
+  # dshd keeps native permission/profile selection and owns its retained
+  # profile copy. Hand-run dsh remains byte-identical with the default.
+  permissive ? false,
   # The stock profiles the wrapper will boot. Everything else, but the
   # Nix-declared profiles below, is refused, so a custom profile cannot carry
   # the web or sdk-minimal bundles past the name check.
@@ -127,6 +130,46 @@ let
       ;
   };
   sessions = ./sessions.patch.yml;
+  policy = if permissive then config.permissivePolicy else config.policy;
+  # One source for the exec-time scrub and dshd's captured-environment scrub.
+  # Grouping preserves the restrictive wrapper's existing unset lines exactly.
+  unsetGroups = [
+    [
+      "DEEPSEEK_API_KEY"
+      "DEEPSEEK_BASE_URL"
+      "DEEPSEEK_SEARCH_BASE_URL"
+    ]
+    [
+      "GEMINI_API_KEY"
+      "OPENCODE_ZEN_FREE_API_KEY"
+      "OPENCODE_API_KEY"
+    ]
+    [
+      "GROQ_API_KEY"
+      "MISTRAL_API_KEY"
+      "COHERE_API_KEY"
+      "NVIDIA_API_KEY"
+    ]
+    [
+      "CLOUDFLARE_WORKERS_AI_TOKEN"
+      "CLOUDFLARE_API_TOKEN"
+      "CLOUDFLARE_API_KEY"
+      "CLOUDFLARE_ACCOUNT_ID"
+    ]
+    [
+      "HF_TOKEN"
+      "HUGGING_FACE_HUB_TOKEN"
+    ]
+    [
+      "CEREBRAS_API_KEY"
+      "AI_GATEWAY_API_KEY"
+      "XAI_API_KEY"
+      "GROK_API_KEY"
+    ]
+    [ "QWEN_TOKEN_PLAN_API_KEY" ]
+  ];
+  unsetLine = n: lib.concatStringsSep " " (builtins.elemAt unsetGroups n);
+  unsetEnvironment = lib.concatLists unsetGroups;
 
   # Profiles declared here rather than shipped by dsh. `herdr` is the stock
   # headless tuple plus the three plugins of pkgs/dsh-plugins and their
@@ -215,10 +258,12 @@ let
         "  overlays+=(--patch ${p.patch})"
       ]
       ++ lib.mapAttrsToList (k: v: "  export ${k}=${lib.escapeShellArg v}") p.env
-      ++ [
+      ++ lib.optionals (!permissive) [
         "  sync_profile ${name} ${manifest name p} ${
             lib.escapeShellArgs (lib.mapAttrsToList (pkg: drv: "${pkg}=${drv}") p.packages)
           }"
+      ]
+      ++ [
         "  ;;"
       ]
     )
@@ -263,7 +308,10 @@ assert lib.assertMsg
   )
   "The OpenCode Zen provider belongs in its dedicated zen profile, where credentials are re-enabled for it";
 assert lib.assertMsg (
-  !(builtins.any (name: builtins.elem "mnemon" (profilePlugins.${name} or [ ])) [ "herdr" "native" ])
+  !(builtins.any (name: builtins.elem "mnemon" (profilePlugins.${name} or [ ])) [
+    "herdr"
+    "native"
+  ])
 ) "Mnemon belongs in its dedicated profile, where the fleet memory policy is applied";
 writeShellApplication {
   name = "dsh";
@@ -283,12 +331,17 @@ writeShellApplication {
       keyFiles
       nixProfiles
       profilePlugins
+      permissive
+      unsetEnvironment
       ;
+    inherit policy;
+    policyIds = if permissive then config.permissivePolicyIds else config.policyIds;
     profiles = allowed;
     plugins = dsh-plugins;
     mnemonPackage = mnemon;
     inherit (config)
-      policy
+      permissivePolicy
+      permissivePolicyIds
       acp
       herdr
       herdrRows
@@ -302,7 +355,6 @@ writeShellApplication {
       zenRows
       zenProvider
       smoke
-      policyIds
       disabledIds
       ;
   };
@@ -315,7 +367,7 @@ writeShellApplication {
     # Bash imports xtrace from an exported SHELLOPTS; the key read below must
     # never be traced.
     { set +o xtrace; } 2>/dev/null
-    unset DEEPSEEK_API_KEY DEEPSEEK_BASE_URL DEEPSEEK_SEARCH_BASE_URL
+    unset ${unsetLine 0}
     # Public dummy bearer for the keyless Gufo server, never an agenix secret.
     export GUFO_API_KEY=local-no-auth
     export DSH_TELEMETRY_DISABLED=1
@@ -323,11 +375,11 @@ writeShellApplication {
     # file below is the only source. CLOUDFLARE_API_TOKEN is the full-scope
     # operator token every NAS login shell exports (modules/secrets.nix);
     # CLOUDFLARE_API_KEY is pi-ai's own ambient name for the same provider.
-    unset GEMINI_API_KEY OPENCODE_ZEN_FREE_API_KEY OPENCODE_API_KEY
-    unset GROQ_API_KEY MISTRAL_API_KEY COHERE_API_KEY NVIDIA_API_KEY
-    unset CLOUDFLARE_WORKERS_AI_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_API_KEY CLOUDFLARE_ACCOUNT_ID
-    unset HF_TOKEN HUGGING_FACE_HUB_TOKEN
-    unset CEREBRAS_API_KEY AI_GATEWAY_API_KEY XAI_API_KEY GROK_API_KEY
+    unset ${unsetLine 1}
+    unset ${unsetLine 2}
+    unset ${unsetLine 3}
+    unset ${unsetLine 4}
+    unset ${unsetLine 5}
 
     refuse() {
       echo "dsh: $*; refused by the fleet wrapper" >&2
@@ -410,6 +462,8 @@ writeShellApplication {
       refuse "an empty profile name"
     fi
 
+  ''
+  + lib.optionalString (!permissive) ''
     case "$profile" in
       ${profileCase}) ;;
       *) refuse "profile '$profile' is not one of: ${lib.concatStringsSep ", " allowed}" ;;
@@ -483,8 +537,15 @@ writeShellApplication {
       done < <(find "$dir/node_modules" -mindepth 1 -maxdepth 2 -type l -lname '${builtins.storeDir}/*' -print0)
     }
 
-    overlays=(--patch ${config.policy} --patch ${sessions})
-    case "$profile" in
+  ''
+  + lib.optionalString permissive ''
+
+    # --from-default-profile passes through to DSH without a fleet allowlist.
+    : "$from_default"
+  ''
+  + ''
+    overlays=(--patch ${policy} --patch ${sessions})
+    case "${if permissive then "\${profile%@*}" else "$profile"}" in
       acp) overlays+=(--patch ${config.acp}) ;;
       ${nixProfileCase}
     esac
@@ -492,10 +553,17 @@ writeShellApplication {
     # the profile's layers (a caller's --patch still comes after it).
     route="''${DSH_ROUTE-}"
     if [ -n "$route" ]; then
-      case "$profile" in
-        headless | sdk | acp | zen | native) ;;
-        *) refuse "DSH_ROUTE applies only to the headless, sdk, acp, zen and native profiles" ;;
-      esac
+  ''
+  + lib.optionalString (!permissive) (
+    lib.concatStringsSep "\n" [
+      "  case \"$profile\" in"
+      "    headless | sdk | acp | zen | native) ;;"
+      "    *) refuse \"DSH_ROUTE applies only to the headless, sdk, acp, zen and native profiles\" ;;"
+      "  esac"
+      ""
+    ]
+  )
+  + ''
       case "$route" in
         ${routeCase}
         *) refuse "DSH_ROUTE '$route' is not one of: ${lib.concatStringsSep ", " (lib.attrNames config.routeOverlays)}" ;;
@@ -513,7 +581,7 @@ writeShellApplication {
   + lib.optionalString (qwenKeyFile == null) ''
 
     : "$dumping"
-    unset QWEN_TOKEN_PLAN_API_KEY
+    unset ${unsetLine 6}
   ''
   + lib.optionalString (qwenKeyFile != null) ''
 

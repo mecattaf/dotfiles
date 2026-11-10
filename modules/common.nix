@@ -13,6 +13,7 @@
     ./fleet-transport.nix
     ./browser-trust.nix
     ./headless.nix # opt-in appliance profile without home-manager or desktop
+    ./dshd.nix # durable native dsh support on the brain; instances stay runtime data
     ./display.nix # myDisplay.enable — does a human sit at this box (default true); .session picks the compositor
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)

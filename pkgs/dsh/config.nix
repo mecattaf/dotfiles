@@ -440,7 +440,7 @@ let
     };
   };
 
-  policy = [
+  policyBase = [
     # 1. DeepSeek-bound egress. `disabled` rows never load, which is stronger
     #    than `config.enabled: false`. No DeepSeek key exists on the fleet, so
     #    a misroute fails locally.
@@ -476,6 +476,9 @@ let
       search = false;
       fetch = true;
     })
+  ];
+
+  sandboxPolicy = [
     # 7. Sandbox. A pinned runner skips dsh's PATH lookup for bwrap and its
     #    silent fallback to the weaker Landlock backend; dsh-bwrap adds the
     #    fleet masks (./dsh-bwrap.sh). The mode is pinned so DSH_PERMISSION_MODE
@@ -504,12 +507,20 @@ let
       };
       defaultPreset = "workspace-write";
     })
+  ];
+
+  policyTail = [
     # 8. The plan runs at most 4 agents at once: the parent plus 3 children.
     (set "workflow-ptc" {
       provider = "spawn";
       maxConcurrentAgents = 3;
     })
   ];
+
+  # Keep the restrictive order and bytes; dshd omits only the fleet sandbox
+  # overrides, leaving native DSH permission selection intact.
+  policy = policyBase ++ sandboxPolicy ++ policyTail;
+  permissivePolicy = policyBase ++ policyTail;
 
   acp = [ (set "acp" defaultRoute) ];
 
@@ -623,6 +634,7 @@ let
 in
 {
   policy = yaml.generate "dsh-policy.patch.yml" policy;
+  permissivePolicy = yaml.generate "dsh-permissive-policy.patch.yml" permissivePolicy;
   acp = yaml.generate "dsh-acp.patch.yml" acp;
   herdr = yaml.generate "dsh-herdr.patch.yml" herdr;
   mnemon = yaml.generate "dsh-mnemon.patch.yml" mnemonProfile;
@@ -657,5 +669,6 @@ in
   );
   # Row ids the policy touches, for checks.dsh-config.
   policyIds = map (row: row.id) policy;
+  permissivePolicyIds = map (row: row.id) permissivePolicy;
   disabledIds = map (row: row.id) (lib.filter (row: row.disabled or false) policy);
 }

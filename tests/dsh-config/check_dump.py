@@ -27,14 +27,20 @@ Loader.add_constructor(
 
 
 def rows(tree):
-    """Every mapping with an `id`, at any depth (group rows nest theirs)."""
+    """The host loader's rows; detached agent presets own separate trees.
+
+    cordis-plugin-include applies --patch only to entries and group configs.
+    Preset config.plugins are declarations for future agent scopes; their
+    repeated ids must not shadow the host's providers or policy rows here.
+    """
     stack = [tree]
     while stack:
         item = stack.pop()
         if isinstance(item, dict):
             if isinstance(item.get("id"), str):
                 yield item
-            stack.extend(item.values())
+            if item.get("group") is True and isinstance(item.get("config"), list):
+                stack.append(item["config"])
         elif isinstance(item, list):
             stack.extend(item)
 
@@ -58,6 +64,23 @@ def main(dump_path, expect_path):
         row = by_id.get(row_id)
         check(row is not None, f"{row_id}: row missing")
         check(row is None or row.get("disabled") is True, f"{row_id}: not disabled")
+
+    # Native web presets inherit the host services. If an upstream bump puts
+    # a provider or exporter inside a preset, root-only patches no longer
+    # protect it. Refuse that change instead of mistaking a duplicate id for
+    # the host row. Scoped tools may still depend on disabled host services.
+    protected = (set(expect["disabled"]) - {"tool-plugin-manager"}) | {"llm-pi-ai", "web"}
+    pending = list(by_id.values())
+    while pending:
+        parent = pending.pop()
+        config = parent.get("config")
+        if not isinstance(config, dict) or not isinstance(config.get("plugins"), list):
+            continue
+        scoped = list(rows(config["plugins"]))
+        pending.extend(scoped)
+        for row in scoped:
+            check(row["id"] not in protected or row.get("disabled") is True,
+                  f"{parent['id']}: scoped {row['id']} bypasses the host policy")
 
     route = expect["defaultRoute"]
     model = (by_id.get("agent-default-model") or {}).get("config") or {}
@@ -101,13 +124,32 @@ def main(dump_path, expect_path):
     check(isinstance(sessions.get("root"), dict), "session root is not the DSH_HOME-relative !!js row")
 
     sandbox = (by_id.get("sandbox") or {}).get("config") or {}
-    check(sandbox.get("runnerCommand") == [expect["runner"]], f"sandbox runnerCommand is {sandbox.get('runnerCommand')!r}")
     policy = (by_id.get("sandbox-policy") or {}).get("config") or {}
-    check(policy.get("mode") == "workspace-write", f"sandbox-policy mode is {policy.get('mode')!r}")
     presets = ((by_id.get("permission") or {}).get("config") or {}).get("presets") or {}
-    check("danger-full-access" not in presets, "danger-full-access preset still offered")
     approval = (by_id.get("approval") or {}).get("config") or {}
-    check(approval.get("policy") == "ask", f"approval policy is {approval.get('policy')!r}")
+    if expect.get("permissive"):
+        # Native DSH owns these rows. The fleet must leave its environment
+        # expressions and full-access preset intact, and supply no runner.
+        check("runnerCommand" not in sandbox, "fleet sandbox runner still pinned")
+        check("DSH_PERMISSION_MODE" in str(policy.get("mode", {}).get("__js", ""))
+              if isinstance(policy.get("mode"), dict) else False, "native permission mode overridden")
+        check("DSH_PERMISSION_MODE" in str(approval.get("policy", {}).get("__js", ""))
+              if isinstance(approval.get("policy"), dict) else False, "native approval policy overridden")
+        check(presets.get("danger-full-access") == {"sandbox": "danger-full-access", "approval": "never"},
+              "native full-access preset missing")
+        with open(expect["policy"], encoding="utf-8") as stream:
+            fleet = yaml.safe_load(stream)
+        with open(expect["restrictivePolicy"], encoding="utf-8") as stream:
+            restrictive = yaml.safe_load(stream)
+        section7 = {"sandbox", "sandbox-policy", "approval", "permission"}
+        check(all(row["id"] not in section7 for row in fleet), "section 7 remains in fleet overlay")
+        check(fleet == [row for row in restrictive if row["id"] not in section7],
+              "permissive policy changed rows outside section 7 or their order")
+    else:
+        check(sandbox.get("runnerCommand") == [expect["runner"]], f"sandbox runnerCommand is {sandbox.get('runnerCommand')!r}")
+        check(policy.get("mode") == "workspace-write", f"sandbox-policy mode is {policy.get('mode')!r}")
+        check("danger-full-access" not in presets, "danger-full-access preset still offered")
+        check(approval.get("policy") == "ask", f"approval policy is {approval.get('policy')!r}")
 
     workflow = (by_id.get("workflow-ptc") or {}).get("config") or {}
     check(workflow.get("maxConcurrentAgents") == 3, "workflow-ptc maxConcurrentAgents is not 3")

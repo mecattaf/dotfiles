@@ -140,6 +140,14 @@
     # modules/common.nix). home/home.nix installs the entire set via buildEnv.
     llm-agents.url = "github:numtide/llm-agents.nix";
 
+    # Durable native sessions reuse the fleet dsh entrypoint from llm-agents.
+    # Pin v0.1.0 after its producer gates pass; local development overrides
+    # must always use --no-write-lock-file.
+    dshd = {
+      url = "github:mecattaf/dshd.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # flake-utils — shared by git-ai and deploy-rs through `follows`. It used to
     # be reached as "tally/flake-utils"; the Tally inputs (tally, tally-b,
     # tally-lake) were removed with the Tally sunset on 2026-09-30, and this
@@ -1985,6 +1993,7 @@
         dsh-config =
           let
             dshPackage = self.nixosConfigurations.nas.pkgs.dsh.override { qwenKeyFile = null; };
+            permissiveDsh = dshPackage.override { permissive = true; };
             base = {
               localProviders = dshPackage.localProviders;
               cloudProviders = dshPackage.cloudProviders;
@@ -1993,6 +2002,15 @@
               runner = "${dshPackage.runner}/bin/dsh-bwrap";
             };
             expect = pkgs.writeText "dsh-config-expect.json" (builtins.toJSON base);
+            permissiveBase = base // {
+              permissive = true;
+              policy = permissiveDsh.policy;
+              restrictivePolicy = dshPackage.policy;
+            };
+            expectPermissive = pkgs.writeText "dsh-config-permissive.json" (builtins.toJSON permissiveBase);
+            expectPermissiveRoute = pkgs.writeText "dsh-config-permissive-route.json" (
+              builtins.toJSON (permissiveBase // { defaultRoute = dshPackage.routes.gufo; })
+            );
             # DSH_ROUTE=<name>: the one-row overlay replaces the default
             # model after the policy; the acp row keeps the policy default.
             expectRoute =
@@ -2117,10 +2135,35 @@
               # A parent of $HOME that does not hold DSH_HOME.
               (cd "$build/homes" && HOME="$build/homes/tom" refused "$dsh" headless --dump-config)
 
+              # dshd's entrypoint keeps fleet egress, telemetry, providers and
+              # session encoding, leaving native permission choices to DSH.
+              dsh=${permissiveDsh}/bin/dsh
+              EXPECT=${expectPermissive} dump permissive-web web --dump-config
+              EXPECT=${expectPermissive} dump permissive-headless headless --dump-config
+              EXPECT=${expectPermissive} dump permissive-acp-copy acp@retained --from-default-profile acp --dump-config
+              EXPECT=${expectPermissive} DSH_PERMISSION_MODE=danger-full-access dump permissive-full headless --dump-config
+              EXPECT=${expectPermissive} DSH_PERMISSION_MODE=read-only dump permissive-readonly headless --dump-config
+              EXPECT=${expectPermissiveRoute} DSH_ROUTE=gufo dump permissive-route-web web --dump-config
+              EXPECT=${expectPermissive} dump permissive-from-default custom --from-default-profile web --dump-config
+              # /tmp homes and the invoking cwd are native choices. This
+              # remains a config dump: no server, client, inference or token.
+              EXPECT=${expectPermissive} DSH_HOME="$TMPDIR/permissive-home" dump permissive-tmp headless --dump-config
+              (cd "$HOME" && EXPECT=${expectPermissive} dump permissive-home-cwd headless --dump-config)
+              refused "$dsh" plugin --profile headless add left-pad
+              refused "$dsh" --profile= headless --dump-config
+              refused "$dsh" --dump-config
+              refused env DSH_KEY_SLOT=0 "$dsh" headless --dump-config
+              refused env DSH_ROUTE=nope "$dsh" web --dump-config
+
               # No DeepSeek identity minted by any of the boots above.
               test ! -e "$DSH_HOME/.anonymous-user-id"
               touch "$out"
             '';
+
+        dshd-nas = import ./tests/dshd-nas {
+          inherit pkgs;
+          configurations = self.nixosConfigurations;
+        };
 
         # dsh-plugins (T-31): the hand-run `herdr` profile. Its plugins' own
         # check phases are part of this closure: dsh-herdr's node tests (argv,

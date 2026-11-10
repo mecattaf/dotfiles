@@ -22,8 +22,8 @@
 # wrapper links each hand-run profile's selected plugins into
 # $DSH_HOME/profiles/<name> when it boots (pkgs/dsh, pkgs/dsh-plugins).
 #
-# No units, no timers: dsh runs by hand, and unattended runs belong to
-# substrate.
+# This Home Manager module installs the hand-run entrypoint. The NixOS
+# dshd module derives its release through programs.dsh.package.
 let
   cfg = config.programs.dsh;
   link = config.lib.rawDotfiles.link;
@@ -47,32 +47,38 @@ in
     default = pkgs.dsh.profilePlugins;
     description = "Nix-delivered plugins selected by each hand-run DSH profile.";
   };
+  options.programs.dsh.package = lib.mkOption {
+    type = lib.types.package;
+    readOnly = true;
+    description = "The hand-run fleet entrypoint, including this host's credential slots and selected plugins.";
+    default = pkgs.dsh.override {
+      qwenKeyFile = null;
+      keyFiles = {
+        GEMINI_API_KEY = slotFiles "gemini-api-key" 3;
+        OPENCODE_ZEN_FREE_API_KEY = slotFiles "opencode-zen-key" 4;
+        GROQ_API_KEY = slotFiles "groq-api-key" 3;
+        MISTRAL_API_KEY = slotFiles "mistral-api-key" 3;
+        COHERE_API_KEY = slotFiles "cohere-api-key" 5;
+        NVIDIA_API_KEY = slotFiles "nvidia-api-key" 1;
+        # pi-ai's Cloudflare resolver reads the account id under this exact
+        # name from the process environment and fills the endpoint's
+        # {CLOUDFLARE_ACCOUNT_ID} placeholder (pkgs/dsh/config.nix). One
+        # account, so one file beside its token; it is not a credential.
+        CLOUDFLARE_WORKERS_AI_TOKEN = slotFiles "cloudflare-workers-ai-token" 1;
+        CLOUDFLARE_ACCOUNT_ID = [
+          (lib.attrByPath [ "age" "secrets" "cloudflare-account-id" "path" ] "" osConfig)
+        ];
+        HF_TOKEN = slotFiles "huggingface-inference-token" 1;
+        CEREBRAS_API_KEY = slotFiles "cerebras-api-key" 1;
+        AI_GATEWAY_API_KEY = slotFiles "vercel-ai-gateway-key" 1;
+      };
+      profilePlugins = cfg.plugins;
+    };
+  };
 
   config = lib.mkIf cfg.enable {
     home.packages = [
-      (pkgs.dsh.override {
-        qwenKeyFile = null;
-        keyFiles = {
-          GEMINI_API_KEY = slotFiles "gemini-api-key" 3;
-          OPENCODE_ZEN_FREE_API_KEY = slotFiles "opencode-zen-key" 4;
-          GROQ_API_KEY = slotFiles "groq-api-key" 3;
-          MISTRAL_API_KEY = slotFiles "mistral-api-key" 3;
-          COHERE_API_KEY = slotFiles "cohere-api-key" 5;
-          NVIDIA_API_KEY = slotFiles "nvidia-api-key" 1;
-          # pi-ai's Cloudflare resolver reads the account id under this exact
-          # name from the process environment and fills the endpoint's
-          # {CLOUDFLARE_ACCOUNT_ID} placeholder (pkgs/dsh/config.nix). One
-          # account, so one file beside its token; it is not a credential.
-          CLOUDFLARE_WORKERS_AI_TOKEN = slotFiles "cloudflare-workers-ai-token" 1;
-          CLOUDFLARE_ACCOUNT_ID = [
-            (lib.attrByPath [ "age" "secrets" "cloudflare-account-id" "path" ] "" osConfig)
-          ];
-          HF_TOKEN = slotFiles "huggingface-inference-token" 1;
-          CEREBRAS_API_KEY = slotFiles "cerebras-api-key" 1;
-          AI_GATEWAY_API_KEY = slotFiles "vercel-ai-gateway-key" 1;
-        };
-        profilePlugins = cfg.plugins;
-      })
+      cfg.package
       pkgs.mnemon
     ];
 
