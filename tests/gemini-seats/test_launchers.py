@@ -12,7 +12,7 @@ LAUNCHERS = Path(os.environ.get(
 ))
 AUTH_VARS = (
     "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS",
-    "GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_GENAI_USE_GCA", "GOOGLE_CLOUD_ACCESS_TOKEN",
+    "GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_CLOUD_ACCESS_TOKEN", "GOOGLE_GEMINI_BASE_URL",
     "GEMINI_CLI_TRUSTED_FOLDERS_PATH",
 )
 MOCK = r'''
@@ -24,7 +24,10 @@ if not token.exists():
 print(json.dumps({
     "home": os.environ["HOME"], "state": str(state), "cwd": os.getcwd(),
     "args": sys.argv[1:], "account": token.read_text(),
-    "mode": os.environ["GEMINI_CLI_AUTH_OVERRIDE"],
+    "mode": os.environ["GEMINI_DEFAULT_AUTH_TYPE"],
+    "one_time_override": os.environ.get("GEMINI_CLI_AUTH_OVERRIDE"),
+    "google_auth": os.environ["GOOGLE_GENAI_USE_GCA"],
+    "policy": os.environ["GEMINI_CLI_SYSTEM_SETTINGS_PATH"],
     "encrypted": os.environ["GEMINI_FORCE_ENCRYPTED_FILE_STORAGE"],
     "file_storage": os.environ["GEMINI_FORCE_FILE_STORAGE"],
     "auth": {k: os.environ.get(k) for k in json.loads(os.environ["AUTH_VARS"])},
@@ -84,6 +87,9 @@ class GeminiSeats(unittest.TestCase):
     def test_browser_oauth_and_file_storage_replace_ambient_api_credentials(self):
         _, actual = self.launch("gmni2", FAKE_ACCOUNT="2")
         self.assertEqual(actual["mode"], "oauth-personal")
+        self.assertIsNone(actual["one_time_override"])
+        self.assertEqual(actual["google_auth"], "true")
+        self.assertEqual(actual["policy"], "/etc/gemini-cli/settings.json")
         self.assertEqual(actual["encrypted"], "false")
         self.assertEqual(actual["file_storage"], "true")
         self.assertEqual(actual["auth"], dict.fromkeys(AUTH_VARS, ""))

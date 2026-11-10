@@ -6,6 +6,10 @@
     ../../modules/atuin.nix
   ];
 
+  # Google OAuth is the CLI auth path on NAS, including its own relaunches.
+  # Upstream requires every system-policy ancestor to be owned by root.
+  environment.etc."gemini-cli/settings.json".source = ../../modules/gemini-cli-google-oauth.json;
+
   services.herdr-web-ui = {
     enable = true;
     revision = "e85ffd1ff0402e3aee9c2df6ec47e7cafefe7d60"; # build/claude-morning

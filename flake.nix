@@ -745,11 +745,15 @@
               nativeBuildInputs = [
                 pkgs.python3
                 pkgs.bash
+                pkgs.nodejs_24
               ];
             }
             ''
               export GEMINI_LAUNCHERS=${./home/dot_local/bin}
               python3 ${./tests/gemini-seats/test_launchers.py}
+              node ${./tests/gemini-seats/check_auth.mjs} \
+                ${nas.pkgs.llm-agents.gemini-cli}/share/gemini-cli/node_modules/@google/gemini-cli/dist/src/config/settings.js \
+                ${./modules/gemini-cli-google-oauth.json}
               touch "$out"
             '';
 

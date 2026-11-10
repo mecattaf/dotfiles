@@ -28,6 +28,13 @@ Gemini prints the login URL, you open it in the client browser, and paste the
 authorization code back into the NAS terminal. No callback port forwarding is
 needed. An explicitly supplied `NO_BROWSER` value is preserved.
 
+The root-owned `/etc/gemini-cli/settings.json` policy enforces `oauth-personal` across all CLI
+supervisor restarts, even when a user settings file previously selected an
+API key. The launchers use the supported `GOOGLE_GENAI_USE_GCA=true` selector;
+they do not use the one-shot `GEMINI_CLI_AUTH_OVERRIDE`. The policy also keeps
+automatic in-harness memory processing off; models and other preferences
+remain the CLI's writable settings.
+
 These Google CLI logins are separate from the existing three AI Studio API
 keys used by the native DSH Google provider. No API key is needed by `gmni`.
 Access and quota are determined by Google for each signed-in account; an
