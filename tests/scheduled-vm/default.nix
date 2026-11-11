@@ -77,6 +77,10 @@ pkgs.testers.runNixOSTest {
     };
     # The test sets the clock by hand.
     services.timesyncd.enable = false;
+    # A persistent machine id, as on the NAS (a plain file there): the tick refuses
+    # a heartbeat.json from another machine (C3.6), so a fresh id per boot would
+    # stop every tick after the power cut.
+    environment.etc."machine-id" = { text = "5c4f1e0b2a7d4e9c8f3b6a1d2e7c9b04\n"; mode = "0444"; };
     environment.systemPackages = [ pkgs.jq ];
     virtualisation.memorySize = 3072;
     virtualisation.cores = 4;
@@ -154,6 +158,21 @@ pkgs.testers.runNixOSTest {
         return int(dt.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()) // 3600
 
 
+    def diagnose() -> None:
+        """What a failed wait for a tick needs: clock, state, ids, timers, the tick journal."""
+        print(nas.execute(tom(f"date -u; cat {STATE}/heartbeat.json; cat /etc/machine-id; systemctl --user list-timers --all --no-legend;"
+                              " systemctl --user show -p Result,ConditionResult,ActiveState scheduled-heartbeat.service") + " 2>&1")[1])
+        print(nas.execute("journalctl -b --no-pager -o short-monotonic _SYSTEMD_USER_UNIT=scheduled-heartbeat.service | tail -30")[1])
+
+
+    def wait_tick(previous: str) -> None:
+        try:
+            nas.wait_until_succeeds(tom(f"test \"$(jq -r .lastTick {STATE}/heartbeat.json)\" != {shlex.quote(previous)}"), timeout=WAIT)
+        except Exception:
+            diagnose()
+            raise
+
+
     def boot() -> None:
         nas.wait_for_unit("multi-user.target")
         nas.wait_for_unit("default.target", "tom")
@@ -226,33 +245,16 @@ pkgs.testers.runNixOSTest {
         # The paused workflow and the proposal hand off nothing.
         assert not any("paused" in n or "prop" in n for n in made)
 
-    with subtest("P9.2: a run-now storm of 1000, one requester without a bus, proposal refused"):
-        # One Node process per request, while ticks run back to back: minutes, not seconds.
-        run("seq 999 | xargs -P 8 -I{} scheduled run master:hb --by storm >/dev/null", timeout=1500)
-        run("scheduled run master:hb --by nobus >/dev/null", bus=False)
-        assert status("scheduled run master:prop --by storm") == 1
-        # A paused workflow still runs by hand (DESIGN 7.3: disabled cancels only scheduled runs).
-        run("scheduled run master:paused --by storm >/dev/null")
-        manual = [n for n in run(f"ls -1 {SPOOL}/incoming").split() if n not in records() and not n.startswith("census@")]
-        assert len(manual) == 1001, len(manual)
-        quiet()
-        assert run(f"ls -A {SPOOL}/tmp 2>/dev/null | wc -l").strip() == "0"
-        # Unlimited starts: the storm's wakes never fail the unit.
-        assert show("scheduled-heartbeat.service", "Result") == "success"
-        kinds = json.loads(run(f"{STUB_FLOOR} {SPOOL}"))
-        assert kinds.get("manual") == 1001, kinds
-        assert run(f"ls -A {SPOOL}/incoming | wc -l").strip() == "0"
-
     with subtest("S4: power cut; one record at boot, none from the OnStartupSec tick after it"):
         run("systemctl --user start scheduled-heartbeat.timer")
-        nas.wait_until_succeeds(tom(f"test \"$(jq -r .lastTick {STATE}/heartbeat.json)\" != {shlex.quote(last_tick())}"), timeout=WAIT)
+        wait_tick(last_tick())
         run(f"{STUB_FLOOR} {SPOOL}")
         before = last_tick()
         nas.crash()
         # The guest clock comes back at host time, about three hours on.
         nas.start(allow_reboot=True)
         boot()
-        nas.wait_until_succeeds(tom(f"test \"$(jq -r .lastTick {STATE}/heartbeat.json)\" != {shlex.quote(before)}"), timeout=WAIT)
+        wait_tick(before)
         after_boot = records()
         assert len(after_boot) == 1, after_boot
         # The OnStartupSec tick, two minutes after the manager started.
@@ -277,5 +279,26 @@ pkgs.testers.runNixOSTest {
         assert tick() == "exit-code"
         assert "floor error=not-found" in journal()
         assert json.loads(run("dshd ls --json")) in ([], {"instances": []})
+
+    with subtest("P9.2: a run-now storm of 1000, one requester without a bus, proposal refused"):
+        # One Node process per request, while ticks run back to back: minutes, not seconds.
+        # The floor S6 removed comes back, stopped by intent, so the storm's ticks succeed.
+        run("DSH_STUB_MODE=web dshd run --bg --json --name floor -- web")
+        run("dshd stop --json floor")
+        run(f"{STUB_FLOOR} {SPOOL}")
+        run("seq 999 | xargs -P 8 -I{} scheduled run master:hb --by storm >/dev/null", timeout=1500)
+        run("scheduled run master:hb --by nobus >/dev/null", bus=False)
+        assert status("scheduled run master:prop --by storm") == 1
+        # A paused workflow still runs by hand (DESIGN 7.3: disabled cancels only scheduled runs).
+        run("scheduled run master:paused --by storm >/dev/null")
+        manual = [n for n in run(f"ls -1 {SPOOL}/incoming").split() if "@manual~" in n]
+        assert len(manual) == 1001, len(manual)
+        quiet()
+        assert run(f"ls -A {SPOOL}/tmp 2>/dev/null | wc -l").strip() == "0"
+        # Unlimited starts: the storm's wakes never fail the unit.
+        assert show("scheduled-heartbeat.service", "Result") == "success"
+        kinds = json.loads(run(f"{STUB_FLOOR} {SPOOL}"))
+        assert kinds.get("manual") == 1001, kinds
+        assert run(f"ls -A {SPOOL}/incoming | wc -l").strip() == "0"
   '';
 }
