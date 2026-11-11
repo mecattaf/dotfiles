@@ -188,3 +188,11 @@ test('scheduleProblems: entryIndex is correct on errors', () => {
   assert.ok(e, 'Expected never error');
   assert.equal(e.entryIndex, 1, 'entryIndex should be 1 for second entry');
 });
+
+test('C2.5: daily crons outside the gap get no dst-gap warning (supervisor regression)', async () => {
+  const { scheduleProblems } = await import('../src/lib/cron.mjs');
+  for (const cron of ['0 3 * * *', '0 1 * * *', '15 9 * * 1', '0 4 1 * *']) {
+    const problems = scheduleProblems([{ cron, timezone: 'Europe/Paris' }], { now: new Date('2026-11-11T00:00:00Z') });
+    assert.deepEqual(problems.filter(p => p.code === 'dst-gap'), [], cron);
+  }
+});

@@ -111,16 +111,16 @@ export function scheduleProblems(entries) {
     // dst-gap: detect skipped occurrences (spring-forward gap) in a 400-day window
     // If any two consecutive occurrences have a gap > minGap + 1h, a DST gap was skipped.
     const dstOccurrences = collectOccurrences(cron, now, DST_GAP_WINDOW_MS, 2000);
-    if (dstOccurrences.length >= 2) {
-      let minGap = Infinity;
-      let maxGap = 0;
-      for (let j = 1; j < dstOccurrences.length; j++) {
-        const g = dstOccurrences[j] - dstOccurrences[j - 1];
-        if (g < minGap) minGap = g;
-        if (g > maxGap) maxGap = g;
-      }
-      // A DST gap is detected when maxGap > minGap + 1h (e.g. 48h vs 24h for daily)
-      if (maxGap > minGap + 60 * 60 * 1000) {
+    if (dstOccurrences.length >= 3) {
+      // Real-time gaps between consecutive fires move by an hour around each
+      // DST change (23 h / 25 h for a daily cron), which is not a skip. A
+      // skipped fire shows as a gap well above the usual one: more than 1.5
+      // times the median gap (48 h for a daily cron, 14 days for a weekly).
+      const gaps = [];
+      for (let j = 1; j < dstOccurrences.length; j++) gaps.push(dstOccurrences[j] - dstOccurrences[j - 1]);
+      const sorted = [...gaps].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      if (gaps.some(g => g > median * 1.5)) {
         problems.push({
           severity: 'warning',
           code: 'dst-gap',
