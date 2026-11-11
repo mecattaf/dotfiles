@@ -44,9 +44,17 @@ assert lib.all (h: !(builtins.elem "scheduled-heartbeat" (timersOf h))) [
 assert builtins.elem "CLAUDECODE" nas.dshd.releases.nas.unsetEnvironment;
 assert !(builtins.elem "CLAUDE_CONFIG_DIR"
   nas.dshd.releases.nas.unsetEnvironment);
-pkgs.runCommand "scheduled" { nativeBuildInputs = [ scheduled.node ]; } ''
+# The tests run on a writable copy: the stub dshd's `#!/usr/bin/env node` needs patchShebangs (the build sandbox has no
+# /usr/bin/env), and the if.idle gate spawns python3.
+pkgs.runCommand "scheduled" { nativeBuildInputs = [ scheduled.node pkgs.python3 ]; } ''
   export HOME=$TMPDIR
-  cd ${scheduled}/share/scheduled
+  export SCHEDULED_PYTHON=${lib.getExe pkgs.python3}
+  # Commands get the host's exact PATH (DESIGN 5.2), which the sandbox lacks.
+  export SCHEDULED_PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.bash pkgs.python3 ]}
+  cp -r ${scheduled}/share/scheduled $TMPDIR/scheduled
+  chmod -R u+w $TMPDIR/scheduled
+  cd $TMPDIR/scheduled
+  patchShebangs test
   node --test 'test/*.test.mjs'
   ${lib.getExe scheduled} --version
   touch $out

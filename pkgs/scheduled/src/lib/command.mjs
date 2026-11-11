@@ -247,6 +247,7 @@ export function runCommand(ctx, commandSpec, { cwd, schedEnv, timeoutMs } = {}) 
     const childEnv = {
       PATH:
         ctx?.env?.SCHEDULED_PATH ??
+        process.env.SCHEDULED_PATH ??
         '/run/current-system/sw/bin:/etc/profiles/per-user/tom/bin',
       LANG: 'C.UTF-8',
       TZ: schedEnv?.SCHED_TIMEZONE ?? 'UTC',

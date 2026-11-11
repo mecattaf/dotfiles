@@ -73,7 +73,7 @@ export async function main(args, ctx) {
   // 1. Check if.idle
   if (value?.if?.idle === true) {
     const pythonBin =
-      ctx?.env?.SCHEDULED_PYTHON ?? '/etc/profiles/per-user/tom/bin/python3';
+      ctx?.env?.SCHEDULED_PYTHON ?? process.env.SCHEDULED_PYTHON ?? '/etc/profiles/per-user/tom/bin/python3';
     const updateCheckPath =
       ctx?.env?.SCHEDULED_UPDATE_CHECK ?? `${ctx.home}/.local/bin/update-check`;
 
