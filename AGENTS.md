@@ -63,7 +63,20 @@ See `docs/antigravity-cli.md` and `docs/gemini-cli.md`.
 
 **Model catalog (Tom, 2026-10-10).** Model ids for the factory are runtime data, not nix: they live in `~/.config/substrate/models.toml`, seeded by the substrate-puller unit when the file is absent and never rewritten by nix (`services.substrate.puller.modelsFile`, named in runtimes.toml as `models_file`; the runners re-read it on every call, so a model edit needs no rebuild). Tom: "i dnt think it s a g ood idea to have things like that tied to nixos dotfiles". The openrouter-free lane is parked (no entry in the catalog, so substrate refuses that runtime and route policies fall through) until OpenRouter releases a new stealth model; since pi was retired (2026-10-25) no harness routes to the OpenRouter key, and seats reads it only for the credit row. The puller PATH carries Node 24 and pnpm 11.17.0 (`pkgs.pnpm_11_17`, the stack v1 pin) so a spec-task gate runs `node` and `pnpm` bare.
 
-**Scheduled work (Tom, 2026-09-30).** No scheduled agent work is declared in dotfiles. Silent-hours releases (paper 06:05, speech 06:05) stay. Reactive triggers (a Huion scan drops → process when there is bandwidth) are fine. A midnight script that moves jsonl files to the NAS is out. Everything scheduled comes from the factory (substrate).
+**Scheduled work (Tom, 2026-09-30; amended 2026-11-10).** No scheduled
+agent work is declared in dotfiles. It is written as JSONC workflow
+files in an agency's `.agency/workflows/` (the master agency is `~`) and
+runs on the factory floor, the superagent fork in the dsh config
+(`docs/scheduled.md`). The one exception is the Scheduled heartbeat
+(D52). Tom, 2026-11-10: "one systemd timer cnfigured in the dotfiels,
+the rest are not timers at all." The heartbeat holds no schedule of its
+own: each hourly tick decodes the cron times in those files, hands due
+work to the floor and wakes it. dshd stays free of clocks (Tom: "NO
+SCHEDULES EVER"). Substrate does not decide what is due (Tom,
+2026-11-10: `re: "substrate decides what's due" NO.`). Silent-hours
+releases (paper 06:05, speech 06:05) stay. Reactive triggers (a Huion
+scan drops → process when there is bandwidth) are fine. A midnight
+script that moves jsonl files to the NAS is out.
 
 The one named exception is box upkeep, which is not agent work. These are the
 only clocks dotfiles may declare (sweep 2026-09-30, D40–D51); anything else is a
@@ -78,10 +91,12 @@ hand-run service, a path/udev/session trigger, or a factory schedule:
 | D45 | btrfs-scrub-mnt-nas (monthly); btrbk-nas off since 2026-10-28 | NAS | `hosts/nas/storage.nix`, `hosts/nas/snapshots.nix` (gate off) |
 | D49 | fstrim, logrotate, fwupd-refresh, systemd-tmpfiles-clean (system and user) | all | NixOS defaults |
 | D50 | smartd (`-n standby,q`; a daemon, not a timer) | NAS | `hosts/nas/storage.nix` |
+| D52 | scheduled-heartbeat (hourly, OnStartupSec 2min, Persistent; Tom 2026-11-10) | NAS | `home/scheduled.nix` |
 
 Besides these, the silent-hours releases are `paper-daemon-flush.timer` and the
 06:05 entry of `speech-queue.timer` on NAS. Adding any other timer or
-`OnCalendar` to this repository needs Tom.
+`OnCalendar` to this repository needs Tom. `tests/scheduled` fails on any NAS
+user timer that is not in this list.
 
 One reactive loop is not a clock: `wifi-ladder-return` on the client
 (`hosts/client/wifi-ladder.nix`, Tom 2026-10-25) is started by the
@@ -127,8 +142,12 @@ and Magic Trackpad; Domicile is the sole daily compositor. Sway, Niri, Vicinae, 
 external desktop menus are retired; use the native Domicile APIs. strix-coordinator
 keeps its independent Tailscale fallback; use ordinary OpenSSH. Speech defaults to
 client; synthesis stays on compute. These are cutover targets, not a claim
-that the migration is live. Preserve Herdr sessions; activation and reboot
-remain deliberate, supervised steps.
+that the migration is live. Preserve Herdr sessions. Reboot remains a
+deliberate, supervised step. Nightly activation of NAS and strix-coordinator is
+unattended: the Scheduled `fleet-nightly` workflow launches `fleet-update`
+(#642), which activates only an idle, inspected target and never reboots. Tom,
+2026-11-10, on the earlier rule that overnight runs never switch: "this one can
+be overruled. let's get the scheduler built and configured first."
 
 **Runtime isolation (2026-09-16 incident).** Tests and experiments that source
 shell-script fragments, clean runtime directories, or launch test compositors
