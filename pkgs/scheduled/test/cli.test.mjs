@@ -73,11 +73,11 @@ describe('no verb', () => {
 // ---------------------------------------------------------------------------
 
 describe('not-built verb', () => {
-  // `ls` is in the verb table but its module file does not exist in this task.
+  // `dismiss` is in the verb table but its module file does not exist in this task.
   // The CLI must catch ERR_MODULE_NOT_FOUND and print the right message.
   it('prints "scheduled: <verb> is not built yet" and exits 2', () => {
-    const r = run('ls');
+    const r = run('dismiss');
     assert.equal(r.status, 2);
-    assert.match(r.stderr, /scheduled: ls is not built yet/);
+    assert.match(r.stderr, /scheduled: dismiss is not built yet/);
   });
 });

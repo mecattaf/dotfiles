@@ -8,6 +8,8 @@ import { resolve, basename, dirname } from 'node:path';
 import { parseWorkflow, normalize, revision, formatProblems } from '../lib/schema.mjs';
 import { scheduleProblems, nextInstants, instantsBetween } from '../lib/cron.mjs';
 import { validateFile } from '../lib/validate.mjs';
+import { resolveId } from '../lib/resolve.mjs';
+import { discover } from '../lib/discover.mjs';
 
 function usage(ctx) {
   ctx.err('Usage: scheduled show (PATH) [--json] [-n N] [--from ISO]\n');
@@ -15,6 +17,7 @@ function usage(ctx) {
 
 export async function main(args, ctx) {
   let filePath = null;
+  let rawArg = null;
   let jsonOutput = false;
   let n = 3;
   let fromIso = null;
@@ -36,10 +39,10 @@ export async function main(args, ctx) {
       return 2;
     } else {
       if (filePath !== null) {
-        // ID resolution not built yet
-        ctx.err('ID resolution not built yet; pass a PATH\n');
+        usage(ctx);
         return 2;
       }
+      rawArg = a;
       filePath = resolve(a);
     }
   }
@@ -58,21 +61,36 @@ export async function main(args, ctx) {
     // Not a path
   }
 
+  let resolvedId = null;
+  let isProposal = false;
   if (!isFile) {
-    ctx.err('ID resolution not built yet; pass a PATH\n');
-    return 2;
+    try {
+      const target = await resolveId(ctx, rawArg);
+      filePath = target.path;
+      resolvedId = target.id;
+    } catch (err) {
+      return err.exitCode ?? 1;
+    }
+  } else {
+    // A path: name it by the discovered id when it lies inside an agency.
+    isProposal = basename(dirname(filePath)) === 'proposed';
+    try {
+      const { files } = await discover({ home: ctx.home, uid: ctx.uid });
+      const hit = files.find(f => resolve(f.path) === filePath);
+      if (hit) { resolvedId = hit.id; isProposal = hit.proposal; }
+    } catch { /* not inside an agency */ }
   }
 
   // Validate the file
   const { problems, value, bytes, promptBytes } = await validateFile(filePath, {
     uid: ctx.uid,
-    proposal: false,
+    proposal: isProposal,
   });
 
   const errors = problems.filter(p => p.severity === 'error');
   if (errors.length > 0) {
     if (jsonOutput) {
-      const workflowId = basename(filePath, '.jsonc');
+      const workflowId = resolvedId ?? basename(filePath, '.jsonc');
       ctx.out(JSON.stringify({
         v: 1,
         results: [{
