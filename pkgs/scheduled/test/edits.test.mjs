@@ -53,3 +53,13 @@ test('history --diff with one stored revision exits 1', async () => {
 test('unifiedDiff puts a deletion before its addition', () => {
   assert.equal(unifiedDiff('a\nb\nc\n', 'a\nB\nc\n', 'x', 'y'), '--- x\n+++ y\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n c\n');
 });
+
+test('set path: on.schedule[0].cron (the skill spelling) is the same path as on.schedule.0.cron (evaluation review)', async () => {
+  const { edit, parsePath } = await import('../src/verbs/set.mjs');
+  assert.deepEqual(parsePath('on.schedule[0].cron'), ['on', 'schedule', 0, 'cron']);
+  const text = '{\n  // keep\n  "on": { "schedule": [{ "cron": "0 6 * * *", "timezone": "UTC" }] }\n}\n';
+  const out = edit(text, 'on.schedule[0].cron', '0 6 * * 1');
+  assert.match(out, /"cron": "0 6 \* \* 1"/);
+  assert.match(out, /\/\/ keep/);
+  assert.ok(!out.includes('schedule[0]'));
+});

@@ -6,7 +6,8 @@ import { resolveId } from '../lib/resolve.mjs';
 import { locate, writeWorkflow, guarded, parseFlags, byOf, WriteError } from '../lib/write.mjs';
 
 export function parsePath(path) {
-  return path.split('.').map((seg) => (/^\d+$/.test(seg) ? Number(seg) : seg));
+  // `on.schedule[0].cron` (the skill's spelling) and `on.schedule.0.cron` are the same path.
+  return path.replace(/\[(\d+)\]/g, '.$1').split('.').map((seg) => (/^\d+$/.test(seg) ? Number(seg) : seg));
 }
 export function parseValue(raw) {
   try { return JSON.parse(raw); } catch { return raw; }
