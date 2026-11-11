@@ -149,8 +149,6 @@ export const output = {
   ],
 };
 export const input = {
-  // Keep the quick held-key response in native clients and browser pages.
-  keyboard: { repeat: { delay_ms: 200, rate: 25 } },
   "touchpad": {
     "tap": true,
     "tap_button_map": "lrm",
