@@ -1,0 +1,406 @@
+#!/usr/bin/env python3
+"""One Claude Code turn into a dshd-run DSH session over ACP (DESIGN 10.4).
+
+Derived from dshd.nix's acp-client.py: JSON-RPC is one object per line on
+the child's stdin/stdout. Route C spawns `dshd attach NAME` (default
+cc-acp) and speaks initialize / session/new or session/resume / optional
+set_config_option / session/prompt; the dshd binary comes from
+DSH_TURN_DSHD when set, else `dshd` on PATH. Route D (--via headless)
+runs the turn as a throwaway `dshd run --bg` instance instead.
+Permission requests are answered reject_once unless --approve: this runs
+unattended, so it fails closed. No timeout: a late answer is discarded
+while detached, so the controller stays attached until the turn ends.
+Exit 0 answered, 1 ACP error, 2 usage, 3 attach refused.
+"""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+EXIT_ANSWERED = 0
+EXIT_ACP_ERROR = 1
+EXIT_USAGE = 2
+EXIT_ATTACH_REFUSED = 3
+
+
+class TurnError(Exception):
+    """The turn could not be completed; carries the exit code."""
+
+    def __init__(self, message, code=EXIT_ACP_ERROR):
+        super().__init__(message)
+        self.code = code
+
+
+def state_dir():
+    root = os.environ.get('XDG_STATE_HOME') or str(Path.home() / '.local' / 'state')
+    return Path(root) / 'dsh-turn'
+
+
+def last_session_path(name):
+    return state_dir() / (name + '.last')
+
+
+def read_last_session(name):
+    try:
+        saved = last_session_path(name).read_text().strip()
+    except OSError as error:
+        raise TurnError('no saved session for ' + name + ': ' + str(error))
+    if not saved:
+        raise TurnError('no saved session for ' + name)
+    return saved
+
+
+def save_session(name, session_id):
+    path = last_session_path(name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + '.tmp')
+    tmp.write_text(session_id + '\n')
+    os.replace(tmp, path)
+
+
+def dshd_binary():
+    return os.environ.get('DSH_TURN_DSHD') or 'dshd'
+
+
+def chunk_text(update):
+    content = update.get('content') or {}
+    if content.get('type') == 'text':
+        return content.get('text') or ''
+    return ''
+
+
+def option_id(options, kind):
+    for option in options or []:
+        if option.get('kind') == kind:
+            return option.get('optionId')
+    for option in options or []:
+        if option.get('optionId') == kind:
+            return option.get('optionId')
+    return None
+
+
+class AcpController:
+    """One `dshd attach` relay client speaking ACP line-delimited JSON-RPC."""
+
+    def __init__(self, instance, emit):
+        self.instance = instance
+        self.emit = emit
+        self.frames = []
+        # Request ids start at (unix ms mod 10^9) * 1000 (GUESS), so a
+        # resuming controller never collides with an earlier one.
+        self.next_id = (int(time.time() * 1000) % 10**9) * 1000
+        try:
+            self.client = subprocess.Popen(
+                [dshd_binary(), 'attach', instance],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+            )
+        except OSError as error:
+            raise TurnError('cannot spawn dshd attach ' + instance + ': ' + str(error),
+                            EXIT_ATTACH_REFUSED)
+
+    def send(self, message):
+        message['jsonrpc'] = '2.0'
+        try:
+            self.client.stdin.write((json.dumps(message) + '\n').encode())
+            self.client.stdin.flush()
+        except BrokenPipeError:
+            raise TurnError('relay closed while writing ' + str(message.get('method')),
+                            self._close_code())
+
+    def request(self, method, params):
+        self.next_id += 1
+        self.send({'id': self.next_id, 'method': method, 'params': params})
+        return self.next_id
+
+    def _refused_from_stderr(self):
+        try:
+            text = self.client.stderr.read().decode(errors='replace').strip()
+        except Exception:
+            text = ''
+        if text:
+            print('dsh-turn: ' + text, file=sys.stderr)
+        return text
+
+    def _close_code(self):
+        rc = self.client.poll()
+        if rc is None:
+            try:
+                rc = self.client.wait(timeout=5)
+            except Exception:
+                rc = None
+        return EXIT_ATTACH_REFUSED if (rc == EXIT_ATTACH_REFUSED or rc is None) else EXIT_ACP_ERROR
+
+    def read_frame(self):
+        """Next frame from the relay, or None when the relay closed."""
+        line = self.client.stdout.readline()
+        if not line:
+            return None
+        try:
+            frame = json.loads(line)
+        except ValueError:
+            raise TurnError('relay sent a non-JSON line: ' + repr(line[:200]))
+        self.frames.append(frame)
+        return frame
+
+    def wait_response(self, ident, method):
+        """Frames until the response to `ident`; handles notifications."""
+        while True:
+            frame = self.read_frame()
+            if frame is None:
+                rc = self.client.wait()
+                if rc == EXIT_ATTACH_REFUSED:
+                    raise TurnError('attach refused by dshd', EXIT_ATTACH_REFUSED)
+                if not self.frames and rc != 0:
+                    # The child died before answering initialize.
+                    self._refused_from_stderr()
+                    raise TurnError('dshd exited ' + str(rc) + ' before answering ' + method,
+                                    EXIT_ATTACH_REFUSED)
+                raise TurnError('relay closed before the response to ' + method)
+            if frame.get('method') and 'id' not in frame:
+                self.handle_notification(frame)
+                continue
+            if frame.get('id') == ident and 'method' not in frame:
+                if 'error' in frame:
+                    raise TurnError(method + ' failed: ' + json.dumps(frame['error']))
+                return frame['result']
+
+    def handle_notification(self, frame):
+        # Only agent_message_chunk reaches stdout; anything else waits for
+        # its turn inside run_turn's dispatch loop.
+        if frame.get('method') == 'session/update':
+            update = frame.get('params') or {}
+            if update.get('sessionUpdate') == 'agent_message_chunk':
+                self.emit(chunk_text(update))
+
+    def answer_permission(self, frame, approve):
+        options = (frame.get('params') or {}).get('options') or []
+        kind = 'allow_once' if approve else 'reject_once'
+        chosen = option_id(options, kind)
+        if chosen is None:
+            raise TurnError('permission request offers no ' + kind + ' option')
+        self.send({'id': frame['id'], 'result': {'outcome': {'outcome': 'selected',
+                                                             'optionId': chosen}}})
+
+    def run_turn(self, ident, approve):
+        """Frames until the response to the prompt request."""
+        while True:
+            frame = self.read_frame()
+            if frame is None:
+                rc = self.client.wait()
+                if rc == EXIT_ATTACH_REFUSED:
+                    raise TurnError('attach refused by dshd', EXIT_ATTACH_REFUSED)
+                raise TurnError('relay closed before the prompt response')
+            method = frame.get('method')
+            if method == 'session/request_permission' and 'id' in frame:
+                self.answer_permission(frame, approve)
+                continue
+            if method and 'id' not in frame:
+                self.handle_notification(frame)
+                continue
+            if frame.get('id') == ident and 'method' not in frame:
+                if 'error' in frame:
+                    raise TurnError('session/prompt failed: ' + json.dumps(frame['error']))
+                return frame['result']
+
+    def close(self):
+        try:
+            self.client.stdin.close()
+        except OSError:
+            pass
+        try:
+            self.client.wait(timeout=5)
+        except Exception:
+            self.client.kill()
+            self.client.wait()
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(prog='dsh-turn', description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--instance', default='cc-acp',
+                        help='dshd instance to attach to (default cc-acp)')
+    parser.add_argument('--session', default='new', metavar='ID|last|new',
+                        help='session id to resume, `last` for the saved one, or new')
+    parser.add_argument('--cwd', default=None, help='absolute cwd for the session (default ~)')
+    parser.add_argument('--model', default=None, help='set_config_option modelId')
+    parser.add_argument('--effort', default=None, help='set_config_option effort')
+    parser.add_argument('--approve', action='store_true',
+                        help='answer permission requests allow_once (default reject_once)')
+    parser.add_argument('--json', action='store_true', dest='as_json',
+                        help='emit NDJSON events on stdout instead of plain text')
+    parser.add_argument('--via', choices=['acp', 'headless'], default='acp',
+                        help='headless runs the turn through a throwaway dshd run instance')
+    parser.add_argument('prompt', nargs='?', default=None,
+                        help='the prompt text, or - to read it from stdin')
+    return parser, parser.parse_args(argv)
+
+
+def read_prompt(raw):
+    if raw is None:
+        raise TurnError('missing PROMPT', EXIT_USAGE)
+    if raw == '-':
+        raw = sys.stdin.read()
+    if not raw.strip():
+        raise TurnError('empty PROMPT', EXIT_USAGE)
+    return raw
+
+
+class Emitter:
+    """Plain-text chunks on stdout, or NDJSON events with --json."""
+
+    def __init__(self, as_json):
+        self.as_json = as_json
+
+    def event(self, kind, **fields):
+        if self.as_json:
+            print(json.dumps(dict(event=kind, **fields)), flush=True)
+
+    def chunk(self, text):
+        if text and not self.as_json:
+            print(text, end='', flush=True)
+
+    def finish_line(self):
+        if not self.as_json:
+            print(flush=True)
+
+
+def run_acp_turn(args, prompt):
+    emitter = Emitter(args.as_json)
+    cwd = args.cwd if args.cwd is not None else str(Path.home())
+    if not os.path.isabs(cwd):
+        raise TurnError('cwd must be absolute: ' + cwd, EXIT_USAGE)
+    session = args.session
+    if session == 'last':
+        session = read_last_session(args.instance)
+    acp = AcpController(args.instance, emitter.chunk)
+    try:
+        where = {'cwd': cwd, 'mcpServers': []}
+        acp.wait_response(acp.request(
+            'initialize', {'protocolVersion': 1, 'clientCapabilities': {}}), 'initialize')
+        if session in ('new',):
+            session = acp.wait_response(acp.request('session/new', where), 'session/new')['sessionId']
+        else:
+            acp.wait_response(acp.request('session/resume', dict(where, sessionId=session)),
+                              'session/resume')
+        for option_id_key, value in (('modelId', args.model), ('effort', args.effort)):
+            if value is not None:
+                acp.wait_response(acp.request(
+                    'session/set_config_option',
+                    dict(where, sessionId=session, configId=option_id_key, value=value)),
+                    'session/set_config_option')
+        result = acp.run_turn(
+            acp.request('session/prompt',
+                        {'sessionId': session, 'prompt': [{'type': 'text', 'text': prompt}]}),
+            args.approve)
+    finally:
+        acp.close()
+    stop_reason = result.get('stopReason') or 'unknown'
+    save_session(args.instance, session)
+    emitter.event('done', session=session, stop=stop_reason)
+    emitter.finish_line()
+    print('dsh-turn: session=' + session + ' stop=' + stop_reason, file=sys.stderr, flush=True)
+    return EXIT_ANSWERED
+
+
+def headless_argv(dshd, name, session, prompt):
+    argv = [dshd, 'run', '--bg', '--json', '--name', name, '--', 'headless', '--json']
+    if session:
+        argv += ['--session-id', session]
+    return argv + [prompt]
+
+
+def run_headless_turn(args, prompt):
+    emitter = Emitter(args.as_json)
+    dshd = dshd_binary()
+    name = 'cct-' + str(int(time.time()))
+    session = args.session
+    if session == 'last':
+        session = read_last_session(args.instance)
+    elif session == 'new':
+        session = None
+
+    def step(argv):
+        proc = subprocess.run(argv, capture_output=True, text=True)
+        if proc.returncode != 0:
+            if proc.stderr:
+                print('dsh-turn: ' + proc.stderr.strip(), file=sys.stderr)
+            raise TurnError('"' + ' '.join(argv[1:3]) + '" exited ' + str(proc.returncode))
+        return proc
+
+    step(headless_argv(dshd, name, session, prompt))
+    try:
+        step([dshd, 'wait', name])
+        read_result = step([dshd, 'read', '--json', name])
+    finally:
+        # The throwaway instance goes whatever the run did.
+        subprocess.run([dshd, 'rm', name], capture_output=True, text=True)
+    answer, session_id = extract_answer(read_result.stdout or '')
+    if answer is None:
+        raise TurnError('no answer found in dshd read output')
+    if emitter.as_json:
+        print(json.dumps(dict(event='chunk', text=answer)), flush=True)
+    else:
+        print(answer, flush=True)
+    if session_id:
+        save_session(args.instance, session_id)
+    emitter.event('done', session=session_id, stop='end_turn')
+    print('dsh-turn: session=' + str(session_id) + ' stop=end_turn', file=sys.stderr, flush=True)
+    return EXIT_ANSWERED
+
+
+def extract_answer(stdout):
+    """(answer, Session id) from `dshd read --json`.
+
+    dshd prints one object whose `lines` are the run's journal (FACT, dshd
+    0.1.0); with `headless --json` those lines are NDJSON events, and the last
+    `final` event carries the answer text and the Session id.
+    """
+    try:
+        doc = json.loads(stdout)
+    except ValueError:
+        return None, None
+    lines = doc.get('lines') if isinstance(doc, dict) else None
+    if not isinstance(lines, list):
+        return None, None
+    answer, session, chunks = None, None, []
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        kind = event.get('type')
+        if kind == 'text' and isinstance(event.get('text'), str):
+            chunks.append(event['text'])
+        elif kind == 'session' and isinstance(event.get('sessionId'), str):
+            session = session or event['sessionId']
+        elif kind == 'final':
+            if isinstance(event.get('text'), str) and event['text'].strip():
+                answer = event['text']
+            if isinstance(event.get('sessionId'), str):
+                session = event['sessionId']
+    if answer is None and chunks:
+        answer = ''.join(chunks)
+    return (answer.strip() or None) if answer else None, session
+
+
+def main(argv=None):
+    parser, args = parse_args(sys.argv[1:] if argv is None else argv)
+    try:
+        prompt = read_prompt(args.prompt)
+        if args.via == 'headless':
+            return run_headless_turn(args, prompt)
+        return run_acp_turn(args, prompt)
+    except TurnError as error:
+        print('dsh-turn: ' + str(error), file=sys.stderr)
+        return error.code
+
+
+if __name__ == '__main__':
+    sys.exit(main())

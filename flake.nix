@@ -594,6 +594,7 @@
             mactahoe-claude-gtk-theme
             mactahoe-icon-theme
             music-acquire
+            scheduled
             sfmono-liga
             ;
 
@@ -2022,6 +2023,22 @@
         # this on every llm-agents bump.
         dshd-nas = import ./tests/dshd-nas {
           inherit pkgs;
+          configurations = self.nixosConfigurations;
+        };
+
+        # Scheduled (AGENTS.md D52): eval asserts on the real NAS
+        # config, then the package's own tests under its own Node.
+        scheduled = import ./tests/scheduled {
+          inherit pkgs;
+          configurations = self.nixosConfigurations;
+        };
+
+        # Scheduled in a NixOS VM: the NAS's own heartbeat units with the
+        # dshd module and the stub dsh; hand-off, clock back, power cut,
+        # switch, surfacing and the run-now storm (KVM; the builders
+        # advertise nixos-test and kvm).
+        scheduled-vm = import ./tests/scheduled-vm {
+          inherit inputs;
           configurations = self.nixosConfigurations;
         };
 

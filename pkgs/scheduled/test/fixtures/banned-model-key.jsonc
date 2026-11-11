@@ -1,0 +1,11 @@
+// expect: unknown-key 0:0
+// C2.4: model key is refused
+{
+  "on": {
+    "schedule": [
+      { "cron": "0 6 * * 1", "timezone": "UTC" }
+    ]
+  },
+  "model": "some-model",
+  "job": { "prompt": "Test prompt." }
+}
