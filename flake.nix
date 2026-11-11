@@ -163,9 +163,9 @@
     };
 
     # The daily desktop and its SDK use one pinned official upstream release.
-    # Keep the SDK and prebuilt engine together. This is the pre-November 10
-    # desktop; later builds regress graphics memory (upstream issue #2036).
-    domicile.url = "github:cprussin/domicile/4f209c94d7ff64c40fcdd29b7686edb3bb8c7e71";
+    # Keep the SDK and prebuilt engine together. Restore the actual installed
+    # known-good release (official engine 63db244), before issue #2036.
+    domicile.url = "github:cprussin/domicile/75708d7638002e1bba421cf83f6927298dbc1c3a";
     imagine = {
       url = "path:./pkgs/client-desktop/imagine";
       flake = false;
