@@ -107,8 +107,11 @@ late-arrival delay and completion lifecycle. A bounded adapter reads full logica
 screen clipping geometry for every moving part; reduced motion still completes.
 Do not infer physical 120 Hz frame pacing from headless timing assertions.
 
-Panel temperatures are supplied by client policy through the public display API,
-replacing scheduled global night light on this seat. Scroll/Niri recovery and deeper sidebar-donor history remain
+Client policy supplies a fixed 3850 K whitepoint through the public display API,
+replacing scheduled night light on this seat. The stability rollback supports one
+global value for all outputs and restores it natively after hotplug and modesets;
+different panel temperatures need a newer qualified engine.
+Scroll/Niri recovery and deeper sidebar-donor history remain
 later chapters; do not revive them through an old checklist or deep notes scan.
 
 ## Running-window chrome command
