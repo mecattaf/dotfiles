@@ -248,6 +248,10 @@ pkgs.testers.runNixOSTest {
     with subtest("S4: power cut; one record at boot, none from the OnStartupSec tick after it"):
         run("systemctl --user start scheduled-heartbeat.timer")
         wait_tick(last_tick())
+        # The stub floor's renames to done/ are not crash-safe (no fsync), so a file
+        # it drained may be back in incoming/ after the cut; the real floor keeps one
+        # row per occurrence. Count only what the reboot hands off.
+        pending = set(records())
         run(f"{STUB_FLOOR} {SPOOL}")
         before = last_tick()
         nas.crash()
@@ -256,7 +260,12 @@ pkgs.testers.runNixOSTest {
         boot()
         wait_tick(before)
         after_boot = records()
-        assert len(after_boot) == 1, after_boot
+        fresh = [n for n in after_boot if n not in pending]
+        assert len(fresh) == 1, (after_boot, pending)
+        # DESIGN 6.2 as written: after a reboot dshd reads the floor `previous-boot`
+        # (stop intent is not kept across boots), and something waits, so the tick
+        # starts it. A finding for the spec, asserted so a change is seen.
+        assert "floor action=start state=previous-boot" in journal(), journal()
         # The OnStartupSec tick, two minutes after the manager started.
         nas.sleep(150)
         quiet()
@@ -275,6 +284,8 @@ pkgs.testers.runNixOSTest {
         assert "SCHEDULED_VM_NEXT=1" in show("scheduled-heartbeat.service", "Environment")
 
     with subtest("S6: no floor; the tick fails the unit, nothing is started"):
+        # S4's boot tick started the floor; dshd removes only a stopped instance.
+        run("dshd stop --json floor")
         run("dshd rm --json floor")
         assert tick() == "exit-code"
         assert "floor error=not-found" in journal()
