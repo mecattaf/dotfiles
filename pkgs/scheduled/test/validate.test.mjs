@@ -489,3 +489,22 @@ test('x-proposal fields are preserved through parsing', () => {
   assert.equal(errors.length, 0, JSON.stringify(errors));
   assert.deepEqual(value['x-proposal'], { by: 'agent-1', at: '2026-01-01T00:00:00Z', why: 'Automation' });
 });
+
+test('C2.4: validate PATH on a file in proposed/ judges it as a proposal (x-proposal required)', async () => {
+  const body = { enabled: false, on: { schedule: [{ cron: '0 6 * * 1', timezone: 'Europe/Paris' }] }, job: { prompt: 'Test.' } };
+  const { workflowsDir, tmpRoot } = makeTempAgency('unused', JSON.stringify(body));
+  try {
+    const proposed = path.join(workflowsDir, 'proposed');
+    fs.mkdirSync(proposed, { mode: 0o700 });
+    fs.chmodSync(proposed, 0o700);
+    const bare = path.join(proposed, 'bare.jsonc');
+    fs.writeFileSync(bare, JSON.stringify(body), { mode: 0o600 });
+    const withMark = path.join(proposed, 'marked.jsonc');
+    fs.writeFileSync(withMark, JSON.stringify({ ...body, 'x-proposal': { by: 'agent', at: '2026-11-12T00:00:00Z', why: 'test' } }), { mode: 0o600 });
+    const ctx = makeCtx();
+    assert.equal(await validateVerb([bare], ctx), 1, 'a proposal without x-proposal is refused');
+    assert.equal(await validateVerb([withMark], makeCtx()), 0, makeCtx()._out.join(''));
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});

@@ -364,6 +364,22 @@ export function formatHistoryTable(rows, { all = false } = {}) {
  * @param {object} ctx
  * @returns {string}
  */
+/**
+ * The journalctl command that still prints an attempt's log after upkeep
+ * removed its instance (C9.7): by its systemd InvocationID when the floor
+ * recorded one, else by the unit name (which a later run of the same name
+ * would share).
+ *
+ * @param {{instance: string, invocation?: string|null}} attempt
+ * @returns {string}
+ */
+export function journalCommand(attempt) {
+  const id = typeof attempt.invocation === 'string' ? attempt.invocation.trim() : '';
+  return /^[0-9a-f]{32}$/i.test(id)
+    ? `journalctl --user _SYSTEMD_INVOCATION_ID=${id}`
+    : `journalctl --user -u dshd@${attempt.instance}.service`;
+}
+
 export function formatAttemptsOutput(attempts, ctx) {
   if (!attempts || attempts.length === 0) {
     return 'No attempts recorded.\n';
@@ -390,10 +406,10 @@ export function formatAttemptsOutput(attempts, ctx) {
     const pruned = isInstancePruned(ctx, a.instance);
     if (pruned) {
       lines.push('    instance pruned');
-      lines.push(`    journalctl --user -u dshd@${a.instance}.service`);
+      lines.push(`    ${journalCommand(a)}`);
     } else {
       lines.push(`    dshd read ${a.instance}`);
-      lines.push(`    journalctl --user -u dshd@${a.instance}.service`);
+      lines.push(`    ${journalCommand(a)}`);
     }
     out.push(lines.join('\n'));
   }

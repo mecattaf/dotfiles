@@ -647,3 +647,35 @@ describe('Helper unit functions', () => {
     assert.equal(deriveNote({ by: null, reason: null, report: null }), '');
   });
 });
+
+describe('C9.7 the journal command after upkeep removed an instance', () => {
+  it('names the attempt by its InvocationID when the floor recorded one, else by the unit', async () => {
+    const { journalCommand } = await import('../src/lib/history.mjs');
+    assert.equal(journalCommand({ instance: 'sch-master-x-20261112t0000z', invocation: '0123456789abcdef0123456789abcdef' }),
+      'journalctl --user _SYSTEMD_INVOCATION_ID=0123456789abcdef0123456789abcdef');
+    assert.equal(journalCommand({ instance: 'sch-master-x-20261112t0000z', invocation: null }),
+      'journalctl --user -u dshd@sch-master-x-20261112t0000z.service');
+    assert.equal(journalCommand({ instance: 'sch-master-x-20261112t0000z', invocation: 'x; rm -rf ~' }),
+      'journalctl --user -u dshd@sch-master-x-20261112t0000z.service');
+  });
+
+  it('--log on a pruned instance with a recorded InvocationID prints that form and exits 0', async () => {
+    const tmp = makeTestDir();
+    try {
+      const dbPath = join(tmp, 'orchestrator.sqlite');
+      seedDatabase(dbPath);
+      const db = new DatabaseSync(dbPath);
+      db.exec("UPDATE sched_attempts SET invocation = 'fedcba9876543210fedcba9876543210' WHERE occurrence = 'master:fleet-nightly@2026-11-12T00:00:00.000Z'");
+      db.close();
+      const mockDshd = join(tmp, 'mock-dshd-gone.sh');
+      writeFileSync(mockDshd, '#!/bin/sh\nexit 1\n');
+      chmodSync(mockDshd, 0o755);
+      const { ctx, getOut } = makeMockContext(tmp, { dshd: mockDshd });
+      const code = await main(['master:fleet-nightly', '--occurrence', 'master:fleet-nightly@2026-11-12T00:00:00.000Z', '--log'], ctx);
+      assert.equal(code, 0);
+      assert.equal(getOut(), 'instance pruned\njournalctl --user _SYSTEMD_INVOCATION_ID=fedcba9876543210fedcba9876543210\n');
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+});

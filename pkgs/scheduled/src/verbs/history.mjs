@@ -15,6 +15,7 @@ import {
   queryAttempts,
   queryEdits,
   isInstancePruned,
+  journalCommand,
   formatHistoryTable,
   formatAttemptsOutput,
   formatEditsTable,
@@ -304,7 +305,7 @@ export async function main(args, ctx) {
       const pruned = isInstancePruned(ctx, latest.instance);
       if (pruned) {
         ctx.out('instance pruned\n');
-        ctx.out(`journalctl --user -u dshd@${latest.instance}.service\n`);
+        ctx.out(`${journalCommand(latest)}\n`);
         if (shouldClose) db.close();
         return 0;
       }
@@ -316,7 +317,7 @@ export async function main(args, ctx) {
       });
       if (res.error || res.status !== 0) {
         ctx.out('instance pruned\n');
-        ctx.out(`journalctl --user -u dshd@${latest.instance}.service\n`);
+        ctx.out(`${journalCommand(latest)}\n`);
       } else {
         ctx.out(res.stdout);
       }

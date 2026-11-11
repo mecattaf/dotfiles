@@ -253,3 +253,22 @@ test('resolveId: refuses ambiguous bare stem across multiple agencies (exit 1)',
   );
   assert.ok(ctx._err.join('').includes('ambiguous workflow id'));
 });
+
+test('C2.8: ls --json carries discovery problems (an agency named master under ~)', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sched-ls-problems-'));
+  try {
+    fs.chmodSync(root, 0o700);
+    makeTempAgency(root, 'kept', JSON.stringify({ enabled: false, on: { schedule: [{ cron: '0 6 * * 1', timezone: 'Europe/Paris' }] }, job: { prompt: 'x' } }));
+    makeTempAgency(path.join(root, 'master'), 'other', JSON.stringify({ enabled: false, on: { schedule: [{ cron: '0 6 * * 1', timezone: 'Europe/Paris' }] }, job: { prompt: 'x' } }));
+    const ctx = makeCtx({ home: root, systemctl: makeFakeSystemctl(root) });
+    assert.equal(await lsVerb(['--json'], ctx), 0, ctx._err.join(''));
+    const data = JSON.parse(ctx._out.join(''));
+    assert.ok(Array.isArray(data.problems));
+    assert.ok(data.problems.some((p) => p.code === 'agency-name'), JSON.stringify(data.problems));
+    const text = makeCtx({ home: root, systemctl: makeFakeSystemctl(root) });
+    assert.equal(await lsVerb([], text), 0);
+    assert.match(text._out.join(''), /agency-name/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { main as runVerb } from '../src/verbs/run.mjs';
 
 function setup({ floorState = 'stopped' } = {}) {
@@ -78,4 +79,64 @@ test('run refuses an unknown input with exit 1', async () => {
   try {
     assert.equal(await runVerb(['master:nightly', '--input', 'bogus=1'], s.ctx), 1);
   } finally { s.cleanup(); }
+});
+
+// C9.4: --wait polls sched_history_v1 until the occurrence leaves queued, running, deferred and awaiting;
+// --follow runs `dshd read -f <instance>` once the attempt starts.
+function historyDb(stateDir) {
+  fs.mkdirSync(stateDir, { recursive: true });
+  const db = new DatabaseSync(path.join(stateDir, 'orchestrator.sqlite'));
+  db.exec('PRAGMA journal_mode=WAL; CREATE TABLE sched_history_v1 (occurrence TEXT PRIMARY KEY, workflow TEXT, kind TEXT, state TEXT, reason TEXT, attempt INTEGER, instance TEXT, started_at TEXT, ended_at TEXT)');
+  return db;
+}
+
+/** Drive the floor's side of the table from the spool file the run wrote. */
+function floorSteps(s, db, steps) {
+  let i = 0;
+  const timer = setInterval(() => {
+    const incoming = path.join(s.stateDir, 'spool', 'incoming');
+    const files = fs.existsSync(incoming) ? fs.readdirSync(incoming) : [];
+    if (!files.length || i >= steps.length) return;
+    const occ = JSON.parse(fs.readFileSync(path.join(incoming, files[0]), 'utf8')).occurrence;
+    const [state, instance] = steps[i++];
+    db.prepare('INSERT INTO sched_history_v1 (occurrence, workflow, kind, state, attempt, instance) VALUES (?, ?, ?, ?, 1, ?) ON CONFLICT(occurrence) DO UPDATE SET state = excluded.state, instance = excluded.instance')
+      .run(occ, 'master:nightly', 'manual', state, instance);
+  }, 15);
+  return () => clearInterval(timer);
+}
+
+test('C9.4: --wait returns when the occurrence leaves the active states; stdout is the final row alone', async () => {
+  const s = setup({ floorState: 'running' });
+  const db = historyDb(s.stateDir);
+  const stop = floorSteps(s, db, [['queued', null], ['running', 'sch-master-nightly-0900z'], ['awaiting', 'sch-master-nightly-0900z'], ['done', 'sch-master-nightly-0900z']]);
+  try {
+    const code = await runVerb(['master:nightly', '--by', 'probe', '--wait', '--json'], { ...s.ctx, waitPollMs: 10 });
+    assert.equal(code, 0, s.err.join(''));
+    const final = JSON.parse(s.out.join('').trim());
+    assert.equal(final.state, 'done');
+    assert.equal(final.instance, 'sch-master-nightly-0900z');
+    assert.match(final.occurrence, /^master:nightly@manual:/);
+    assert.match(s.err.join(''), /"state":"requested"/);
+  } finally { stop(); db.close(); s.cleanup(); }
+});
+
+test('C9.4: --wait exits 1 when the occurrence ends anything but done', async () => {
+  const s = setup({ floorState: 'running' });
+  const db = historyDb(s.stateDir);
+  const stop = floorSteps(s, db, [['queued', null], ['failed', 'sch-master-nightly-0900z']]);
+  try {
+    assert.equal(await runVerb(['master:nightly', '--wait'], { ...s.ctx, waitPollMs: 10 }), 1);
+    assert.equal(JSON.parse(s.out.join('').trim()).state, 'failed');
+  } finally { stop(); db.close(); s.cleanup(); }
+});
+
+test('C9.4: --follow runs dshd read -f on the instance once the attempt starts', async () => {
+  const s = setup({ floorState: 'running' });
+  const db = historyDb(s.stateDir);
+  const stop = floorSteps(s, db, [['queued', null], ['running', 'sch-master-nightly-0900z']]);
+  try {
+    assert.equal(await runVerb(['master:nightly', '--follow'], { ...s.ctx, waitPollMs: 10 }), 0, s.err.join(''));
+    assert.match(s.calls(), /dshd read -f sch-master-nightly-0900z/);
+    assert.match(s.out.join(''), /"state":"requested"/);
+  } finally { stop(); db.close(); s.cleanup(); }
 });

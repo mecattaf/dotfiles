@@ -29,7 +29,7 @@ schedule tools, systemd timers or crontab for Tom's work.
   read the result, then scheduled set ID enabled true.
 
 ## Run and inspect
-- scheduled run ID [--input k=v] [--wait]. Gates (if) still apply.
+- scheduled run ID [--input k=v] [--wait] [--follow]. Gates (if) still apply. `--wait` prints the final occurrence row and exits 0 only on `done`.
 - scheduled ls; scheduled show ID; scheduled history ID [-n N];
   scheduled history ID --occurrence KEY --log.
 - Edits take effect at the next hourly pass. Say so.

@@ -40,6 +40,9 @@ function buildJsonResult(filePath, problems, value, bytes, promptBytes, workflow
   };
 }
 
+/** A file directly under `<agency>/.agency/workflows/proposed/` is a proposal (DESIGN 4.2 x-proposal). */
+const inProposed = (p) => basename(dirname(p)) === 'proposed' && basename(dirname(dirname(p))) === 'workflows';
+
 export async function main(args, ctx) {
   const paths = [];
   let jsonOutput = false;
@@ -96,7 +99,7 @@ export async function main(args, ctx) {
       return 4;
     }
 
-    const { value, problems } = parseWorkflow(text, { proposal: false });
+    const { value, problems } = parseWorkflow(text, { proposal: inProposed(filePath) });
     // Cron check
     if (value?.on?.schedule?.length) {
       const cronProbs = scheduleProblems(value.on.schedule);
@@ -128,7 +131,7 @@ export async function main(args, ctx) {
     const found = discovered.get(filePath);
     const { problems, value, bytes, promptBytes } = await validateFile(filePath, {
       uid: ctx.uid,
-      proposal: found?.proposal ?? false,
+      proposal: found?.proposal ?? inProposed(filePath),
     });
 
     const workflowId = found?.id ?? basename(filePath, '.jsonc');

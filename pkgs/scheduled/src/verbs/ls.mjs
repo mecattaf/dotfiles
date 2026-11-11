@@ -133,7 +133,7 @@ export async function main(args, ctx) {
   }
 
   // 2. Discover agencies and workflows
-  const { agencies: allAgencies, files: allFiles } = await discover({
+  const { agencies: allAgencies, files: allFiles, problems: discoverProblems = [] } = await discover({
     home: ctx.home,
     uid: ctx.uid,
   });
@@ -200,7 +200,8 @@ export async function main(args, ctx) {
   });
 
   if (jsonOutput) {
-    ctx.out(JSON.stringify({ heartbeat, agencies, workflows }) + '\n');
+    // Discovery's own problems (an agency-name error, a bad stem) are part of the listing (C2.8).
+    ctx.out(JSON.stringify({ heartbeat, agencies, workflows, problems: discoverProblems }) + '\n');
   } else {
     // Text output:
     // Header line
@@ -215,6 +216,9 @@ export async function main(args, ctx) {
       const nextStr = w.next ?? '-';
       const revStr = w.revision ?? '-';
       ctx.out(`${w.id}  ${w.state}  ${nextStr}  ${revStr}\n`);
+    }
+    for (const p of discoverProblems) {
+      ctx.out(`${p.path}: ${p.severity} ${p.code}: ${p.message}\n`);
     }
   }
 

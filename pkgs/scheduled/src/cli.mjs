@@ -24,7 +24,7 @@ USAGE:
   scheduled put ID [--expect REV|none] [--proposal] [--by WHO] < TEXT
   scheduled set ID PATH (VALUE | --unset) [--expect REV] [--by WHO]
   scheduled rm ID [--expect REV] [--by WHO]
-  scheduled run ID [--input K=V]... [--by WHO] [--wait] [--follow]
+  scheduled run ID [--input K=V]... [--by WHO] [--wait] [--follow] [--json]
   scheduled history (ID | --all) [-n N] [--since DUR] [--json]
   scheduled history ID --occurrence KEY [--log] [--json]
   scheduled history ID --edits [--diff] [--json]
@@ -122,6 +122,8 @@ async function main() {
 }
 
 main().catch((err) => {
-  process.stderr.write(`scheduled: unhandled error: ${err.message}\n`);
+  // The tick's journal lines carry a syslog priority (DESIGN 12, C3.12); so does its crash.
+  const prefix = process.argv[2] === 'tick' ? '<3>' : '';
+  process.stderr.write(`${prefix}scheduled: unhandled error: ${err.message}\n`);
   process.exit(1);
 });

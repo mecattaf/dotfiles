@@ -57,7 +57,7 @@ scheduled new ID --cron '0 6 * * *' --tz Europe/Paris --prompt TEXT [--paused]
 scheduled put ID --expect none --by cc < file.jsonc   # new; REV to replace
 scheduled set ID enabled false          # pause (true to arm)
 scheduled rm ID --expect REV --by cc
-scheduled run ID [--input k=v] [--wait]  # manual occurrence; gates still apply
+scheduled run ID [--input k=v] [--wait] [--follow]  # manual occurrence; gates still apply
 scheduled history ID -n 20
 scheduled history ID --occurrence KEY --log
 ```

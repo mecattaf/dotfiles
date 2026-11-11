@@ -3,8 +3,10 @@
 // Spec ref: §10.1 (run ID [--input K=V]... [--by WHO] [--wait] [--follow])
 //           Claim C9.1, Claim C2.9
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
+import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { resolveId } from '../lib/resolve.mjs';
 import { validateFile } from '../lib/validate.mjs';
@@ -14,7 +16,7 @@ import { linkExclusive } from '../lib/atomic.mjs';
 
 function usage(ctx) {
   ctx.err(
-    'Usage: scheduled run ID [--input K=V]... [--by WHO] [--wait] [--follow]\n'
+    'Usage: scheduled run ID [--input K=V]... [--by WHO] [--wait] [--follow] [--json]\n'
   );
 }
 
@@ -35,6 +37,60 @@ function checkFloorRunning(dshdBin) {
       }
     );
   });
+}
+
+/** The states an occurrence is still on its way through (DESIGN 10.1 run --wait). */
+const ACTIVE = new Set(['queued', 'running', 'deferred', 'awaiting']);
+
+/** The occurrence's row in the floor's sched_history_v1, or null while the floor has not taken it in. */
+function readOccurrence(dbPath, occurrence) {
+  if (!existsSync(dbPath)) return null;
+  let db;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    return db.prepare('SELECT occurrence, state, reason, attempt, instance, started_at, ended_at FROM sched_history_v1 WHERE occurrence = ?').get(occurrence) ?? null;
+  } catch {
+    return null; // a busy or half-migrated database: try again at the next poll
+  } finally {
+    try { db?.close(); } catch { /* closed */ }
+  }
+}
+
+/** `dshd read -f <instance>`, with this process's terminal; resolves to its exit code. */
+function followInstance(dshdBin, instance, env) {
+  return new Promise((resolve) => {
+    const child = spawn(dshdBin, ['read', '-f', instance], { stdio: 'inherit', env });
+    child.on('error', () => resolve(1));
+    child.on('close', (code, signal) => resolve(signal ? 1 : (code ?? 1)));
+  });
+}
+
+/**
+ * `--follow`: once the attempt starts, `dshd read -f <instance>`. `--wait`: poll
+ * sched_history_v1 until the occurrence leaves queued, running, deferred and
+ * awaiting, print its final row and exit 0 if it is `done`, else 1.
+ */
+async function awaitOccurrence(ctx, occurrence, { wait, follow }) {
+  const dbPath = join(ctx.stateDir, 'orchestrator.sqlite');
+  const pollMs = ctx.waitPollMs ?? 2000;
+  let followed = !follow;
+  for (;;) {
+    const row = readOccurrence(dbPath, occurrence);
+    if (row && !followed && row.instance) {
+      followed = true;
+      const code = await followInstance(ctx.dshd, row.instance, ctx.env || process.env);
+      if (!wait) return code;
+      continue;
+    }
+    if (row && !ACTIVE.has(row.state)) {
+      ctx.out(JSON.stringify({
+        v: 1, occurrence, state: row.state, reason: row.reason ?? null, attempt: row.attempt ?? null,
+        instance: row.instance ?? null, started_at: row.started_at ?? null, ended_at: row.ended_at ?? null,
+      }) + '\n');
+      return row.state === 'done' ? 0 : 1;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
 }
 
 function kickHeartbeat(systemctlBin) {
@@ -59,15 +115,17 @@ export async function main(args, ctx) {
   let idArg = null;
   let by = ctx?.env?.USER ?? 'tom';
   const rawInputs = {};
+  let wait = false;
+  let follow = false;
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--wait') {
-      ctx.err('scheduled run: --wait is not built yet\n');
-      return 2;
+      wait = true;
     } else if (a === '--follow') {
-      ctx.err('scheduled run: --follow is not built yet\n');
-      return 2;
+      follow = true;
+    } else if (a === '--json') {
+      // The output is JSON already; accepted for the PROVE rows' spelling.
     } else if (a === '--by') {
       if (i + 1 >= args.length) {
         usage(ctx);
@@ -223,8 +281,11 @@ export async function main(args, ctx) {
 
   await linkExclusive(tmpDir, destPath, JSON.stringify(spoolData, null, 2) + '\n');
 
-  // 5. Print confirmation
-  ctx.out(JSON.stringify({ v: 1, occurrence, state: 'requested' }) + '\n');
+  // 5. Print confirmation. With --wait, stdout carries the final row alone (one
+  // JSON object for `jq`), so the confirmation goes to stderr.
+  const requested = JSON.stringify({ v: 1, occurrence, state: 'requested' }) + '\n';
+  if (wait) ctx.err(requested);
+  else ctx.out(requested);
 
   // 6. Check dshd and kick heartbeat if floor is not running
   const isFloorRunning = await checkFloorRunning(ctx.dshd);
@@ -232,5 +293,6 @@ export async function main(args, ctx) {
     await kickHeartbeat(ctx.systemctl);
   }
 
+  if (wait || follow) return awaitOccurrence(ctx, occurrence, { wait, follow });
   return 0;
 }

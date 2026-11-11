@@ -71,6 +71,14 @@ export async function linkExclusive(tmpDir, destPath, data) {
     throw err;
   }
   await unlink(tmp).catch(() => {});
+  // The new name is durable only once its directory is (C3.2): a power cut
+  // after link() could otherwise lose the record the commit then skips.
+  const dirFd = openSync(dirname(destPath), 'r');
+  try {
+    fsyncSync(dirFd);
+  } finally {
+    closeSync(dirFd);
+  }
   return 'created';
 }
 
