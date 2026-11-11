@@ -54,3 +54,17 @@ test('C6.1: next-day-prep is listed as a proposal, the others as workflows of ma
     assert.deepEqual(ids, ['master:fleet-nightly', 'master:floor-upkeep', 'master:journal-day', 'master:next-day-prep (proposal)']);
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
+
+test('validate --all validates every discovered workflow and proposal (DESIGN 10.1)', async () => {
+  const h = home();
+  try {
+    const { main } = await import('../src/verbs/validate.mjs');
+    const out = [];
+    const ctx = { home: h, uid: process.getuid(), env: {}, out: s => out.push(s), err: s => out.push(s) };
+    const code = await main(['--all', '--json'], ctx);
+    assert.equal(code, 0);
+    const { results } = JSON.parse(out.join(''));
+    assert.deepEqual(results.map(r => [r.id ?? r.workflow, r.valid]).sort(),
+      [['master:fleet-nightly', true], ['master:floor-upkeep', true], ['master:journal-day', true], ['master:next-day-prep', true]]);
+  } finally { rmSync(h, { recursive: true, force: true }); }
+});

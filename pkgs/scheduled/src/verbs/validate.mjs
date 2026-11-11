@@ -8,6 +8,7 @@ import { resolve, basename, dirname, join } from 'node:path';
 import { parseWorkflow, formatProblems, revision } from '../lib/schema.mjs';
 import { scheduleProblems } from '../lib/cron.mjs';
 import { validateFile } from '../lib/validate.mjs';
+import { discover } from '../lib/discover.mjs';
 
 function usage(ctx) {
   ctx.err('Usage: scheduled validate (PATH... | --all | --stdin --as PATH) [--json]\n');
@@ -65,9 +66,18 @@ export async function main(args, ctx) {
     }
   }
 
+  // --all: every workflow and proposal discovery finds under the listed agencies (DESIGN 10.1).
+  const discovered = new Map();
   if (allMode) {
-    ctx.out('--all: not built yet (discovery not available)\n');
-    return 2;
+    const { files } = await discover({ home: ctx.home, uid: ctx.uid });
+    for (const file of files) {
+      paths.push(file.path);
+      discovered.set(file.path, file);
+    }
+    if (paths.length === 0) {
+      ctx.out(jsonOutput ? JSON.stringify({ v: 1, results: [] }) + '\n' : 'No workflows found.\n');
+      return 0;
+    }
   }
 
   if (stdinMode) {
@@ -115,12 +125,13 @@ export async function main(args, ctx) {
   let anyError = false;
 
   for (const filePath of paths) {
+    const found = discovered.get(filePath);
     const { problems, value, bytes, promptBytes } = await validateFile(filePath, {
       uid: ctx.uid,
-      proposal: false,
+      proposal: found?.proposal ?? false,
     });
 
-    const workflowId = basename(filePath, '.jsonc');
+    const workflowId = found?.id ?? basename(filePath, '.jsonc');
     const result = buildJsonResult(filePath, problems, value, bytes, promptBytes, workflowId);
     results.push({ filePath, problems, result });
 
