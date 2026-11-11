@@ -21,9 +21,47 @@ import { writeAtomic } from './atomic.mjs';
 import { ensureSpool, handOff, writeCensus, waitingCount } from './spool.mjs';
 import { recordRevision, known } from './ledger.mjs';
 
+/** This boot's id, or null off Linux. */
+async function currentBoot() {
+  try { return (await readFile('/proc/sys/kernel/random/boot_id', 'utf8')).trim() || null; } catch { return null; }
+}
+
+/** A process's start time in clock ticks since boot (field 22 of /proc/PID/stat), or null. */
+export async function processStart(pid) {
+  try {
+    const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
+    return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19] ?? null;
+  } catch { return null; }
+}
+
 /**
- * Acquire an exclusive lock on lockPath using O_EXCL with a PID check
- * and a blocking retry loop.
+ * Whether the lock text `content` names a holder that still runs.
+ * The text is `PID BOOT START` (older locks hold the PID alone). A lock written
+ * in another boot is stale: after a power cut its PID usually belongs to some
+ * other process, so a liveness check alone would wait on it forever (found by
+ * the VM check's power cut). Within a boot, a PID whose start time differs was
+ * reused and is stale too.
+ */
+export async function holderAlive(content, { boot, start = processStart } = {}) {
+  const [pidText, lockBoot, lockStart] = content.trim().split(/\s+/);
+  const pid = parseInt(pidText, 10);
+  if (!pid || Number.isNaN(pid)) return false;
+  if (lockBoot && boot && lockBoot !== boot) return false;
+  try {
+    process.kill(pid, 0);
+  } catch (e) {
+    if (e.code !== 'EPERM') return false;
+  }
+  if (lockStart) {
+    const now = await start(pid);
+    if (now !== null && now !== lockStart) return false;
+  }
+  return true;
+}
+
+/**
+ * Acquire an exclusive lock on lockPath: O_EXCL create holding
+ * `PID BOOT START`, a stale-holder check, and a blocking retry loop.
  *
  * @param {string} lockPath
  * @param {object} [opts]
@@ -31,15 +69,18 @@ import { recordRevision, known } from './ledger.mjs';
  * @param {number} [opts.timeoutMs=60000]
  * @returns {Promise<() => Promise<void>>} Release function
  */
-export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 60000 } = {}) {
+export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 60000, boot: bootOpt } = {}) {
   await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
   const start = Date.now();
+  const boot = bootOpt === undefined ? await currentBoot() : bootOpt;
+  const mine = [process.pid, boot ?? '-', (await processStart(process.pid)) ?? '-'].join(' ');
 
   while (true) {
     try {
       const fh = await open(lockPath, 'wx', 0o600);
       try {
-        await fh.writeFile(`${process.pid}\n`);
+        await fh.writeFile(`${mine}\n`);
+        await fh.sync();
       } finally {
         await fh.close();
       }
@@ -54,24 +95,15 @@ export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 
         throw err;
       }
 
-      // Lock file already exists: check if holder PID is alive
+      // The lock file exists: take it over only from a holder that no longer runs.
       try {
         const content = await readFile(lockPath, 'utf8');
-        const pid = parseInt(content.trim(), 10);
-        if (pid && !Number.isNaN(pid)) {
-          let alive = false;
-          try {
-            process.kill(pid, 0);
-            alive = true;
-          } catch (e) {
-            alive = e.code === 'EPERM';
-          }
-          if (!alive) {
-            // Stale lock from dead process
-            try {
-              await unlink(lockPath);
-              continue;
-            } catch {}
+        const normalized = content.replace(/(^|\s)-(?=\s|$)/g, '$1');
+        if (!(await holderAlive(normalized, { boot }))) {
+          // Unlink only the text we judged, not a lock another tick just took.
+          if ((await readFile(lockPath, 'utf8')) === content) {
+            await unlink(lockPath);
+            continue;
           }
         }
       } catch {}
