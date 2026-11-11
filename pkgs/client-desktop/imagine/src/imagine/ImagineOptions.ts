@@ -9,8 +9,8 @@ import type { ChatWindowOptions } from "./ChatWindow";
 import type { WebBrowserOptions } from "./WebBrowser";
 
 export type ImagineOptions = {
-  /** Fixed white temperature for every output, in kelvin; replaces scheduled night light. */
-  readonly displayTemperature?: number;
+  /** Fixed per-display white temperatures, in kelvin; replaces the scheduled night light. */
+  readonly displayTemperatures?: import("./display-temperatures").DisplayTemperatures;
   readonly applications?: ApplicationsOptions;
   readonly floating?: FloatingOptions;
   readonly keybindings?: ShellKeybindings;

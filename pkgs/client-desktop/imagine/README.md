@@ -2,10 +2,7 @@
 
 Frozen from the Zenbook's running 2026-11-08 production source
 (`/nix/store/10lfkggi8bzf18cy8r8dp1z8vp5fjsgf-imagine`), with client-supplied
-a client-supplied fixed whitepoint through the public Domicile display API.
-The stability rollback uses the original global-only API: 3850 K on every
-connected output, including after docking and undocking. Different temperatures
-per panel require a newer qualified engine.
+per-output temperatures added through the public Domicile display API.
 The separate working Imagine repository remains untouched.
 
 This is a vendored Nix input, not a standalone build checkout. Dotfiles checks

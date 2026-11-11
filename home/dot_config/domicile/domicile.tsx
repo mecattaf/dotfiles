@@ -80,8 +80,6 @@ const keybindings = {
 ownedChords({ keybindings });
 
 const imagineShell = runImagine({
-  // The stable engine supports one whitepoint, restored natively on dock/undock.
-  displayTemperature: 3850,
   ambientChat: { launcher: "agency-chat-ambient-bootstrap" },
   chatWindow: { launcher: "agency-chat-window", bindAltEnter: true },
   sessionCatalogue: { relay: "agency-chat-catalogue", server: "agency-web", terminalLauncher: "agency-chat-terminal" },
@@ -96,10 +94,8 @@ const imagineShell = runImagine({
 
 });
 
-// Fixed whitepoint above replaces the scheduled night light.
 export const Shell = imagineShell;
 export const shell_options = {
-  nightLight: { schedule: "off" },
   brightness: { automatic: false },
   font: "Anthropic Sans",
 };
