@@ -8,7 +8,7 @@ import { createToastManager } from "@domicile-desktop/component-library/Toaster"
 import { BarContext } from "@domicile-desktop/manganese-bar/bar-context";
 import { PanelKeyboardContext } from "@domicile-desktop/manganese-bar/panel-keyboard";
 import { useNightLight } from "@domicile-desktop/manganese-bar-module-brightness/useNightLight";
-import { maintainDisplayTemperatures } from "./display-temperatures";
+import { maintainDisplayTemperature } from "./display-temperatures";
 import { ClockOptionsContext } from "@domicile-desktop/manganese-bar-module-clock/clock-options";
 import { deskIdleInhibitor } from "@domicile-desktop/manganese-bar-module-idle-inhibitor/desk-idle-inhibitor";
 import { deskKeymaps } from "@domicile-desktop/manganese-bar-module-keymap/desk-keymaps";
@@ -90,8 +90,8 @@ const EMPTY: readonly string[] = [];
 const NO_LOCK_BAR = () => null;
 const afterPaint = (then: () => void) => requestAnimationFrame(() => requestAnimationFrame(then));
 
-export const Desktop = ({ applications, floating, keybindings, policy, ambientChat, chatWindow, webBrowser, sessionCatalogue, layoutPersistence, displayTemperatures }: {
-  displayTemperatures?: import("./display-temperatures").DisplayTemperatures;
+export const Desktop = ({ applications, floating, keybindings, policy, ambientChat, chatWindow, webBrowser, sessionCatalogue, layoutPersistence, displayTemperature }: {
+  displayTemperature?: number;
   applications: ApplicationsConfig;
   floating: FloatingRules;
   keybindings: ShellKeybindings;
@@ -202,10 +202,10 @@ export const Desktop = ({ applications, floating, keybindings, policy, ambientCh
   }, []);
   useAutoBrightness(domicile, shellOptions.brightness.automatic);
   useEffect(() => {
-    if (displayTemperatures === undefined) return;
-    return maintainDisplayTemperatures(domicile.displays, displayTemperatures,
+    if (displayTemperature === undefined) return;
+    return maintainDisplayTemperature(domicile.displays, displayTemperature,
       (message) => console.error(message));
-  }, [displayTemperatures, domicile]);
+  }, [displayTemperature, domicile]);
 
   useLayoutEffect(() => applyFont(shellOptions.font), [shellOptions.font]);
   const virtual = useRef<Awaited<ReturnType<typeof domicile.displays.addVirtual>>[]>([]);
@@ -323,7 +323,7 @@ export const Desktop = ({ applications, floating, keybindings, policy, ambientCh
 
   return <WorkspacesContext value={{ current, focused: windows.focused, homes: windows.homes,
     mode: windows.mode, select: (name) => act(WindowAction.WorkspaceSelected(name)) }}>
-    {displayTemperatures === undefined && <ScheduledNightLight options={shellOptions.nightLight} />}
+    {displayTemperature === undefined && <ScheduledNightLight options={shellOptions.nightLight} />}
     <LauncherContext value={{ toggle: () => act(WindowAction.LauncherToggled()) }}>
       <NotificationsContext value={{ handle: notificationsHandle, unread: notifications.unread,
         doNotDisturb: notifications.doNotDisturb }}>
