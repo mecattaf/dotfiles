@@ -163,8 +163,9 @@
     };
 
     # The daily desktop and its SDK use one pinned official upstream release.
-    # Keep upstream's nixpkgs and prebuilt engine together.
-    domicile.url = "github:cprussin/domicile/68d579cdfc139060bddd708b6e87ef31cf290598";
+    # Keep the SDK and prebuilt engine together. This is the pre-November 10
+    # desktop; later builds regress graphics memory (upstream issue #2036).
+    domicile.url = "github:cprussin/domicile/4f209c94d7ff64c40fcdd29b7686edb3bb8c7e71";
     imagine = {
       url = "path:./pkgs/client-desktop/imagine";
       flake = false;
