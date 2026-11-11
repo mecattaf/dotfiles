@@ -62,7 +62,7 @@ def run(argv, log, env=None):
     return result.stdout
 
 
-def check():
+def check(quiet=False):
     directory = xdg("XDG_STATE_HOME", ".local/state") / "domicile-session"
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
@@ -110,7 +110,8 @@ def check():
                                                "Build external packages separately and name a local module.")
                         run([BUILDER, "--entry", str(source), "--cache", scratch], log)
             log.write("PASS: config checked; source shell built or shipped shell present\n")
-            print(f"Domicile config ready: {path}\nCheck log: {receipt}")
+            if not quiet:
+                print(f"Domicile config ready: {path}\nCheck log: {receipt}")
         except (OSError, RuntimeError, ValueError) as error:
             log.write(f"FAIL: {error}\n")
             raise RuntimeError(f"{error}\nCheck log: {receipt}") from error
@@ -170,7 +171,7 @@ def login_check():
             client.close()
             raise RuntimeError(f"A desktop is already listening at {path}. "
                                "Run domicile-recover status; exit that desktop before login.")
-    check()
+    check(quiet=True)
 
 
 def status():

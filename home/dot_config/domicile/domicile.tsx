@@ -80,8 +80,6 @@ const keybindings = {
 ownedChords({ keybindings });
 
 const imagineShell = runImagine({
-  // Duo / DuoDocked panel temperatures, through Domicile's display API.
-  displayTemperatures: { [upperPanel]: 3850, [lowerPanel]: 3350 },
   ambientChat: { launcher: "agency-chat-ambient-bootstrap" },
   chatWindow: { launcher: "agency-chat-window", bindAltEnter: true },
   sessionCatalogue: { relay: "agency-chat-catalogue", server: "agency-web", terminalLauncher: "agency-chat-terminal" },
@@ -96,10 +94,8 @@ const imagineShell = runImagine({
 
 });
 
-// Per-display policy above replaces the global scheduled night light.
 export const Shell = imagineShell;
 export const shell_options = {
-  nightLight: { schedule: "off" },
   brightness: { automatic: false },
   font: "Anthropic Sans",
 };
@@ -149,8 +145,6 @@ export const output = {
   ],
 };
 export const input = {
-  // Keep the quick held-key response in native clients and browser pages.
-  keyboard: { repeat: { delay_ms: 200, rate: 25 } },
   "touchpad": {
     "tap": true,
     "tap_button_map": "lrm",
