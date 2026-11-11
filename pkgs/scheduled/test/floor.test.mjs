@@ -218,7 +218,7 @@ test('C3.10 row 6: interrupted with waiting > 0 gives start and result=already-r
       };
     }
     if (argv[0] === 'start') {
-      return { code: 0, stdout: JSON.stringify({ result: 'already-running' }), stderr: '' };
+      return { code: 0, stdout: JSON.stringify({ outcome: 'already-running' }), stderr: '' };
     }
     throw new Error(`Unexpected argv: ${argv.join(' ')}`);
   };

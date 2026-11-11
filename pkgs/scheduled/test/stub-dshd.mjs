@@ -97,7 +97,7 @@ function main() {
     }
 
     // Default start answer
-    process.stdout.write(JSON.stringify({ result: 'started' }) + '\n');
+    process.stdout.write(JSON.stringify({ outcome: 'started' }) + '\n');
     process.exit(0);
   }
 
@@ -115,7 +115,7 @@ function main() {
     }
 
     // Default update answer
-    process.stdout.write(JSON.stringify({ result: 'updated' }) + '\n');
+    process.stdout.write(JSON.stringify({ outcome: 'updated' }) + '\n');
     process.exit(0);
   }
 

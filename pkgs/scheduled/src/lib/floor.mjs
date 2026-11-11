@@ -152,7 +152,7 @@ export async function wakeFloor({
     let result = 'started';
     try {
       const startData = JSON.parse(startRes.stdout);
-      result = startData.result || (startRes.code === 0 ? 'started' : 'failed');
+      result = startData.outcome || startData.result || (startRes.code === 0 ? 'started' : 'failed');
     } catch {
       result = startRes.code === 0 ? 'started' : 'failed';
     }
@@ -171,7 +171,7 @@ export async function wakeFloor({
       let result = 'started';
       try {
         const startData = JSON.parse(startRes.stdout);
-        result = startData.result || (startRes.code === 0 ? 'started' : 'failed');
+        result = startData.outcome || startData.result || (startRes.code === 0 ? 'started' : 'failed');
       } catch {
         result = startRes.code === 0 ? 'started' : 'failed';
       }
