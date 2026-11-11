@@ -298,3 +298,34 @@ test('Revision ledger: recordRevision stores content-addressed files and appends
     env.cleanup();
   }
 });
+
+test('C3.4 A file whose mtime is hours ahead of the clock (the clock went back after the edit) is parsed, not held as young', async () => {
+  const env = setupTestEnv();
+  try {
+    const workflowPath = join(env.fakeWorkflows, 'ahead.jsonc');
+    fs.writeFileSync(workflowPath, JSON.stringify({
+      name: 'Ahead',
+      enabled: true,
+      on: { schedule: [{ cron: '0 * * * *', timezone: 'UTC' }] },
+      job: { prompt: 'Say ok.' },
+    }));
+    const t0 = new Date('2026-11-12T12:00:00.000Z');
+    const ahead = new Date(t0.getTime() + 6 * 3600_000);
+    fs.utimesSync(workflowPath, ahead, ahead);
+    assert.equal((await tick(env.ctx, { now: t0 })).code, 0);
+    // Three hours later (still before the mtime) the hourly workflow hands off one record.
+    const t1 = new Date('2026-11-12T15:00:30.000Z');
+    assert.equal((await tick(env.ctx, { now: t1 })).code, 0);
+    const incomingDir = join(env.fakeState, 'spool', 'incoming');
+    const census = fs.readdirSync(incomingDir).filter((f) => f.startsWith('census@')).sort();
+    const latest = JSON.parse(fs.readFileSync(join(incomingDir, census.at(-1)), 'utf8'));
+    const entry = latest.workflows.find((w) => w.id === 'master:ahead');
+    assert.equal(entry.enabled, true);
+    assert.ok(!entry.problems.some((p) => p.code === 'young'));
+    const records = fs.readdirSync(incomingDir).filter((f) => !f.startsWith('census@'));
+    assert.equal(records.length, 1);
+    assert.equal(JSON.parse(fs.readFileSync(join(incomingDir, records[0]), 'utf8')).missed, 2);
+  } finally {
+    env.cleanup();
+  }
+});

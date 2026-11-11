@@ -201,7 +201,12 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt } = {}) {
       }
 
       const mtimeMs = Number(st.mtimeMs);
-      const isYoung = (now.getTime() - mtimeMs) < 2000;
+      // Young means written within 2 s of now, either side. A mtime further in
+      // the future was set under a clock that has since gone back (a power cut,
+      // a corrected RTC): the file is not being written now, so it is read, or it
+      // would stay unparsed until the clock caught up (found by the VM check).
+      const age = now.getTime() - mtimeMs;
+      const isYoung = age > -2000 && age < 2000;
 
       if (isYoung) {
         if (prev) {
