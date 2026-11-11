@@ -79,6 +79,7 @@ test('C2.13: scheduled env ID --occurrence KEY --attempt N --json prints all req
   assert.equal(envMap.SCHED_ATTEMPT, '1');
   assert.equal(envMap.SCHED_PREVIOUS_SUCCESS_AT, '');
   assert.ok(path.isAbsolute(envMap.SCHED_FLOOR_CLI));
+  assert.match(envMap.SCHED_FLOOR_CLI, /\/\.dsh\/profiles\/floor\/node_modules\/dsh-superagent\/bin\/floor$/);
 });
 
 test('C2.13: SCHED_NIGHT rule - local date of instant minus 12 hours in workflow timezone', async () => {
@@ -144,18 +145,41 @@ test('C2.13: SCHED_PREVIOUS_SUCCESS_AT reads from orchestrator.sqlite sched_hist
     job: { prompt: 'DB task' },
   }));
 
-  // Create orchestrator.sqlite with sched_history_v1 view
+  // orchestrator.sqlite with the floor's real tables and view: copied from the
+  // fork's src/app/migration.ts migrateTo12 (scheduled/floor bdcc0d0), so the
+  // query meets the columns and state names it will meet on the NAS.
   const dbPath = path.join(tmpState, 'orchestrator.sqlite');
   const db = new DatabaseSync(dbPath);
   db.exec(`
-    CREATE TABLE history_records (
-      workflow TEXT,
-      state TEXT,
-      at TEXT
-    );
-    INSERT INTO history_records VALUES ('master:db-task', 'success', '2026-11-10T06:00:00.000Z');
-    INSERT INTO history_records VALUES ('master:db-task', 'failed', '2026-11-11T06:00:00.000Z');
-    CREATE VIEW sched_history_v1 AS SELECT workflow, state, at FROM history_records;
+    CREATE TABLE sched_occurrences (
+      occurrence TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, kind TEXT NOT NULL, instant TEXT NOT NULL,
+      missed INTEGER NOT NULL DEFAULT 0, deadline TEXT, grp TEXT NOT NULL, state TEXT NOT NULL, reason TEXT,
+      attempt INTEGER NOT NULL DEFAULT 0, reruns INTEGER NOT NULL DEFAULT 0, next_try_at TEXT, by TEXT,
+      inputs TEXT, updated_at TEXT NOT NULL);
+    CREATE TABLE sched_attempts (
+      occurrence TEXT NOT NULL, attempt INTEGER NOT NULL, rerun INTEGER NOT NULL DEFAULT 0, instance TEXT NOT NULL,
+      revision TEXT NOT NULL, invocation TEXT, started_at TEXT NOT NULL, ended_at TEXT, ending TEXT,
+      exit_code INTEGER, report TEXT, PRIMARY KEY (occurrence, attempt, rerun));
+    CREATE VIEW sched_history_v1 AS
+      SELECT o.occurrence, o.workflow_id AS workflow, o.kind,
+             o.instant AS due_at, o.missed, o.state, o.reason, o.attempt,
+             a.instance, a.revision, a.started_at, a.ended_at,
+             substr(a.report, 1, 1500) AS report, o.by, o.updated_at
+      FROM sched_occurrences o
+      LEFT JOIN sched_attempts a ON a.occurrence = o.occurrence
+       AND a.attempt = o.attempt
+       AND a.rerun = (SELECT max(rerun) FROM sched_attempts
+                      WHERE occurrence = o.occurrence AND attempt = o.attempt);
+    INSERT INTO sched_occurrences VALUES ('master:db-task@2026-11-10T06:00:00.000Z', 'master:db-task', 'schedule',
+      '2026-11-10T06:00:00.000Z', 0, NULL, 'master:db-task', 'done', NULL, 1, 0, NULL, NULL, NULL, '2026-11-10T06:20:00.000Z');
+    INSERT INTO sched_attempts VALUES ('master:db-task@2026-11-10T06:00:00.000Z', 1, 0, 'sch-master-db-task-20261110t0600z-a1',
+      'abcdef012345', NULL, '2026-11-10T06:00:05.000Z', '2026-11-10T06:12:00.000Z', 'exited', 0, NULL);
+    INSERT INTO sched_occurrences VALUES ('master:db-task@2026-11-11T06:00:00.000Z', 'master:db-task', 'schedule',
+      '2026-11-11T06:00:00.000Z', 0, NULL, 'master:db-task', 'failed', 'exit', 1, 0, NULL, NULL, NULL, '2026-11-11T06:30:00.000Z');
+    INSERT INTO sched_attempts VALUES ('master:db-task@2026-11-11T06:00:00.000Z', 1, 0, 'sch-master-db-task-20261111t0600z-a1',
+      'abcdef012345', NULL, '2026-11-11T06:00:05.000Z', '2026-11-11T06:25:00.000Z', 'exited', 1, NULL);
+    INSERT INTO sched_occurrences VALUES ('master:other@2026-11-11T07:00:00.000Z', 'master:other', 'schedule',
+      '2026-11-11T07:00:00.000Z', 0, NULL, 'master:other', 'done', NULL, 1, 0, NULL, NULL, NULL, '2026-11-11T07:10:00.000Z');
   `);
   db.close();
 
@@ -174,7 +198,7 @@ test('C2.13: SCHED_PREVIOUS_SUCCESS_AT reads from orchestrator.sqlite sched_hist
 
   assert.equal(code, 0);
   const envMap = JSON.parse(ctx._out.join(''));
-  assert.equal(envMap.SCHED_PREVIOUS_SUCCESS_AT, '2026-11-10T06:00:00.000Z');
+  assert.equal(envMap.SCHED_PREVIOUS_SUCCESS_AT, '2026-11-10T06:12:00.000Z');
 });
 
 test('env: text output prints KEY=VALUE format', async () => {

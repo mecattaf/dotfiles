@@ -6,7 +6,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
 /**
@@ -101,41 +100,13 @@ export function queryPreviousSuccess(stateDir, workflowId) {
     if (!existsSync(dbPath)) return '';
     const db = new DatabaseSync(dbPath, { readOnly: true });
     try {
-      const cols = db
-        .prepare('PRAGMA table_info(sched_history_v1)')
-        .all()
-        .map((c) => c.name);
-
-      const wfCol = cols.includes('workflow')
-        ? 'workflow'
-        : cols.includes('workflow_id')
-        ? 'workflow_id'
-        : cols.includes('id')
-        ? 'id'
-        : null;
-
-      if (!wfCol) return '';
-
-      const stateCol = cols.find((c) =>
-        ['state', 'status', 'outcome', 'result'].includes(c)
-      );
-      const tsCol = cols.find((c) =>
-        ['success_at', 'finished_at', 'completed_at', 'at', 'instant', 'scheduled_at'].includes(c)
-      );
-
-      if (!tsCol) return '';
-
-      let sql = `SELECT ${tsCol} FROM sched_history_v1 WHERE ${wfCol} = ?`;
-      const params = [workflowId];
-      if (stateCol) {
-        sql += ` AND (${stateCol} = 'success' OR ${stateCol} = 'completed' OR ${stateCol} = 'ok')`;
-      }
-      sql += ` ORDER BY ${tsCol} DESC LIMIT 1`;
-
-      const row = db.prepare(sql).get(...params);
-      return row && row[tsCol] !== null && row[tsCol] !== undefined
-        ? String(row[tsCol])
-        : '';
+      // The floor's view (DESIGN 5.4, fork migration to schema 12): a run that
+      // succeeded is state 'done'; it ended at its attempt's ended_at, or at
+      // updated_at when the check held at census and no attempt ran.
+      const row = db.prepare(
+        "SELECT max(coalesce(ended_at, updated_at)) AS at FROM sched_history_v1 WHERE workflow = ? AND state = 'done'"
+      ).get(workflowId);
+      return row && row.at ? String(row.at) : '';
     } finally {
       db.close();
     }
@@ -175,9 +146,11 @@ export function buildSchedEnv(ctx, target, parsedValue, { occurrence, attempt })
 
   const prevSuccess = queryPreviousSuccess(ctx.stateDir, target.id);
 
+  // The fork's `bin/floor` as the floor profile installs it (DESIGN 9.2, 7.6
+  // `floor upkeep`), not this CLI: floor-upkeep runs "$SCHED_FLOOR_CLI" upkeep.
   const floorCli =
-    ctx?.env?.SCHEDULED_CLI ??
-    fileURLToPath(new URL('../cli.mjs', import.meta.url));
+    ctx?.env?.SCHEDULED_FLOOR_CLI ??
+    join(ctx?.home ?? process.env.HOME ?? '/home/tom', '.dsh', 'profiles', 'floor', 'node_modules', 'dsh-superagent', 'bin', 'floor');
 
   return {
     SCHED_WORKFLOW: target.id,
