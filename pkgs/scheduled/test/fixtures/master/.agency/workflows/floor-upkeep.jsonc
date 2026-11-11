@@ -1,0 +1,29 @@
+// ~/.agency/workflows/floor-upkeep.jsonc
+// Retention, garbage collection and an anomaly report for the floor,
+// as an ordinary workflow: no second timer. The pruning itself is the
+// floor's deterministic "upkeep" verb; this run calls it and reads
+// what it found.
+{
+  "name": "Floor upkeep",
+  // Off at install (Tom, 11 Nov: "make sure there are no scheduled work
+  // in the morning"). Arm with: scheduled set <id> enabled true
+  "enabled": false,
+  "on": {
+    "schedule": [
+      { "cron": "0 4 * * *", "timezone": "Europe/Paris" }
+    ],
+    "workflow_dispatch": {}
+  },
+  "window": "20h",
+  "job": {
+    "timeout": "20m",
+    "prompt": [
+      "Run: \"$SCHED_FLOOR_CLI\" upkeep --json. Quote its summary.",
+      "For each anomaly it lists (orphaned or failed units, stuck",
+      "occurrences, rejected spool files, invalid workflows, profile",
+      "drift, degraded decision model), say what most likely caused",
+      "it. Remove, stop or edit nothing yourself: the verb already",
+      "pruned what its rules allow."
+    ]
+  }
+}

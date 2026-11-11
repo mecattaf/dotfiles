@@ -37,7 +37,7 @@ function checkOwnership(path, uid) {
  * @param {object} opts - { uid, proposal }
  * @returns {{ path, problems, value, bytes, promptBytes }}
  */
-export async function validateFile(path, { uid, proposal = false } = {}) {
+export async function validateFile(path, { uid = process.getuid?.(), proposal = false } = {}) {
   const problems = [];
 
   // ── Ownership checks ──────────────────────────────────────────────────────
@@ -56,8 +56,11 @@ export async function validateFile(path, { uid, proposal = false } = {}) {
     return { path, problems, value: null, bytes: null, promptBytes: null };
   }
 
-  // The .agency/ directory (parent of workflows/)
-  const agencyDir = dirname(workflowsDir);
+  // The .agency/ directory (parent of workflows/; a proposal sits one level
+  // deeper, in workflows/proposed/)
+  const agencyDir = basename(workflowsDir) === 'proposed' && basename(dirname(workflowsDir)) === 'workflows'
+    ? dirname(dirname(workflowsDir))
+    : dirname(workflowsDir);
   const agOwnerErr = checkOwnership(agencyDir, uid);
   if (agOwnerErr) {
     problems.push({ severity: 'error', code: 'ownership', line: 0, col: 0, message: agOwnerErr });
