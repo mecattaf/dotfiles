@@ -289,7 +289,9 @@ pkgs.testers.runNixOSTest {
         run("dshd rm --json floor")
         assert tick() == "exit-code"
         assert "floor error=not-found" in journal()
-        assert json.loads(run("dshd ls --json")) in ([], {"instances": []})
+        # dshd prints {"instances": [...], "linger": ..., "warnings": [...]}.
+        listed = json.loads(run("dshd ls --json"))
+        assert listed["instances"] == [], listed
 
     with subtest("P9.2: a run-now storm of 1000, one requester without a bus, proposal refused"):
         # One Node process per request, while ticks run back to back: minutes, not seconds.
