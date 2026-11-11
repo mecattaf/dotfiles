@@ -54,3 +54,13 @@ test('a dead PID is stale; an old PID-only lock still uses the liveness check', 
   assert.equal(await holderAlive(`${process.pid}`, { boot: 'boot-a' }), true);
   assert.equal(await holderAlive('garbage', { boot: 'boot-a' }), false);
 });
+
+test('an empty lock file (a cut between create and write) is stale (second review, Zen #1)', async () => {
+  const d = await dir();
+  const lock = join(d, '.tick.lock');
+  await writeFile(lock, '');
+  const release = await acquireLock(lock, { boot: 'boot-a', timeoutMs: 2000 });
+  assert.match(await readFile(lock, 'utf8'), new RegExp(`^${process.pid} `));
+  await release();
+  await rm(d, { recursive: true });
+});
