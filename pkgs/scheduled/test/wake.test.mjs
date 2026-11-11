@@ -333,8 +333,10 @@ test('C3.11 branch 1: floor running + release outdated + scheduled.evalInProgres
   };
 
   let fetchedUrl = null;
-  const mockFetch = async (url) => {
+  let fetchedHeaders = null;
+  const mockFetch = async (url, init) => {
     fetchedUrl = url;
+    fetchedHeaders = init?.headers ?? null;
     return {
       ok: true,
       json: async () => ({ scheduled: { evalInProgress: false } }),
@@ -348,6 +350,8 @@ test('C3.11 branch 1: floor running + release outdated + scheduled.evalInProgres
   });
 
   assert.equal(fetchedUrl, 'http://127.0.0.1:3082/orchestrator/api/state');
+  // The floor's same-origin guard answers 403 without this header (12 Nov review).
+  assert.deepEqual(fetchedHeaders, { 'x-orchestrator-request': '1' });
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[0], ['get', '--json', 'floor']);
   assert.deepEqual(calls[1], ['update', '-R', '--json', 'floor']);

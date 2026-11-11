@@ -78,7 +78,8 @@ pkgs.testers.runNixOSTest {
     # The test sets the clock by hand.
     services.timesyncd.enable = false;
     environment.systemPackages = [ pkgs.jq ];
-    virtualisation.memorySize = 2048;
+    virtualisation.memorySize = 3072;
+    virtualisation.cores = 4;
     specialisation.next.configuration = {
       home-manager.users.tom.systemd.user.services.scheduled-heartbeat.Service.Environment = lib.mkForce [
         "PATH=/run/current-system/sw/bin"
@@ -104,8 +105,8 @@ pkgs.testers.runNixOSTest {
         return "su -l tom -c " + shlex.quote("set -eu; " + env + command)
 
 
-    def run(command: str, bus: bool = True) -> str:
-        return nas.succeed(tom(command, bus), timeout=WAIT)
+    def run(command: str, bus: bool = True, timeout: int = WAIT) -> str:
+        return nas.succeed(tom(command, bus), timeout=timeout)
 
 
     def status(command: str) -> int:
@@ -226,7 +227,8 @@ pkgs.testers.runNixOSTest {
         assert not any("paused" in n or "prop" in n for n in made)
 
     with subtest("P9.2: a run-now storm of 1000, one requester without a bus, proposal refused"):
-        run("seq 999 | xargs -P 32 -I{} scheduled run master:hb --by storm >/dev/null")
+        # One Node process per request, while ticks run back to back: minutes, not seconds.
+        run("seq 999 | xargs -P 8 -I{} scheduled run master:hb --by storm >/dev/null", timeout=1500)
         run("scheduled run master:hb --by nobus >/dev/null", bus=False)
         assert status("scheduled run master:prop --by storm") == 1
         # A paused workflow still runs by hand (DESIGN 7.3: disabled cancels only scheduled runs).

@@ -210,7 +210,9 @@ export async function wakeFloor({
       let deferredReason = null;
 
       try {
-        const res = await fetcher(url);
+        // The floor's API answers only same-origin requests that carry this header (http.ts sameOrigin);
+        // without it every state read is a 403 and the update rule never passes.
+        const res = await fetcher(url, { headers: { 'x-orchestrator-request': '1' } });
         if (!res.ok) {
           deferredReason = 'api-error';
         } else {
