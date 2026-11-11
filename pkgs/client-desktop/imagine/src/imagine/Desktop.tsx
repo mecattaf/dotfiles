@@ -92,7 +92,6 @@ const afterPaint = (then: () => void) => requestAnimationFrame(() => requestAnim
 
 export const Desktop = ({ applications, floating, keybindings, policy, ambientChat, chatWindow, webBrowser, sessionCatalogue, layoutPersistence, displayTemperatures }: {
   displayTemperatures?: import("./display-temperatures").DisplayTemperatures;
-  displayTemperatures?: import("./display-temperatures").DisplayTemperatures;
   applications: ApplicationsConfig;
   floating: FloatingRules;
   keybindings: ShellKeybindings;

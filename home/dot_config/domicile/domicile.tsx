@@ -81,7 +81,7 @@ ownedChords({ keybindings });
 
 const imagineShell = runImagine({
   // Duo / DuoDocked panel temperatures, through Domicile's display API.
-  displayTemperatures: { [upperPanel]: 3850, [lowerPanel]: 3350 },
+  displayTemperatures: { [upperPanel]: 3850, [lowerPanel]: 3350, [external5k]: 3850 },
   ambientChat: { launcher: "agency-chat-ambient-bootstrap" },
   chatWindow: { launcher: "agency-chat-window", bindAltEnter: true },
   sessionCatalogue: { relay: "agency-chat-catalogue", server: "agency-web", terminalLauncher: "agency-chat-terminal" },
