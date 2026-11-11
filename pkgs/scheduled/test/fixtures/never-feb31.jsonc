@@ -1,0 +1,10 @@
+// expect: never 0:0
+// C2.3: cron "0 0 31 2 *" (Feb 31) never fires
+{
+  "on": {
+    "schedule": [
+      { "cron": "0 0 31 2 *", "timezone": "UTC" }
+    ]
+  },
+  "job": { "prompt": "Test prompt." }
+}

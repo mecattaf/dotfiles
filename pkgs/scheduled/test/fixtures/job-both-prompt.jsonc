@@ -1,0 +1,13 @@
+// expect: job 0:0
+// C2.4: job with both prompt and prompt-file
+{
+  "on": {
+    "schedule": [
+      { "cron": "0 6 * * 1", "timezone": "UTC" }
+    ]
+  },
+  "job": {
+    "prompt": "Direct prompt text.",
+    "prompt-file": "prompts/my-prompt.txt"
+  }
+}
