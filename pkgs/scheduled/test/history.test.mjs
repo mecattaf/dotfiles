@@ -516,11 +516,11 @@ describe('scheduled history ID --edits', () => {
     assert.equal(data[1].revision, '1a2b3c4d5e6f');
   });
 
-  it('--diff exits 2 with not built yet message', async () => {
+  it('--diff needs two stored revisions and exits 1 with fewer (test/edits.test.mjs covers the diff)', async () => {
     const { ctx, getErr } = makeMockContext(tmp);
     const code = await main(['master:fleet-nightly', '--edits', '--diff'], ctx);
-    assert.equal(code, 2);
-    assert.match(getErr(), /history --diff is not built yet/);
+    assert.equal(code, 1);
+    assert.match(getErr(), /--diff needs two/);
   });
 });
 

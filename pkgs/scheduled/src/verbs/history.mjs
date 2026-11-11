@@ -6,7 +6,7 @@
 //           DESIGN b.11 (History and inspection)
 
 import { join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import {
   openHistoryDb,
@@ -202,10 +202,6 @@ export async function main(args, ctx) {
     return 2;
   }
 
-  if (parsed.diff) {
-    ctx.err('scheduled: history --diff is not built yet\n');
-    return 2;
-  }
 
   // Validate --since format before touching the database
   let sinceMs = null;
@@ -230,6 +226,24 @@ export async function main(args, ctx) {
     } catch (err) {
       ctx.err(`scheduled: state directory unreadable: ${err.message}\n`);
       return 4;
+    }
+    if (parsed.diff) {
+      // The last two stored revisions of the workflow, older first (blobs under revisions/).
+      const stored = edits.filter((e) => typeof e.file === 'string' && e.file && !e.removed);
+      if (stored.length < 2) {
+        ctx.err(`scheduled: ${parsed.id} has ${stored.length} stored revision(s); --diff needs two\n`);
+        return 1;
+      }
+      const [newer, older] = stored;
+      const read = (e) => readFileSync(join(stateDir, 'revisions', `${e.file}.jsonc`), 'utf8');
+      let a, b;
+      try { a = read(older); b = read(newer); } catch (err) {
+        ctx.err(`scheduled: revision blob unreadable: ${err.message}\n`);
+        return 4;
+      }
+      ctx.out(unifiedDiff(a, b, `${parsed.id}@${older.revision} (${older.seen_at}, ${older.by})`,
+        `${parsed.id}@${newer.revision} (${newer.seen_at}, ${newer.by})`));
+      return 0;
     }
     if (parsed.json) {
       ctx.out(JSON.stringify(edits, null, 2) + '\n');
@@ -345,4 +359,27 @@ export async function main(args, ctx) {
 
   if (shouldClose) db.close();
   return 0;
+}
+
+/**
+ * A unified diff with whole-file context (workflow files are at most 64 KiB):
+ * `---`/`+++` headers, then every line prefixed ' ', '-' or '+', from an LCS.
+ */
+export function unifiedDiff(a, b, labelA, labelB) {
+  const x = a.split('\n'), y = b.split('\n');
+  if (x.at(-1) === '') x.pop();
+  if (y.at(-1) === '') y.pop();
+  const n = x.length, m = y.length;
+  const lcs = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+    lcs[i][j] = x[i] === y[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+  }
+  const out = [`--- ${labelA}`, `+++ ${labelB}`, `@@ -1,${n} +1,${m} @@`];
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && x[i] === y[j]) { out.push(` ${x[i]}`); i++; j++; }
+    else if (i < n && (j >= m || lcs[i + 1][j] >= lcs[i][j + 1])) { out.push(`-${x[i]}`); i++; }
+    else { out.push(`+${y[j]}`); j++; }
+  }
+  return out.join('\n') + '\n';
 }

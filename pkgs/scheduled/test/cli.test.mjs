@@ -72,12 +72,14 @@ describe('no verb', () => {
 // verb not built yet
 // ---------------------------------------------------------------------------
 
-describe('not-built verb', () => {
-  // `dismiss` is in the verb table but its module file does not exist in this task.
-  // The CLI must catch ERR_MODULE_NOT_FOUND and print the right message.
-  it('prints "scheduled: <verb> is not built yet" and exits 2', () => {
-    const r = run('dismiss');
-    assert.equal(r.status, 2);
-    assert.match(r.stderr, /scheduled: dismiss is not built yet/);
+describe('verb table', () => {
+  // Every slice-1 verb is built (11 Nov): each entry of the table has its module, so the CLI's
+  // "not built yet" path (ERR_MODULE_NOT_FOUND) is unreachable for the shipped verbs.
+  it('has a module for every verb', async () => {
+    const { readdirSync } = await import('node:fs');
+    const built = new Set(readdirSync(new URL('../src/verbs/', import.meta.url)).map((f) => f.replace(/\.mjs$/, '')));
+    for (const verb of ['ls', 'show', 'validate', 'new', 'put', 'set', 'rm', 'run', 'history', 'accept', 'dismiss', 'schema', 'env', 'gate', 'check', 'tick']) {
+      assert.ok(built.has(verb), verb);
+    }
   });
 });
