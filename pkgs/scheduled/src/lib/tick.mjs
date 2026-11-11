@@ -9,7 +9,7 @@
 import { join, dirname } from 'node:path';
 import path from 'node:path';
 import { statSync } from 'node:fs';
-import { readFile, open, unlink, mkdir } from 'node:fs/promises';
+import { readFile, open, unlink, mkdir, link } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { discover } from './discover.mjs';
@@ -69,29 +69,41 @@ export async function holderAlive(content, { boot, start = processStart } = {}) 
  * @param {number} [opts.timeoutMs=60000]
  * @returns {Promise<() => Promise<void>>} Release function
  */
-export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 60000, boot: bootOpt } = {}) {
+export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 300000, boot: bootOpt } = {}) {
   await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
   const start = Date.now();
   const boot = bootOpt === undefined ? await currentBoot() : bootOpt;
   const mine = [process.pid, boot ?? '-', (await processStart(process.pid)) ?? '-'].join(' ');
 
+  // The lock is created complete: its text is written and fsynced under a
+  // private name, then link()ed into place, which fails with EEXIST while
+  // another holder has it. So a lock file is never seen empty half-written
+  // (evaluation review, C3.7), and an empty one can only be damage.
+  const tmp = `${lockPath}.${process.pid}.tmp`;
+  {
+    const fh = await open(tmp, 'w', 0o600);
+    try {
+      await fh.writeFile(`${mine}\n`);
+      await fh.sync();
+    } finally {
+      await fh.close();
+    }
+  }
+
   while (true) {
     try {
-      const fh = await open(lockPath, 'wx', 0o600);
-      try {
-        await fh.writeFile(`${mine}\n`);
-        await fh.sync();
-      } finally {
-        await fh.close();
-      }
+      await link(tmp, lockPath);
+      try { await unlink(tmp); } catch {}
 
       return async function releaseLock() {
+        // Remove only our own lock, never one a later tick holds.
         try {
-          await unlink(lockPath);
+          if ((await readFile(lockPath, 'utf8')).trim() === mine) await unlink(lockPath);
         } catch {}
       };
     } catch (err) {
       if (err.code !== 'EEXIST') {
+        try { await unlink(tmp); } catch {}
         throw err;
       }
 
@@ -109,6 +121,7 @@ export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 
       } catch {}
 
       if (timeoutMs && Date.now() - start > timeoutMs) {
+        try { await unlink(tmp); } catch {}
         throw new Error(`Timed out waiting for lock on ${lockPath}`);
       }
 
@@ -249,12 +262,15 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt } = {}) {
         } else {
           const youngProb = { severity: 'warning', code: 'young', line: 0, col: 0, message: 'File is younger than 2s; previous parse used' };
           const problems = [youngProb];
+          // No stat is cached for a file never parsed: the next pass must parse it,
+          // or the unchanged-stat reuse below would keep this placeholder (invalid,
+          // unscheduled) until the file changed (evaluation review, C3.4).
           currentFiles[filePath] = {
             id: f.id,
-            dev: String(st.dev),
-            ino: String(st.ino),
-            size: Number(st.size),
-            mtimeNs: String(st.mtimeNs),
+            dev: null,
+            ino: null,
+            size: null,
+            mtimeNs: null,
             revision: null,
             problems,
             firstSeen: now.toISOString(),

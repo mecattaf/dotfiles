@@ -64,3 +64,25 @@ test('an empty lock file (a cut between create and write) is stale (second revie
   await release();
   await rm(d, { recursive: true });
 });
+
+test('release leaves a lock that is no longer ours (a later holder took it over)', async () => {
+  const d = await dir();
+  const lock = join(d, '.tick.lock');
+  const release = await acquireLock(lock, { boot: 'boot-a' });
+  await writeFile(lock, '1 boot-a 1\n');
+  await release();
+  assert.equal(await readFile(lock, 'utf8'), '1 boot-a 1\n');
+  await rm(d, { recursive: true });
+});
+
+test('the lock is linked in complete: no temp file is left, and the lock text is never empty', async () => {
+  const d = await dir();
+  const lock = join(d, '.tick.lock');
+  const release = await acquireLock(lock, { boot: 'boot-a' });
+  assert.notEqual((await readFile(lock, 'utf8')).trim(), '');
+  const { readdirSync } = await import('node:fs');
+  assert.deepEqual(readdirSync(d), ['.tick.lock']);
+  await release();
+  assert.deepEqual(readdirSync(d), []);
+  await rm(d, { recursive: true });
+});

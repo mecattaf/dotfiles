@@ -329,3 +329,36 @@ test('C3.4 A file whose mtime is hours ahead of the clock (the clock went back a
     env.cleanup();
   }
 });
+
+test('C3.4 A file first seen while younger than 2 s is parsed at the next pass, not kept as a placeholder (evaluation review)', async () => {
+  const env = setupTestEnv();
+  try {
+    const workflowPath = join(env.fakeWorkflows, 'fresh.jsonc');
+    fs.writeFileSync(workflowPath, JSON.stringify({
+      name: 'Fresh',
+      enabled: true,
+      on: { schedule: [{ cron: '0 * * * *', timezone: 'UTC' }] },
+      job: { prompt: 'Say ok.' },
+    }));
+    const t0 = new Date('2026-11-12T12:00:00.500Z');
+    fs.utimesSync(workflowPath, new Date('2026-11-12T12:00:00.000Z'), new Date('2026-11-12T12:00:00.000Z'));
+    assert.equal((await tick(env.ctx, { now: t0 })).code, 0);
+    const incomingDir = join(env.fakeState, 'spool', 'incoming');
+    const censusAt = () => {
+      const names = fs.readdirSync(incomingDir).filter((f) => f.startsWith('census@')).sort();
+      return JSON.parse(fs.readFileSync(join(incomingDir, names.at(-1)), 'utf8')).workflows.find((w) => w.id === 'master:fresh');
+    };
+    assert.ok(censusAt().problems.some((p) => p.code === 'young'));
+    // Same file, untouched, at the next pass: parsed, valid, enabled, with a revision.
+    assert.equal((await tick(env.ctx, { now: new Date('2026-11-12T12:30:00.000Z') })).code, 0);
+    const entry = censusAt();
+    assert.equal(entry.state, 'valid');
+    assert.equal(entry.enabled, true);
+    assert.match(entry.revision, /^[0-9a-f]{12}$/);
+    // And it is armed: the next hour mark hands off one record.
+    assert.equal((await tick(env.ctx, { now: new Date('2026-11-12T13:00:30.000Z') })).code, 0);
+    assert.equal(fs.readdirSync(incomingDir).filter((f) => !f.startsWith('census@')).length, 1);
+  } finally {
+    env.cleanup();
+  }
+});
