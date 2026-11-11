@@ -241,7 +241,17 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt } = {}) {
       let st = null;
       try {
         st = statSync(filePath, { bigint: true });
-      } catch {
+      } catch (err) {
+        // Gone since discovery: it is absent from this census. Any other error
+        // (EACCES, EIO, a busy mount) is not a removal: carry the previous
+        // parse, or the floor would read the workflow removed and cancel its
+        // waiting occurrences (Zen second opinion #2).
+        if (err?.code !== 'ENOENT' && prev) {
+          const statProb = { severity: 'warning', code: 'stat', line: 0, col: 0, message: `stat failed (${err?.code ?? 'error'}); previous parse used` };
+          const problems = [statProb, ...(prev.problems || []).filter((p) => p.code !== 'stat')];
+          currentFiles[filePath] = { ...prev, id: f.id };
+          workflows.push({ id: f.id, ...prev, file: f, path: filePath, problems, isYoung: true });
+        }
         continue;
       }
 

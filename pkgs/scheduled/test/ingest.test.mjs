@@ -362,3 +362,40 @@ test('C3.4 A file first seen while younger than 2 s is parsed at the next pass, 
     env.cleanup();
   }
 });
+
+test('C3.8 A stat error other than ENOENT keeps the workflow in the census with its previous parse (Zen #2)', async () => {
+  const env = setupTestEnv();
+  try {
+    const workflowPath = join(env.fakeWorkflows, 'kept.jsonc');
+    fs.writeFileSync(workflowPath, JSON.stringify({
+      name: 'Kept',
+      enabled: true,
+      on: { schedule: [{ cron: '0 * * * *', timezone: 'UTC' }] },
+      job: { prompt: 'Say ok.' },
+    }));
+    const old = new Date('2026-11-12T11:00:00.000Z');
+    fs.utimesSync(workflowPath, old, old);
+    assert.equal((await tick(env.ctx, { now: new Date('2026-11-12T12:00:30.000Z') })).code, 0);
+    const incomingDir = join(env.fakeState, 'spool', 'incoming');
+    const entryAt = () => {
+      const names = fs.readdirSync(incomingDir).filter((f) => f.startsWith('census@')).sort();
+      return JSON.parse(fs.readFileSync(join(incomingDir, names.at(-1)), 'utf8')).workflows.find((w) => w.id === 'master:kept');
+    };
+    assert.equal(entryAt().state, 'valid');
+    // The directory loses its search bit: names still list, stat fails with EACCES.
+    fs.chmodSync(env.fakeWorkflows, 0o600);
+    let code;
+    try {
+      code = (await tick(env.ctx, { now: new Date('2026-11-12T13:00:30.000Z') })).code;
+    } finally {
+      fs.chmodSync(env.fakeWorkflows, 0o700);
+    }
+    assert.equal(code, 0);
+    const entry = entryAt();
+    assert.ok(entry, 'the workflow is still in the census');
+    assert.equal(entry.enabled, true);
+    assert.ok(entry.problems.some((p) => p.code === 'stat' && p.severity === 'warning'));
+  } finally {
+    env.cleanup();
+  }
+});
