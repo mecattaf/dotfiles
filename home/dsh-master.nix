@@ -83,9 +83,10 @@ in
       type = types.strMatching "floor-v2\\.[0-9]+";
       # The one value a release moves: both forks cut floor-v2.<n> tags whose
       # tarballs hold the built lib/. floor-v2.1 was the first release;
-      # floor-v2.2 adds the executor's long-run Session read. Move this with
-      # each new tag.
-      default = "floor-v2.2";
+      # floor-v2.2 adds the executor's long-run Session read; floor-v2.3
+      # registers the superagent's tool parameters as plain JSON, which the
+      # Claude bridge needs. Move this with each new tag.
+      default = "floor-v2.3";
       description = "Release tag both plugin pins name, unless `superagent` or `claude` is set.";
     };
     superagent = mkOption {
