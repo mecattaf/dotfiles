@@ -1,4 +1,4 @@
-// The write verbs new, set and rm (claims C2.9-C2.11). Temporary homes only.
+// The write verbs new, set and rm (rows C2.9-C2.11 below; docs/scheduled.md, Everyday commands). Temporary homes only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';

@@ -30,7 +30,7 @@ function cleanupTempDir(dir) {
 /**
  * Set up a test agency structure
  * @param {string} home - home directory
- * @param {string} agencyId - agency ID (e.g., 'master', 'crm')
+ * @param {string} agencyId - agency ID (e.g., 'master', 'widgets')
  * @param {boolean} useSymlink - whether to symlink workflows directory
  * @param {boolean} createErrors - whether to create ownership errors
  */

@@ -1,4 +1,4 @@
-# Scheduled in a NixOS VM (AGENTS.md D52; scheduled-jsonc §8).
+# Scheduled in a NixOS VM (AGENTS.md D52; docs/scheduled.md).
 #
 # One VM `nas`: the dshd module from the dshd input with the upstream stub
 # dsh (checks/stub-dsh.nix, DSH_STUB_MODE), a lingering uid-1000 user tom,

@@ -1,4 +1,4 @@
-// scheduled run ID [--home DIR] [--inbox DIR] [--floor-instance NAME] [--json] (scheduled-jsonc §5)
+// scheduled run ID [--home DIR] [--inbox DIR] [--floor-instance NAME] [--json] (docs/scheduled.md, Everyday commands)
 //
 // Run now: validates the item (enabled or not), links one `manual` occurrence record into the inbox, then
 // applies the wake table with that record waiting. No database, no waiting for the work: the floor's

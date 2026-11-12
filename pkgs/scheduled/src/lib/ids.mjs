@@ -1,7 +1,6 @@
 // ids.mjs — agency/item identity and inbox record names.
 //
-// Spec ref: agency ids, item ids
-//           scheduled-jsonc §3 (record file names)
+// Covers: agency ids, item ids, and record file names (docs/scheduled.md, A tick)
 
 import { randomBytes } from 'node:crypto';
 import { relative } from 'node:path';
@@ -26,7 +25,7 @@ export const STEM_RE = /^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/;
  *
  * - If `root` resolves to `home`, return `'master'`.
  * - Otherwise return the POSIX-style path relative to `home`
- *   (e.g. `'mecattaf/crm'`).
+ *   (e.g. `'work/widgets'`).
  *
  * @param {string} root  absolute path to the agency root directory
  * @param {string} home  absolute path to $HOME

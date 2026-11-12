@@ -61,7 +61,7 @@ describe('agencyId', () => {
     assert.equal(agencyId('/home/tom', '/home/tom'), 'master');
   });
   it('returns relative path for sub-agency', () => {
-    assert.equal(agencyId('/home/tom/mecattaf/crm', '/home/tom'), 'mecattaf/crm');
+    assert.equal(agencyId('/home/me/work/widgets', '/home/me'), 'work/widgets');
   });
   it('returns single-segment relative path', () => {
     assert.equal(agencyId('/home/tom/work', '/home/tom'), 'work');
@@ -80,8 +80,8 @@ describe('parseId', () => {
     });
   });
   it('splits sub-agency id correctly', () => {
-    assert.deepEqual(parseId('mecattaf/crm:sync-contacts'), {
-      agency: 'mecattaf/crm',
+    assert.deepEqual(parseId('work/widgets:sync-contacts'), {
+      agency: 'work/widgets',
       stem: 'sync-contacts',
     });
   });
