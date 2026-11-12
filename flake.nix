@@ -680,11 +680,11 @@
               touch "$out"
             '';
 
-        # #734: greetd's default_session restarts Domicile behind a loop guard.
-        # Runs the client's exact guard binary with stub session and rescue.
+        # #734: the client's exact greetd guard binary, with stub session and
+        # rescue. initial_session starts Domicile; default_session hands back.
         domicile-greetd-guard =
           let
-            words = nixpkgs.lib.splitString " " self.nixosConfigurations.client.config.services.greetd.settings.default_session.command;
+            words = nixpkgs.lib.splitString " " self.nixosConfigurations.client.config.services.greetd.settings.initial_session.command;
           in
           pkgs.runCommand "domicile-greetd-guard" { } ''
             guard=${builtins.head words}
@@ -692,17 +692,30 @@
             printf '#!/bin/sh\necho session\n' > s; printf '#!/bin/sh\necho rescue "$@"\n' > r
             chmod +x s r
             run() { "$guard" ./s ./r -l 2>/dev/null; }
-            [ "$(run)" = session ]; [ "$(run)" = session ]; [ "$(run)" = session ]
+            hand() { "$guard" --handoff ./r -l 2>/dev/null; }
+            # Under the limit, handoff starts nothing, exits 0 and counts nothing.
+            [ -z "$(hand)" ]; hand; [ ! -e "$XDG_STATE_HOME/domicile/greetd-starts" ]
+            [ "$(run)" = session ]; [ -z "$(hand)" ]; [ "$(run)" = session ]
+            [ "$(run)" = session ]
             [ "$(run)" = "rescue -l" ]; [ "$(run)" = "rescue -l" ]
+            [ "$(hand)" = "rescue -l" ]
             # Starts older than the window, or from another boot, do not count.
             sed -i 's/ [0-9]*$/ 1/' "$XDG_STATE_HOME/domicile/greetd-starts"
-            [ "$(run)" = session ]
+            [ -z "$(hand)" ]; [ "$(run)" = session ]
             sed -i 's/^[^ ]* / otherboot /' "$XDG_STATE_HOME/domicile/greetd-starts"
             [ "$(run)" = session ]; [ "$(run)" = session ]
             [ "$(run)" = session ]; [ "$(run)" = "rescue -l" ]
             if "$guard" ./s 2>/dev/null; then exit 1; fi
+            if "$guard" --handoff 2>/dev/null; then exit 1; fi
             touch "$out"
           '';
+
+        # #734: Domicile's session is user class after boot, a greetd restart
+        # and a desktop exit, with the client's greetd values (VM test).
+        greetd-user-class = import ./tests/greetd-user-class {
+          inherit pkgs;
+          client = self.nixosConfigurations.client.config;
+        };
 
         fleet-agent-transport = import ./tests/fleet-agent-transport {
           inherit pkgs self;
@@ -1373,25 +1386,46 @@
             ) (hm.home.packages ++ c.environment.systemPackages))
             && (
               !c.myDisplay.enable
-              || nixpkgs.lib.hasSuffix "/bin/domicile-physical-session" c.services.greetd.settings.initial_session.command
+              || nixpkgs.lib.hasInfix "/bin/domicile-physical-session" c.services.greetd.settings.initial_session.command
             )
           ) displayHosts;
           assert (cfgOf "client").myDisplay.enable;
           assert (cfgOf "client").systemd.services.greetd.restartIfChanged == false;
-          # #734: after a greetd restart or a desktop exit, default_session
-          # starts Domicile through the loop guard (a bare shell fails here),
-          # with Tom's login shell as its fallback and VT2-6 getty kept.
+          # #734: Domicile runs in a user-class logind session after boot, a
+          # greetd restart and a desktop exit. Every greetd start runs
+          # initial_session (user class): the runfile sits in greetd's
+          # RuntimeDirectory, removed when greetd stops. initial_session starts
+          # Domicile through the loop guard with Tom's login shell as fallback.
+          # default_session (greeter class) only hands back: the guard exits,
+          # greetd exits 0 and Restart=on-success starts it again. A bare-shell
+          # or Domicile-starting default_session fails here. VT2-6 getty stays.
           assert
             let
-              ds = (cfgOf "client").services.greetd.settings.default_session;
-              words = nixpkgs.lib.splitString " " ds.command;
+              g = (cfgOf "client").services.greetd;
+              svc = (cfgOf "client").systemd.services.greetd.serviceConfig;
+              is = g.settings.initial_session;
+              ds = g.settings.default_session;
+              iw = nixpkgs.lib.splitString " " is.command;
+              dw = nixpkgs.lib.splitString " " ds.command;
             in
-            ds.user == "tom"
-            && builtins.length words == 4
-            && nixpkgs.lib.hasSuffix "/bin/domicile-greetd-guard" (builtins.elemAt words 0)
-            && nixpkgs.lib.hasSuffix "/bin/domicile-physical-session" (builtins.elemAt words 1)
-            && nixpkgs.lib.hasSuffix "/bin/bash" (builtins.elemAt words 2)
-            && builtins.elemAt words 3 == "-l";
+            g.settings.general.runfile == "/run/greetd/${svc.RuntimeDirectory}.run"
+            && svc.RuntimeDirectory == "greetd"
+            && !(svc ? RuntimeDirectoryPreserve)
+            && svc.Restart == "on-success"
+            && is.user == "tom"
+            && builtins.length iw == 4
+            && nixpkgs.lib.hasSuffix "/bin/domicile-greetd-guard" (builtins.elemAt iw 0)
+            && nixpkgs.lib.hasSuffix "/bin/domicile-physical-session" (builtins.elemAt iw 1)
+            && nixpkgs.lib.hasSuffix "/bin/bash" (builtins.elemAt iw 2)
+            && builtins.elemAt iw 3 == "-l"
+            && ds.user == "tom"
+            &&
+              dw == [
+                (builtins.elemAt iw 0)
+                "--handoff"
+                (builtins.elemAt iw 2)
+                "-l"
+              ];
           assert (cfgOf "client").services.getty.autologinUser == "tom";
           assert clientHome.xdg.configFile ? "domicile/domicile.tsx";
           assert clientHome.xdg.configFile ? "domicile/imagine";
