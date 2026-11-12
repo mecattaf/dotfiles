@@ -318,6 +318,11 @@ the current revision (the 12 hex `ls` and `show` print). A conflict exits
 occurrences. It does not wait for the work. The superagent's own record
 (its Thread and Ticket) is where the work is followed.
 
+`run` and `history` take the inbox from `SCHEDULED_INBOX`, and `run` takes
+the floor from `SCHEDULED_FLOOR_INSTANCE`. The installed command defaults
+both; set them, or pass `--inbox DIR --floor-instance NAME` to `run`, to
+override.
+
 Exit codes: 0 ok, 1 refused or a fault, 2 usage, 3 revision conflict.
 
 ## The skill
