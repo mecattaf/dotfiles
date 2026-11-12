@@ -36,7 +36,7 @@ def main(spec_path, out):
     with open(spec_path, encoding="utf-8") as stream:
         spec = json.load(stream)
     manifest = {"profiles": {}}
-    for key in ("dsh", "url"):
+    for key in ("dsh", "url", "dshd"):
         if key in spec:
             manifest[key] = spec[key]
     for name, profile in sorted(spec["profiles"].items()):

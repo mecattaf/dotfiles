@@ -342,6 +342,7 @@ let
       dsh = settings.dshCommand;
       # The floor's web server, the default of `dsh-master settings seed`.
       url = "http://127.0.0.1:${toString settings.webPort}";
+      dshd = settings.dshdCommand;
       profiles = lib.mapAttrs (name: profile: {
         package = packageOf name dependencies (bundles profile.app);
         patch = patchFile name profile.rows;

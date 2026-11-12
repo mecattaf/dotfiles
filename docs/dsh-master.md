@@ -105,7 +105,10 @@ the fork's interpreter pulls in msgpackr's optional native build. A build
 approval made in DSH's plugin manager is replaced at the next render, with the
 "changed outside dsh-master" line: a build decision belongs in that option.
 A failed render does not fail the switch, so check `dsh-master status`
-after one. The other steps are by hand:
+after one; it adds `builds pending: <names>` for a build DSH's plugin
+manager recorded as undecided. Until `install` has recorded the folder's
+current `package.json`, every render prints `install needed: <p>`.
+The other steps are by hand:
 
 ```sh
 dsh-master render            # what activation does, with a line per file
@@ -121,18 +124,23 @@ run another dsh than the one dshd runs.
 
 `install` runs `/etc/dshd/releases/default/bin/dsh plugin --profile <p>
 install` under a 600 s timeout, with pnpm and git on PATH, and then judges
-the folder, not the exit: `package.json` unchanged, a lockfile, and a built
-`lib/` for each dependency. Without the folder's `pnpm-workspace.yaml` pnpm
-would pull the plugins' DSH peers from the registry, so install refuses a
-folder whose three files are not the rendered ones.
-The fleet wrapper refuses `dsh plugin`. After a pin moves (`tag`,
-`superagent`, `claude`), render prints `install needed: <p>`. Stop the
-floor before installing into `master` (`dshd stop floor`, install, `dshd
-start floor`); a worker folder is read when each unit boots, so install it
-while none of its units runs.
-Until every folder is installed at its rendered pins, `dsh-master status`
-exits 1; it also lists `master*` folders no build renders (a removed pair)
-as orphans, which fail nothing.
+the folder, not the exit: `package.json` unchanged, a lockfile whose
+specifier for each dependency is the one in `package.json`, and a built
+`lib/` for each dependency. An earlier install's lockfile and `lib/` do not
+count, and a dsh that never ran (exit 125 to 127) fails whatever the folder
+holds. Without the folder's `pnpm-workspace.yaml` pnpm would pull the
+plugins' DSH peers from the registry, so install refuses a folder whose
+three files are not the rendered ones. The fleet wrapper refuses `dsh
+plugin`. Stop the floor before installing into `master` (`dshd stop floor`,
+install, `dshd start floor`); a worker folder is read when each unit boots,
+so install it while none of its units runs. install checks this: it asks
+`dshd ls` and `dshd get` and refuses a profile that a running instance of
+this DSH_HOME uses, unless `--force`.
+After a pin moves (`tag`, `superagent`, `claude`), render prints `install
+needed: <p>` until that folder is installed. Until every folder is
+installed at its rendered pins, `dsh-master status` exits 1; it also lists
+`master*` folders no build renders (a removed pair) as orphans, which fail
+nothing.
 
 `settings seed` reads the floor's Store settings through its management API,
 upserts the rules and admission cells of `home/dsh-master/settings.seed.json`
