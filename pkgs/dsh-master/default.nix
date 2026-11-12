@@ -321,6 +321,8 @@ let
   spec = writeText "dsh-master-spec.json" (
     builtins.toJSON {
       dsh = settings.dshCommand;
+      # The floor's web server, the default of `dsh-master settings seed`.
+      url = "http://127.0.0.1:${toString settings.webPort}";
       profiles = lib.mapAttrs (name: profile: {
         package = packageOf name dependencies (bundles profile.app);
         patch = patchFile name profile.rows;
