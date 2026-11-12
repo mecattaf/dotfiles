@@ -8,11 +8,11 @@
 
 The rendered folders come from the package (pkgs/dsh-master/default.nix) or
 from --from DIR, a `nix build .#dsh-master` result. render writes only
-$DSH_HOME/profiles/master*/{cordis.patch.yml,package.json,.dsh-master.json},
-each by temporary file and rename, and only when the content differs, plus
-dsh's own pnpm-workspace.yaml when a folder has none (dsh writes it when it
-creates a profile and owns it after). It never runs pnpm and never touches
-cordis.yml, pnpm-lock.yaml or node_modules, which belong to dsh. install and check run the dsh that dshd runs (the
+$DSH_HOME/profiles/master*/{cordis.patch.yml,package.json,pnpm-workspace.yaml,
+.dsh-master.json}, each by temporary file and rename, and only when the
+content differs; pnpm-workspace.yaml is dsh's own text plus the folders' build
+policy. It never runs pnpm and never touches cordis.yml, pnpm-lock.yaml or
+node_modules, which belong to dsh. install and check run the dsh that dshd runs (the
 manifest's `dsh`): the fleet wrapper refuses `dsh plugin`, and its policy
 overlays would hide what a dshd instance really composes. settings seed is
 a client of the floor's management API: it upserts rules and admission cells
@@ -34,9 +34,7 @@ import urllib.request
 import yaml
 
 NAME = re.compile(r"^master(-[a-z0-9][a-z0-9-]*)?$")
-FILES = (("cordis.patch.yml", 0o644), ("package.json", 0o600))
-# Written only when missing: dsh owns them once they exist.
-ONCE = (("pnpm-workspace.yaml", 0o644),)
+FILES = (("cordis.patch.yml", 0o644), ("package.json", 0o600), ("pnpm-workspace.yaml", 0o644))
 STATE = ".dsh-master.json"
 INSTALL_TIMEOUT = "600"
 
@@ -162,7 +160,9 @@ def render(args):
             if live == want:
                 continue
             if live is not None and live != rendered.get(file):
-                print(f"dsh-master: {name}/{file} was changed outside dsh-master; replacing it", file=sys.stderr)
+                # A folder rendered before dsh-master owned the file has no digest of it.
+                why = "was changed outside dsh-master" if file in rendered or not rendered else "predates dsh-master rendering it"
+                print(f"dsh-master: {name}/{file} {why}; replacing it", file=sys.stderr)
             with open(os.path.join(source, "profiles", name, file), "rb") as stream:
                 data = stream.read()
             if hashlib.sha256(data).hexdigest() != want:
@@ -171,16 +171,6 @@ def render(args):
             package_changed = package_changed or file == "package.json"
             if not args.quiet:
                 print(f"updated {name}/{file}")
-        for file, mode in ONCE:
-            if os.path.lexists(os.path.join(folder, file)):
-                continue
-            with open(os.path.join(source, "profiles", name, file), "rb") as stream:
-                data = stream.read()
-            if hashlib.sha256(data).hexdigest() != profile["once"][file]:
-                raise Failure(f"{source}/profiles/{name}/{file} does not match its manifest digest")
-            write_atomic(folder, file, data, mode)
-            if not args.quiet:
-                print(f"created {name}/{file}")
         write_state(folder, {"rendered": dict(profile["files"]), "installed": state.get("installed")})
         if package_changed and state.get("installed") != profile["files"]["package.json"]:
             print(f"install needed: {name}")
@@ -202,11 +192,9 @@ def install(args):
         folder = profile_folder(home, name, create=False)
         package = os.path.join(folder, "package.json")
         want = profile["files"]["package.json"]
-        if sha256(package) != want or sha256(os.path.join(folder, "cordis.patch.yml")) != profile["files"]["cordis.patch.yml"]:
+        # Without pnpm-workspace.yaml pnpm treats the folder as no workspace and pulls the DSH peers from the registry.
+        if any(sha256(os.path.join(folder, file)) != profile["files"][file] for file, _ in FILES):
             raise Failure(f"{name} is not the rendered version; run dsh-master render first")
-        # Without it pnpm treats the folder as no workspace and pulls the DSH peers from the registry.
-        if not all(os.path.isfile(os.path.join(folder, file)) for file, _ in ONCE):
-            raise Failure(f"{name} has no pnpm-workspace.yaml; run dsh-master render first")
         with open(package, encoding="utf-8") as stream:
             dependencies = json.load(stream)["dependencies"]
         command = ["timeout", INSTALL_TIMEOUT, dsh_of(args, manifest), "plugin", "--profile", name, "install"]
@@ -299,9 +287,7 @@ def status(args):
     home = dsh_home()
     for name, profile in sorted(manifest["profiles"].items()):
         folder = os.path.join(home, "profiles", name)
-        current = all(sha256(os.path.join(folder, file)) == profile["files"][file] for file, _ in FILES) and all(
-            os.path.isfile(os.path.join(folder, file)) for file, _ in ONCE
-        )
+        current = all(sha256(os.path.join(folder, file)) == profile["files"][file] for file, _ in FILES)
         installed = read_state(folder).get("installed") == profile["files"]["package.json"]
         modules = os.path.isdir(os.path.join(folder, "node_modules"))
         print(

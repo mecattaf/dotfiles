@@ -224,17 +224,25 @@ def main(package, expect_path):
         problems.append(f"admission is {seed.get('admission')}")
     subtest("seed file holds both rules and both admission rows", problems)
 
+    # dsh's own workspace keys plus the build policy, so pnpm 11 has no
+    # undecided build script (ERR_PNPM_IGNORED_BUILDS, exit 1). render owns
+    # the file like the other two, so the manifest lists it under `files`.
     problems = []
+    want = {"packages": ["."], "nodeLinker": "hoisted", "autoInstallPeers": False}
+    if expect["allowBuilds"]:
+        want["allowBuilds"] = expect["allowBuilds"]
+    if expect["allowBuilds"].get("msgpackr-extract") is None:
+        problems.append("allowBuilds decides nothing for msgpackr-extract, which the fork's interpreter pulls in")
     for name, profile in manifest["profiles"].items():
         path = os.path.join(package, "profiles", name, "pnpm-workspace.yaml")
-        if not os.path.isfile(path) or profile.get("once", {}).get("pnpm-workspace.yaml") is None:
-            problems.append(f"{name}: no pnpm-workspace.yaml in the folder or the manifest")
+        if not os.path.isfile(path) or profile["files"].get("pnpm-workspace.yaml") is None or "once" in profile:
+            problems.append(f"{name}: pnpm-workspace.yaml is not a rendered file of the folder and the manifest")
             continue
         with open(path, encoding="utf-8") as stream:
             workspace = yaml.safe_load(stream)
-        if workspace != {"packages": ["."], "nodeLinker": "hoisted", "autoInstallPeers": False}:
+        if workspace != want:
             problems.append(f"{name}: pnpm-workspace.yaml is {workspace}")
-    subtest("every folder carries dsh's pnpm workspace", problems)
+    subtest("every folder carries dsh's pnpm workspace and a build policy", problems)
 
     problems = []
     policy = {row["id"]: row for row in expect["policyRows"]}
