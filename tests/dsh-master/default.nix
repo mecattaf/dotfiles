@@ -33,7 +33,9 @@ let
     lib.mapAttrsToList (name: allow: "  ${name}: ${lib.boolToString allow}\n") cfg.allowBuilds
   );
   withBuilds = text: if cfg.allowBuilds == { } then text else text + "allowBuilds:\n" + buildLines;
-  decidedWorkspace = pkgs.writeText "pnpm-workspace.yaml" (withBuilds (builtins.readFile master.pnpmWorkspace));
+  decidedWorkspace = pkgs.writeText "pnpm-workspace.yaml" (
+    withBuilds (builtins.readFile master.pnpmWorkspace)
+  );
   ownWorkspace = pkgs.writeText "pnpm-workspace.yaml" (withBuilds "packages: [.]\n");
   # `dshd ls` and `dshd get` as dshd prints them: floor runs $STUB_PROFILE.
   dshdStub = pkgs.writeShellScript "dshd-stub" ''
