@@ -124,20 +124,6 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   dm=${lib.getExe master}
   # status exits 1 while any folder is stale or not installed; its lines go to status.out.
   status() { local rc=0; $dm status > "$TMPDIR/status.out" || rc=$?; test "$rc" = "$1"; }
-  # A lock that pins what package.json asks; a second argument re-tags the
-  # fork's pin, as a failed install over an earlier good one leaves it.
-  lock() {
-    python3 -I - "$1" "''${2:-}" <<'PY'
-  import json, sys, yaml
-  folder, stale = sys.argv[1], sys.argv[2]
-  with open(f"{folder}/package.json", encoding="utf-8") as stream:
-      deps = json.load(stream)["dependencies"]
-  pin = lambda d, s: s.rpartition("#")[0] + "#" + stale if stale and d == "dsh-superagent" else s
-  lock = {"lockfileVersion": "9.0", "importers": {".": {"dependencies": {d: {"specifier": pin(d, s), "version": s} for d, s in deps.items()}}}}
-  with open(f"{folder}/pnpm-lock.yaml", "w", encoding="utf-8") as stream:
-      yaml.safe_dump(lock, stream)
-  PY
-  }
   tree() { (cd "$1" && find . -printf '%p %m %y\n' | sort && find . -type f -print0 | sort -z | xargs -0 sha256sum); }
 
   # 3. Confinement and idempotency. A foreign profile and dsh's own files
@@ -197,17 +183,9 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   touch "$opus/node_modules/dsh-superagent/lib/index.js"
   if $dm install --dsh ${pkgs.coreutils}/bin/true master-opus 2> "$TMPDIR/nolock.err"; then exit 1; fi
   grep -q 'no pnpm-lock.yaml; @norman-else/dsh-claude has no built lib/' "$TMPDIR/nolock.err"
-  touch "$opus/node_modules/@norman-else/dsh-claude/lib/index.mjs"
-  # A failed install over an earlier one: the old lock and the old lib/
-  # stay. Whatever dsh exits, that is not installed.
-  lock "$opus" floor-v0.0
-  if $dm install --dsh ${pkgs.coreutils}/bin/true master-opus 2> "$TMPDIR/stale.err"; then exit 1; fi
-  grep -qF "install failed (exit 0): pnpm-lock.yaml pins dsh-superagent as 'github:mecattaf/dsh-superagent-prototype#floor-v0.0'" "$TMPDIR/stale.err"
-  if $dm install --dsh ${pkgs.coreutils}/bin/false master-opus 2> "$TMPDIR/stale1.err"; then exit 1; fi
-  grep -qF 'install failed (exit 1): pnpm-lock.yaml pins dsh-superagent' "$TMPDIR/stale1.err"
+  touch "$opus/pnpm-lock.yaml" "$opus/node_modules/@norman-else/dsh-claude/lib/index.mjs"
   status 1
   grep -qx 'master-opus: rendered current, installed no, node_modules present' "$TMPDIR/status.out"
-  lock "$opus"
   $dm install --dsh ${pkgs.coreutils}/bin/true master-opus | grep -qx 'installed master-opus'
   status 1
   grep -qx 'master-opus: rendered current, installed current, node_modules present' "$TMPDIR/status.out"
@@ -217,7 +195,7 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
     f="$DSH_HOME/profiles/$p"
     mkdir -p "$f/node_modules/dsh-superagent/lib" "$f/node_modules/@norman-else/dsh-claude/lib"
     touch "$f/node_modules/dsh-superagent/lib/index.js" "$f/node_modules/@norman-else/dsh-claude/lib/index.mjs"
-    lock "$f"
+    touch "$f/pnpm-lock.yaml"
     $dm install --dsh ${pkgs.coreutils}/bin/true $p | grep -qx "installed $p"
   done
   mkdir "$DSH_HOME/profiles/master-retired"

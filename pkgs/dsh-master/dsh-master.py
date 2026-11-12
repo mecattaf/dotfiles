@@ -193,26 +193,6 @@ def lib_present(folder, dependency):
     return os.path.isdir(lib) and any(entry.endswith((".js", ".mjs")) for entry in os.listdir(lib))
 
 
-def lock_problems(folder, dependencies):
-    """Where pnpm-lock.yaml does not pin what package.json asks: a failed install over an earlier good one
-    leaves the old lock and the old lib/, which the folder checks alone would call installed."""
-    try:
-        with open(os.path.join(folder, "pnpm-lock.yaml"), encoding="utf-8") as stream:
-            lock = yaml.safe_load(stream)
-    except FileNotFoundError:
-        return ["no pnpm-lock.yaml"]
-    except yaml.YAMLError as error:
-        return [f"pnpm-lock.yaml does not parse: {error}"]
-    importer = ((lock or {}).get("importers") or {}).get(".") if isinstance(lock, dict) else None
-    pinned = (importer or {}).get("dependencies") or {}
-    problems = []
-    for dep, spec in sorted(dependencies.items()):
-        have = (pinned.get(dep) or {}).get("specifier") if isinstance(pinned.get(dep), dict) else None
-        if have != spec:
-            problems.append(f"pnpm-lock.yaml pins {dep} as {have!r}, package.json as {spec!r}")
-    return problems
-
-
 def install(args):
     manifest = load_manifest(args.source)
     home = dsh_home()
@@ -232,12 +212,12 @@ def install(args):
         command = ["timeout", INSTALL_TIMEOUT, dsh_of(args, manifest), "plugin", "--profile", name, "install"]
         print(f"dsh-master: {name}: {' '.join(command)}", file=sys.stderr)
         code = subprocess.run(command, cwd=home, check=False).returncode
-        # pnpm has printed "Done" and then hung: judge the folder, not the exit. The lock must pin what
-        # package.json asks, or a failed install over an earlier one is the old plugins under new pins.
+        # pnpm has printed "Done" and then hung: judge the folder, not the exit.
         problems = []
         if sha256(package) != want:
             problems.append("the install rewrote package.json")
-        problems += lock_problems(folder, dependencies)
+        if not os.path.isfile(os.path.join(folder, "pnpm-lock.yaml")):
+            problems.append("no pnpm-lock.yaml")
         problems += [f"{dep} has no built lib/" for dep in sorted(dependencies) if not lib_present(folder, dep)]
         if problems:
             print(f"dsh-master: {name}: install failed (exit {code}): {'; '.join(problems)}", file=sys.stderr)

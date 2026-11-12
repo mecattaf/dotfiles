@@ -60,10 +60,8 @@ dsh-master settings seed     # once, after the floor's first start
 
 `install` runs `/etc/dshd/releases/default/bin/dsh plugin --profile <p>
 install` under a 600 s timeout, with pnpm and git on PATH, and then judges
-the folder, not the exit: `package.json` unchanged, a lockfile that pins
-each dependency as `package.json` asks (a failed install over an earlier one
-leaves the old lock and the old `lib/`), and a built `lib/` for each
-dependency. Without the folder's `pnpm-workspace.yaml` pnpm
+the folder, not the exit: `package.json` unchanged, a lockfile, and a built
+`lib/` for each dependency. Without the folder's `pnpm-workspace.yaml` pnpm
 would pull the plugins' DSH peers from the registry, so install refuses it.
 The fleet wrapper refuses `dsh plugin`. After a pin moves (`superagent`,
 `claude`), render prints `install needed: <p>`: run `dsh-master install`
