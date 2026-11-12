@@ -72,6 +72,19 @@ upserts the rules and admission cells of `home/dsh-master/settings.seed.json`
 saves each changed block with its revision. It never lowers a mode, and an
 `eval.mode` of `off` stays off. It prints `unchanged` or `changed <blocks>`.
 
+Each seeded rule has two readers. The floor's main Session assesses Triggers
+by it, and dsh-superagent copies a matched rule verbatim into the worker's
+brief, where its procedure takes precedence. A headless dshd worker has no
+orchestrator tools, so each rule describes its Triggers, then says `If you
+are assessing it:` what the main Session does, and ends with the same
+sentence for the worker: do the task in the trigger text in the current
+folder, and the final message is the result. The description also settles the
+three direction facts that dsh-superagent requires before an accept
+dispatches: whose implementation request the Trigger is, what its target is,
+and that it needs no design decision. Without them an accept is recorded as
+`ignore directionUnsettled`. `checks.dsh-master` asserts that shape and keeps
+each rule within 1000 characters.
+
 Before a switch, `nix build .#dsh-master -o result-dsh-master` gives the same
 bytes activation will render, and `result-dsh-master/bin/dsh-master render`
 installs them early. Keep that out-link until the switch: the rendered files
