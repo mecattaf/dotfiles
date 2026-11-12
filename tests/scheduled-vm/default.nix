@@ -115,10 +115,11 @@ pkgs.testers.runNixOSTest {
     INBOX = "${inbox}"
     STATE = "/home/tom/.local/state/scheduled"
     STUB_FLOOR = "${stubFloor}"
-    # The CLI's defaults, set here as the unit sets them (a login shell may
-    # not read Home Manager's session variables).
-    CLI = f"env SCHEDULED_INBOX={INBOX} SCHEDULED_FLOOR_INSTANCE=floor"
-    CLI_NO_FLOOR = f"env -u SCHEDULED_FLOOR_INSTANCE SCHEDULED_INBOX={INBOX}"
+    # The installed command carries the inbox and floor as defaults
+    # (home/scheduled.nix): a login shell runs it with no environment. The
+    # storm sets the floor empty, which the wrapper keeps (--set-default).
+    CLI = "env -u SCHEDULED_INBOX -u SCHEDULED_FLOOR_INSTANCE"
+    CLI_NO_FLOOR = "env -u SCHEDULED_INBOX SCHEDULED_FLOOR_INSTANCE="
     WAIT = 300
 
 
