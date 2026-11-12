@@ -4,8 +4,8 @@ Usage: check_render.py <dsh-master package> <expectations.json>
 
 The expectations come from the NAS configuration (tests/dsh-master/default.nix):
 the pairs and their presets, the default pair, the release tag, the seat, the
-state directory and the fleet policy as pkgs/dsh exports it. Each subtest prints its name; any failure
-exits 1 after all of them ran.
+state directory and the fleet policy as pkgs/dsh exports it. Each subtest
+prints its name; any failure exits 1 after all of them ran.
 """
 
 import copy
@@ -121,6 +121,12 @@ def main(package, expect_path):
     for row_id in ("dsh-superagent-github", "dsh-superagent-feishu"):
         if sources.get(row_id, {}).get("disabled") is not True:
             problems.append(f"{row_id} is not rendered disabled")
+    workflow = sources.get("dsh-superagent-workflow", {}).get("config")
+    if workflow != {"pollMs": 2000, "concurrency": 16, "maxAttempts": 1, "pair": ""}:
+        problems.append(f"dsh-superagent-workflow config is {workflow}")
+    expected = {row["id"]: row["disabled"] for profile in manifest["profiles"].values() for row in profile["expect"] if row["id"] == "dsh-superagent"}
+    if expected != {"dsh-superagent": False}:
+        problems.append(f"dsh-master check does not assert dsh-superagent enabled: {expected}")
     subtest("engine on only in master", problems)
 
     problems = [f"{name}: {row_id}" for name, ids in rows.items() for row_id in PERMISSION_ROWS & set(ids)]
@@ -196,6 +202,27 @@ def main(package, expect_path):
         if order != want:
             problems.append(f"{name}: inserts in the order {order}, expected {want}")
     subtest("headless folders insert headless-preset after agent-preset-registry", problems)
+
+    problems = []
+    try:
+        with open(os.path.join(package, "share", "dsh-master", "settings.seed.json"), encoding="utf-8") as stream:
+            seed = json.load(stream)
+    except (OSError, ValueError) as error:
+        seed = {}
+        problems.append(f"settings.seed.json: {error}")
+    if seed.get("eval") != {"mode": "auto"}:
+        problems.append(f"eval is {seed.get('eval')}")
+    rules = {rule.get("id"): rule for rule in seed.get("rules", [])}
+    for rule_id, prefix in (("scheduled", "A Trigger of the scheduled Source"), ("workflow-node", "A Trigger from the workflow Source")):
+        rule = rules.get(rule_id, {})
+        if rule.get("enabled") is not True or not rule.get("instruction", "").startswith(prefix):
+            problems.append(f"rule {rule_id} is {rule}")
+    if sorted(rules) != ["scheduled", "workflow-node"]:
+        problems.append(f"rules are {sorted(rules)}")
+    want = {"scheduled": {"occurrence": {"unlistedUnaddressed": "inferred"}}, "workflow": {"workflow": {"unlistedUnaddressed": "inferred"}}}
+    if seed.get("admission") != want:
+        problems.append(f"admission is {seed.get('admission')}")
+    subtest("seed file holds both rules and both admission rows", problems)
 
     problems = []
     for name, profile in manifest["profiles"].items():

@@ -296,6 +296,8 @@ let
   # the disabled state it states (a row without `disabled` keeps the bundle's:
   # the web app disables the root tool-web and workflow-ptc rows). The
   # sessions row is text with `!!js`, so it is checked by its compression only.
+  # The dsh-superagent row states no `disabled`, but it must be enabled in
+  # every folder: the engine key, not a disabled row, keeps a worker dormant.
   expectRows =
     rows:
     lib.concatMap (
@@ -311,7 +313,7 @@ let
           {
             inherit (row) id;
             config = row.config or null;
-            disabled = row.disabled or null;
+            disabled = row.disabled or (if row.id == "dsh-superagent" then false else null);
           }
         ]
     ) rows;
