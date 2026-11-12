@@ -1187,6 +1187,18 @@
           assert !(nas.services.caddy.virtualHosts ? "http://drain.internal");
           assert !(nas.services.caddy.virtualHosts ? "http://paperless.internal");
           assert nixpkgs.lib.hasInfix "default_bind 10.42.0.1 127.0.0.1" nas.services.caddy.globalConfig;
+          # #744: Caddy waits, bounded, for 10.42.0.1 on enp1s0 before it binds.
+          assert
+            let
+              pre = nas.systemd.services.caddy.serviceConfig.ExecStartPre;
+              guard = builtins.head (builtins.filter (x: nixpkgs.lib.hasInfix "wait-caddy-lan" "${x}") pre);
+              text = guard.text;
+            in
+            nixpkgs.lib.hasInfix "seq 30" text
+            && nixpkgs.lib.hasInfix "addr show dev enp1s0" text
+            && nixpkgs.lib.hasInfix "10\\.42\\.0\\.1/" text
+            && nixpkgs.lib.hasInfix "exit 1" text;
+          assert builtins.elem "NetworkManager-ensure-profiles.service" nas.systemd.services.caddy.after;
           assert !(builtins.elem "tailscale0" nas.networking.firewall.trustedInterfaces);
           assert !strix.myNasClient.relayAttic;
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
