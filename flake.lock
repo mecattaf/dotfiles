@@ -301,11 +301,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1794333767,
-        "narHash": "sha256-rql54CE2/2uv5Ecmd5+7kVE3AMuEWchjjvfgWXKJkdc=",
+        "lastModified": 1794490673,
+        "narHash": "sha256-bhjavXIeRxsxQo334a5OLNuKHK10glWgf3tdYmsuu5E=",
         "owner": "mecattaf",
         "repo": "dshd.nix",
-        "rev": "a75495b29e1c003810f67899959922a81337a607",
+        "rev": "e2df6ab724c7953e9a61b47588386675581b8359",
         "type": "github"
       },
       "original": {
