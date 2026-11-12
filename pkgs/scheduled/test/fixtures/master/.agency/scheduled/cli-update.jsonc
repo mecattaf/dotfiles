@@ -1,0 +1,40 @@
+// The nightly CLI tools update, its check-and-ingest half (#550). Tom, 2026-10-14 (AGENTS.md):
+// "nightly, i want to be chekcing codex and cc and other programs for their latest version and
+// ingesting it, potentially also with the new features that they entail".
+// update-check does every mechanical step: one rolling update/<input> PR per watched input of
+// lib/update-watch.json. This brief adds the builder guard and the digest (update-check skill §2).
+// It merges and switches nothing; the flash half is fleet-nightly.
+// It runs in the master agency on the NAS, where gh, git and the credentials live. The gate's
+// builds go to the Nix builder, strix-coordinator; the NAS builds nothing itself.
+// Step 3 is the digest, which the update-check skill writes only when Tom asks: arming this item
+// is that ask. Delete step 3 to keep the check alone.
+{
+  "name": "CLI tools update check",
+  // Off (Tom, 11 Nov: "make sure there are no scheduled work in the morning").
+  // Tom arms it: scheduled set master:cli-update enabled true
+  "enabled": false,
+  "on": {
+    "schedule": [
+      // After fleet-nightly's 01:00, outside the 02:00-02:59 DST gap.
+      { "cron": "30 1 * * *", "timezone": "Europe/Paris" },
+      // One more chance when 01:30 deferred for load or a busy agent. update-check's
+      // night stamp answers already-checked when 01:30 completed.
+      { "cron": "30 4 * * *", "timezone": "Europe/Paris" }
+    ]
+  },
+  "job": {
+    "prompt": [
+      "You are in the master agency on the NAS. Run every command here; update-check needs this host's gh and git credentials.",
+      "The night key is the date of the Due time in the header minus 12 hours.",
+      "0. Preconditions, read-only. Run: ssh -o BatchMode=yes strix-coordinator df -BG --output=avail / and quote the number. If it shows less than 25G, say so and end: update-check's gate builds on that builder.",
+      "Run: nix config show max-jobs, then nix config show builders. If max-jobs is not 0, or the builders do not name strix-coordinator, quote both and end. Never name or use strix-worker as a target.",
+      "1. Run exactly: update-check --if-idle --background --json. Quote the JSON.",
+      "deferred: quote the reasons and end. already-checked: quote the previous night's result and end; a previous failure stays a failure to report. Do not retry it, remove the night stamp or run without --if-idle.",
+      "2. If launched: read the job file the receipt names every 5 minutes until its status is completed, error or interrupted, for at most 3 h 30. Then write one line per input: status, PR or issue link, versions, gate error.",
+      "On error or interrupted, quote the error and the last 20 lines of the job log, and do not relaunch.",
+      "3. For each input whose status is opened or refreshed, follow the update-check skill section 2 once: read the PR body and every release it spans, then write or edit the one <!-- update-digest <to_rev> --> comment on that PR (Worth taking, Touches us, Nothing for us). Plain words, upstream text only inside literal fences, no @mentions or #refs as active Markdown. This is the only write besides what update-check does itself.",
+      "Never: merge, approve, close or label a PR; push to main; run nixos-rebuild, switch-to-configuration, a deploy or nix flake update in ~/mecattaf/dotfiles; start, stop or restart a unit; edit lib/update-watch.json or flake.nix; start fleet-update; touch ~/.local/state/update-check except through update-check.",
+      "End with one line: deferred (reasons), already-checked, completed (n PRs, n digests), or the error, quoted."
+    ]
+  }
+}
