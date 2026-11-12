@@ -117,7 +117,7 @@ echo
 # below run everywhere.
 if strix_only; then
   if pools_out="$(tally query pools 2>&1)"; then
-    for want in cc cc2 cc3 codex pi strix-gpu worker-gpu; do
+    for want in cc cc2 codex strix-gpu worker-gpu; do
       if names_pool "$pools_out" "$want"; then
         ok "[E] pool present: $want" "tally query pools | names_pool $want"
       else
@@ -282,23 +282,6 @@ util_fragment_row() { # $1 = timer, $2 = "both" | "strix"
 }
 util_fragment_row util-sampler.timer both
 util_fragment_row util-row.timer strix
-
-# ── 6. the cc3 links, resolved ──────────────────────────────────────────────
-# Compared against $REPO_DIR, never $DOTFILES: these links can resolve nowhere
-# but the hardcoded anchor in home/home.nix:15 (dotfiles#313), so pointing them
-# at an overridden $L8_FLASH_DOTFILES reports two spurious FAILs. The override
-# stays scoped to section 3, which is what its comment claims.
-for leaf in settings.json skills; do
-  target="$(readlink -f "$HOME/.claude-3/$leaf" 2>/dev/null)"
-  case "$target" in
-    "$REPO_DIR/home/dot_claude"/*|"$HOME/.local/state/claude/settings.json")
-      ok "[P] cc3 link resolves: $leaf" "readlink -f ~/.claude-3/$leaf"
-      ;;
-    *)
-      no "[P] cc3 link resolves: $leaf (got '$target')" "readlink -f ~/.claude-3/$leaf"
-      ;;
-  esac
-done
 
 # ── 7. herdr: binaries everywhere, one server on the strix (ruling B5) ─
 for binary in herdr; do

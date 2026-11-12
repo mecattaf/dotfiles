@@ -59,15 +59,16 @@ class ClaudeSessionsTests(unittest.TestCase):
         )
         return json.loads(result.stdout) if "--json" in args else result.stdout
 
-    def test_fans_out_over_all_three_seats_and_sorts_newest_first(self) -> None:
+    def test_fans_out_over_both_seats_and_sorts_newest_first(self) -> None:
         self.write_session(".claude/projects", "one", "2026-09-08T16:49:41+02:00", "alpha")
         self.write_session(".claude-work/projects", "two", "2026-09-08T16:49:43+02:00", "beta")
+        # The retired cc3 store may linger in a home; it is not a seat.
         self.write_session(".claude-3/projects", "three", "2026-09-08T16:49:42+02:00", "gamma")
 
         rows = self.run_script("--json", "--limit", "0")
 
-        self.assertEqual([row["seat"] for row in rows], ["cc2", "cc3", "cc"])
-        self.assertEqual([row["session_id"] for row in rows], ["two", "three", "one"])
+        self.assertEqual([row["seat"] for row in rows], ["cc2", "cc"])
+        self.assertEqual([row["session_id"] for row in rows], ["two", "one"])
         self.assertEqual(rows[0]["last_prompt"], "continue beta")
 
     def test_around_filters_by_transcript_mtime(self) -> None:
@@ -87,12 +88,12 @@ class ClaudeSessionsTests(unittest.TestCase):
         self.assertEqual([row["session_id"] for row in rows], ["inside"])
 
     def test_text_output_can_include_last_prompt(self) -> None:
-        self.write_session(".claude-3/projects", "three", "2026-09-08T16:49:42+02:00", "gamma")
+        self.write_session(".claude-work/projects", "two", "2026-09-08T16:49:42+02:00", "gamma")
 
         output = self.run_script("--show-prompt")
 
         self.assertIn("SEAT", output)
-        self.assertIn("cc3", output)
+        self.assertIn("cc2", output)
         self.assertIn("continue gamma", output)
 
 

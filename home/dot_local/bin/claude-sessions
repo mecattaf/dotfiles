@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """List Claude Code transcripts across every local seat, newest first.
 
-The three account aliases deliberately isolate their session stores. A
-post-mortem that searches only ~/.claude silently misses cc2 and cc3, so this
-helper always fans out over all three roots (#352).
+The two account aliases deliberately isolate their session stores. A
+post-mortem that searches only ~/.claude silently misses cc2, so this helper
+always fans out over both roots (#352).
 
 Examples:
   claude-sessions
@@ -25,7 +25,6 @@ from typing import Any
 SEATS = (
     ("cc", Path(".claude/projects")),
     ("cc2", Path(".claude-work/projects")),
-    ("cc3", Path(".claude-3/projects")),
 )
 TAIL_BYTES = 512 * 1024
 
