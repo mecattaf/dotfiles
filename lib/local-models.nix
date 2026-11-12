@@ -196,7 +196,9 @@ let
           # Separately approved appliances, including D3-Ultra, have their
           # own catalog files and runtime modules beside Gufo. The text
           # embedder (embedding-models.json) is served by its own Gufo
-          # embedding route (modules/gufo-embedding.nix). Bytes
+          # embedding route (modules/gufo-embedding.nix); the Hy-Memory
+          # memory writer (memory-writer-models.json) by its own llama-server
+          # route (modules/hy-memory.nix). Bytes
           # and sha256 come from the Hugging Face API at the pinned revisions.
           artifacts =
             (builtins.fromJSON (builtins.readFile ./speech-intake-models.json))
@@ -205,6 +207,7 @@ let
             // (builtins.fromJSON (builtins.readFile ./decision-models.json))
             // (builtins.fromJSON (builtins.readFile ./coding-comparison-models.json))
             // (builtins.fromJSON (builtins.readFile ./embedding-models.json))
+            // (builtins.fromJSON (builtins.readFile ./memory-writer-models.json))
             // {
               "qwen3-tts-1.7b-base-q8-0" = mkSingleFileArtifact {
                 maker = "Qwen";

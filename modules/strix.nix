@@ -20,6 +20,8 @@
     # The on-demand embedding route on Gufo v0.33.0 (host-enabled).
     ./gufo-embedding.nix
     ./superroc.nix
+    # Plain llama-server for the Hy-Memory route (#603).
+    ./hy-memory.nix
     ./d3-decision.nix
     # The utility-model seam (/drain, /print), independent of the engine.
     ./utility-model.nix

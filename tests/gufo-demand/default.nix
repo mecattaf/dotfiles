@@ -39,6 +39,7 @@ let
     "qwen3.8-flash-next"
     "qwen3.8-flash-next-abliterated"
   ];
+  hy = models."hy-memory-30b-a3b";
 in
 assert proxy.enable && proxy.port == 8731;
 # Preserve the qualified runtime-only routes across the first declarative boot.
@@ -52,6 +53,20 @@ assert builtins.all (id: builtins.elem id c.services.local-models.artifacts) [
   "qwen38-27b-heretic-ara-q8-gguf"
   "qwen38-flash-next-abliterated-rocmfp4-gguf"
 ];
+# Hy-Memory is a plain llama-server route behind the same supervisor (#603),
+# borrowed from the Library and never fetched by the server itself.
+assert c.services.hy-memory.enable;
+assert builtins.elem "hy-memory-30b-a3b-q8-gguf" c.services.local-models.artifacts;
+assert hy.checkEndpoint == "/health" && hy.ttl == 600;
+assert hy.useModelName == "hy-memory-30b-a3b";
+assert hy.capabilities.context == 65536 && hy.capabilities.tools == false;
+assert !(pkgs.lib.hasInfix "-hf" hy.cmd);
+assert pkgs.lib.hasSuffix "-llama-server-demand-hy-memory \${PORT}" hy.cmd;
+# Reached only through its launcher: the fleet's llama-server stays on PATH.
+assert !(builtins.elem c.services.hy-memory.package c.environment.systemPackages);
+assert !worker.services.hy-memory.enable;
+assert !(worker.services.llama-swap.settings.models ? "hy-memory-30b-a3b");
+assert !(builtins.elem "hy-memory-30b-a3b-q8-gguf" worker.services.local-models.artifacts);
 # Gufo and the production qwentts.cpp voice share one loan, not duplicate IDs.
 assert
   builtins.length (builtins.filter (id: id == "qwen-k2so-midway-b") c.services.local-models.artifacts)
