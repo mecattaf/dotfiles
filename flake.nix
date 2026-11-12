@@ -2030,6 +2030,14 @@
           configurations = self.nixosConfigurations;
         };
 
+        # The Master profile folders (home/dsh-master.nix): rendered shape,
+        # confined idempotent render, and a config dump of each folder's
+        # first-party half by the dsh dshd runs (tests/dsh-master).
+        dsh-master = import ./tests/dsh-master {
+          inherit pkgs;
+          configurations = self.nixosConfigurations;
+        };
+
         # Scheduled (AGENTS.md D52): eval asserts on the real NAS
         # config, then the package's own tests under its own Node.
         scheduled = import ./tests/scheduled {
