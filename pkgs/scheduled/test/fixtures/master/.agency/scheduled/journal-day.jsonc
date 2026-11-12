@@ -7,7 +7,7 @@
   "on": { "schedule": [ { "cron": "0 0 * * *", "timezone": "Europe/Paris" } ] },
   "job": {
     "prompt": [
-      "Take the local date (Europe/Paris) of the Due or Requested time in the header above.",
+      "Take the local date (Europe/Paris) of the Due time in the header above.",
       "If ~/today already resolves to ~/notes/journal/YYYY/MM/DD for that date, do nothing and say so.",
       "Otherwise run ~/.local/bin/journal-day once, with no arguments. It is idempotent and takes its own lock.",
       "It rotates only the ~/today link; it never moves, copies or deletes day contents and never touches running sessions.",
