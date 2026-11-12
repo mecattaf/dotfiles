@@ -69,7 +69,7 @@ test('FU2 the brief covers ended tickets, .done growth and failed records, from 
   assert.ok(commands(prompt).includes("find <inbox> -maxdepth 1 -name '*.json' -mmin +60"));
   // Failed records: every item, no --all (contract §5).
   assert.ok(commands(prompt).includes('scheduled history --inbox <inbox> -n 50 --json'));
-  assert.doesNotMatch(prompt, /--all/);
+  assert.ok(!commands(prompt).some((c) => c.includes('--all')), 'no command passes --all');
   assert.match(prompt, /word for word/);
   assert.match(prompt, /\n[^\n]*nothing to report\.?$/);
 });

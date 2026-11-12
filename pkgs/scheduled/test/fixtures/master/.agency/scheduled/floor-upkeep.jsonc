@@ -1,14 +1,24 @@
 // Copied 12 Nov 2026 from ~/.agency/workflows/floor-upkeep.jsonc (kept there).
-// INERT: "$SCHED_FLOOR_CLI upkeep" was a verb of the withdrawn scheduled/floor branch and no longer exists.
-// Rewrite the prompt before enabling.
+// Rewritten 12 Nov 2026 from the copy scheduled-jsonc §7 left without a runnable prompt: a worker cannot see
+// which Ticket ended, so it reads what dshd, the inbox and `scheduled history` show. Report only.
+// The inbox and floor names come from the heartbeat unit, the one place that sets them.
+// Off until it is enabled by hand (H60).
 {
-  "name": "Floor upkeep",
+  "name": "Floor upkeep: ended tickets, inbox growth, failed records (report only)",
   "enabled": false,
   "on": { "schedule": [ { "cron": "0 4 * * *", "timezone": "Europe/Paris" } ] },
   "job": {
     "prompt": [
-      "List dshd units whose label superagent.ticket names a ticket that has ended, and failed dshd units of the last day (dshd ls --json).",
-      "For each, say what most likely caused it. Remove, stop or edit nothing yourself."
+      "Report only: read, and change nothing. \"The last day\" is the 24 hours before the Due time in the header above.",
+      "0. Run `systemctl --user show -p Environment --value scheduled-heartbeat.service`. Take <inbox> from its SCHEDULED_INBOX= and <floor> from its SCHEDULED_FLOOR_INSTANCE=. If one is missing, say so and skip the steps that need it.",
+      "1. Ended and stuck tickets. Run `dshd ls --json` and give the state of <floor>. For every instance with a superagent.ticket label, run `dshd get --json <name>`:",
+      "   - list each one that is not running or starting: name, its superagent.ticket and superagent.pair labels, how its last run ended and when. Its Ticket has ended and dshd still keeps its unit;",
+      "   - list each one still running whose run began before the last day, as possibly stuck;",
+      "   - for each whose last run ended failed, interrupted or stopped-without-intent in the last day, run `dshd read -n 80 <name>` and give the most likely cause in one line, quoting the journal line that shows it.",
+      "2. Inbox growth. For <inbox>/.done and <inbox>/.bad each, give the number of *.json records, how many arrived in the last day (`find <dir> -maxdepth 1 -name '*.json' -mtime -1`), the date of the oldest one, and `du -sh <dir>`. Then count the records still waiting in <inbox> itself and name each one older than an hour (`find <inbox> -maxdepth 1 -name '*.json' -mmin +60`): the floor has not read it.",
+      "3. Failed records. Run `scheduled history --inbox <inbox> -n 50 --json`. With no ID it lists every item; it has no --all. Give the number of done and bad rows, and for each bad row its occurrence, item, due and error, word for word.",
+      "Never: run dshd run, start, stop, restart, update, label, enable, disable or rm; run scheduled run, set, new, rm or tick; run systemctl start, stop, restart or reset-failed; move, delete or edit any file, in the inbox or anywhere else; restart Herdr or the user manager.",
+      "Write the report as your reply only, one table per step. End with one line: N ended ticket units, N possibly stuck, N failed in the last day, .done N records (N new), N bad records; or, when all are zero: nothing to report."
     ]
   }
 }
