@@ -263,10 +263,10 @@ directory every node works in), and optionally `args`, `pair` and
 - A scheduled item whose prompt is the request, run now with
   `scheduled run` or on its cron; the prompt pattern is in
   [scheduled.md](scheduled.md#starting-a-workflow-from-an-item). This is
-  the path the 12 Nov rehearsal drives (gate P-W0).
+  the path the live rehearsal exercises.
 - A message to the main Session in the web app, such as "Run
   /home/tom/work/acme/release-notes.workflow.js in /home/tom/work/acme on
-  the gufo pair". This path was not rehearsed on 12 Nov.
+  the gufo pair". This path has not yet been exercised end to end.
 
 **Check a run** by asking the main Session for its status:
 `orchestrator_workflow_status` with a `run_id`, or none for the newest
