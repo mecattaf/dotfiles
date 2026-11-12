@@ -39,6 +39,8 @@ git show a917a735:docs/<path>
 | Removed file | Disposition |
 |---|---|
 | `local-ai/monthly-workflow.md` | The monthly local-AI update bot (`pkgs/local-ai-monthly`), removed with the bot. Updates are now a protocol of the master agency, outside this repository. |
+| `local-ai/seat-feeder.md` | The three Tally seat-feeder timers and `tally-seat-feeder`, removed with the program. Its fixture (`tests/seat-feeder`) and oracles (`tools/feeder-fixture.sh`, `tools/seat-rows-oracle.sh`, `tools/cap1-evaluator-probe.py`, `tools/fix-e06-cc-window-unknown-oracle.sh`) went with it. `seats` still reads the meters directory it wrote. |
+| `local-ai/tally-b-input.md`, `local-ai/tally-uplink-input.md`, `local-ai/tally-filler-timer.md` | The Tally kernel and lake inputs and the filler timer, all removed with Tally on 2026-09-30; `tools/u-d18-filler-timer-oracle.sh` went with them. |
 
 ## Why this stub still exists
 

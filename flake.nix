@@ -1272,8 +1272,8 @@
               nixpkgs.lib.hasPrefix "map " l
               && (nixpkgs.lib.hasInfix " hk " l || nixpkgs.lib.hasPrefix "map ctrl+b " l)
             ) (nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/kitty/kitty.conf)));
-          # Without `--remote-keybindings server` a projector strips the tally
-          # [[keys.command]] popups (herdr src/client/shell/config.rs:158-162).
+          # Without `--remote-keybindings server` a projector strips the server's
+          # [[keys.command]] bindings (herdr src/client/shell/config.rs:158-162).
           assert nixpkgs.lib.hasInfix "--remote-keybindings server" (
             builtins.readFile ./home/dot_local/bin/herdr-projector
           );
