@@ -556,9 +556,6 @@
         let
           amdAi = inputs.nix-amd-ai.packages.${system};
           strixAi = inputs.nix-strix-halo.packages.${system};
-          # The Cloudflare Substrate's box-side programs, vendored from
-          # agency-agency/substrate at the sha in pkgs/substrate-apps/SYNC.md.
-          substrateApps = pkgs.callPackage ./pkgs/substrate-apps { };
         in
         {
           # Flake-level builds: the same derivations the hosts on the main
@@ -568,7 +565,6 @@
             qwentts
             qwen-speech
             speech-session
-            academic-ocr
             paper-render
             utility-model
             call-diarize
@@ -640,12 +636,6 @@
           # `nix build .#dsh-master`: NAS's rendered Master profiles and the
           # dsh-master CLI, byte-identical to what switch activation renders.
           dsh-master = self.nixosConfigurations.nas.config.home-manager.users.tom.programs.dsh.master.package;
-          # `nix build .#substrate-pusher`, `.#substrate-puller`: the strix's
-          # gentle capacity pusher and its interpreter-host puller from the
-          # pinned substrate sha (pkgs/substrate-apps), installed by
-          # modules/substrate.nix.
-          substrate-pusher = substrateApps.pusher;
-          substrate-puller = substrateApps.puller;
         };
 
       # `nix build .#models.<id>` retired with the 2026-08-21 "weights leave
@@ -795,13 +785,6 @@
               python3 ${./tests/antigravity-accounts/check_native.py}
                 touch "$out"
             '';
-
-        # modules/substrate.nix rendered OFF on the strix and armed with
-        # fixtures (tests/substrate-modules); every assertion is eval-time.
-        substrate-modules = import ./tests/substrate-modules {
-          inherit pkgs self;
-          inherit (nixpkgs) lib;
-        };
 
         # DF-5: the vendored Cargo.lock must equal upstream's at the pinned rev.
         # A build-time comparison, not an evaluation-time read, so evaluation
@@ -959,7 +942,6 @@
           assert strix.services.gufo.enable;
           assert strix.services.gufo.llm.sessions == 1;
           assert strix.services.gufo.llm.context == 102400;
-          assert !(strix.systemd.user.services ? substrate-puller);
           pkgs.runCommand "gufo-unit-policy" { } ''
             touch "$out"
           '';
@@ -1265,8 +1247,8 @@
           # Production compute has no Herdr server; its protection is tested on
           # the brain role fixture in herdr-oom-isolation.
           assert !(strixHome.systemd.user.services ? herdr);
-          # The seats oracle's peer cache and substrate's metersDir outlive the
-          # seat feeder that used to write it (home/harness-records.nix).
+          # The seats oracle's peer cache outlives the seat feeder that used to
+          # write it (home/harness-records.nix).
           assert
             !(builtins.elem "d %h/.local/state/tally-rewrite/meters 0700 - - -" strixHome.systemd.user.tmpfiles.rules);
           # herdr WITHOUT the kitten (#385, 2026-09-13). herdr-kitten is gone
@@ -2236,7 +2218,7 @@
         # ids, writes without HERDR_ENV=1) and the stderr-log unit test. Here:
         # jevcore's $out has the pinned build and no network path, the wrapper
         # composes `herdr` with every plugin row mounted and none skipped, the
-        # stock headless profile (substrate's) mounts none of them, and a boot
+        # stock headless profile mounts none of them, and a boot
         # of `herdr` with a blank task (it stops before any model call) prints
         # the ready lines of herdr-guard, dsh-herdr and jevcore on stderr.
         # Same sandbox as dsh-config: no network, a private DSH_HOME, no herdr,

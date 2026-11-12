@@ -191,7 +191,7 @@ There is no ordered fallback in dsh, so a 429 means re-running with another
 Zen keys behind one IP are probably one bucket, and nothing measured yet shows
 different limits between slots.
 
-The stock `headless` profile that substrate drives mounts no plugin and keeps
+The stock `headless` profile mounts no plugin and keeps
 `credentials` disabled; it gets the Gemini default route and the key slot.
 Nothing here touches `~/.dsh`: the profile manifest and store links under
 `~/.dsh/profiles/zen` are written by the wrapper on the first `dsh zen`.

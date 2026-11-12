@@ -61,8 +61,6 @@ and preferences remain mutable. API keys stay separate. The DSH full-agent
 integration uses official `acp`; preserve the Gemini investigation as lineage.
 See `docs/antigravity-cli.md` and `docs/gemini-cli.md`.
 
-**Model catalog (Tom, 2026-10-10).** Model ids for the factory are runtime data, not nix: they live in `~/.config/substrate/models.toml`, seeded by the substrate-puller unit when the file is absent and never rewritten by nix (`services.substrate.puller.modelsFile`, named in runtimes.toml as `models_file`; the runners re-read it on every call, so a model edit needs no rebuild). Tom: "i dnt think it s a g ood idea to have things like that tied to nixos dotfiles". The openrouter-free lane is parked (no entry in the catalog, so substrate refuses that runtime and route policies fall through) until OpenRouter releases a new stealth model; since pi was retired (2026-10-25) no harness routes to the OpenRouter key, and seats reads it only for the credit row. The puller PATH carries Node 24 and pnpm 11.17.0 (`pkgs.pnpm_11_17`, the stack v1 pin) so a spec-task gate runs `node` and `pnpm` bare.
-
 **Scheduled work (Tom, 2026-09-30; amended 2026-11-10).** No scheduled
 agent work is declared in dotfiles. It is written as JSONC scheduled
 items in an agency's `.agency/scheduled/` (the master agency is `~`) and
@@ -245,7 +243,7 @@ straightforward to select the model that we use with each provider. no need
 for round-robin style usage but it IS a nice to have"; round-robin is
 deferred). The QwenCloud route was deleted with the account. Nothing
 sensitive goes through a free lane; Gufo keeps that work. The stock
-`headless` profile that substrate drives mounts no plugin. The second batch
+`headless` profile mounts no plugin. The second batch
 (issue 687, same day) adds Groq, Mistral, Cohere, NVIDIA NIM, Cloudflare
 Workers AI, Hugging Face, Cerebras and Vercel AI Gateway as `DSH_ROUTE`
 picks on pi-ai's native catalog routes (Cohere hand-declared on its

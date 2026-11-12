@@ -92,10 +92,9 @@ in
   # YYYY-MM-DD` for a missed day; the transcripts stay on disk.
 
   # ── seat meters directory (outlives the Tally seat feeder) ────────────────
-  # `seats` reads its peer cache here and substrate's pusher names it as
-  # metersDir (modules/substrate.nix). The seat feeder that used to write it
+  # `seats` reads its peer cache here. The seat feeder that used to write it
   # (home/seat-feeder.nix) went with the Tally sunset on 2026-09-30; the
-  # directory stays declared so neither reader meets a missing path.
+  # directory stays declared so the reader never meets a missing path.
   systemd.user.tmpfiles.rules = lib.mkIf isBrain [
     "d %h/.local/state/tally-rewrite/meters 0700 - - -"
   ];
