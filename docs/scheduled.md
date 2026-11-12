@@ -28,8 +28,12 @@ workflow scripts start there, never from an item.
 
 Run these as Tom's user on the NAS. The `scheduled` program and the two
 environment variables it needs (`SCHEDULED_INBOX`,
-`SCHEDULED_FLOOR_INSTANCE`) are in every login shell, so Claude Code,
-dsh-web's terminal and a plain shell all reach the same inbox and floor.
+`SCHEDULED_FLOOR_INSTANCE`) come together: the installed command carries
+the inbox and floor as defaults (a wrapper), so Claude Code, a Herdr pane,
+dsh-web's terminal and a plain shell all reach the same inbox and floor
+with nothing exported. Herdr panes and Claude Code never run a login
+shell, so Home Manager's session variables cannot be relied on there; the
+wrapper does not need them. A variable set by hand still wins.
 
 ```sh
 scheduled new master:weekly-review --cron '0 7 * * 1' --tz Europe/Paris \
