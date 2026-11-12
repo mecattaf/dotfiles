@@ -33,7 +33,9 @@
 # key it keeps. Dropped from the policy: the sandbox, permission and approval
 # rows (workers run with full permissions, and the superagent needs the stock
 # `danger-full-access` preset), and the default model (each folder sets its
-# own).
+# own). So a Session opened by hand in the master panel follows
+# DSH_PERMISSION_MODE, which dshd sets to danger-full-access: approval never,
+# bypassPermissions on Claude, and no pinned dsh-bwrap runner.
 #
 # Outputs: $out/profiles/<p>/{package.json,cordis.patch.yml,pnpm-workspace.yaml},
 # $out/manifest.json (profile names, file digests and the rows `dsh-master

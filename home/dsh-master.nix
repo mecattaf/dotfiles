@@ -122,7 +122,7 @@ in
       type = types.port;
       # scheduled-panel-tunnel forwards this port (home/scheduled.nix).
       default = 3082;
-      description = "Loopback port of the master web profile.";
+      description = "Loopback port of the master web profile. The floor's management API there takes no token, so the port grants control equal to tom's shell to any local uid and to whatever its tunnel forwards it to.";
     };
     dshdCommand = mkOption {
       type = types.str;

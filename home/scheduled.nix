@@ -90,9 +90,6 @@ lib.mkIf osConfig.dshd.enable {
   # NAS-owned, like the live agency-web-client-tunnel; nothing of
   # Scheduled runs on the Zenbook. No store path in this text, so an
   # openssh bump never makes fleet-update hold a switch for it.
-  # 3082 grants control equal to tom's shell: the floor's management API
-  # takes no token (docs/dsh-master.md), so any local process on the
-  # Zenbook can steer the superagent through this forward.
   systemd.user.services.scheduled-panel-tunnel = {
     Unit = {
       Description = "Scheduled panel: NAS loopback 3082 on the Zenbook";
