@@ -18,10 +18,8 @@ let
   targets = map (f: f.target) (builtins.attrValues hm.home.file);
   # The one shared value (docs/scheduled.md): the Master profile's
   # dsh-superagent stateDir, whose <stateDir>/inbox/scheduled the floor's
-  # scheduled Source reads. The fallback is that option's default, for a
-  # tree without home/dsh-master.nix.
-  masterStateDir = hm.programs.dsh.master.stateDir or "${hm.home.homeDirectory}/.agency/state/master";
-  inbox = "${masterStateDir}/inbox/scheduled";
+  # scheduled Source reads.
+  inbox = "${hm.programs.dsh.master.stateDir}/inbox/scheduled";
   environment = lib.toList tick.Service.Environment;
 in
 assert timer.Timer == {

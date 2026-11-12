@@ -78,7 +78,13 @@ pkgs.testers.runNixOSTest {
       useGlobalPkgs = true;
       useUserPackages = true;
       users.tom = {
-        imports = [ ../../home/scheduled.nix ];
+        # dsh-master.nix declares programs.dsh.master.stateDir, the inbox's
+        # one source; the Master profiles themselves are not rendered here.
+        imports = [
+          ../../home/dsh-master.nix
+          ../../home/scheduled.nix
+        ];
+        programs.dsh.master.enable = false;
         home.stateVersion = "26.05";
       };
     };

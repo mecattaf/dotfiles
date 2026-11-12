@@ -38,6 +38,9 @@ is the one value the two sides share. `home/scheduled.nix` passes
 `SCHEDULED_INBOX=<stateDir>/inbox/scheduled` to the service and to login
 shells. `tests/scheduled` asserts that the two agree.
 
+The floor's DSH profiles, `master` and one `master-<pair>` per worker
+pair, are rendered from one source; see [dsh-master.md](dsh-master.md).
+
 ## An item
 
 ```jsonc
@@ -98,9 +101,6 @@ schedule and `<namespace>~<item>@run~<ULID>.json` for a manual run. A `/`
 in the namespace is written `+`. The record format (v1) is the fork's;
 `pkgs/scheduled/test/fixtures/occurrence-v1.json` is byte-identical to
 the fork's `tests/fixtures/scheduled-occurrence-v1.json`.
-
-The floor's DSH profiles, `master` and one `master-<pair>` per worker
-pair, are rendered from one source; see [dsh-master.md](dsh-master.md).
 
 ## Commissioning order
 

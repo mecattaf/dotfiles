@@ -19,11 +19,8 @@ let
   # <stateDir>/inbox/scheduled by default, beside orchestrator.sqlite.
   # programs.dsh.master.stateDir (home/dsh-master.nix) is what the Master
   # profile renders as dsh-superagent's stateDir; tests/scheduled asserts
-  # the two agree. The fallback is that option's own default, for a
-  # generation built before home/dsh-master.nix is imported.
-  stateDir =
-    config.programs.dsh.master.stateDir or "${config.home.homeDirectory}/.agency/state/master";
-  inbox = "${stateDir}/inbox/scheduled";
+  # the two agree.
+  inbox = "${config.programs.dsh.master.stateDir}/inbox/scheduled";
   # The floor's dshd instance; the name the Master floor recipe keeps.
   floorInstance = "floor";
 in
