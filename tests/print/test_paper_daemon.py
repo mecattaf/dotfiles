@@ -232,13 +232,17 @@ check = ("not_applicable" if args.target_pages is None
          else "pass" if abs(args.target_pages - pages) <= args.page_slack else "fail")
 if "<!-- render: dishonest-length -->" in text:
     check = "pass"
+quality = "fail" if "<!-- render: layout-defect -->" in text else "pass"
 (args.output_dir / "decision.json").write_text(json.dumps({
     "decision": decision, "provenance": "fallback", "overridden": [],
+    "quality_check": quality, "layout": "dense",
+    "quality": {"defects": [{"kind": "heading_only_page", "severity": "hard", "page": 4}]
+                if quality == "fail" else []},
     "pdf": str(args.output_dir / "doc.pdf"),
     "pages_rendered": pages + (1 if "<!-- render: wrong-pages -->" in text else 0), "target_pages": args.target_pages,
     "page_slack": args.page_slack,
     "length_check": check}))
-sys.exit(3 if check == "fail" else 0)
+sys.exit(3 if check == "fail" or quality == "fail" else 0)
 '''
 
 
@@ -555,6 +559,18 @@ class RejectionTests(DaemonHarness):
         self.assertEqual(reason["target_pages"], 1)
         self.assertEqual(reason["page_slack"], 0)
         self.assertTrue((self.paper / "rejected/long/source.md").exists())
+        self.assertEqual(self.calls("lp"), [])
+
+    def test_layout_defect_within_page_tolerance_is_rejected_and_never_sent(self) -> None:
+        self.drop("stranded", "# Read-up\n<!-- pages: 12 -->\n<!-- render: layout-defect -->\n",
+                  "target_pages: 10")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        reason = json.loads((self.paper / "rejected/stranded/reason.json").read_text())
+        self.assertEqual(reason["defects"][0]["kind"], "heading_only_page")
+        self.assertEqual(self.calls("lp"), [])
+        # A second daemon pass does not resubmit the rejected job.
+        self.assertEqual(self.daemon("run").returncode, 0)
         self.assertEqual(self.calls("lp"), [])
 
     def test_render_within_default_slack_prints(self) -> None:

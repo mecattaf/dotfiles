@@ -814,6 +814,21 @@ def process_job(jobdir: Path, source: Path, meta: dict, at: dt.datetime) -> bool
         decision["page_slack"] = slack
         write_json(decision_path, decision)
 
+    # #673: a measured layout defect (a heading alone on a page, clipped or
+    # lost text) is refused before any submission, whatever the page count.
+    if decision.get("quality_check") == "fail":
+        defects = (decision.get("quality") or {}).get("defects") or []
+        write_json(jobdir / "reason.json", {
+            "reason": "the rendered layout failed the page-quality gate",
+            "defects": defects,
+            "pages_rendered": decision.get("pages_rendered"),
+            "layout": decision.get("layout"),
+        })
+        dest = settle_into(jobdir, "rejected")
+        log(f"rejected {dest.name}: layout defects "
+            f"{sorted({d.get('kind') for d in defects if isinstance(d, dict)})}; nothing was sent")
+        return True
+
     if decision.get("length_check") == "fail":
         write_json(jobdir / "reason.json", {
             "reason": "rendered page count is outside target_pages ± page_slack",

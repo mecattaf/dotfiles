@@ -46,9 +46,32 @@ Set `page_slack: 0` only for a one-pager or when the user said "exactly".
 Leave typography to the daemon unless the user named a face or layout.
 Never set `force` for convenience.
 The local tool asks Gufo's Qwen Flash model for typesetting choices. WeasyPrint
-produces the PDF on strix-coordinator. The daemon tries up to three measured
-layouts when the PDF is too long. It preserves the Markdown exactly, keeps
-body type at least 10 pt, and rejects a remaining page-count miss.
+produces the PDF on strix-coordinator. The fleet owns layout quality
+(dotfiles#673): every candidate render is measured page by page, and a
+heading left alone on a page, a near-empty page before a break, clipped or
+lost text is refused before printing, even when the page count is in range.
+The daemon tries up to four measured layouts (standard, snug at the same type
+size, compact, dense), prefers one that saves a duplex sheet, and has Gufo
+review the rendered page images. Gufo's review is recorded but cannot pass a
+measured defect, and a missing model does not switch the gate off. The
+Markdown is never rewritten, body type stays at least 10 pt and table type
+9.5 pt, and a remaining page-count miss or layout defect is rejected.
+
+## Writing a document to print
+
+Avoid giant Markdown tables in reports and read-ups you write: they read
+poorly on paper. Put narrative material, timelines and long ledgers in prose
+or short lists, and keep tables for compact comparisons that benefit from
+columns. Splitting one giant table into many equally dense tables does not
+help. For example, instead of a 40-row status table, write:
+
+    ## Status
+
+    - **Renderer**: tables now flow across pages; verified on strix.
+    - **Daemon**: rejects a stranded heading before printing.
+
+A document someone else supplied is printed as written: never drop rows or
+summarize it to make it fit.
 
 ## An existing PDF
 
@@ -81,7 +104,7 @@ timestamp suffix):
 |---|---|
 | `printed/<slug>/receipt.json` | paper is out: the printer reported the job completed with `impressions_completed` equal to the rendered pages (for a PDF, its own pages) |
 | `outbox/<slug>/` | it is 00:00–06:00; it prints at 06:05 |
-| `rejected/<slug>/reason.json` | the render fell outside `target_pages` ± `page_slack`, the front matter or sidecar was invalid, or the PDF was malformed or encrypted; nothing was printed. Revise and drop again |
+| `rejected/<slug>/reason.json` | the render fell outside `target_pages` ± `page_slack`, failed the page-quality gate (its `defects` name the page), the front matter or sidecar was invalid, or the PDF was malformed or encrypted; nothing was printed. Revise and drop again |
 | `failed/<slug>/failure.json` | something went wrong at the queue or the printer; the evidence is beside it and paper-daemon.service is left failed for the fleet's failure markers |
 
 Report to the user what the directory says, and only that. A drop with no

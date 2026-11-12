@@ -23,10 +23,37 @@ gets `source.md`, the PDF and `decision.json` (`pages_rendered`,
 `--page-slack` pages (default 2) from `--target-pages` exits 3. It has
 no `--print`: nothing here reaches CUPS.
 
-An overlong render gets at most two further measured attempts (`compact`, then
-`dense`). The original Markdown stays unchanged. Type never goes below 10 pt;
-the narrowest margins are 23 mm at the sides and 17/18 mm top/bottom. Short
-sources are rejected without padding. `paper-render` packages WeasyPrint, the
+Every candidate is rendered with `print-paper.py --measure` and checked page
+by page (#673). Hard defects are a heading-only page, a heading ending a page,
+a near-empty or blank page before a break, text outside the content box or
+overlapping, source text missing from the PDF, headings or paragraphs out of
+order, and type under the floor. They give `quality_check: fail`, exit 3, and
+paper-daemon rejects the job before submission. A short final page is a soft
+finding, and so is an ordinary partly filled last page or a one-page sparse
+form, which stays valid. Long or dense tables are recorded as advisories.
+
+Layouts run `standard`, `snug` (same type size, 25 mm sides, 19/20 mm
+top/bottom, 1.36 leading), `compact`, `dense`, stopping at the first clean
+render within the page bound. `snug` is also tried once for a duplex render
+with an odd page count or a soft finding, and wins only by saving a sheet
+(11 → 10 pages does, 12 → 11 does not) or a finding. Nothing is padded and no
+page target is invented. The original Markdown stays unchanged. Body type
+never goes below 10 pt and table type below 9.5 pt; the narrowest margins are
+23 mm at the sides and 17/18 mm top/bottom. Short sources are rejected
+without padding.
+
+Gufo then reviews the selected PDF's page images (`pdftoppm`, 60 dpi
+grayscale, at most six pages and about 1.3 MB per request, under the
+wrapper's 2 MiB limit) together with the measured facts and the document
+outline. If it raises concerns, another clean candidate is reviewed once.
+`decision.json` records `candidates` (pages, sheets, defects, page facts),
+`quality`, `page_reviews` and `page_review`. A review that is `unavailable`,
+`invalid` or `partial` is recorded as such; it never overrides the
+mechanical gate either way.
+
+Tables flow across pages, with the column header repeated on each
+continuation page and ordinary rows kept whole; a row taller than a page
+breaks instead of clipping. Column labels are not hyphenated. `paper-render` packages WeasyPrint, the
 four font families, pdfinfo and the Gufo `utility-model` wrapper, so rendering
 does not depend on an interactive desktop or inherited PATH. The NAS checks
 the returned PDF itself before it reaches CUPS; compute returns no receipt.
@@ -35,7 +62,7 @@ the returned PDF itself before it reaches CUPS; compute returns no receipt.
 
     print-paper.py INPUT.md [--profile P] [-o OUT.pdf | --output-dir DIR] \
       [--compare] [--label] [--require-one-page] [--keep-html] [--force] \
-      [--layout standard|compact|dense]
+      [--layout standard|snug|compact|dense] [--measure OUT.json]
 
 Markdown or HTML → print CSS → WeasyPrint → A4 PDF. The script checks
 that the requested font resolves instead of silently accepting a fallback,
