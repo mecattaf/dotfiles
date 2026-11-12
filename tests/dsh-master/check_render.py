@@ -240,6 +240,19 @@ def main(package, expect_path):
         problems.append(f"admission is {seed.get('admission')}")
     subtest("seed file holds both rules and both admission rows", problems)
 
+    # An item can ask the superagent itself to act, for example to start a
+    # workflow, instead of handing a worker a ticket. The scheduled rule's
+    # assessor clause must let it, or the assessor accepts the nudge as a
+    # ticket for a worker, which has no orchestrator tools.
+    problems = []
+    text = rules.get("scheduled", {}).get("instruction", "")
+    assess, work = text.find(ASSESSOR_CLAUSE), text.find(WORKER_CLAUSE)
+    clause = text[assess:work] if 0 <= assess < work else ""
+    for phrase in ("asks you, not a worker, to act", "orchestrator_workflow_start", "then do what it asks"):
+        if phrase not in clause:
+            problems.append(f"rule scheduled: the assessor clause does not say {phrase!r}")
+    subtest("the scheduled rule lets an item ask the superagent itself to act", problems)
+
     # A rule has two readers: the main Session assesses Triggers by it, and
     # the fork's executor copies a matched rule verbatim into the worker's
     # brief, where it "takes precedence". So each rule describes its
@@ -271,19 +284,6 @@ def main(package, expect_path):
     if len(clauses) > 1:
         problems.append(f"the worker clauses differ: {sorted(clauses)}")
     subtest("each seed rule settles direction and tells the assessor, then the worker, what to do", problems)
-
-    # An item can ask the superagent itself to act, for example to start a
-    # workflow, instead of handing a worker a ticket. The scheduled rule's
-    # assessor clause must let it, or the assessor accepts the nudge as a
-    # ticket for a worker, which has no orchestrator tools.
-    problems = []
-    text = rules.get("scheduled", {}).get("instruction", "")
-    assess, work = text.find(ASSESSOR_CLAUSE), text.find(WORKER_CLAUSE)
-    clause = text[assess:work] if 0 <= assess < work else ""
-    for phrase in ("asks you, not a worker, to act", "orchestrator_workflow_start", "then do what it asks"):
-        if phrase not in clause:
-            problems.append(f"rule scheduled: the assessor clause does not say {phrase!r}")
-    subtest("the scheduled rule lets an item ask the superagent itself to act", problems)
 
     problems = []
     for name, profile in manifest["profiles"].items():
