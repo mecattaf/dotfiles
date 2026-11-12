@@ -161,58 +161,38 @@ class AdapterTests(unittest.TestCase):
         _, claude_records = memory.load_jsonl_stably(
             fixture_trace(CLAUDE_HOME, CLAUDE_ROOT_ID)
         )
-        claude_turns, claude_visible = memory.normalize_trace(
-            "claude-code", claude_records
-        )
+        claude_turns = memory.normalize_trace("claude-code", claude_records)
         claude_text = "\n".join(turn.content for turn in claude_turns)
         self.assertIn("Implement the memory drain", claude_text)
         self.assertIn("Read targeted /workspace/modules/npu-llm.nix", claude_text)
         self.assertIn("tool call completed successfully", claude_text)
         self.assertNotIn("SECRET_", claude_text)
-        self.assertNotIn("ai-memory:handoff", claude_text)
-        handoff = memory.latest_handoff(
-            claude_visible,
-            memory.Identity("claude-code", CLAUDE_ROOT_ID),
-        )
-        self.assertIsNotNone(handoff)
-        assert handoff is not None
-        self.assertIn("Verify the synthetic acceptance suite", handoff[1])
 
         _, codex_records = memory.load_jsonl_stably(
             fixture_trace(CODEX_HOME, CODEX_ROOT_ID)
         )
-        codex_turns, codex_visible = memory.normalize_trace("codex", codex_records)
+        codex_turns = memory.normalize_trace("codex", codex_records)
         codex_text = "\n".join(turn.content for turn in codex_turns)
         self.assertIn("Build an exact Codex adapter", codex_text)
         self.assertIn("command invoked: nix flake check", codex_text)
         self.assertIn("exit code 0", codex_text)
         self.assertNotIn("SECRET_", codex_text)
-        self.assertNotIn("ai-memory:handoff", codex_text)
-        self.assertIsNotNone(
-            memory.latest_handoff(
-                codex_visible,
-                memory.Identity("codex", CODEX_ROOT_ID),
-            )
-        )
 
-    def test_latest_well_formed_handoff_wins(self) -> None:
-        identity = memory.Identity("codex", CODEX_ROOT_ID)
-        valid = (
+    def test_markers_left_by_the_retired_handoff_skills_are_stripped(self) -> None:
+        # Traces from before handoff and pickup were retired still carry their
+        # markers; drain keeps them out of the evidence it sends the model.
+        text = (
+            "Kept prose.\n"
             '<!-- ai-memory:handoff {"version":1,"source":"codex",'
             f'"session_id":"{CODEX_ROOT_ID}"}} -->\n'
-            "## Handoff\n\nKeep this block.\n"
-            "<!-- /ai-memory:handoff -->"
+            "## Handoff\n\nOld block.\n"
+            "<!-- /ai-memory:handoff -->\n"
+            '<!-- ai-memory:parent {"version":1,"source":"codex",'
+            f'"session_id":"{CODEX_ROOT_ID}"}} -->'
         )
-        invalid_later = (
-            '<!-- ai-memory:handoff {"version":2,"source":"codex",'
-            f'"session_id":"{CODEX_ROOT_ID}"}} -->\n'
-            "## Handoff\n\nDo not keep this block.\n"
-            "<!-- /ai-memory:handoff -->"
-        )
-        handoff = memory.latest_handoff([valid, invalid_later], identity)
-        self.assertIsNotNone(handoff)
-        assert handoff is not None
-        self.assertEqual(handoff[1], "Keep this block.")
+        cleaned = memory.strip_injected_text(text)
+        self.assertIn("Kept prose.", cleaned)
+        self.assertNotIn("ai-memory:", cleaned)
 
 
 class SkillBoundaryTests(unittest.TestCase):
@@ -303,8 +283,7 @@ class DrainTests(unittest.TestCase):
         self.assertEqual(fields["source"], "claude-code")
         self.assertEqual(fields["session_id"], CLAUDE_ROOT_ID)
         self.assertNotIn("parent_source", fields)
-        self.assertIn("## Handoff", first_text)
-        self.assertIn("Verify the synthetic acceptance suite", first_text)
+        self.assertNotIn("## Handoff", first_text)
         self.assertNotIn("SECRET_", first_text)
         self.assertLessEqual(len(first_bytes), memory.MAX_NOTE_BYTES)
         self.assertTrue(all(req["model"] == "utility" for req in first_invoker.requests))
@@ -449,97 +428,61 @@ class DrainTests(unittest.TestCase):
             )
         self.assertEqual(note_path.read_bytes(), original)
 
-    def test_pickup_loads_only_handoff_and_carries_lineage_across_date(self) -> None:
-        predecessor = memory.Identity("claude-code", CLAUDE_ROOT_ID)
-        _, predecessor_path = memory.drain_session(
-            identity=predecessor,
+    def test_redrain_keeps_the_parent_lineage_of_an_older_note(self) -> None:
+        # Notes drained while pickup existed may carry parent fields; nothing
+        # writes new ones, but a re-drain must not drop them.
+        trace = copied_trace(fixture_trace(CLAUDE_HOME, CLAUDE_ROOT_ID), self.root)
+        identity = memory.Identity("claude-code", CLAUDE_ROOT_ID)
+        _, note_path = memory.drain_session(
+            identity=identity,
             journal_dir=self.journal,
-            trace_path=fixture_trace(CLAUDE_HOME, CLAUDE_ROOT_ID),
-            now=datetime.fromisoformat("2026-07-22T23:58:00+02:00"),
-            invoker=QueueInvoker(
-                result_data(thread="PRIVATE_PREDECESSOR_SUMMARY_NOT_FOR_PICKUP")
-            ),
+            trace_path=trace,
+            now=datetime.fromisoformat("2026-07-22T22:10:00+02:00"),
+            invoker=QueueInvoker(result_data()),
         )
-        pickup = memory.pickup_output(
-            self.journal,
-            f"{predecessor.source}:{predecessor.session_id}",
-        )
-        self.assertIn("ai-memory:parent", pickup)
-        self.assertIn("Verify the synthetic acceptance suite", pickup)
-        self.assertNotIn("PRIVATE_PREDECESSOR_SUMMARY_NOT_FOR_PICKUP", pickup)
-
-        successor_id = "019f0000-0000-7000-8000-dddddddd0005"
-        successor_trace = self.root / f"rollout-{successor_id}.jsonl"
-        records = [
-            {
-                "timestamp": "2026-07-23T00:01:00+02:00",
-                "type": "session_meta",
-                "payload": {
-                    "id": successor_id,
-                    "thread_source": "user",
-                    "source": "exec",
-                    "originator": "codex_exec",
-                },
-            },
-            {
-                "timestamp": "2026-07-23T00:01:01+02:00",
-                "type": "response_item",
-                "payload": {
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": pickup}],
-                },
-            },
-            {
-                "timestamp": "2026-07-23T00:02:00+02:00",
-                "type": "response_item",
-                "payload": {
-                    "type": "message",
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": "Continue with the inherited constraints.",
-                        }
-                    ],
-                },
-            },
-        ]
-        successor_trace.write_text(
-            "".join(json.dumps(record) + "\n" for record in records),
-            encoding="utf-8",
-        )
-        _, successor_path = memory.drain_session(
-            identity=memory.Identity("codex", successor_id),
-            journal_dir=self.journal,
-            trace_path=successor_trace,
-            now=datetime.fromisoformat("2026-07-23T00:05:00+02:00"),
-            invoker=QueueInvoker(
-                result_data(
-                    title="continued verification",
-                    group="wrong group",
-                    thread="The successor continued from a bounded handoff.",
-                )
-            ),
-        )
-
-        fields, _ = memory.parse_frontmatter(successor_path.read_text())
-        self.assertEqual(
-            successor_path.relative_to(self.journal).parent.as_posix(),
-            "2026/07/23",
-        )
-        self.assertNotEqual(successor_path, predecessor_path)
-        self.assertEqual(fields["group"], "memory drain")
-        self.assertEqual(fields["parent_source"], "claude-code")
-        self.assertEqual(fields["parent_session_id"], CLAUDE_ROOT_ID)
-
-        duplicate = self.journal / "duplicate-predecessor.md"
-        shutil.copy2(predecessor_path, duplicate)
-        with self.assertRaisesRegex(memory.MemoryError, "found 2 journal notes"):
-            memory.pickup_output(
-                self.journal,
-                f"{predecessor.source}:{predecessor.session_id}",
+        text = note_path.read_text()
+        session_line = f'session_id: "{CLAUDE_ROOT_ID}"\n'
+        self.assertIn(session_line, text)
+        note_path.write_text(
+            text.replace(
+                session_line,
+                session_line
+                + 'parent_source: "codex"\n'
+                + f'parent_session_id: "{CODEX_ROOT_ID}"\n',
             )
+        )
+        with trace.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": CLAUDE_ROOT_ID,
+                        "isSidechain": False,
+                        "timestamp": "2026-07-23T08:59:00+02:00",
+                        "message": {"role": "user", "content": "One more turn."},
+                    }
+                )
+                + "\n"
+            )
+
+        status, same_path = memory.drain_session(
+            identity=identity,
+            journal_dir=self.journal,
+            trace_path=trace,
+            now=datetime.fromisoformat("2026-07-23T09:00:00+02:00"),
+            invoker=QueueInvoker(result_data()),
+        )
+        self.assertEqual(status, "updated")
+        self.assertEqual(same_path, note_path)
+        fields, body = memory.parse_frontmatter(note_path.read_text())
+        self.assertEqual(fields["parent_source"], "codex")
+        self.assertEqual(fields["parent_session_id"], CODEX_ROOT_ID)
+        self.assertNotIn("## Handoff", body)
+
+    def test_pickup_is_no_longer_an_action(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                memory.build_parser().parse_args(["pickup", f"codex:{CODEX_ROOT_ID}"])
 
     def test_default_invoker_forwards_through_the_installed_wrapper(self) -> None:
         # The default invoker's whole job is to shell out to the
