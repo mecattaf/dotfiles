@@ -13,9 +13,6 @@
 # tells you everything.
 set -u
 
-# Which checkout SECTION 3's greps read, and nothing else. Overridable because
-# the default tree only carries this branch after it merges.
-DOTFILES="${L8_FLASH_DOTFILES:-/home/tom/mecattaf/dotfiles}"
 # Where every RAW dotfile actually lives, and it is NOT overridable:
 # home/home.nix:15 hardcodes repoDir = "$HOME/mecattaf/dotfiles" and anchors
 # every out-of-store symlink there, whatever checkout the switch was taken from
@@ -85,7 +82,7 @@ resolve_fragment() { # $1 = FragmentPath as printed; echoes what it resolves to
   printf '%s' "${resolved:-$raw}"
 }
 
-echo "l8-flash-probe on $HOST (greps read $DOTFILES; symlinks resolve into $REPO_DIR)"
+echo "l8-flash-probe on $HOST (symlinks resolve into $REPO_DIR)"
 echo
 # READ A GREEN RUN CORRECTLY. Not every check can only pass after the switch;
 # some are already true on this box before it, and a few land with the TREE
