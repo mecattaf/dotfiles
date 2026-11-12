@@ -1,0 +1,24 @@
+// /tmp ageing, report only (scheduled-ideas sweep-fleet-ops 2.2 and 2.7, 12 Nov 2026).
+// Worktrees and scratch clones live under /tmp and age out after 10 days (systemd-tmpfiles,
+// a plain timer that stays plain); gc-root-reaper drops /tmp GC roots after 7 idle days.
+// The push habit has no mechanism (agent-runtime-rules: "build no sync tool, sweep or schedule
+// for it"), so this item only lists what ageing would lose and touches none of it.
+{
+  "name": "/tmp ageing: unpushed checkouts, bundles, GC roots",
+  // Off (Tom, 11 Nov: "make sure there are no scheduled work in the morning").
+  "enabled": false,
+  "on": { "schedule": [ { "cron": "0 8 * * 0", "timezone": "Europe/Paris" } ] },
+  "job": {
+    "prompt": [
+      "Report only. This is a reading of what /tmp ageing would lose on this host and on strix-coordinator, not a sweep: the standing rule for the push habit is to build no sync tool, sweep or schedule for it. strix-worker is dormant: never contact it.",
+      "1. Checkouts: find /tmp -maxdepth 3 -name .git -not -path '*/node_modules/*' -printf '%h\\n' here, and the same command through ssh -o BatchMode=yes strix-coordinator on the build host. Skip what you cannot read.",
+      "   For each <dir>, read without writing: git --no-optional-locks -C <dir> status --porcelain --branch (uncommitted work), git -C <dir> log --oneline --branches --not --remotes (commits on no remote-tracking ref; nothing is fetched, so say these refs may be stale) and git -C <dir> log -1 --format=%cr (age of the last commit).",
+      "   Git refuses a checkout another user owns: list it as skipped and do not override safe.directory.",
+      "2. Bundles: find /tmp -maxdepth 2 -name '*.bundle' -printf '%TY-%Tm-%Td %p\\n' on both hosts.",
+      "3. GC roots: find /nix/var/nix/gcroots/auto -maxdepth 1 -type l -printf '%l\\n' on both hosts, keeping the targets under /tmp, and journalctl -u gc-root-reaper --since -8d --no-pager -o cat | tail -n 20 for what the daily reaper removed. If journald refuses, say so.",
+      "Mark at risk a checkout with uncommitted work or commits on no remote whose last commit is 7 or more days old: /tmp entries age out after 10 days.",
+      "Write one table per host: path, branch, uncommitted (yes or no), commits on no remote, last commit, at risk. Then list the bundles and the /tmp GC roots. End with: Nothing was changed.",
+      "Never push, fetch, commit, bundle, stash or check out; never remove or prune a worktree, delete a branch, a file or a GC root; never write a checkout's index or config."
+    ]
+  }
+}
