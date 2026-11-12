@@ -24,6 +24,13 @@ let
   # scheduled Source reads.
   inbox = "${hm.programs.dsh.master.stateDir}/inbox/scheduled";
   environment = lib.toList tick.Service.Environment;
+  # The fork's scheduled Source writes a header's second line as
+  # "Due <iso>; …" for an occurrence and as "Requested <iso> by …" for
+  # `scheduled run`, so the seed's scheduled rule names every header time
+  # by both words.
+  seed = lib.importJSON hm.programs.dsh.master.settingsSeed;
+  seedRule = lib.findFirst (r: r.id == "scheduled") { instruction = ""; } seed.rules;
+  seedDue = lib.drop 1 (lib.splitString "Due" seedRule.instruction);
 in
 assert timer.Timer == {
   OnCalendar = "hourly";
@@ -44,8 +51,14 @@ assert cli != null && cli.unwrapped == scheduled;
 assert cli.inbox == inbox && cli.floorInstance == "floor";
 assert !(hm.home.sessionVariables ? SCHEDULED_INBOX);
 assert !(hm.home.sessionVariables ? SCHEDULED_FLOOR_INSTANCE);
+assert tick.Service.Nice == 10;
 # Its own state is systemd's StateDirectory, never inside .agency/state.
 assert tick.Service.StateDirectory == "scheduled";
+assert tick.Service.StateDirectoryMode == "0700";
+# The tunnel forwards the Master web profile's port, from its one option.
+assert lib.hasInfix
+  "-R 127.0.0.1:${toString hm.programs.dsh.master.webPort}:127.0.0.1:${toString hm.programs.dsh.master.webPort} "
+  (toString tunnel.Service.ExecStart);
 assert !(lib.any (e: lib.hasPrefix "SCHEDULED_STATE_DIR=" e) environment);
 assert !(lib.hasInfix "--state-dir" (toString tick.Service.ExecStart));
 assert !(tick ? Install);
@@ -64,12 +77,18 @@ assert lib.all (h: !(builtins.elem "scheduled-heartbeat" (timersOf h))) [
 assert builtins.elem "CLAUDECODE" nas.dshd.releases.nas.unsetEnvironment;
 assert !(builtins.elem "CLAUDE_CONFIG_DIR"
   nas.dshd.releases.nas.unsetEnvironment);
-# The tests run on a writable copy: the stub dshd's `#!/usr/bin/env node` needs patchShebangs (the build sandbox has no
+assert seedDue != [ ] && lib.all (lib.hasPrefix " or Requested time") seedDue;
+# The tests run on a writable copy of the package plus the suite from the
+# source tree: the stub dshd's `#!/usr/bin/env node` needs patchShebangs (the build sandbox has no
 # /usr/bin/env). Node 24 refuses `node --test test/`, so the glob names the files.
 pkgs.runCommand "scheduled" { nativeBuildInputs = [ scheduled.node ]; } ''
   export HOME=$TMPDIR
   cp -r ${scheduled}/share/scheduled $TMPDIR/scheduled
   chmod -R u+w $TMPDIR/scheduled
+  # The suite and the stub dshd stay out of the installed package.
+  test ! -e $TMPDIR/scheduled/test
+  cp -r ${../../pkgs/scheduled/test} $TMPDIR/scheduled/test
+  chmod -R u+w $TMPDIR/scheduled/test
   cd $TMPDIR/scheduled
   patchShebangs test
   node --test 'test/*.test.mjs'

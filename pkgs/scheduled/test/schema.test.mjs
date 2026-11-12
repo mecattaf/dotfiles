@@ -224,3 +224,18 @@ test('validate verb: exit 0 for a valid file, 1 for errors, JSON results name th
     bad.cleanup();
   }
 });
+
+test('S9 a symlinked item file is refused as a symbolic link, not as group-writable', async () => {
+  const a = agencyWith('real', SMALLEST);
+  try {
+    const link = path.join(a.dir, 'linked.jsonc');
+    fs.symlinkSync(a.file, link);
+    const res = await validateFile(link);
+    const owner = res.problems.filter((p) => p.code === 'ownership');
+    assert.equal(owner.length, 1, JSON.stringify(res.problems));
+    assert.match(owner[0].message, /is a symbolic link/);
+    assert.doesNotMatch(owner[0].message, /writable by group/);
+  } finally {
+    a.cleanup();
+  }
+});
