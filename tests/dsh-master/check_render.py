@@ -113,6 +113,13 @@ def main(package, expect_path):
     problems += [f"{name}: the row differs from master's beyond engine" for name, row in superagent.items() if row != superagent.get("master")]
     extra = {name: [row for row in folder["patch"] if row.get("id", "").startswith("dsh-superagent-")] for name, folder in folders.items()}
     problems += [f"{name}: fork rows differ from master's" for name, listed in extra.items() if listed != extra["master"]]
+    sources = {row["id"]: row for row in extra.get("master", [])}
+    for row_id in ("dsh-superagent-scheduled", "dsh-superagent-workflow"):
+        if sources.get(row_id, {}).get("disabled") is not False:
+            problems.append(f"{row_id} is not rendered enabled")
+    for row_id in ("dsh-superagent-github", "dsh-superagent-feishu"):
+        if sources.get(row_id, {}).get("disabled") is not True:
+            problems.append(f"{row_id} is not rendered disabled")
     subtest("engine on only in master", problems)
 
     problems = [f"{name}: {row_id}" for name, ids in rows.items() for row_id in PERMISSION_ROWS & set(ids)]
@@ -159,16 +166,24 @@ def main(package, expect_path):
         if f"export CLAUDE_CONFIG_DIR={expect['claudeConfigDir']}\n" not in text or "exec /nix/store/" not in text:
             problems.append(f"{name}: {seat} does not pin the seat")
         want = (
-            {"sources": ["user", "dsh-superagent"], "presetless": False, "systemPromptPresets": ["dsh-superagent-router"]}
+            {"forwardedSources": ["user", "dsh-superagent"], "systemPromptPresets": ["dsh-superagent-router"], "presets": None}
             if name == "master"
-            else {"sources": ["user"], "presets": ["claude"], "presetless": True}
+            else {"forwardedSources": ["user"], "systemPromptPresets": [], "presets": ["claude"]}
         )
+        want.update(permissionSelector="native", sources=None, presetless=None)
         problems += [f"{name}: llm-claude {key} is {config.get(key)!r}" for key, value in want.items() if config.get(key) != value]
         registry = ids.get("agent-preset-registry", [])
-        if name == "master" and registry:
-            problems.append("master inserts a preset registry the web bundle already has")
-        if name != "master" and (len(registry) != 1 or not registry[0].get("inserted") or registry[0].get("config") != {"default": "claude"}):
-            problems.append(f"{name}: agent-preset-registry insert is {registry}")
+        preset = ids.get("headless-preset", [])
+        if name == "master" and (registry or preset):
+            problems.append("master inserts preset rows the web bundle does not need")
+        if name != "master":
+            if len(registry) != 1 or not registry[0].get("inserted") or registry[0].get("config") != {"default": "claude"}:
+                problems.append(f"{name}: agent-preset-registry insert is {registry}")
+            if len(preset) != 1 or preset[0].get("name") != "@norman-else/dsh-claude/headless-preset" or preset[0].get("config") != {"preset": "claude"}:
+                problems.append(f"{name}: headless-preset insert is {preset}")
+            order = [row.get("insert", [{}])[0].get("id") for row in folders[name]["patch"] if "insert" in row]
+            if order != ["agent-preset-registry", "headless-preset"]:
+                problems.append(f"{name}: inserts in the order {order}")
     subtest("seat and claude rows", problems)
 
     problems = []

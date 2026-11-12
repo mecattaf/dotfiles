@@ -154,7 +154,24 @@ in
     };
     superagentRows = mkOption {
       type = types.listOf types.attrs;
-      default = [ ];
+      # The fork's Scheduled and Workflow Sources. The heartbeat writes the
+      # Scheduled inbox, <stateDir>/inbox/scheduled, the plugin's default.
+      default = [
+        {
+          id = "dsh-superagent-scheduled";
+          disabled = false;
+        }
+        {
+          id = "dsh-superagent-workflow";
+          disabled = false;
+          config = {
+            pollMs = 2000;
+            concurrency = 16;
+            maxAttempts = 1;
+            pair = "";
+          };
+        }
+      ];
       description = "Rows of the fork bundle's other plugins, the same in every folder (a worker never applies them: they inject the orchestrator service).";
     };
     package = mkOption {

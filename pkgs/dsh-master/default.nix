@@ -134,7 +134,7 @@ let
     ];
     worker = pair: [
       # The headless bundle has no preset registry (the web bundle carries
-      # it), so dsh-claude's preset row would wait for it forever.
+      # it), so dsh-claude's preset rows would wait for it forever.
       {
         insert = [
           {
@@ -151,7 +151,12 @@ let
     ];
   };
 
-  # Rows of the extension bundles (dsh-claude, dsh-superagent).
+  # Rows of the extension bundles (dsh-claude, dsh-superagent). The
+  # llm-claude keys are dsh-claude floor-atomic's; a profile that leaves
+  # `presets` unset gets its default (claude and the two superagent presets).
+  # `permissionSelector: native` maps the sandbox alone to Claude's mode, so
+  # danger-full-access is bypassPermissions whatever the shared plugin
+  # setting says.
   extension = {
     master = [
       {
@@ -160,16 +165,12 @@ let
           executablePath = lib.getExe claudeSeat;
           idleTimeoutMs = 1800000;
           maxProcesses = 2;
-          sources = [
+          permissionSelector = "native";
+          forwardedSources = [
             "user"
             "dsh-superagent"
           ];
-          presets = [
-            "claude"
-            "dsh-superagent-router"
-            "dsh-superagent-worker"
-          ];
-          presetless = false;
+          # The superagent's mandate is DSH's system prompt of its router preset.
           systemPromptPresets = [ "dsh-superagent-router" ];
         }
         // settings.claudeConfig.master;
@@ -180,16 +181,26 @@ let
     ]
     ++ settings.superagentRows;
     worker = [
+      # The headless one-shot runner binds no preset; this binds `claude` to
+      # the top-level agent, after the registry row above.
+      {
+        insert = [
+          {
+            id = "headless-preset";
+            name = "@norman-else/dsh-claude/headless-preset";
+            config.preset = "claude";
+          }
+        ];
+      }
       {
         id = "llm-claude";
         config = {
           executablePath = lib.getExe claudeSeat;
           idleTimeoutMs = 600000;
           maxProcesses = 1;
-          sources = [ "user" ];
+          permissionSelector = "native";
           presets = [ "claude" ];
-          # The headless one-shot runner binds no preset.
-          presetless = true;
+          forwardedSources = [ "user" ];
           systemPromptPresets = [ ];
         }
         // settings.claudeConfig.worker;
