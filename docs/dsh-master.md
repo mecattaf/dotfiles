@@ -200,6 +200,14 @@ The superagent's state is `programs.dsh.master.stateDir`
 Decisions, settings and workflow journals, the lock `master.lock` beside
 the directory, and the Scheduled inbox `inbox/scheduled/`.
 
+The panel's management API (`/orchestrator/api`) takes no token: its only
+checks are the loopback bind, the `Host` header and
+`x-orchestrator-request: 1`. Port 3082 therefore grants control equal to
+the owner's own shell, to any local uid on the NAS and, through the panel
+tunnel, to any local process on the Zenbook. That control can rewrite the
+superagent's prompts and policy and retry or stop Tickets, and the
+superagent launches full-permission workers.
+
 ## The panel
 
 ```sh

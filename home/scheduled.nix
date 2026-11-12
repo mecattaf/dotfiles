@@ -109,6 +109,10 @@ lib.mkIf osConfig.dshd.enable {
   };
 
   # The Master floor's dsh-web on the Zenbook's loopback (docs/scheduled.md).
+  # The port grants control equal to the owner's own shell: the floor's
+  # management API takes no token (docs/dsh-master.md, The floor instance),
+  # so any local process on the Zenbook can steer the superagent through
+  # this forward.
   # NAS-owned, like the live agency-web-client-tunnel; nothing of
   # Scheduled runs on the Zenbook. No store path in this text, so an
   # openssh bump never makes fleet-update hold a switch for it.
