@@ -30,7 +30,8 @@ async function item(file) {
 }
 
 // A command that changes state. The brief may name one only on its "Never" line.
-const MUTATING = /git (push|fetch|pull|commit|bundle|gc|branch -[dD]|worktree (remove|prune))|\brm\b|nix-collect-garbage|nix store (gc|delete|optimise)|systemctl (--user )?(start|stop|restart|reset-failed|kill|mask|disable|enable)|tailscale up/;
+// Git's global options (-C <dir>, -c k=v, --no-optional-locks) may come before the verb.
+const MUTATING = /git (?:(?:-C|-c) \S+ |--no-optional-locks )*(push|fetch|pull|commit|bundle|gc|stash|checkout|switch|reset|branch -[dD]|worktree (remove|prune)|config (--global )?--add)|\brm\b|nix-collect-garbage|nix store (gc|delete|optimise)|systemctl (--user )?(start|stop|restart|reset-failed|kill|mask|disable|enable)|tailscale up/;
 // What a public repository must not carry (DIRECTIVES 4.3).
 const PERSONAL = /\/home\/|~\/notes|~\/today|~\/mecattaf|\bcc2\b|claude-work|\btom\b/i;
 
@@ -61,8 +62,9 @@ test('fleet-health: weekly, disabled, failed units on both hosts and / against t
   assert.match(text, /df -BG --output=target,avail,pcent \//);
   assert.match(text, /strix-coordinator df -BG --output=target,avail,pcent \//);
   assert.match(text, /less than 25G available/);
-  for (const word of ['start', 'stop', 'restart', 'reset', 'garbage', 'delete', 'Herdr', 'user manager', 're-authenticate'])
+  for (const word of ['start', 'stop', 'restart', 'reset', 'garbage', 'delete', 're-authenticate'])
     assert.ok(never.includes(word), `Never line names ${word}`);
+  assert.match(never, /never restart Herdr or the user manager/, 'live agent sessions hang off both');
 });
 
 test('tmp-ageing: weekly, disabled, reports /tmp work at risk and touches none of it', async () => {
