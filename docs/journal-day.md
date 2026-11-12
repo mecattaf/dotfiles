@@ -41,6 +41,7 @@ its cwd); the refusal keeps one session's writes through the link from being
 split across two days. Status 75 is not a failure: nothing changed, and the next
 fresh seat launch or the next scheduled run rotates. An already-correct link is a
 no-op whether or not a session is open. Seat launches always rotate.
+An empty `session_commands` list turns the refusal off.
 
 `--dry-run` prints the directory a run would select and returns the status a run
 would return, but creates, locks, writes and rotates nothing: no day folder, no

@@ -239,6 +239,9 @@ class Rollover(unittest.TestCase):
         self.process(4343, str(self.old), '/usr/bin/aider', 1)
         with self.assertRaises(module.Busy):
             self.rotate(dry_run=True)
+        # An empty list is the host-local way to rotate regardless of sessions.
+        self.config['session_commands'] = []
+        self.assertEqual(self.rotate(), self.journal / '2026/11/09')
 
     def test_cli_against_a_real_open_process(self):
         config_path = self.root / 'journal-day.json'
