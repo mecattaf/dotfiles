@@ -24,7 +24,8 @@ async function item(file) {
     walk(dir);
     const r = await validateFile(join(dir, '.agency/scheduled', file));
     assert.deepEqual(r.problems, [], file);
-    return { value: r.value, lines: [].concat(r.value.job.prompt) };
+    // The schema joins an array prompt with newlines; the brief is read the way the Ticket gets it.
+    return { value: r.value, lines: r.prompt.split('\n') };
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
