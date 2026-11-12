@@ -33,9 +33,10 @@
 # key it keeps. Dropped from the policy: the sandbox, permission and approval
 # rows (workers run with full permissions, and the superagent needs the stock
 # `danger-full-access` preset), and the default model (each folder sets its
-# own). So a Session opened by hand in the master panel follows
-# DSH_PERMISSION_MODE, which dshd sets to danger-full-access: approval never,
-# bypassPermissions on Claude, and no pinned dsh-bwrap runner.
+# own). The workers' Sessions therefore follow DSH_PERMISSION_MODE, which
+# dshd sets to danger-full-access. The master folder restates the sandbox,
+# sandbox-policy, approval and permission rows for its panel (`panelRows`),
+# so a Session opened there by hand starts at workspace-write.
 #
 # Outputs: $out/profiles/<p>/{package.json,cordis.patch.yml,pnpm-workspace.yaml},
 # $out/manifest.json (profile names, file digests and the rows `dsh-master
@@ -78,6 +79,28 @@ let
   ];
   policyRows = lib.filter (row: !(builtins.elem row.id dropped)) dsh.policyRows;
 
+  # master only: a Session opened by hand in the panel starts at the fleet's
+  # workspace-write and asks, under the pinned dsh-bwrap runner, instead of
+  # following DSH_PERMISSION_MODE (danger-full-access under dshd). The
+  # superagent pins its own Sessions to danger-full-access (the fork's
+  # sessions.ts), so that preset is restated beside the fleet's two.
+  fleetRow = id: lib.findFirst (row: (row.id or null) == id) (throw "fleet policy has no ${id} row") dsh.policyRows;
+  panelRows =
+    let
+      permission = fleetRow "permission";
+    in
+    [
+      (fleetRow "sandbox")
+      (fleetRow "sandbox-policy")
+      (fleetRow "approval")
+      (lib.recursiveUpdate permission {
+        config.presets.danger-full-access = {
+          sandbox = "danger-full-access";
+          approval = "never";
+        };
+      })
+    ];
+
   # The same row in every folder but for `engine` (docs/dsh-master.md).
   superagentRow = engine: {
     id = "dsh-superagent";
@@ -118,7 +141,7 @@ let
   # Rows any DSH composition of the app bundle has; the offline check dumps
   # them against the first-party bundles alone.
   firstParty = {
-    master = [
+    master = panelRows ++ [
       {
         id = "agent-default-model";
         config = route settings.pairs.${settings.defaultPair};

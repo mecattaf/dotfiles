@@ -148,8 +148,19 @@ def main(package, expect_path):
         problems.append(f"dsh-master check does not assert dsh-superagent enabled: {expected}")
     subtest("engine on only in master", problems)
 
-    problems = [f"{name}: {row_id}" for name, ids in rows.items() for row_id in PERMISSION_ROWS & set(ids)]
-    subtest("full permissions", problems)
+    problems = [f"{name}: {row_id}" for name, ids in rows.items() if name != "master" for row_id in PERMISSION_ROWS & set(ids)]
+    master_rows = rows.get("master", {})
+    if sorted(PERMISSION_ROWS & set(master_rows)) != sorted(PERMISSION_ROWS):
+        problems.append(f"master: permission rows {sorted(PERMISSION_ROWS & set(master_rows))}")
+    else:
+        mode = master_rows["sandbox-policy"][0].get("config", {}).get("mode")
+        policy = master_rows["approval"][0].get("config", {}).get("policy")
+        permission = master_rows["permission"][0].get("config", {})
+        if mode != "workspace-write" or policy != "ask":
+            problems.append(f"master: panel default is {mode}/{policy}")
+        if permission.get("defaultPreset") != "workspace-write" or permission.get("presets", {}).get("danger-full-access") != {"sandbox": "danger-full-access", "approval": "never"}:
+            problems.append(f"master: permission row is {permission}")
+    subtest("full permissions for workers, a pinned panel default in master", problems)
 
     problems = []
     for name, ids in rows.items():
@@ -312,7 +323,7 @@ def main(package, expect_path):
     policy = {row["id"]: row for row in expect["policyRows"]}
     wanted = sorted(set(expect["policyIds"]) - set(expect["dropped"]))
     for name, ids in rows.items():
-        have = sorted(set(ids) & set(expect["policyIds"]) - {"agent-default-model"})
+        have = sorted(set(ids) & set(expect["policyIds"]) - {"agent-default-model"} - (PERMISSION_ROWS if name == "master" else set()))
         if have != wanted:
             problems.append(f"{name}: policy ids {have}")
         problems += [f"{name}: {row_id} differs from the policy" for row_id in wanted if ids.get(row_id, [None])[0] != policy[row_id]]
