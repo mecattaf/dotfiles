@@ -299,7 +299,9 @@ def status(args):
     home = dsh_home()
     for name, profile in sorted(manifest["profiles"].items()):
         folder = os.path.join(home, "profiles", name)
-        current = all(sha256(os.path.join(folder, file)) == profile["files"][file] for file, _ in FILES)
+        current = all(sha256(os.path.join(folder, file)) == profile["files"][file] for file, _ in FILES) and all(
+            os.path.isfile(os.path.join(folder, file)) for file, _ in ONCE
+        )
         installed = read_state(folder).get("installed") == profile["files"]["package.json"]
         modules = os.path.isdir(os.path.join(folder, "node_modules"))
         print(

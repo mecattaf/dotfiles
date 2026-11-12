@@ -121,8 +121,10 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   keep | cmp - "$TMPDIR/keep.before"
   $dm status | grep -qx 'master: rendered current, installed no, node_modules present'
 
-  # install refuses a folder without the workspace file, before running dsh.
+  # install refuses a folder without the workspace file, before running dsh;
+  # status calls it stale.
   rm "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
+  $dm status | grep -qx 'master-gufo: rendered stale, installed no, node_modules absent'
   if $dm install --dsh /nonexistent master-gufo 2> "$TMPDIR/noworkspace.err"; then exit 1; fi
   grep -q 'master-gufo has no pnpm-workspace.yaml' "$TMPDIR/noworkspace.err"
   $dm render --quiet
