@@ -1,0 +1,24 @@
+// Fleet health, report only (scheduled-ideas sweep-fleet-ops 2.4 and 2.9, 12 Nov 2026).
+// The plain box-upkeep timers keep the watch and stay plain (AGENTS.md D41-D43): tripwires,
+// failure markers and gc-root-reaper. This item only reads what they and the hosts show,
+// weekly, including the build host's / against the 25 GB rule, which has no disk tripwire.
+// Mechanical reads: a cheap pair is enough once an item can name one.
+{
+  "name": "Fleet health: failed units and build-host disk",
+  // Off (Tom, 11 Nov: "make sure there are no scheduled work in the morning").
+  "enabled": false,
+  "on": { "schedule": [ { "cron": "0 7 * * 0", "timezone": "Europe/Paris" } ] },
+  "job": {
+    "prompt": [
+      "Report only. Read two hosts: this one, where the floor runs, and strix-coordinator, the build host. strix-worker is dormant: never contact it.",
+      "1. Failed units here: systemctl --failed --no-legend --plain and systemctl --user --failed --no-legend --plain.",
+      "   On the build host: ssh -o BatchMode=yes strix-coordinator systemctl --failed --no-legend --plain.",
+      "   For each failed unit, read systemctl status --no-pager -n 20 <unit> (with --user, or through the same ssh, as it was found) and give its most likely cause in one line.",
+      "2. Disk: df -BG --output=target,avail,pcent / here, and ssh -o BatchMode=yes strix-coordinator df -BG --output=target,avail,pcent / on the build host.",
+      "   Flag any / with less than 25G available: on the build host that stops nix builds; this host builds nothing, so there it is a figure to watch. Give figures, not remedies.",
+      "3. If ssh to strix-coordinator fails, quote its error once, do not retry, and report that host as unreachable.",
+      "Write one short table: host, failed units with their one-line causes, / available, below 25G (yes or no). End with: Nothing was changed.",
+      "Never start, stop, restart, reset, mask or edit a unit; never run garbage collection or delete a file or store path; never restart Herdr or the user manager; never re-authenticate tailscale or anything else."
+    ]
+  }
+}

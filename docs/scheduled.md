@@ -495,3 +495,12 @@ What each node may do:
 A failed node is `null` and the run goes on. The one exception: a
 failed or unclean `clean-tree` skips `fleet-update`, and the run's
 result says why.
+
+`fleet-health` and `tmp-ageing` are readings, weekly on Sunday morning.
+The plain box-upkeep timers keep doing the work (tripwires, failure
+markers, gc-root-reaper, tmpfiles); these items only report what they
+and the hosts show, and their briefs name every forbidden action on one
+`Never` line. `fleet-health` covers failed units and `/` against the
+25 GB build floor. `tmp-ageing` lists `/tmp` checkouts with work that
+ageing would lose, `/tmp` bundles, and `/tmp` GC roots. It is not a sync
+tool or a sweep: it never pushes, fetches, bundles or prunes.

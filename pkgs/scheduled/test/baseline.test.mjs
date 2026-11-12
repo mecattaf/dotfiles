@@ -15,7 +15,7 @@ import { tick } from '../src/lib/tick.mjs';
 import { main as validateVerb } from '../src/verbs/validate.mjs';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/master', import.meta.url));
-const FILES = ['cli-update.jsonc', 'day-prep.jsonc', 'fleet-nightly.jsonc', 'floor-upkeep.jsonc', 'journal-day.jsonc'];
+const FILES = ['cli-update.jsonc', 'day-prep.jsonc', 'fleet-health.jsonc', 'fleet-nightly.jsonc', 'floor-upkeep.jsonc', 'journal-day.jsonc', 'tmp-ageing.jsonc'];
 
 function home() {
   const dir = mkdtempSync(join(tmpdir(), 'scheduled-baseline-'));
@@ -41,7 +41,7 @@ test('C6.1: every live item validates with zero problems and reads enabled false
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 
-test('C6.1: the items are master:cli-update, master:day-prep, master:fleet-nightly, master:floor-upkeep and master:journal-day; floor-upkeep says it is inert', async () => {
+test('C6.1: the items are the master fixture files in order; floor-upkeep says it is inert', async () => {
   const h = home();
   try {
     const d = await discover({ home: h, uid: process.getuid() });
