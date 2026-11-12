@@ -180,8 +180,8 @@ class RealRendererTests(unittest.TestCase):
             # review is recorded as unavailable and the gate still decides.
             env = {**os.environ, "PATH": os.environ["PATH"]}
             result = subprocess.run([sys.executable, str(Path(scripts) / "print-auto.py"),
-                                     str(source), "--output-dir", str(job),
-                                     "--target-pages", "4"], capture_output=True, text=True, env=env)
+                                     str(source), "--output-dir", str(job)],
+                                    capture_output=True, text=True, env=env)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             decision = json.loads((job / "decision.json").read_text())
             self.assertEqual(source.read_text(), text)
