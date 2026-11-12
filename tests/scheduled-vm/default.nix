@@ -115,10 +115,11 @@ pkgs.testers.runNixOSTest {
     INBOX = "${inbox}"
     STATE = "/home/tom/.local/state/scheduled"
     STUB_FLOOR = "${stubFloor}"
-    # The CLI's defaults, set here as the unit sets them (a login shell may
-    # not read Home Manager's session variables).
-    CLI = f"env SCHEDULED_INBOX={INBOX} SCHEDULED_FLOOR_INSTANCE=floor"
-    CLI_NO_FLOOR = f"env -u SCHEDULED_FLOOR_INSTANCE SCHEDULED_INBOX={INBOX}"
+    # The installed command carries the inbox and floor as defaults
+    # (home/scheduled.nix): a login shell runs it with no environment. The
+    # storm sets the floor empty, which the wrapper keeps (--set-default).
+    CLI = "env -u SCHEDULED_INBOX -u SCHEDULED_FLOOR_INSTANCE"
+    CLI_NO_FLOOR = "env -u SCHEDULED_INBOX SCHEDULED_FLOOR_INSTANCE="
     WAIT = 300
 
 
@@ -263,6 +264,7 @@ pkgs.testers.runNixOSTest {
         assert marks in (3, 4) and record["namespace"] == "master" and record["item"] == "hb", (record, marks)
         assert record["missed"] == marks - 1 and record["cwd"] == "/home/tom" and record["text"] == "Say ok.", record
         assert run(f"stat -c %a {INBOX} {INBOX}/{made[0]}").split() == ["700", "600"]
+        assert run(f"stat -c %a {STATE}").strip() == "700"
         # Stopped by intent, and a record waits: the tick starts the floor.
         assert "floor action=start state=stopped waiting=1 result=started" in journal(), journal()
         assert floor_state() == "running"

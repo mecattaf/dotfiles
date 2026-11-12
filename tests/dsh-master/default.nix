@@ -37,27 +37,69 @@ let
     esac
   '';
   enabledOn = name: configurations.${name}.config.home-manager.users.tom.programs.dsh.master.enable;
-  expect = pkgs.writeText "dsh-master-expect.json" (
-    builtins.toJSON {
-      pairs = lib.mapAttrs (
-        _: pair:
-        lib.filterAttrs (_: v: v != null) {
-          inherit (pair) provider model reasoningEffort;
-        }
-      ) cfg.pairs;
-      pairEnv = lib.mapAttrs (_: pair: { inherit (pair) env maxWorkers; }) cfg.pairs;
-      presets = lib.mapAttrs (_: pair: pair.preset) cfg.pairs;
-      inherit (cfg)
-        allowBuilds
-        defaultPair
-        stateDir
-        claudeConfigDir
-        tag
-        ;
-      inherit (nas.pkgs.dsh) policyIds policyRows;
-      inherit (master) dropped;
-    }
-  );
+  # Both pins in the form the tag gives them; false once one is set by hand.
+  pinsFollowTag =
+    c:
+    c.superagent == "github:mecattaf/dsh-superagent-prototype#${c.tag}"
+    && c.claude == "github:mecattaf/dsh-claude#${c.tag}";
+  # check_render.py's expectations: the configured values, never the
+  # module's defaults restated, so a documented override stays green.
+  expectOf =
+    c: package:
+    pkgs.writeText "dsh-master-expect.json" (
+      builtins.toJSON {
+        pairs = lib.mapAttrs (
+          _: pair:
+          lib.filterAttrs (_: v: v != null) {
+            inherit (pair) provider model reasoningEffort;
+          }
+        ) c.pairs;
+        pairEnv = lib.mapAttrs (_: pair: { inherit (pair) env maxWorkers; }) c.pairs;
+        presets = lib.mapAttrs (_: pair: pair.preset) c.pairs;
+        inherit (c)
+          allowBuilds
+          defaultPair
+          stateDir
+          claudeConfigDir
+          tag
+          superagent
+          claude
+          superagentRows
+          ;
+        pinsFollowTag = pinsFollowTag c;
+        inherit (nas.pkgs.dsh) policyIds policyRows;
+        inherit (package) dropped;
+      }
+    );
+  expect = expectOf cfg master;
+  masterOf =
+    module:
+    (nas.extendModules { modules = [ { home-manager.users.tom.programs.dsh.master = module; } ]; })
+    .config.home-manager.users.tom.programs.dsh.master;
+  # One tag value moves both pins (the module's defaults), whatever the
+  # NAS itself sets.
+  retagged = masterOf { tag = "floor-v2.99"; };
+  # A fork-only re-tag and a changed Workflow row (docs/dsh-master.md):
+  # rendered as configured, and the check stays green.
+  overridden = masterOf {
+    superagent = "github:mecattaf/dsh-superagent-prototype#floor-v2.98";
+    superagentRows = [
+      {
+        id = "dsh-superagent-scheduled";
+        disabled = false;
+      }
+      {
+        id = "dsh-superagent-workflow";
+        disabled = false;
+        config = {
+          pollMs = 5000;
+          concurrency = 4;
+          maxAttempts = 1;
+          pair = "";
+        };
+      }
+    ];
+  };
 in
 assert cfg.enable;
 assert builtins.elem master hm.home.packages;
@@ -79,19 +121,21 @@ assert
   ];
 # The Claude pair binds dsh-claude's preset; Gufo binds none.
 assert cfg.pairs.opus.preset == "claude" && cfg.pairs.gufo.preset == null;
-# One tag value moves both pins.
-assert
-  cfg.superagent == "github:mecattaf/dsh-superagent-prototype#${cfg.tag}"
-  && cfg.claude == "github:mecattaf/dsh-claude#${cfg.tag}";
+assert pinsFollowTag retagged && retagged.claude == "github:mecattaf/dsh-claude#floor-v2.99";
+assert !(pinsFollowTag overridden) && overridden.claude == "github:mecattaf/dsh-claude#${overridden.tag}";
 pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   set -euo pipefail
   export HOME="$TMPDIR/home" PYTHONDONTWRITEBYTECODE=1
   mkdir -p "$HOME"
   python3 -I ${./check_render.py} ${master} ${expect}
+  python3 -I ${./check_render.py} ${overridden.package} ${expectOf overridden overridden.package} > "$TMPDIR/overridden.out"
+  grep -qx 'ok identical dependencies across profiles, pinned as configured' "$TMPDIR/overridden.out"
   DSH_MASTER=${master}/share/dsh-master/dsh-master.py SEED=${master}/share/dsh-master/settings.seed.json \
     python3 -I ${./test_seed.py} -v
 
   dm=${lib.getExe master}
+  # status exits 1 while any folder is stale or not installed; its lines go to status.out.
+  status() { local rc=0; $dm status > "$TMPDIR/status.out" || rc=$?; test "$rc" = "$1"; }
   tree() { (cd "$1" && find . -printf '%p %m %y\n' | sort && find . -type f -print0 | sort -z | xargs -0 sha256sum); }
 
   # 3. Confinement and idempotency. A foreign profile and dsh's own files
@@ -140,12 +184,14 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   tree "$DSH_HOME" > "$TMPDIR/tree.second"
   cmp "$TMPDIR/tree.first" "$TMPDIR/tree.second"
   keep | cmp - "$TMPDIR/keep.before"
-  $dm status | grep >/dev/null -x 'master: rendered current, installed no, node_modules present'
+  status 1
+  grep -qx 'master: rendered current, installed no, node_modules present' "$TMPDIR/status.out"
 
   # install refuses a folder without the workspace file, or with another
   # one, before running dsh; status calls it stale.
   rm "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
-  $dm status | grep >/dev/null -x 'master-gufo: rendered stale, installed no, node_modules absent'
+  status 1
+  grep -qx 'master-gufo: rendered stale, installed no, node_modules absent' "$TMPDIR/status.out"
   if $dm install --dsh /nonexistent master-gufo 2> "$TMPDIR/noworkspace.err"; then exit 1; fi
   grep -q 'master-gufo is not the rendered version' "$TMPDIR/noworkspace.err"
   $dm render --quiet
@@ -153,7 +199,8 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   # A build DSH's plugin manager recorded as pending (dsh-plugin-manager
   # recordPendingBuilds) is replaced by the rendered policy, and said so.
   printf '  esbuild: set this to true or false\n' >> "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
-  $dm status | grep >/dev/null -x 'master-gufo: rendered stale, installed no, node_modules absent, builds pending: esbuild'
+  status 1
+  grep -qx 'master-gufo: rendered stale, installed no, node_modules absent, builds pending: esbuild' "$TMPDIR/status.out"
   if $dm install --dsh /nonexistent master-gufo 2> /dev/null; then exit 1; fi
   $dm render --quiet 2> "$TMPDIR/pending.err"
   grep -qx 'dsh-master: master-gufo/pnpm-workspace.yaml was changed outside dsh-master; replacing it' "$TMPDIR/pending.err"
@@ -183,23 +230,41 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   ${python}/bin/python3 -I ${./lockfile.py} "$opus" floor-v0.0
   if $dm $di --dsh ${pkgs.coreutils}/bin/false master-opus 2> "$TMPDIR/stale.err"; then exit 1; fi
   grep -q 'install failed (exit 1): pnpm-lock.yaml locks @norman-else/dsh-claude at github:mecattaf/dsh-claude#floor-v0.0, not ' "$TMPDIR/stale.err"
-  $dm status | grep >/dev/null -x 'master-opus: rendered current, installed no, node_modules present'
+  status 1
+  grep -qx 'master-opus: rendered current, installed no, node_modules present' "$TMPDIR/status.out"
   ${python}/bin/python3 -I ${./lockfile.py} "$opus"
   if $dm $di --dsh /nonexistent/dsh master-opus 2> "$TMPDIR/notrun.err"; then exit 1; fi
   grep -q 'install failed: /nonexistent/dsh did not run (exit 127)' "$TMPDIR/notrun.err"
-  $dm status | grep >/dev/null -x 'master-opus: rendered current, installed no, node_modules present'
+  status 1
+  grep -qx 'master-opus: rendered current, installed no, node_modules present' "$TMPDIR/status.out"
   # A running instance of the profile refuses the install, unless --force.
   if STUB_PROFILE=master-opus $dm $di --dsh ${pkgs.coreutils}/bin/true master-opus 2> "$TMPDIR/busy.err"; then exit 1; fi
   grep -q 'dshd instance floor is running master-opus; stop it first' "$TMPDIR/busy.err"
   if $dm install --dshd /nonexistent/dshd --dsh ${pkgs.coreutils}/bin/true master-opus 2> "$TMPDIR/nodshd.err"; then exit 1; fi
   grep -q 'cannot tell which dshd instances run' "$TMPDIR/nodshd.err"
-  $dm status | grep >/dev/null -x 'master-opus: rendered current, installed no, node_modules present'
+  status 1
+  grep -qx 'master-opus: rendered current, installed no, node_modules present' "$TMPDIR/status.out"
   # A complete folder counts even when dsh exits 1 (pnpm's ignored builds).
   $dm $di --dsh ${pkgs.coreutils}/bin/false master-opus > "$TMPDIR/done.out" 2> "$TMPDIR/done.err"
   grep -qx 'installed master-opus' "$TMPDIR/done.out"
   grep -q 'install exited 1, but the folder is complete' "$TMPDIR/done.err"
   STUB_PROFILE=master-opus $dm install --force --dshd /nonexistent/dshd --dsh ${pkgs.coreutils}/bin/true master-opus | grep >/dev/null -x 'installed master-opus'
-  $dm status | grep >/dev/null -x 'master-opus: rendered current, installed current, node_modules present'
+  status 1
+  grep -qx 'master-opus: rendered current, installed current, node_modules present' "$TMPDIR/status.out"
+  # Every folder installed: status exits 0. A master* folder no build
+  # renders is listed as an orphan and fails nothing.
+  for p in master master-gufo; do
+    f="$DSH_HOME/profiles/$p"
+    mkdir -p "$f/node_modules/dsh-superagent/lib" "$f/node_modules/@norman-else/dsh-claude/lib"
+    touch "$f/node_modules/dsh-superagent/lib/index.js" "$f/node_modules/@norman-else/dsh-claude/lib/index.mjs"
+    ${python}/bin/python3 -I ${./lockfile.py} "$f"
+    STUB_PROFILE=web $dm $di --dsh ${pkgs.coreutils}/bin/true $p | grep >/dev/null -x "installed $p"
+  done
+  mkdir "$DSH_HOME/profiles/master-retired"
+  status 0
+  grep -qx 'master-retired: orphan, not rendered by this build (remove it by hand when no instance uses it)' "$TMPDIR/status.out"
+  test "$(grep -c 'rendered current, installed current' "$TMPDIR/status.out")" = 3
+  rmdir "$DSH_HOME/profiles/master-retired"
 
   # install runs dsh with pnpm and git on PATH (dsh plugin spawns pnpm).
   grep -q '${lib.getBin nas.pkgs.pnpm}/bin' ${lib.getExe master}

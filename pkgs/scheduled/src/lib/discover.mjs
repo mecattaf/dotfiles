@@ -51,7 +51,9 @@ function checkOwnership(targetPath, expectedUid) {
 /**
  * Walk directory tree and discover agencies and their scheduled items
  * @param {{ home: string, uid?: number }} options
- * @returns {Promise<{ agencies: Array<{id: string, root: string, dir: string}>, files: Array<{agency: string, root: string, stem: string, id: string, path: string}>, problems: Array<{severity: string, code: string, line: number, col: number, message: string, path: string}>, visited: string[] }>}
+ * `unreadable` lists the directories discovery could not read (EACCES, EIO…): what lies under them is unknown,
+ * not removed, so the tick keeps their items and records. `scheduled` marks an agency's own scheduled/ folder.
+ * @returns {Promise<{ agencies: Array<{id: string, root: string, dir: string}>, files: Array<{agency: string, root: string, stem: string, id: string, path: string}>, problems: Array<{severity: string, code: string, line: number, col: number, message: string, path: string}>, unreadable: Array<{path: string, code: string, scheduled: boolean}>, visited: string[] }>}
  */
 export async function discover({ home, uid }) {
   const expectedUid = uid !== undefined ? uid : (typeof process.getuid === 'function' ? process.getuid() : 1000);
@@ -60,7 +62,10 @@ export async function discover({ home, uid }) {
   const agencies = [];
   const files = [];
   const problems = [];
+  const unreadable = [];
   const visited = [];
+  // Gone or not a directory is an absence; any other error leaves the contents unknown.
+  const absent = (err) => err?.code === 'ENOENT' || err?.code === 'ENOTDIR';
 
   function processAgency(root, agencyId) {
     const agencyDir = path.join(root, '.agency');
@@ -86,8 +91,9 @@ export async function discover({ home, uid }) {
     let scheduledStat;
     try {
       scheduledStat = statSync(scheduledDir);
-    } catch {
-      // no scheduled directory
+    } catch (err) {
+      // No scheduled directory, or one that cannot be looked at.
+      if (!absent(err)) unreadable.push({ path: scheduledDir, code: err?.code ?? 'error', scheduled: true });
       return;
     }
     if (!scheduledStat.isDirectory()) {
@@ -116,6 +122,7 @@ export async function discover({ home, uid }) {
         message: `Failed to read ${scheduledDir}: ${err.message}`,
         path: scheduledDir
       });
+      if (!absent(err)) unreadable.push({ path: scheduledDir, code: err?.code ?? 'error', scheduled: true });
       return;
     }
     // Items are the *.jsonc files directly in scheduled/; subdirectories (a left-over proposed/) are not read.
@@ -193,7 +200,8 @@ export async function discover({ home, uid }) {
     let entries;
     try {
       entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
+    } catch (err) {
+      if (!absent(err)) unreadable.push({ path: dir, code: err?.code ?? 'error', scheduled: false });
       return;
     }
 
@@ -221,5 +229,5 @@ export async function discover({ home, uid }) {
     return a.stem.localeCompare(b.stem);
   });
 
-  return { agencies, files, problems, visited };
+  return { agencies, files, problems, unreadable, visited };
 }

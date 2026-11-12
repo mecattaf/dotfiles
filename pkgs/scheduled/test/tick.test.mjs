@@ -257,12 +257,32 @@ test('T10 an item enabled now does not fire instants before it was armed', async
     await tick(env.ctx, { now: at('2026-11-12T09:00:00.000Z') });
     await tick(env.ctx, { now: at('2026-11-12T11:30:00.000Z') });
     env.item('hb', hourly(), new Date('2026-11-12T11:40:00.000Z'));
-    // Armed at 11:45: the 10:00 and 11:00 instants never fire.
+    // Armed at 11:40, when the file was written: the 10:00 and 11:00 instants never fire.
     await tick(env.ctx, { now: at('2026-11-12T11:45:00.000Z') });
     assert.deepEqual(env.records(), []);
+    assert.equal(env.entry('master:hb').armedSince, '2026-11-12T11:40:00.000Z');
     await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
     assert.deepEqual(env.records(), ['master~hb@20261112T1200Z.json']);
     assert.equal(env.record('master~hb@20261112T1200Z.json').missed, 0);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T10 with only the hourly timer, an item enabled at 11:40 fires 12:00 at the 12:00 tick, not 13:00', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly({ enabled: false }));
+    await tick(env.ctx, { now: at('2026-11-12T11:00:05.000Z') });
+    env.item('hb', hourly(), new Date('2026-11-12T11:40:00.000Z'));
+    await tick(env.ctx, { now: at('2026-11-12T12:00:05.000Z') });
+    assert.deepEqual(env.records(), ['master~hb@20261112T1200Z.json']);
+    assert.equal(env.record('master~hb@20261112T1200Z.json').missed, 0);
+    // A file stamped before the last tick (a copy that kept its mtime) is armed now, as before.
+    env.item('old', hourly(), new Date('2026-11-01T00:00:00.000Z'));
+    await tick(env.ctx, { now: at('2026-11-12T13:00:05.000Z') });
+    assert.equal(env.entry('master:old').armedSince, '2026-11-12T13:00:05.000Z');
+    assert.deepEqual(env.records().filter((n) => n.startsWith('master~old@')), []);
   } finally {
     env.cleanup();
   }
@@ -320,6 +340,41 @@ test('T13 --inbox missing exits 2 with the message', async () => {
     assert.equal(code, 2);
     assert.ok(env.err.join('').includes('scheduled: --inbox is required'), env.err.join(''));
     assert.equal(fs.existsSync(env.state), false);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T13b --now without an explicit --state-dir exits 2 and writes nothing (review SCHED-3)', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly());
+    const code = await tickMain(['--now', '2026-12-01T00:00:00.000Z'], env.ctx);
+    assert.equal(code, 2);
+    assert.ok(env.err.join('').includes('--now needs an explicit --state-dir'), env.err.join(''));
+    assert.equal(fs.existsSync(env.state), false);
+    assert.deepEqual(env.records(), []);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T14 a tick sweeps temporary files over an hour old from the inbox .tmp/ and the state dir, and keeps fresh ones (review SCHED-8)', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly());
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    const tmp = join(env.inbox, '.tmp');
+    fs.mkdirSync(tmp, { recursive: true, mode: 0o700 });
+    const old = new Date(Date.now() - 2 * 3600 * 1000);
+    const stale = [join(tmp, 'master~hb@20261112T1000Z.json.4242.a1b2c3'), join(env.state, '.tick.lock.4242.tmp'), join(env.state, '.heartbeat.json.4242.tmp')];
+    for (const p of stale) { fs.writeFileSync(p, 'x'); fs.utimesSync(p, old, old); }
+    const fresh = join(tmp, 'master~hb@20261112T1100Z.json.4343.d4e5f6');
+    fs.writeFileSync(fresh, 'x');
+    await tick(env.ctx, { now: at('2026-11-12T11:30:00.000Z') });
+    for (const p of stale) assert.equal(fs.existsSync(p), false, p);
+    assert.equal(fs.existsSync(fresh), true);
+    assert.deepEqual(fs.readdirSync(env.state).sort(), ['heartbeat.json', 'intake.json']);
   } finally {
     env.cleanup();
   }
