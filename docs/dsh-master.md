@@ -136,11 +136,9 @@ install, `dshd start floor`); a worker folder is read when each unit boots,
 so install it while none of its units runs. install checks this: it asks
 `dshd ls` and `dshd get` and refuses a profile that a running instance of
 this DSH_HOME uses, unless `--force`.
-After a pin moves (`tag`, `superagent`, `claude`), render prints `install
-needed: <p>` until that folder is installed. Until every folder is
-installed at its rendered pins, `dsh-master status` exits 1; it also lists
-`master*` folders no build renders (a removed pair) as orphans, which fail
-nothing.
+Until every folder is installed at its rendered pins, `dsh-master status`
+exits 1; it also lists `master*` folders no build renders (a removed pair)
+as orphans, which fail nothing.
 
 `settings seed` reads the floor's Store settings through its management API,
 upserts the rules and admission cells of `home/dsh-master/settings.seed.json`
