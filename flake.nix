@@ -163,9 +163,10 @@
     };
 
     # The daily desktop and its SDK use one pinned official upstream release.
-    # Keep the SDK and prebuilt engine together. Restore the actual installed
-    # known-good release (official engine 63db244), before issue #2036.
-    domicile.url = "github:cprussin/domicile/75708d7638002e1bba421cf83f6927298dbc1c3a";
+    # Keep the SDK and prebuilt engine together. Upstream main with the #2047
+    # dmabuf OOM fix (issue #2036); the 75708d76 rollback hit the OOM again on
+    # 12 Nov at 02:12Z, so it is no longer a known-good to protect.
+    domicile.url = "github:cprussin/domicile/e2b4bc54df6c377596dec3c8228aba64b3144a97";
     imagine = {
       url = "path:./pkgs/client-desktop/imagine";
       flake = false;
@@ -223,9 +224,9 @@
     # Its model collection is declared in lib/local-models.nix (#525).
     # One native binary,
     # no container (modules/gufo.nix). Pinned to the release the catalog matches
-    # (v0.20.0). No nixpkgs.follows: upstream qualifies its build against its own
-    # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
-    gufo.url = "github:gufo-org/gufo/0c03748a271eab895befc0d2343aa50ca4b6d836";
+    # and strix-coordinator runs (v0.22.0). No nixpkgs.follows: upstream
+    # qualifies its build against its own nixpkgs pin (GCC 15.3, ROCm 7.2.3).
+    gufo.url = "github:gufo-org/gufo/7b1bf049a0a3600345676fdf0a544152ac7ce6a1";
 
     # gufo-embedding: Gufo v0.33.0 for the one on-demand embedding route
     # (modules/gufo-embedding.nix), built with the vendored Qwen3-Embedding-8B
