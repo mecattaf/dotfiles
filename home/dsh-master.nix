@@ -205,7 +205,8 @@ in
       # pnpm 11 ends an install with ERR_PNPM_IGNORED_BUILDS (exit 1) while a
       # dependency's build script is undecided. The fork's interpreter pulls
       # effect -> msgpackr -> the optional native msgpackr-extract, whose
-      # prebuilt @msgpackr-extract/* binaries cover NAS, so its script stays off.
+      # prebuilt @msgpackr-extract/* binaries cover Linux x64 and arm64, so its
+      # script stays off.
       default = {
         msgpackr-extract = false;
       };
