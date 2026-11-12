@@ -569,7 +569,6 @@
             qwen-speech
             speech-session
             academic-ocr
-            paper-daemon
             paper-render
             utility-model
             call-diarize
@@ -605,6 +604,7 @@
             local-ai-monthly
             mnemon
             music-acquire
+            paper-daemon
             scheduled
             ;
 
