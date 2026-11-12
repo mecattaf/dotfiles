@@ -66,8 +66,8 @@
     #
     # Deliberately scoped to this host and not to the fleet: the strix
     # and worker have roomy NVMe roots where the weekly sweep in
-    # gc-retention.nix is sufficient, and nothing else in the fleet runs a
-    # nightly three-host build farm on 57G of eMMC.
+    # gc-retention.nix is sufficient, and only this host ever ran a nightly
+    # three-host build farm on 57G of eMMC (the update center, since removed).
     min-free = 5368709120; # 5 GiB — start collecting
     max-free = 21474836480; # 20 GiB — collect until this much is free
   };
