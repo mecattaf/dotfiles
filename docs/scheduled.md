@@ -271,7 +271,20 @@ the program and leaves `~/.agency` as it was.
    `ConditionPathIsDirectory` skips every tick until `~/.agency` exists.
 3. Install the Master profile and create the `floor` instance. Its
    scheduled Source reads `<stateDir>/inbox/scheduled`.
-4. Place the master items, every one with `"enabled": false`.
+4. Place the master items, every one with `"enabled": false`. Each is
+   `~/.agency/scheduled/<item>.jsonc`, item v1 (`scheduled schema`); an
+   item written for an earlier layout is not v1, so rewrite a copy of it
+   and leave the original where it is. Write the files by hand, or start
+   each with `scheduled new`, which creates the directory and always
+   writes `"enabled": false` (a `--prompt-file` must exist first; or
+   pass `--prompt TEXT`):
+
+   ```sh
+   mkdir -p ~/.agency/scheduled
+   scheduled new master:<item> --cron '0 6 * * *' --tz <zone> --prompt-file .agency/prompts/<item>.md
+   scheduled validate --all      # exit 0: every item is valid
+   scheduled ls                  # every item listed disabled, none invalid
+   ```
 5. First tick by hand, then read the journal:
 
    ```sh
