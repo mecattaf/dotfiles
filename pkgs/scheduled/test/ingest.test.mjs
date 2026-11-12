@@ -1,5 +1,5 @@
 // ingest.test.mjs — intake and its cache in intake.json: C3.4 first sight and young files, C3.8 one line per
-// event (ports ingest.test.mjs:302, :333 and :366 of the donor, which encode real failures).
+// event (ports ingest.test.mjs:302, :333 and :366 of the previous version, which encode real failures).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -85,7 +85,7 @@ test('C3.4 a file whose mtime is hours ahead of the clock (the clock went back a
   }
 });
 
-test('C3.4 a file first seen while younger than 2 s is parsed at the next pass, not kept as a placeholder (evaluation review)', async () => {
+test('C3.4 a file first seen while younger than 2 s is parsed at the next pass, not kept as a placeholder', async () => {
   const env = setupEnv();
   try {
     env.item('fresh', hourly(), at('2026-11-12T12:00:00.000Z'));
@@ -103,7 +103,7 @@ test('C3.4 a file first seen while younger than 2 s is parsed at the next pass, 
   }
 });
 
-test('C3.8 a stat error other than ENOENT keeps the item in intake with its previous parse, and its waiting record is not withdrawn (Zen #2)', async () => {
+test('C3.8 a stat error other than ENOENT keeps the item in intake with its previous parse, and its waiting record is not withdrawn', async () => {
   const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'stopped', lastRun: { ending: 'stopped' } } });
   try {
     env.item('kept', hourly(), at('2026-11-12T11:00:00.000Z'));

@@ -1,4 +1,4 @@
-// tick.mjs — the heartbeat tick, scheduled-jsonc §4 (phases 0-10).
+// tick.mjs — the heartbeat tick (docs/scheduled.md, A tick), in phases 0-10.
 //
 // A nudger only: it decodes the cron times of every agency's .agency/scheduled/*.jsonc, links one
 // occurrence record per due item into the superagent's inbox, withdraws its own records of items no longer
@@ -73,7 +73,7 @@ export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 
   // The lock is created complete: its text is written and fsynced under a
   // private name, then link()ed into place, which fails with EEXIST while
   // another holder has it. So a lock file is never seen empty half-written
-  // (evaluation review, C3.7), and an empty one can only be damage.
+  // (test/lock.test.mjs), and an empty one can only be damage.
   const tmp = `${lockPath}.${process.pid}.tmp`;
   {
     const fh = await open(tmp, 'w', 0o600);
@@ -279,7 +279,7 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
           currentFiles[f.path] = { ...prev, problems, id: f.id };
           items.push({ ...prev, file: f, problems });
         } else {
-          // No stat is cached for a file never parsed, so the next pass parses it (evaluation review, C3.4).
+          // No stat is cached for a file never parsed, so the next pass parses it (C3.4 in test/ingest.test.mjs).
           const placeholder = { id: f.id, dev: null, ino: null, size: null, mtimeNs: null, revision: null, problems: [young],
             firstSeen: now.toISOString(), armedSince: null, valid: false, enabled: false, placeholder: true };
           currentFiles[f.path] = placeholder;

@@ -1,6 +1,6 @@
 // inbox.mjs — the hand-off to the superagent: one occurrence record v1 per file in an inbox directory.
 //
-// The record format is the fork's (scheduled-source §2; test/fixtures/occurrence-v1.json is byte-identical
+// The record format is the fork's (its docs/006-deployment.md, Scheduled occurrences; test/fixtures/occurrence-v1.json is byte-identical
 // to the fork's tests/fixtures/scheduled-occurrence-v1.json). The fork's Source reads `<inbox>/*.json`, moves
 // what it received into `.done/` and what it refused into `.bad/`. This side writes only `<inbox>/*.json`
 // (through `.tmp/`) and withdraws its own schedule records; it never reads, moves or deletes `.done/` or `.bad/`.

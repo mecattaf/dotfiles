@@ -1,4 +1,4 @@
-// src/verbs/tick.mjs — The `scheduled tick` verb (scheduled-jsonc §4).
+// src/verbs/tick.mjs — The `scheduled tick` verb (docs/scheduled.md, A tick).
 //
 // Usage: scheduled tick --inbox DIR [--state-dir DIR] [--home DIR] [--floor-instance NAME] [--now ISO] [--json]
 

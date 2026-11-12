@@ -1,4 +1,4 @@
-// tick.test.mjs — scheduled tick v2 (scheduled-jsonc §4, §8 T1-T13; ports C3.1-C3.7, C3.9, C3.12).
+// tick.test.mjs — scheduled tick v2 (docs/scheduled.md, A tick; rows T1-T13, plus C3.1-C3.7, C3.9, C3.12).
 // Run: cd pkgs/scheduled && node --test 'test/*.test.mjs'
 
 import test from 'node:test';

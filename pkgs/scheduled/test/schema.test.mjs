@@ -1,4 +1,4 @@
-// schema.test.mjs — scheduled item schema v1 (scheduled-jsonc §2, §8 S1-S10), and the validate verb.
+// schema.test.mjs — scheduled item schema v1 (docs/scheduled.md, An item; rows S1-S10), and the validate verb.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

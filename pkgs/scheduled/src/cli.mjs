@@ -9,7 +9,7 @@ import { makeContext } from './lib/context.mjs';
 const VERSION = '0.2.0';
 
 // ---------------------------------------------------------------------------
-// Usage text (spec §10.1)
+// Usage text (docs/scheduled.md, Everyday commands)
 // ---------------------------------------------------------------------------
 
 const USAGE = `\
@@ -118,7 +118,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  // The tick's journal lines carry a syslog priority (DESIGN 12, C3.12); so does its crash.
+  // The tick's journal lines carry a syslog priority (docs/scheduled.md, Journal queries; C3.12 in test/tick.test.mjs); so does its crash.
   const prefix = process.argv[2] === 'tick' ? '<3>' : '';
   process.stderr.write(`${prefix}scheduled: unhandled error: ${err.message}\n`);
   process.exit(1);
