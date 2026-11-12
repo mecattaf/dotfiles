@@ -10,10 +10,10 @@
   "job": {
     "prompt": [
       "Report only: read, and change nothing. \"The last day\" is the 24 hours before the Due time in the header above.",
-      "0. Run `systemctl --user show -p Environment --value scheduled-heartbeat.service`. Take <inbox> from its SCHEDULED_INBOX= and <floor> from its SCHEDULED_FLOOR_INSTANCE=. If one is missing, say so and skip the steps that need it.",
-      "1. Ended and stuck tickets. Run `dshd ls --json` and give the state of <floor>. For every instance with a superagent.ticket label, run `dshd get --json <name>`:",
-      "   - list each one that is not running or starting: name, its superagent.ticket and superagent.pair labels, how its last run ended and when. Its Ticket has ended and dshd still keeps its unit;",
-      "   - list each one still running whose run began before the last day, as possibly stuck;",
+      "0. Run `systemctl --user show -p Environment --value scheduled-heartbeat.service`. Take <inbox> from its SCHEDULED_INBOX= and <floor> from its SCHEDULED_FLOOR_INSTANCE=. If one is missing, or a command below is not found, say so and skip the steps that need it.",
+      "1. Ended and stuck tickets. Run `dshd ls --json` and give the state of <floor>. It shows no labels, so run `dshd get --json <name>` for every instance it lists, and keep those whose labels include superagent.ticket:",
+      "   - list each one that is not running or starting: name, its superagent.ticket and superagent.pair labels, lastRun.ending and lastRun.endedAt. Its Ticket has ended and dshd still keeps its unit;",
+      "   - list each one still running whose lastRun.startedAt is before the last day, as possibly stuck;",
       "   - for each whose last run ended failed, interrupted or stopped-without-intent in the last day, run `dshd read -n 80 <name>` and give the most likely cause in one line, quoting the journal line that shows it.",
       "2. Inbox growth. For <inbox>/.done and <inbox>/.bad each, give the number of *.json records, how many arrived in the last day (`find <dir> -maxdepth 1 -name '*.json' -mtime -1`), the date of the oldest one, and `du -sh <dir>`. Then count the records still waiting in <inbox> itself and name each one older than an hour (`find <inbox> -maxdepth 1 -name '*.json' -mmin +60`): the floor has not read it.",
       "3. Failed records. Run `scheduled history --inbox <inbox> -n 50 --json`. With no ID it lists every item; it has no --all. Give the number of done and bad rows, and for each bad row its occurrence, item, due and error, word for word.",
