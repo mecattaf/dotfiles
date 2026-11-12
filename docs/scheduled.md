@@ -213,5 +213,8 @@ the floor is stopped.
 
 Every item ships with `"enabled": false`. The heartbeat ticks, writes no
 record and starts nothing, so nothing runs unattended before Tom enables
-an item. `floor-upkeep` is copied but inert: the `upkeep` verb its
-prompt names belonged to a withdrawn fork branch.
+an item. `floor-upkeep` is a report-only reading: ended and stuck
+Ticket units from `dshd ls`/`get`/`read`, the growth of the inbox's
+`.done/` and `.bad/`, and the bad rows of `scheduled history`. It takes
+the inbox and floor names from the heartbeat unit's environment and
+changes nothing.
