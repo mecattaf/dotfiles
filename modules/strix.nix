@@ -57,8 +57,9 @@
         };
         # No DeepSeek alternate: Tom (2026-10-25) replaced Gufo's DeepSeek V4
         # Flash 0731 with kyuz0's V4.1 Flash 1017, which only ds4 loaded
-        # (modules/ds4.nix, retired 2026-11-08). The 0731 catalog rows and
-        # Library bytes stay until an explicit Library retirement.
+        # (modules/ds4.nix, retired 2026-11-08, removed 2026-11-13). The 0731
+        # catalog rows and Library bytes stay until an explicit Library
+        # retirement.
       };
       # The one voice (Tom, 2026-09-14): the K-2SO midway-B matched prefix and
       # its transcript. qwentts.cpp stays the live voice until Tom has listened

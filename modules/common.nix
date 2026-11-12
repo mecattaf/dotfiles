@@ -34,22 +34,6 @@
     # and 151) recover through Chrome's own crash handling; each dump rewrote
     # the coredump marker and kept the failure channel permanently red.
     coredumpExcludeComms = [ "chrome" ];
-
-    # Tally's release-idempotency test deliberately aborts three isolated
-    # children and asserts SIGABRT. Cargo hashes the test executable name on
-    # every source change, so match the complete argv instead of hiding all
-    # tally-* coredumps. A live daemon can never match these paths or the exact
-    # test selector and remains visible to the watcher.
-    #
-    # Two shapes, because the same test aborts from two places:
-    #   1. the Nix sandbox build (release profile, /build/source/target)
-    #   2. hand-run `cargo test` in a tally worktree under ~/.cache/tally-wf,
-    #      which is where the 2026-08-30 22:23 episode came from — 20 dumps in
-    #      an evening of editing, none of them a real failure.
-    coredumpExcludeCmdlinePatterns = [
-      "^/build/source/target/[^ ]+/release/deps/tally-[0-9a-f]+ --exact cli::campaign::tests::release_execute_crash_child --nocapture --test-threads=1$"
-      "^/home/tom/\\.cache/tally-wf/[^ /]+/(debug|release)/deps/tally-[0-9a-f]+ --exact cli::campaign::tests::release_execute_crash_child --nocapture --test-threads=1$"
-    ];
   };
 
   # Raw helpers, system/user services and SSH login shells share one endpoint.

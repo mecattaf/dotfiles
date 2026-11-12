@@ -74,9 +74,6 @@
     wanted = true;
     demand.enable = true;
   };
-  # The canceled second Strix leaves no coordinator DS4 TCP rank (#698).
-  # Keep its historical model catalog; no single-host replacement is deployed.
-  services.ds4.wanted = false;
   # Compute holds no operator credentials. Existing state is retired separately
   # after NAS session continuity and the sealed backup have been verified.
   mySecrets.enable = false;

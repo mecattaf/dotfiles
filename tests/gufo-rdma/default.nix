@@ -6,7 +6,7 @@ let
   w = self.nixosConfigurations.strix-worker.config;
   retired = host:
     !(host.hardware ? thunderbolt-ibverbs)
-    && !host.services.gufo.tp2.enable
+    && !(host.services.gufo ? tp2)
     && !(host.systemd.services ? thunderbolt-ibverbs-check)
     && !(host.systemd.services ? gufo-tp2)
     && !(host.systemd.services ? gufo-tp2-latency)
@@ -20,11 +20,32 @@ let
     && !(builtins.elem "qwen38-flash-next-q8-gguf" host.services.local-models.artifacts)
     && !(host.environment.etc ? "gufo/tp2-q8-wanted.json");
   catalog = import ../../lib/local-models.nix { inherit lib; };
+  # Kept from the removed tests/ds4 (2026-11-13, #536): local DeepSeek stays
+  # retired from every catalog, remote/API DeepSeek routes stay.
+  dsh = self.nixosConfigurations.nas.pkgs.dsh;
+  localModel = import ../../lib/local-model.nix;
+  retiredDeepseek = [
+    "deepseek-v41-flash-1017-q2-gguf"
+    "deepseek-v41-flash-vision-gguf"
+    "deepseek-v41-flash-dspark-gguf"
+  ];
 in
 assert retired c && retired w;
 assert !(catalog.artifacts ? qwen38-flash-next-q8-gguf);
-assert !c.services.ds4.enable && !(c.systemd.services ? ds4);
+assert !(c.options.services ? ds4) && !(c.systemd.services ? ds4);
 assert !(lib.hasInfix "9911" c.networking.firewall.extraInputRules);
+assert builtins.all (id: !(catalog.artifacts ? ${id})) retiredDeepseek;
+assert builtins.all (host:
+  !(host.environment.etc ? "ds4/wanted.json")
+  && builtins.all (id: !(builtins.elem id host.services.local-models.artifacts)) retiredDeepseek
+) [ c w ];
+assert !(localModel ? ds4);
+assert !(dsh.localProviders ? ds4);
+assert dsh.localProviders ? gufo;
+assert dsh.routes.nvidia-deepseek.provider == "nvidia";
+assert dsh.routes.cloudflare-deepseek.provider == "cloudflare-workers-ai";
+assert dsh.routes.zen-deepseek.provider == dsh.zenProvider;
+assert builtins.any (model: model.id == "deepseek-ai/DeepSeek-V4.1-Flash") dsh.cloudProviders.huggingface.models;
 assert c.services.gufo.enable && c.services.llama-swap.enable;
 assert c.services.gufo.package == inputs.gufo.packages.x86_64-linux.default;
 assert c.services.gufo.lanInterface == "enp191s0";
