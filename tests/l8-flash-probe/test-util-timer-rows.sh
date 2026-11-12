@@ -2,7 +2,7 @@
 # tests/l8-flash-probe/test-util-timer-rows.sh — the probe's two UTIL-01 rows,
 # exercised BOTH ways (dotfiles#320, #311).
 #
-# Like the hand-written-pair row, these two rows are RED on the day they are
+# These two rows are RED on the day they are
 # written: nothing has switched yet, so `util-sampler.timer` and
 # `util-row.timer` have no fragment at all and both rows FAIL. A row that is
 # red on the day it lands is exactly the row nobody notices is broken, so it is

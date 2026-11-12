@@ -898,36 +898,8 @@
           cp "$TMPDIR/out" $out
         '';
 
-        # The l8-flash reconciliation's own row (U-D16, #319, #293).
-        #
-        # home/dot_local/bin/l8-flash-probe gained a row that says whether the
-        # two HAND-WRITTEN claude-transcript-mirror units are still plain files
-        # in ~/.config/systemd/user. They are, today: removing them is Tom's
-        # shell act in P05 walkthrough step 4 (DEFERRED.md DF-U-D16-1), and it
-        # must not happen before the switch that replaces them. So the row ships
-        # RED, and a row that is red on the day it is written is exactly the row
-        # nobody notices has stopped working. It is asserted here instead, in a
-        # temp HOME, in all four states that matter: pair present, half
-        # deleted, gone, and — the one an `-e` test would get backwards —
-        # present as home-manager's own symlinks, which is the switch having
-        # SUCCEEDED. Hermetic: no systemd, no tally, no network.
-        l8-flash-probe-row =
-          pkgs.runCommand "l8-flash-probe-row"
-            {
-              nativeBuildInputs = [
-                pkgs.gnugrep
-                pkgs.gawk
-              ];
-            }
-            ''
-              set -euo pipefail
-              L8_FLASH_PROBE=${./home/dot_local/bin/l8-flash-probe} \
-                bash ${./tests/l8-flash-probe/test-handwritten-row.sh} | tee "$TMPDIR/out"
-              cp "$TMPDIR/out" $out
-            '';
-
         # The two UTIL-01 rows l8-flash-probe gained with the reconciliation
-        # (U-D17, #320). Same reasoning as l8-flash-probe-row above: both rows
+        # (U-D17, #320). Both rows
         # ship RED, because nothing has switched yet and neither timer has a
         # fragment, and a row that is red on the day it is written is the row
         # nobody notices has stopped working. Asserted here in a fake HOME with
@@ -1851,7 +1823,7 @@
           pkgs.runCommand "raw-dotfiles-guard" { } ''
             # stdenv runs with errexit; the stale fixture must be allowed to fail.
             set +e -u
-            progs="claude-transcript-mirror journal-day seats util-row util-sampler"
+            progs="journal-day seats util-row util-sampler"
             mk() {
               mkdir -p "$1/.git" "$1/home/dot_local/bin"
               for p in $progs; do
@@ -1865,7 +1837,7 @@
             rc=$?
             echo "$res"
             [ "$rc" -eq 0 ] || { echo "complete fixture: rc=$rc" >&2; exit 1; }
-            case "$res" in *"ok (5 programs)"*) ;; *) echo "complete fixture: no ok line" >&2; exit 1 ;; esac
+            case "$res" in *"ok (4 programs)"*) ;; *) echo "complete fixture: no ok line" >&2; exit 1 ;; esac
 
             mk "$TMPDIR/stale"
             rm "$TMPDIR/stale/home/dot_local/bin/journal-day"
