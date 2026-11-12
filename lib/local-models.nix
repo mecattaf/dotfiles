@@ -203,7 +203,6 @@ let
           artifacts =
             (builtins.fromJSON (builtins.readFile ./speech-intake-models.json))
             // (builtins.fromJSON (builtins.readFile ./gufo-models.json))
-            // (builtins.fromJSON (builtins.readFile ./ds4-models.json))
             // (builtins.fromJSON (builtins.readFile ./decision-models.json))
             // (builtins.fromJSON (builtins.readFile ./coding-comparison-models.json))
             // (builtins.fromJSON (builtins.readFile ./embedding-models.json))

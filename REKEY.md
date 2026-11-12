@@ -57,6 +57,10 @@ QwenCloud credential. Historical sessions and usage receipts remain.
 
 ## Compute service credential
 
+Status 2026-11-13: Gufo TP2 is retired (#698) and its unit was removed (#536).
+The ciphertext and its `secrets.nix` declaration stay as escrow only; no unit
+reads it. The text below is the record of when it was made.
+
 `secrets/gufo-tp2-control-token.age` now exists: one random scoped Gufo control
 token encrypted only to admin and the two fresh compute host keys. Both private
 host identities decrypted it successfully. It grants no operator, GitHub,

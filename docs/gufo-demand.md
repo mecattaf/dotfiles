@@ -34,8 +34,8 @@ not load. It serves the borrowed Library GGUF, has the text TTL (600 s), a
 `gufo-switch flash|qwen38-27b|qwen38-27b-q8` explicitly warms a model through
 llama-swap. Ordinary API requests select their model without this command.
 `gufo-switch off` stops the endpoint and its children. Direct Gufo units
-remain manual diagnostic paths and conflict with the proxy and TP2 as
-appropriate; none starts at boot.
+remain manual diagnostic paths and conflict with the proxy; none starts at
+boot. (The TP2 rank was retired on 2026-11-08 and removed on 2026-11-13.)
 
 Routine monitoring uses `/health`, `/running` and `/v1/models`. These do not
 start a backend or refresh its TTL. An empty running list is healthy sleep,
@@ -116,6 +116,7 @@ as DSH's bounded model picker) still need to opt that model in there. The
 mutable Substrate `models.toml` remains runtime data and is not overwritten
 by this configuration.
 
-This configuration does not qualify dormant-worker or RDMA operation. TP2,
-ds4 and direct modality units conflict with llama-swap so they cannot compete
-for its GPU memory or public port.
+This configuration does not qualify dormant-worker or RDMA operation. Direct
+modality units conflict with llama-swap so they cannot compete
+for its GPU memory or public port (TP2 and ds4, which once did too, were
+removed on 2026-11-13).

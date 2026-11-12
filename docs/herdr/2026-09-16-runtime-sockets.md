@@ -1,5 +1,8 @@
 # Herdr launch and missing runtime sockets — 16 September 2026
 
+> **Historical incident record.** Tally and Pi, named below as they ran that
+> day, are retired (status 2026-11-13, #536).
+
 ## Cause and evidence
 
 Herdr PID 1716 stayed alive with 77 panes and no service restarts. The host had

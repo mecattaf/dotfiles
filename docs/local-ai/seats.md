@@ -1,5 +1,9 @@
 # `seats` — one capacity oracle for every seat on this box
 
+> **Status 2026-11-13 (#536).** `seats` is live. Tally (its timers, meters and
+> `home/tally.nix`), Pi and the ds4 server on strix-worker, named in passages
+> below, are retired; those passages are history.
+
 One command answers the question that was previously assembled by hand at the
 start of every session: **what has capacity right now, and until when.**
 

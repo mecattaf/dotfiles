@@ -746,10 +746,6 @@
           inherit pkgs self;
           inherit (nixpkgs) lib;
         };
-        ds4-fleet = import ./tests/ds4 {
-          inherit pkgs self inputs;
-          lib = pkgs.lib;
-        };
         gufo-rdma = import ./tests/gufo-rdma {
           inherit pkgs self inputs;
           inherit (nixpkgs) lib;
@@ -2829,7 +2825,7 @@
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           # Plus Gufo's collection (lib/gufo-models.json), as gufo-org/gufo
           # v0.22.0 plus Q8; the ds4 V4.1 rows were retired on 2026-11-08
-          # (lib/ds4-models.json is empty).
+          # and the empty lib/ds4-models.json was removed on 2026-11-13.
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "d3-ultra-bf16"

@@ -1,8 +1,14 @@
 # Local model roster
 
+> **Status 2026-11-13 (#536).** Corrected for the single-Strix fleet: local
+> DeepSeek (ds4) and the two-host Gufo TP2 rank were retired on 2026-11-08
+> (#698) and their code was removed on 2026-11-13; strix-worker is dormant.
+> Rows below that name them are history. Current per-host sets:
+> [`README.md`](README.md) and the `flake.nix` assertions.
+
 The catalogue in [`../../lib/local-models.nix`](../../lib/local-models.nix)
 is summarised here. It merges `lib/speech-intake-models.json`,
-`lib/gufo-models.json`, `lib/ds4-models.json`, `lib/embedding-models.json` and
+`lib/gufo-models.json`, `lib/embedding-models.json` and
 a few inline rows. Every byte
 figure is the exact sum of the pinned file sizes (decimal GB), and every
 revision is the pinned Hugging Face commit (abbreviated).
@@ -15,9 +21,9 @@ the NAS Library and an operator runs `local-models-borrow` on a host
 - **Gufo** ([`../../modules/gufo.nix`](../../modules/gufo.nix)) on both Strix:
   `qwen38-flash-next-gguf` resident as `qwen3.8-flash-next` on
   `http://strix-coordinator:8731`; the Qwen3.8-27B alternate (`qwen3.8-27b`)
-  after `gufo-switch qwen38-27b`; the TP2 fork with Flash-Next Q4 or Q8; the
+  after `gufo-switch qwen38-27b`; the
   speech, ASR and image units on demand.
-- **ds4** ([`../../modules/ds4.nix`](../../modules/ds4.nix)) on strix-worker:
+- **ds4** (retired 2026-11-08; `modules/ds4.nix` removed 2026-11-13) was, on strix-worker:
   the DeepSeek V4.1 Flash 1017 Q2 as `deepseek-v4.1-flash` on
   `http://10.42.0.5:8732`, single host with SSD expert streaming, started by
   hand.
@@ -33,15 +39,15 @@ demand through llama-swap, never resident beside Flash-Next (since 2026-11-10).
 Each Strix's `services.local-models.artifacts` is pinned by a `flake.nix`
 assertion. It is everything the host holds: a default `local-models-borrow`
 restores it and `local-models-prune` keeps it. The scoped manifests
-(`/etc/gufo/tp2-q8-wanted.json`, `/etc/gufo/27b-q8-wanted.json`,
-`/etc/ds4/wanted.json`) borrow one bundle alone; they do not change what a
+(today `/etc/gufo/27b-q8-wanted.json`; the TP2 Q8 and ds4 manifests are
+retired) borrow one bundle alone; they do not change what a
 host keeps.
 
 | Host | Wanted artifacts | Served by |
 |---|---|---|
 | `strix-coordinator`, `strix-worker` | `qwen38-flash-next-gguf`, `qwen38-27b-gguf`, `qwen38-27b-q8-gguf`, `qwen38-27b-dflash2-gguf`, `qwen3-asr-1.7b`, `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` | Gufo (Flash-Next at boot, the 27B or 27B Q8 after `gufo-switch`, ASR, TTS and image on demand); `call-diarize`; Qwen TTS on demand |
 | `strix-coordinator` only | `qwen3-embedding-8b-q8-gguf` (since 2026-11-10) | the Gufo embedding route `qwen3-embedding-8b`, on demand through llama-swap |
-| `strix-worker` only | `deepseek-v41-flash-1017-q2-gguf` (via `services.ds4.wanted`), `qwen38-flash-next-q8-gguf` | ds4; `gufo-tp2` with Q8. The coordinator's disk cannot hold either (D-A) |
+| `strix-worker` only (history: retired 2026-11-08, #698) | was `deepseek-v41-flash-1017-q2-gguf` and `qwen38-flash-next-q8-gguf` | was ds4 and `gufo-tp2` with Q8; both removed |
 | `nas` | none; it holds the Library | — |
 
 ## The catalogue

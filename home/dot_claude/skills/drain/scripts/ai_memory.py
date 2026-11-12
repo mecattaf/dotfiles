@@ -1547,7 +1547,9 @@ def default_harvest_dir() -> Path:
 
     `~/.local/state/tally-rewrite/harvest/`. `AI_MEMORY_HARVEST_DIR` overrides
     it so a test or a hook can point the verb at a scratch directory without
-    reaching anywhere near the live state dir.
+    reaching anywhere near the live state dir. The `tally-rewrite` name is
+    historical (Tally is retired); existing harvests live there, so the path
+    stays until Tom moves them (#536).
     """
     override = os.environ.get("AI_MEMORY_HARVEST_DIR")
     if override:
