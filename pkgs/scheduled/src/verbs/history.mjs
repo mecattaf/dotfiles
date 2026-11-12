@@ -1,4 +1,4 @@
-// scheduled history [ID] [--inbox DIR] [--json] [-n N] (scheduled-jsonc §5)
+// scheduled history [ID] [--inbox DIR] [--json] [-n N] (docs/scheduled.md, Everyday commands)
 //
 // What the floor's Source did with each record, newest first: `<inbox>/.done/*.json` (received) and
 // `<inbox>/.bad/*.json` (refused, with its `.error` line). The work itself is the superagent's record:

@@ -1,4 +1,4 @@
-// contract.test.mjs — the record this side writes is the fork's occurrence record v1 (scheduled-jsonc §8 C1).
+// contract.test.mjs — the record this side writes is the fork's occurrence record v1 (rows C1 and C2 below).
 // test/fixtures/occurrence-v1.json is byte-identical to the fork's tests/fixtures/scheduled-occurrence-v1.json.
 
 import test from 'node:test';

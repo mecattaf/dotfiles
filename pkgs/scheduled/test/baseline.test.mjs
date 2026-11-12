@@ -1,6 +1,6 @@
-// The three live items copied from ~/.agency/workflows/ (scheduled-jsonc §7). Every one ships with
-// "enabled": false (H60, Tom: "make sure there are no scheduled work in the morning"). The integrator
-// copies these files to ~/.agency/scheduled/ (mode 0600, directory 0700); Nix never writes them.
+// The three live items copied from ~/.agency/workflows/ (docs/scheduled.md, State at install). Every one
+// ships with "enabled": false, so nothing runs unattended before an item is enabled. They are copied by
+// hand to ~/.agency/scheduled/ (mode 0600, directory 0700); Nix never writes them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, chmodSync, readdirSync, readFileSync, statSync, rmSync } from 'node:fs';

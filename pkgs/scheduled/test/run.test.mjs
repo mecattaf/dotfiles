@@ -1,4 +1,4 @@
-// run.test.mjs — scheduled run (scheduled-jsonc §5, §8 R1-R4).
+// run.test.mjs — scheduled run (docs/scheduled.md, Everyday commands; rows R1-R4).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

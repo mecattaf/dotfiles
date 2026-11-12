@@ -78,7 +78,7 @@ let
   ];
   policyRows = lib.filter (row: !(builtins.elem row.id dropped)) dsh.policyRows;
 
-  # The same row in every folder but for `engine` (contracts: dormancy, executor).
+  # The same row in every folder but for `engine` (docs/dsh-master.md).
   superagentRow = engine: {
     id = "dsh-superagent";
     config =
