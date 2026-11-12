@@ -158,7 +158,7 @@ export function scheduleProblems(entries) {
           line: 0, col: 0,
           message: `Two schedule occurrences are only ${Math.round(gap / 60000)} minute(s) apart (minimum is 60 minutes).`,
         });
-        break; // Report once per workflow
+        break; // Report once per item
       }
     }
   }

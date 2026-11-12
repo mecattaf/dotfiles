@@ -1,19 +1,19 @@
 /**
- * validate.mjs - Validates one workflow file on disk.
- * Exports: validateFile
+ * validate.mjs - Validates one scheduled item on disk: ownership, size, UTF-8, schema, cron and prompt-file.
+ * Exports: validateFile, agencyRootOf
  */
 
-import { readFileSync, statSync, lstatSync } from 'node:fs';
-import { dirname, basename, resolve, join } from 'node:path';
-import { parseWorkflow, revision } from './schema.mjs';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { dirname, isAbsolute, resolve, sep } from 'node:path';
+import { parseItem, revision, PROMPT_MAX_BYTES } from './schema.mjs';
 import { scheduleProblems } from './cron.mjs';
 
-const MAX_FILE_SIZE = 64 * 1024; // 64 KiB
+const MAX_FILE_SIZE = 64 * 1024;
 
-/**
- * Check ownership and permissions for a path.
- * Returns an error message string if the check fails, or null if OK.
- */
+/** The agency folder of `<root>/.agency/scheduled/<item>.jsonc`. */
+export const agencyRootOf = (path) => dirname(dirname(dirname(path)));
+
+/** An error message when `path` is not owned by `uid` or is group/world-writable, else null. */
 function checkOwnership(path, uid) {
   let st;
   try {
@@ -21,132 +21,111 @@ function checkOwnership(path, uid) {
   } catch {
     return `Cannot stat "${path}".`;
   }
-  if (st.uid !== uid) {
-    return `"${path}" is not owned by uid ${uid}.`;
-  }
-  // Group-writable (0o020) or world-writable (0o002)
-  if (st.mode & 0o022) {
-    return `"${path}" is writable by group or others (mode ${(st.mode & 0o777).toString(8)}).`;
-  }
+  if (st.uid !== uid) return `"${path}" is not owned by uid ${uid}.`;
+  if (st.mode & 0o022) return `"${path}" is writable by group or others (mode ${(st.mode & 0o777).toString(8)}).`;
   return null;
 }
 
+const problem = (code, message) => ({ severity: 'error', code, line: 0, col: 0, message });
+const inside = (child, parent) => child.startsWith(parent.endsWith(sep) ? parent : parent + sep);
+
 /**
- * Validate one workflow file on disk.
- * @param {string} path - Absolute path to the .jsonc file
- * @param {object} opts - { uid, proposal }
- * @returns {{ path, problems, value, bytes, promptBytes }}
+ * Read `job.prompt-file` relative to the agency folder `root`; it must stay inside it, also after symlinks.
+ * @returns {{ bytes: Buffer|null, text: string|null, problem: object|null }}
  */
-export async function validateFile(path, { uid = process.getuid?.(), proposal = false } = {}) {
-  const problems = [];
-
-  // ── Ownership checks ──────────────────────────────────────────────────────
-  // The file itself
-  const fileOwnerErr = checkOwnership(path, uid);
-  if (fileOwnerErr) {
-    problems.push({ severity: 'error', code: 'ownership', line: 0, col: 0, message: fileOwnerErr });
-    return { path, problems, value: null, bytes: null, promptBytes: null };
-  }
-
-  // The workflows/ directory containing the file
-  const workflowsDir = dirname(path);
-  const wfOwnerErr = checkOwnership(workflowsDir, uid);
-  if (wfOwnerErr) {
-    problems.push({ severity: 'error', code: 'ownership', line: 0, col: 0, message: wfOwnerErr });
-    return { path, problems, value: null, bytes: null, promptBytes: null };
-  }
-
-  // The .agency/ directory (parent of workflows/; a proposal sits one level
-  // deeper, in workflows/proposed/)
-  const agencyDir = basename(workflowsDir) === 'proposed' && basename(dirname(workflowsDir)) === 'workflows'
-    ? dirname(dirname(workflowsDir))
-    : dirname(workflowsDir);
-  const agOwnerErr = checkOwnership(agencyDir, uid);
-  if (agOwnerErr) {
-    problems.push({ severity: 'error', code: 'ownership', line: 0, col: 0, message: agOwnerErr });
-    return { path, problems, value: null, bytes: null, promptBytes: null };
-  }
-
-  // ── Read the file ─────────────────────────────────────────────────────────
-  let bytes;
-  let st;
+function readPromptFile(root, relative) {
+  const fail = (message) => ({ bytes: null, text: null, problem: problem('job', message) });
+  if (isAbsolute(relative)) return fail('"job.prompt-file" must be a path relative to the agency folder.');
+  const target = resolve(root, relative);
+  if (!inside(target, resolve(root))) return fail(`"job.prompt-file" "${relative}" leaves the agency folder.`);
+  let real;
   try {
-    st = lstatSync(path);
+    real = realpathSync(target);
+  } catch {
+    return fail(`"job.prompt-file" "${relative}" does not exist in the agency folder.`);
+  }
+  if (!inside(real, realpathSync(root))) return fail(`"job.prompt-file" "${relative}" resolves outside the agency folder.`);
+  let bytes;
+  try {
+    bytes = readFileSync(real);
+  } catch (e) {
+    return fail(`Cannot read "job.prompt-file" "${relative}": ${e.message}`);
+  }
+  if (bytes.length === 0) return fail(`"job.prompt-file" "${relative}" is empty.`);
+  if (bytes.length > PROMPT_MAX_BYTES) return fail(`"job.prompt-file" "${relative}" exceeds 32 KiB.`);
+  try {
+    return { bytes, text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), problem: null };
+  } catch {
+    return fail(`"job.prompt-file" "${relative}" is not valid UTF-8.`);
+  }
+}
+
+/**
+ * Validate one scheduled item on disk.
+ * @param {string} path - Absolute path of `<root>/.agency/scheduled/<item>.jsonc`
+ * @param {{ uid?: number }} [opts]
+ * @returns {Promise<{ path, problems, value, bytes, promptBytes, prompt }>} `prompt` is the work text when valid
+ */
+export async function validateFile(path, { uid = process.getuid?.() } = {}) {
+  const problems = [];
+  // Every answer carries the revision of the bytes read, so an invalid revision is still named once.
+  const done = (extra = {}) => {
+    const out = { path, problems, value: null, bytes: null, promptBytes: null, prompt: null, ...extra };
+    return { ...out, revision: out.bytes ? revision(out.bytes, out.promptBytes) : null };
+  };
+
+  // The file, scheduled/ and .agency/ must be ours and not group/world-writable: an item runs with full permissions.
+  for (const p of [path, dirname(path), dirname(dirname(path))]) {
+    const owner = checkOwnership(p, uid);
+    if (owner) {
+      problems.push(problem('ownership', owner));
+      return done();
+    }
+  }
+
+  let bytes;
+  try {
+    const st = lstatSync(path);
     if (!st.isFile()) {
-      problems.push({ severity: 'error', code: 'file', line: 0, col: 0,
-        message: `"${path}" is not a regular file.` });
-      return { path, problems, value: null, bytes: null, promptBytes: null };
+      problems.push(problem('file', `"${path}" is not a regular file.`));
+      return done();
     }
     if (st.size > MAX_FILE_SIZE) {
-      problems.push({ severity: 'error', code: 'file', line: 0, col: 0,
-        message: `"${path}" exceeds 64 KiB.` });
-      return { path, problems, value: null, bytes: null, promptBytes: null };
+      problems.push(problem('file', `"${path}" exceeds 64 KiB.`));
+      return done();
     }
     bytes = readFileSync(path);
   } catch (e) {
-    problems.push({ severity: 'error', code: 'file', line: 0, col: 0,
-      message: `Cannot read "${path}": ${e.message}` });
-    return { path, problems, value: null, bytes: null, promptBytes: null };
+    problems.push(problem('file', `Cannot read "${path}": ${e.message}`));
+    return done();
   }
 
-  // Check UTF-8
   let text;
   try {
     text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
-    problems.push({ severity: 'error', code: 'file', line: 0, col: 0,
-      message: `"${path}" is not valid UTF-8.` });
-    return { path, problems, value: null, bytes, promptBytes: null };
+    problems.push(problem('file', `"${path}" is not valid UTF-8.`));
+    return done({ bytes });
   }
 
-  // ── Parse and validate ────────────────────────────────────────────────────
-  const { value, problems: parseProblems } = parseWorkflow(text, { proposal });
-  problems.push(...parseProblems);
+  const { value, problems: parsed } = parseItem(text);
+  problems.push(...parsed);
+  if (value === null) return done({ bytes });
 
-  if (value === null) {
-    return { path, problems, value: null, bytes, promptBytes: null };
-  }
+  problems.push(...scheduleProblems(value.on?.schedule ?? []).map((p) => ({
+    severity: p.severity, code: p.code, line: p.line ?? 0, col: p.col ?? 0, message: p.message,
+  })));
 
-  // ── Cron validation ───────────────────────────────────────────────────────
-  const schedEntries = value.on?.schedule ?? [];
-  if (schedEntries.length > 0) {
-    const cronProbs = scheduleProblems(schedEntries);
-    // Map cron problems onto positions: use the schedule entry's position if possible
-    for (const cp of cronProbs) {
-      problems.push({
-        severity: cp.severity,
-        code: cp.code,
-        line: cp.line ?? 0,
-        col: cp.col ?? 0,
-        message: cp.message,
-      });
-    }
-  }
-
-  // ── Prompt-file resolution ────────────────────────────────────────────────
   let promptBytes = null;
+  let prompt = value.job?.prompt ?? null;
   if (value.job?.['prompt-file']) {
-    const agencyRoot = agencyDir; // .agency/ parent is agency root? No: agencyDir IS .agency/
-    // prompt-file path is relative to .agency/
-    const promptPath = join(agencyDir, value.job['prompt-file']);
-    // Verify it's under .agency/
-    const resolvedPrompt = resolve(promptPath);
-    const resolvedAgency = resolve(agencyDir);
-    if (!resolvedPrompt.startsWith(resolvedAgency + '/') && resolvedPrompt !== resolvedAgency) {
-      problems.push({ severity: 'error', code: 'job', line: 0, col: 0,
-        message: `"job.prompt-file" must be a path under .agency/ directory.` });
-    } else {
-      try {
-        promptBytes = readFileSync(promptPath);
-      } catch {
-        problems.push({ severity: 'error', code: 'job', line: 0, col: 0,
-          message: `"job.prompt-file" "${value.job['prompt-file']}" does not exist under .agency/.` });
-      }
-    }
+    const read = readPromptFile(agencyRootOf(path), value.job['prompt-file']);
+    if (read.problem) problems.push(read.problem);
+    promptBytes = read.bytes;
+    prompt = read.text;
   }
 
-  // ── Revision ──────────────────────────────────────────────────────────────
   const rev = revision(bytes, promptBytes);
-
-  return { path, problems, value: { ...value, _revision: rev }, bytes, promptBytes };
+  if (problems.some((p) => p.severity === 'error')) return done({ bytes, promptBytes });
+  return { path, problems, value: { ...value, _revision: rev }, bytes, promptBytes, prompt, revision: rev };
 }

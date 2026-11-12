@@ -49,9 +49,9 @@ function checkOwnership(targetPath, expectedUid) {
 }
 
 /**
- * Walk directory tree and discover agencies and workflows
+ * Walk directory tree and discover agencies and their scheduled items
  * @param {{ home: string, uid?: number }} options
- * @returns {Promise<{ agencies: Array<{id: string, root: string, dir: string}>, files: Array<{agency: string, root: string, stem: string, id: string, path: string, proposal: boolean}>, problems: Array<{severity: string, code: string, line: number, col: number, message: string, path: string}>, visited: string[] }>}
+ * @returns {Promise<{ agencies: Array<{id: string, root: string, dir: string}>, files: Array<{agency: string, root: string, stem: string, id: string, path: string}>, problems: Array<{severity: string, code: string, line: number, col: number, message: string, path: string}>, visited: string[] }>}
  */
 export async function discover({ home, uid }) {
   const expectedUid = uid !== undefined ? uid : (typeof process.getuid === 'function' ? process.getuid() : 1000);
@@ -82,74 +82,65 @@ export async function discover({ home, uid }) {
       });
     }
 
-    const workflowsDir = path.join(agencyDir, 'workflows');
-    let workflowsStat;
+    const scheduledDir = path.join(agencyDir, 'scheduled');
+    let scheduledStat;
     try {
-      workflowsStat = statSync(workflowsDir);
+      scheduledStat = statSync(scheduledDir);
     } catch {
-      // no workflows directory
+      // no scheduled directory
       return;
     }
-
-    if (!workflowsStat.isDirectory()) {
+    if (!scheduledStat.isDirectory()) {
       return;
     }
-
-    const workflowsOwnership = checkOwnership(workflowsDir, expectedUid);
-    if (!workflowsOwnership.ok) {
+    const scheduledOwnership = checkOwnership(scheduledDir, expectedUid);
+    if (!scheduledOwnership.ok) {
       problems.push({
         severity: 'error',
         code: 'ownership',
         line: 0,
         col: 0,
-        message: workflowsOwnership.message,
-        path: workflowsDir
+        message: scheduledOwnership.message,
+        path: scheduledDir
       });
     }
-
-    // Read workflows/ directory
-    let workflowEntries;
+    let entries;
     try {
-      workflowEntries = readdirSync(workflowsDir, { withFileTypes: true });
+      entries = readdirSync(scheduledDir, { withFileTypes: true });
     } catch (err) {
       problems.push({
         severity: 'error',
         code: 'io',
         line: 0,
         col: 0,
-        message: `Failed to read ${workflowsDir}: ${err.message}`,
-        path: workflowsDir
+        message: `Failed to read ${scheduledDir}: ${err.message}`,
+        path: scheduledDir
       });
       return;
     }
-
-    // Process armed/paused workflows in workflows/
-    for (const ent of workflowEntries) {
-      if (ent.name === 'proposed') continue;
-      if (!ent.name.endsWith('.jsonc')) continue;
-
-      const filePath = path.join(workflowsDir, ent.name);
+    // Items are the *.jsonc files directly in scheduled/; subdirectories (a left-over proposed/) are not read.
+    for (const ent of entries) {
+      if (!ent.name.endsWith('.jsonc') || ent.name.startsWith('.')) continue;
+      const filePath = path.join(scheduledDir, ent.name);
       const stem = ent.name.slice(0, -6);
-
       if (!STEM_RE.test(stem)) {
         problems.push({
           severity: 'error',
           code: 'stem',
           line: 0,
           col: 0,
-          message: `Invalid workflow stem "${stem}" in ${ent.name}`,
+          message: `Invalid item stem "${stem}" in ${ent.name}`,
           path: filePath
         });
         continue;
       }
-
       const fileOwnership = checkOwnership(filePath, expectedUid);
-      if (!fileOwnership.ok || !agencyOwnership.ok || !workflowsOwnership.ok) {
+      if (!fileOwnership.ok || !agencyOwnership.ok || !scheduledOwnership.ok) {
         const msg = !fileOwnership.ok
           ? fileOwnership.message
           : (!agencyOwnership.ok
             ? `Agency directory ownership invalid for ${filePath}`
-            : `Workflows directory ownership invalid for ${filePath}`);
+            : `Scheduled directory ownership invalid for ${filePath}`);
         problems.push({
           severity: 'error',
           code: 'ownership',
@@ -159,102 +150,12 @@ export async function discover({ home, uid }) {
           path: filePath
         });
       }
-
       files.push({
         agency: agencyId,
         root,
         stem,
         id: `${agencyId}:${stem}`,
-        path: filePath,
-        proposal: false
-      });
-    }
-
-    // Process proposed/ directory
-    const proposedDir = path.join(workflowsDir, 'proposed');
-    let proposedStat;
-    try {
-      proposedStat = statSync(proposedDir);
-    } catch {
-      // no proposed directory
-      return;
-    }
-
-    if (!proposedStat.isDirectory()) {
-      return;
-    }
-
-    const proposedOwnership = checkOwnership(proposedDir, expectedUid);
-    if (!proposedOwnership.ok) {
-      problems.push({
-        severity: 'error',
-        code: 'ownership',
-        line: 0,
-        col: 0,
-        message: proposedOwnership.message,
-        path: proposedDir
-      });
-    }
-
-    let proposedEntries;
-    try {
-      proposedEntries = readdirSync(proposedDir, { withFileTypes: true });
-    } catch (err) {
-      problems.push({
-        severity: 'error',
-        code: 'io',
-        line: 0,
-        col: 0,
-        message: `Failed to read ${proposedDir}: ${err.message}`,
-        path: proposedDir
-      });
-      return;
-    }
-
-    for (const ent of proposedEntries) {
-      if (!ent.name.endsWith('.jsonc')) continue;
-
-      const filePath = path.join(proposedDir, ent.name);
-      const stem = ent.name.slice(0, -6);
-
-      if (!STEM_RE.test(stem)) {
-        problems.push({
-          severity: 'error',
-          code: 'stem',
-          line: 0,
-          col: 0,
-          message: `Invalid workflow stem "${stem}" in ${ent.name}`,
-          path: filePath
-        });
-        continue;
-      }
-
-      const fileOwnership = checkOwnership(filePath, expectedUid);
-      if (!fileOwnership.ok || !agencyOwnership.ok || !workflowsOwnership.ok || !proposedOwnership.ok) {
-        const msg = !fileOwnership.ok
-          ? fileOwnership.message
-          : (!agencyOwnership.ok
-            ? `Agency directory ownership invalid for ${filePath}`
-            : (!workflowsOwnership.ok
-              ? `Workflows directory ownership invalid for ${filePath}`
-              : `Proposed directory ownership invalid for ${filePath}`));
-        problems.push({
-          severity: 'error',
-          code: 'ownership',
-          line: 0,
-          col: 0,
-          message: msg,
-          path: filePath
-        });
-      }
-
-      files.push({
-        agency: agencyId,
-        root,
-        stem,
-        id: `${agencyId}:${stem}`,
-        path: filePath,
-        proposal: true
+        path: filePath
       });
     }
   }
@@ -317,9 +218,7 @@ export async function discover({ home, uid }) {
   files.sort((a, b) => {
     const cmp = a.agency.localeCompare(b.agency);
     if (cmp !== 0) return cmp;
-    const stemCmp = a.stem.localeCompare(b.stem);
-    if (stemCmp !== 0) return stemCmp;
-    return (a.proposal === b.proposal ? 0 : a.proposal ? 1 : -1);
+    return a.stem.localeCompare(b.stem);
   });
 
   return { agencies, files, problems, visited };

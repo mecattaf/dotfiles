@@ -1,0 +1,14 @@
+// Copied 12 Nov 2026 from ~/.agency/workflows/floor-upkeep.jsonc (kept there).
+// INERT: "$SCHED_FLOOR_CLI upkeep" was a verb of the withdrawn scheduled/floor branch and no longer exists.
+// Rewrite the prompt before enabling.
+{
+  "name": "Floor upkeep",
+  "enabled": false,
+  "on": { "schedule": [ { "cron": "0 4 * * *", "timezone": "Europe/Paris" } ] },
+  "job": {
+    "prompt": [
+      "List dshd units whose label superagent.ticket names a ticket that has ended, and failed dshd units of the last day (dshd ls --json).",
+      "For each, say what most likely caused it. Remove, stop or edit nothing yourself."
+    ]
+  }
+}

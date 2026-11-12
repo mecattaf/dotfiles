@@ -1,348 +1,138 @@
-// tick.test.mjs — tests covering C3.1, C3.2, C3.3, C3.5, C3.6, C3.7, C3.9, C3.12
-// Run: cd pkgs/scheduled && node --test test/tick.test.mjs
+// tick.test.mjs — scheduled tick v2 (scheduled-jsonc §4, §8 T1-T13; ports C3.1-C3.7, C3.9, C3.12).
+// Run: cd pkgs/scheduled && node --test 'test/*.test.mjs'
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { tick } from '../src/lib/tick.mjs';
 import { main as tickMain } from '../src/verbs/tick.mjs';
+import { setupEnv, hourly, MACHINE_ID } from './helpers.mjs';
 
-const STUB_DSHD_PATH = fileURLToPath(new URL('./stub-dshd.mjs', import.meta.url));
+const at = (iso) => new Date(iso);
 
-function setupTestEnv() {
-  const tmpDir = fs.mkdtempSync(join(os.tmpdir(), 'sched-tick-test-'));
-  const fakeHome = join(tmpDir, 'home');
-  const fakeAgency = join(fakeHome, '.agency');
-  const fakeWorkflows = join(fakeAgency, 'workflows');
-  const fakeState = join(fakeAgency, 'state', 'master');
-  fs.mkdirSync(fakeWorkflows, { recursive: true });
-  fs.mkdirSync(fakeState, { recursive: true });
-
-  const machineIdFile = join(tmpDir, 'machine-id');
-  fs.writeFileSync(machineIdFile, '9fa751adff4f4e1d9ebed1ce31aac90b\n');
-
-  const stubStateFile = join(tmpDir, 'stub-dshd-state.json');
-  fs.writeFileSync(stubStateFile, JSON.stringify({
-    state: 'running',
-    release: { state: 'current' },
-  }));
-  const stubLogFile = join(tmpDir, 'stub-dshd.log');
-
-  const ctx = {
-    home: fakeHome,
-    stateDir: fakeState,
-    env: {
-      STUB_DSHD_STATE: stubStateFile,
-      STUB_DSHD_LOG: stubLogFile,
-    },
-    now: () => new Date('2026-11-12T14:00:00.000Z'),
-    out: (s) => {},
-    err: (s) => {},
-    uid: typeof process.getuid === 'function' ? process.getuid() : 1000,
-    dshd: STUB_DSHD_PATH,
-    systemctl: '/run/current-system/sw/bin/systemctl',
-    floorUrl: 'http://127.0.0.1:3082',
-    machineIdFile,
-  };
-
-  return {
-    tmpDir,
-    fakeHome,
-    fakeWorkflows,
-    fakeState,
-    machineIdFile,
-    stubStateFile,
-    stubLogFile,
-    ctx,
-    cleanup: () => {
-      try {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-      } catch {}
-    },
-  };
-}
-
-function readStubLogs(logFile) {
-  if (!fs.existsSync(logFile)) return [];
-  return fs.readFileSync(logFile, 'utf8')
-    .trim()
-    .split('\n')
-    .filter(Boolean)
-    .map((l) => JSON.parse(l));
-}
-
-test('C3.1 A first scheduled tick with no heartbeat.json writes heartbeat.json, one census file, and hands off no occurrence', async () => {
-  const env = setupTestEnv();
+test('T1 a first tick writes heartbeat.json and intake.json in the state dir, no record, and calls no dshd', async () => {
+  const env = setupEnv({ floorInstance: 'floor' });
   try {
-    const now = new Date('2026-11-12T14:00:00.000Z');
-    const res = await tick(env.ctx, { now });
+    env.item('hb', hourly());
+    const res = await tick(env.ctx, { now: at('2026-11-12T14:00:00.000Z') });
     assert.equal(res.code, 0);
-
-    // Assert heartbeat.json written with v 1, machineId, lastTick now
-    const heartbeatPath = join(env.fakeState, 'heartbeat.json');
-    assert.ok(fs.existsSync(heartbeatPath));
-    const hb = JSON.parse(fs.readFileSync(heartbeatPath, 'utf8'));
-    assert.equal(hb.v, 1);
-    assert.equal(hb.machineId, '9fa751adff4f4e1d9ebed1ce31aac90b');
-    assert.equal(hb.lastTick, now.toISOString());
-
-    // Assert one census file written in spool/incoming
-    const incomingDir = join(env.fakeState, 'spool', 'incoming');
-    assert.ok(fs.existsSync(incomingDir));
-    const files = fs.readdirSync(incomingDir);
-    const censusFiles = files.filter((f) => f.startsWith('census@'));
-    assert.equal(censusFiles.length, 1);
-
-    // Assert no occurrences handed off
-    const occurrenceFiles = files.filter((f) => !f.startsWith('census@'));
-    assert.equal(occurrenceFiles.length, 0);
+    const hb = JSON.parse(fs.readFileSync(join(env.state, 'heartbeat.json'), 'utf8'));
+    assert.deepEqual(hb, { v: 1, machineId: MACHINE_ID, lastTick: '2026-11-12T14:00:00.000Z' });
+    assert.equal(env.intake().v, 1);
+    assert.equal(env.entry('master:hb').valid, true);
+    assert.deepEqual(env.records(), []);
+    assert.equal(fs.existsSync(env.inbox), false, 'the inbox is created only to hand off a record');
+    assert.deepEqual(env.dshdCalls(), []);
   } finally {
     env.cleanup();
   }
 });
 
-test('C3.2 An hourly workflow and a lastTick 3 hours old links exactly one spool record with missed=2, latest instant, revision, and by scheduled-heartbeat', async () => {
-  const env = setupTestEnv();
+test('T2 an hourly item and a lastTick 3 hours old link exactly one record: latest instant, missed 2, revision, frozen text, cwd the agency realpath, namespace, by scheduled-heartbeat', async () => {
+  const env = setupEnv();
   try {
-    // 1. First tick sets up heartbeat at 11:00
-    const t0 = new Date('2026-11-12T11:00:00.000Z');
-    const workflowPath = join(env.fakeWorkflows, 'fleet-nightly.jsonc');
-    fs.writeFileSync(workflowPath, JSON.stringify({
-      name: 'Fleet Nightly',
-      enabled: true,
-      on: {
-        schedule: [{ cron: '0 * * * *', timezone: 'UTC' }],
-      },
-      job: { prompt: 'Run checks' },
-    }));
-
-    // Pre-seed intake with armedSince at 11:00 so it is not anchored to now
-    fs.mkdirSync(env.fakeState, { recursive: true });
-    const st = fs.statSync(workflowPath, { bigint: true });
-    fs.writeFileSync(join(env.fakeState, 'heartbeat.json'), JSON.stringify({
-      v: 1,
-      machineId: '9fa751adff4f4e1d9ebed1ce31aac90b',
-      lastTick: t0.toISOString(),
-    }));
-    fs.writeFileSync(join(env.fakeState, 'intake.json'), JSON.stringify({
-      v: 1,
-      files: {
-        [workflowPath]: {
-          dev: String(st.dev),
-          ino: String(st.ino),
-          size: Number(st.size),
-          mtimeNs: String(st.mtimeNs),
-          revision: '3f2a9c1e0b7d',
-          problems: [],
-          firstSeen: t0.toISOString(),
-          armedSince: t0.toISOString(),
-          valid: true,
-          enabled: true,
-          on: { schedule: [{ cron: '0 * * * *', timezone: 'UTC' }] },
-        },
-      },
-      agencies: { master: { firstSeen: t0.toISOString(), root: env.fakeHome } },
-    }));
-
-    // 2. Tick 3 hours later at 14:00
-    const t1 = new Date('2026-11-12T14:00:00.000Z');
-    const res = await tick(env.ctx, { now: t1 });
+    env.item('fleet-nightly', hourly({ name: 'Fleet nightly', job: { prompt: ['Line one.', 'Line two.'] } }));
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    const res = await tick(env.ctx, { now: at('2026-11-12T14:00:30.000Z') });
     assert.equal(res.code, 0);
-
-    // Spool record check
-    const incomingDir = join(env.fakeState, 'spool', 'incoming');
-    const files = fs.readdirSync(incomingDir).filter((f) => !f.startsWith('census@'));
-    assert.equal(files.length, 1);
-    assert.equal(files[0], 'master~fleet-nightly@20261112T1400Z.json');
-
-    const record = JSON.parse(fs.readFileSync(join(incomingDir, files[0]), 'utf8'));
-    assert.equal(record.v, 1);
-    assert.equal(record.kind, 'schedule');
-    assert.equal(record.workflow, 'master:fleet-nightly');
-    assert.equal(record.instant, '2026-11-12T14:00:00.000Z');
-    assert.equal(record.missed, 2);
-    assert.equal(record.by, 'scheduled-heartbeat');
-
-    // heartbeat.json lastTick committed to 14:00
-    const hb = JSON.parse(fs.readFileSync(join(env.fakeState, 'heartbeat.json'), 'utf8'));
-    assert.equal(hb.lastTick, t1.toISOString());
-  } finally {
-    env.cleanup();
-  }
-});
-
-test('C3.3 The same window ticked again with the record still in incoming/ meets EEXIST, no second file appears, and exit is 0', async () => {
-  const env = setupTestEnv();
-  try {
-    const t0 = new Date('2026-11-12T11:00:00.000Z');
-    const workflowPath = join(env.fakeWorkflows, 'fleet-nightly.jsonc');
-    fs.writeFileSync(workflowPath, JSON.stringify({
-      name: 'Fleet Nightly',
-      enabled: true,
-      on: { schedule: [{ cron: '0 * * * *', timezone: 'UTC' }] },
-      job: { prompt: 'Run checks' },
-    }));
-
-    const st = fs.statSync(workflowPath, { bigint: true });
-    fs.writeFileSync(join(env.fakeState, 'heartbeat.json'), JSON.stringify({
+    assert.deepEqual(env.records(), ['master~fleet-nightly@20261112T1400Z.json']);
+    const rec = env.record('master~fleet-nightly@20261112T1400Z.json');
+    assert.deepEqual(rec, {
       v: 1,
-      machineId: '9fa751adff4f4e1d9ebed1ce31aac90b',
-      lastTick: t0.toISOString(),
-    }));
-    fs.writeFileSync(join(env.fakeState, 'intake.json'), JSON.stringify({
-      v: 1,
-      files: {
-        [workflowPath]: {
-          dev: String(st.dev),
-          ino: String(st.ino),
-          size: Number(st.size),
-          mtimeNs: String(st.mtimeNs),
-          revision: '3f2a9c1e0b7d',
-          problems: [],
-          firstSeen: t0.toISOString(),
-          armedSince: t0.toISOString(),
-          valid: true,
-          enabled: true,
-          on: { schedule: [{ cron: '0 * * * *', timezone: 'UTC' }] },
-        },
-      },
-      agencies: { master: { firstSeen: t0.toISOString(), root: env.fakeHome } },
-    }));
-
-    // Pre-create the destination file in incoming/ simulating a prior attempt
-    const incomingDir = join(env.fakeState, 'spool', 'incoming');
-    fs.mkdirSync(incomingDir, { recursive: true });
-    const targetFile = join(incomingDir, 'master~fleet-nightly@20261112T1400Z.json');
-    fs.writeFileSync(targetFile, JSON.stringify({ existing: true }));
-
-    // Tick the same window
-    const t1 = new Date('2026-11-12T14:00:00.000Z');
-    const res = await tick(env.ctx, { now: t1 });
-    assert.equal(res.code, 0);
-
-    // Verify existing file remained untouched and no second occurrence file appeared
-    const occurrenceFiles = fs.readdirSync(incomingDir).filter((f) => !f.startsWith('census@'));
-    assert.equal(occurrenceFiles.length, 1);
-    const content = JSON.parse(fs.readFileSync(targetFile, 'utf8'));
-    assert.equal(content.existing, true);
-  } finally {
-    env.cleanup();
-  }
-});
-
-test('C3.5 A clock earlier than lastTick gives no hand-off, one <4>clock went back line, lastTick kept, and exit 0', async () => {
-  const env = setupTestEnv();
-  try {
-    const tFuture = new Date('2026-11-12T14:00:00.000Z');
-    fs.writeFileSync(join(env.fakeState, 'heartbeat.json'), JSON.stringify({
-      v: 1,
-      machineId: '9fa751adff4f4e1d9ebed1ce31aac90b',
-      lastTick: tFuture.toISOString(),
-    }));
-
-    const workflowPath = join(env.fakeWorkflows, 'hourly.jsonc');
-    fs.writeFileSync(workflowPath, JSON.stringify({
-      name: 'Hourly',
-      enabled: true,
-      on: { schedule: [{ cron: '0 * * * *', timezone: 'UTC' }] },
-      job: { prompt: 'Do work' },
-    }));
-
-    const tPast = new Date('2026-11-12T13:00:00.000Z');
-    const res = await tick(env.ctx, { now: tPast });
-    assert.equal(res.code, 0);
-
-    // Line check
-    assert.ok(res.lines.includes('<4>clock went back'));
-
-    // No occurrence handed off
-    const incomingDir = join(env.fakeState, 'spool', 'incoming');
-    if (fs.existsSync(incomingDir)) {
-      const occs = fs.readdirSync(incomingDir).filter((f) => !f.startsWith('census@'));
-      assert.equal(occs.length, 0);
-    }
-
-    // lastTick kept unchanged
-    const hb = JSON.parse(fs.readFileSync(join(env.fakeState, 'heartbeat.json'), 'utf8'));
-    assert.equal(hb.lastTick, tFuture.toISOString());
-  } finally {
-    env.cleanup();
-  }
-});
-
-test('C3.6 A heartbeat.json whose machineId differs from /etc/machine-id, or higher major v, exits 1, writes nothing, hands off nothing', async () => {
-  // Part 1: machineId differs
-  {
-    const env = setupTestEnv();
-    try {
-      fs.writeFileSync(join(env.fakeState, 'heartbeat.json'), JSON.stringify({
-        v: 1,
-        machineId: 'different-machine-id-12345',
-        lastTick: '2026-11-12T10:00:00.000Z',
-      }));
-
-      const res = await tick(env.ctx, { now: new Date('2026-11-12T14:00:00.000Z') });
-      assert.equal(res.code, 1);
-      assert.ok(res.lines.some((l) => l.includes('<3>guard machine-id differs')));
-
-      // Nothing handed off
-      const incomingDir = join(env.fakeState, 'spool', 'incoming');
-      assert.ok(!fs.existsSync(incomingDir));
-    } finally {
-      env.cleanup();
-    }
-  }
-
-  // Part 2: higher major v in heartbeat.json
-  {
-    const env = setupTestEnv();
-    try {
-      fs.writeFileSync(join(env.fakeState, 'heartbeat.json'), JSON.stringify({
-        v: 2,
-        machineId: '9fa751adff4f4e1d9ebed1ce31aac90b',
-        lastTick: '2026-11-12T10:00:00.000Z',
-      }));
-
-      const res = await tick(env.ctx, { now: new Date('2026-11-12T14:00:00.000Z') });
-      assert.equal(res.code, 1);
-      assert.ok(res.lines.some((l) => l.includes('<3>guard higher state version')));
-
-      const incomingDir = join(env.fakeState, 'spool', 'incoming');
-      assert.ok(!fs.existsSync(incomingDir));
-    } finally {
-      env.cleanup();
-    }
-  }
-});
-
-test('C3.7 Two scheduled tick processes started together: the second holds on state/master/.tick.lock until the first ones pass line', async () => {
-  const env = setupTestEnv();
-  try {
-    const lockFile = join(env.fakeState, '.tick.lock');
-
-    // Acquire lock manually to simulate an in-flight first tick
-    fs.mkdirSync(env.fakeState, { recursive: true });
-    fs.writeFileSync(lockFile, `${process.pid}\n`);
-
-    let tickCompleted = false;
-    const tickPromise = tick(env.ctx, { now: new Date('2026-11-12T14:00:00.000Z') }).then((r) => {
-      tickCompleted = true;
-      return r;
+      kind: 'schedule',
+      namespace: 'master',
+      item: 'fleet-nightly',
+      name: 'Fleet nightly',
+      cwd: env.home,
+      file: join(env.scheduled, 'fleet-nightly.jsonc'),
+      due: '2026-11-12T14:00:00.000Z',
+      missed: 2,
+      revision: env.entry('master:fleet-nightly').revision,
+      text: 'Line one.\nLine two.',
+      by: 'scheduled-heartbeat',
+      at: '2026-11-12T14:00:30.000Z',
     });
+    assert.match(rec.revision, /^[0-9a-f]{12}$/);
+    assert.ok(res.lines.includes('<6>decode item=master:fleet-nightly due=2026-11-12T14:00:00.000Z result=created'), res.lines.join('\n'));
+  } finally {
+    env.cleanup();
+  }
+});
 
-    // Verify tick is blocked holding on the lock
-    await new Promise((r) => setTimeout(r, 100));
-    assert.equal(tickCompleted, false, 'Tick should be waiting for lock to release');
+test('T3 the same window ticked again answers exists, both while the record waits in the inbox and after it moved to .done/', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly());
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+    const made = env.records();
+    assert.equal(made.length, 1);
 
-    // Simulate first process completing pass line and releasing lock
+    // The same window again: the deterministic name exists.
+    env.heartbeat('2026-11-12T11:00:00.000Z');
+    let res = await tick(env.ctx, { now: at('2026-11-12T12:00:20.000Z') });
+    assert.ok(res.lines.some((l) => l.endsWith('result=exists')), res.lines.join('\n'));
+    assert.deepEqual(env.records(), made);
+
+    // The Source received it: the name in .done/ still answers exists, and nothing new waits.
+    env.drain();
+    env.heartbeat('2026-11-12T11:00:00.000Z');
+    res = await tick(env.ctx, { now: at('2026-11-12T12:00:30.000Z') });
+    assert.equal(res.code, 0);
+    assert.ok(res.lines.some((l) => l.endsWith('result=exists')), res.lines.join('\n'));
+    assert.deepEqual(env.records(), []);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T4 a clock earlier than lastTick writes no record, keeps lastTick, logs <4>clock went back and exits 0', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly());
+    env.heartbeat('2026-11-12T14:00:00.000Z');
+    const res = await tick(env.ctx, { now: at('2026-11-12T10:00:00.000Z') });
+    assert.equal(res.code, 0);
+    assert.ok(res.lines.includes('<4>clock went back'));
+    assert.deepEqual(env.records(), []);
+    assert.equal(JSON.parse(fs.readFileSync(join(env.state, 'heartbeat.json'), 'utf8')).lastTick, '2026-11-12T14:00:00.000Z');
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T5 a heartbeat.json of another machine or a higher major v exits 1 and writes nothing', async () => {
+  for (const state of [{ v: 1, machineId: 'another', lastTick: '2026-11-12T10:00:00.000Z' }, { v: 2, machineId: MACHINE_ID, lastTick: '2026-11-12T10:00:00.000Z' }]) {
+    const env = setupEnv();
+    try {
+      env.item('hb', hourly());
+      fs.mkdirSync(env.state, { recursive: true });
+      fs.writeFileSync(join(env.state, 'heartbeat.json'), JSON.stringify(state));
+      const res = await tick(env.ctx, { now: at('2026-11-12T14:00:00.000Z') });
+      assert.equal(res.code, 1);
+      assert.ok(res.lines.some((l) => l.startsWith('<3>guard ')), res.lines.join('\n'));
+      assert.equal(fs.existsSync(env.inbox), false);
+      assert.equal(fs.existsSync(join(env.state, 'intake.json')), false);
+      assert.deepEqual(JSON.parse(fs.readFileSync(join(env.state, 'heartbeat.json'), 'utf8')), state);
+    } finally {
+      env.cleanup();
+    }
+  }
+});
+
+test('T6 two ticks started together: the second waits on .tick.lock', async () => {
+  const env = setupEnv();
+  try {
+    fs.mkdirSync(env.state, { recursive: true });
+    const lockFile = join(env.state, '.tick.lock');
+    fs.writeFileSync(lockFile, `${process.pid}\n`);
+    let done = false;
+    const pending = tick(env.ctx, { now: at('2026-11-12T14:00:00.000Z') }).then((r) => { done = true; return r; });
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(done, false, 'the tick waits for the lock');
     fs.unlinkSync(lockFile);
-
-    // Second process should now acquire lock and finish
-    const res = await tickPromise;
-    assert.equal(tickCompleted, true);
+    const res = await pending;
     assert.equal(res.code, 0);
     assert.ok(res.lines.some((l) => l.startsWith('<6>pass ')));
   } finally {
@@ -350,90 +140,222 @@ test('C3.7 Two scheduled tick processes started together: the second holds on st
   }
 });
 
-test('C3.9 One pass of scheduled tick opens no file named orchestrator.sqlite, runs no dshd run, and runs no if or outcome command', async () => {
-  const env = setupTestEnv();
+test('T7 a disabled item gets no record; an item disabled while its record waits and the floor is stopped has that record withdrawn with <5>withdrawn reason=disabled', async () => {
+  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'running' } });
   try {
-    // Create workflow with if.command and outcome.check
-    const workflowPath = join(env.fakeWorkflows, 'gated.jsonc');
-    fs.writeFileSync(workflowPath, JSON.stringify({
-      name: 'Gated Workflow',
-      enabled: true,
-      on: { schedule: [{ cron: '0 * * * *', timezone: 'UTC' }] },
-      if: { command: ['false'] },
-      outcome: { check: ['false'] },
-      job: { prompt: 'Do test' },
-    }));
+    env.item('off', hourly({ enabled: false }));
+    env.item('hb', hourly());
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+    assert.deepEqual(env.records(), ['master~hb@20261112T1200Z.json']);
 
-    const res = await tick(env.ctx, { now: new Date('2026-11-12T14:00:00.000Z') });
+    env.item('hb', hourly({ enabled: false }), new Date('2026-11-12T12:10:00.000Z'));
+    env.setStub({ state: 'stopped', enabled: false, lastRun: { ending: 'stopped' } });
+    const res = await tick(env.ctx, { now: at('2026-11-12T12:30:00.000Z') });
     assert.equal(res.code, 0);
+    assert.deepEqual(env.records(), []);
+    assert.ok(res.lines.includes('<5>withdrawn occurrence=master~hb@20261112T1200Z reason=disabled'), res.lines.join('\n'));
+    // Nothing waits after the withdrawal, so the floor is not started.
+    assert.ok(!env.dshdCalls().some((argv) => argv[0] === 'start'));
+  } finally {
+    env.cleanup();
+  }
+});
 
-    // Assert orchestrator.sqlite does not exist
-    const sqlitePath = join(env.fakeState, 'orchestrator.sqlite');
-    assert.equal(fs.existsSync(sqlitePath), false, 'orchestrator.sqlite must not exist');
+test('T8 a removed or invalid item has its waiting heartbeat record withdrawn; a manual record and another producer\'s record stay', async () => {
+  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'running' } });
+  try {
+    env.item('gone', hourly());
+    env.item('broken', hourly());
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+    assert.equal(env.records().length, 2);
+    const manual = { v: 1, kind: 'manual', namespace: 'master', item: 'gone', cwd: env.home, file: join(env.scheduled, 'gone.jsonc'),
+      due: '2026-11-12T12:01:00.000Z', run: '01KE6Q3W8ZJ4S7T2V9XN5R0B1C', missed: 0, revision: 'a1b2c3d4e5f6', text: 'Say ok.', by: 'scheduled-run', at: '2026-11-12T12:01:00.000Z' };
+    const other = { ...manual, kind: 'schedule', run: undefined, by: 'another-scheduler', due: '2026-11-12T12:00:00.000Z' };
+    fs.writeFileSync(join(env.inbox, 'master~gone@run~01KE6Q3W8ZJ4S7T2V9XN5R0B1C.json'), JSON.stringify(manual));
+    fs.writeFileSync(join(env.inbox, 'other~gone@20261112T1200Z.json'), JSON.stringify(other));
+    fs.writeFileSync(join(env.inbox, 'unreadable.json'), '{ torn');
 
-    // Assert no dshd run was invoked in stub-dshd log
-    const logs = readStubLogs(env.stubLogFile);
-    for (const argv of logs) {
-      assert.notEqual(argv[0], 'run', `dshd ${argv.join(' ')} must not be called with 'run'`);
+    fs.rmSync(join(env.scheduled, 'gone.jsonc'));
+    env.item('broken', '{ "enabled": true,', new Date('2026-11-12T12:10:00.000Z'));
+    env.setStub({ state: 'stopped', lastRun: { ending: 'stopped' } });
+    const res = await tick(env.ctx, { now: at('2026-11-12T12:30:00.000Z') });
+    assert.ok(res.lines.includes('<5>withdrawn occurrence=master~gone@20261112T1200Z reason=removed'), res.lines.join('\n'));
+    assert.ok(res.lines.includes('<5>withdrawn occurrence=master~broken@20261112T1200Z reason=invalid'), res.lines.join('\n'));
+    assert.deepEqual(env.records(), ['master~gone@run~01KE6Q3W8ZJ4S7T2V9XN5R0B1C.json', 'other~gone@20261112T1200Z.json', 'unreadable.json']);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T8b while the floor is running no record is withdrawn', async () => {
+  for (const state of ['running', 'starting', 'stopping']) {
+    const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'running' } });
+    try {
+      env.item('hb', hourly());
+      await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+      await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+      env.item('hb', hourly({ enabled: false }), new Date('2026-11-12T12:10:00.000Z'));
+      env.setStub({ state });
+      const res = await tick(env.ctx, { now: at('2026-11-12T12:30:00.000Z') });
+      assert.equal(res.code, 0);
+      assert.deepEqual(env.records(), ['master~hb@20261112T1200Z.json'], state);
+      assert.ok(!res.lines.some((l) => l.includes('withdrawn')), state);
+    } finally {
+      env.cleanup();
+    }
+  }
+});
+
+test('T9 an edit between two occurrences: the second record carries the new text and revision; the first record\'s file is unchanged', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly({ job: { prompt: 'First text.' } }));
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+    const [first] = env.records();
+    const firstBytes = fs.readFileSync(join(env.inbox, first));
+
+    env.item('hb', hourly({ job: { prompt: 'Second text.' } }), new Date('2026-11-12T12:20:00.000Z'));
+    await tick(env.ctx, { now: at('2026-11-12T13:00:10.000Z') });
+    const names = env.records();
+    assert.equal(names.length, 2);
+    const second = env.record(names[1]);
+    assert.equal(second.text, 'Second text.');
+    assert.notEqual(second.revision, JSON.parse(firstBytes).revision);
+    assert.deepEqual(fs.readFileSync(join(env.inbox, first)), firstBytes);
+    assert.equal(JSON.parse(firstBytes).text, 'First text.');
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T9b a prompt-file is read at each tick and frozen into the record', async () => {
+  const env = setupEnv();
+  try {
+    fs.mkdirSync(join(env.agency, 'prompts'), { recursive: true });
+    const prompt = join(env.agency, 'prompts', 'hb.md');
+    fs.writeFileSync(prompt, 'From the file, first.\n');
+    env.item('hb', { enabled: true, on: { schedule: [{ cron: '0 * * * *', timezone: 'UTC' }] }, job: { 'prompt-file': '.agency/prompts/hb.md' } });
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+    // Only the prompt file changes; the item file's stat is the same.
+    fs.writeFileSync(prompt, 'From the file, second.\n');
+    await tick(env.ctx, { now: at('2026-11-12T13:00:10.000Z') });
+    const texts = env.records().map((n) => env.record(n).text);
+    assert.deepEqual(texts, ['From the file, first.\n', 'From the file, second.\n']);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T10 an item enabled now does not fire instants before it was armed', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly({ enabled: false }));
+    await tick(env.ctx, { now: at('2026-11-12T09:00:00.000Z') });
+    await tick(env.ctx, { now: at('2026-11-12T11:30:00.000Z') });
+    env.item('hb', hourly(), new Date('2026-11-12T11:40:00.000Z'));
+    // Armed at 11:45: the 10:00 and 11:00 instants never fire.
+    await tick(env.ctx, { now: at('2026-11-12T11:45:00.000Z') });
+    assert.deepEqual(env.records(), []);
+    await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+    assert.deepEqual(env.records(), ['master~hb@20261112T1200Z.json']);
+    assert.equal(env.record('master~hb@20261112T1200Z.json').missed, 0);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T11 a tick opens no file named orchestrator.sqlite, runs no dshd run and no item command, and writes no census', async () => {
+  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'stopped', lastRun: { ending: 'stopped' } } });
+  try {
+    const marker = join(env.tmpDir, 'command-ran');
+    // A withdrawn key naming a command is refused, never run.
+    env.item('gated', hourly({ if: { command: ['touch', marker] }, outcome: { check: ['touch', marker] } }));
+    env.item('hb', hourly());
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    const res = await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+    assert.equal(res.code, 0);
+    assert.equal(fs.existsSync(marker), false);
+    const all = fs.readdirSync(env.tmpDir, { recursive: true }).map(String);
+    assert.ok(!all.some((p) => p.endsWith('orchestrator.sqlite')), all.join('\n'));
+    assert.ok(!all.some((p) => p.includes('census')), all.join('\n'));
+    const calls = env.dshdCalls();
+    assert.ok(calls.length > 0, 'the stopped floor was read and started');
+    for (const argv of calls) assert.ok(['get', 'start'].includes(argv[0]), argv.join(' '));
+    assert.ok(env.entry('master:gated').problems.some((p) => p.code === 'removed-key'));
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T12 every file the tick creates in the inbox is a *.json linked from .tmp/, mode 0600; the inbox and .tmp are 0700', async () => {
+  const env = setupEnv();
+  try {
+    env.item('a', hourly());
+    env.item('b', hourly());
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+    const mode = (p) => fs.statSync(p).mode & 0o777;
+    assert.equal(mode(env.inbox), 0o700);
+    assert.equal(mode(join(env.inbox, '.tmp')), 0o700);
+    assert.deepEqual(fs.readdirSync(join(env.inbox, '.tmp')), []);
+    const names = fs.readdirSync(env.inbox).filter((n) => n !== '.tmp');
+    assert.deepEqual(names.sort(), ['master~a@20261112T1200Z.json', 'master~b@20261112T1200Z.json']);
+    for (const n of names) {
+      assert.equal(mode(join(env.inbox, n)), 0o600);
+      assert.equal(fs.statSync(join(env.inbox, n)).nlink, 1, 'the temp link is gone');
     }
   } finally {
     env.cleanup();
   }
 });
 
-test('C3.12 Any tick line carries an sd-daemon level prefix, and pass carries reason=timer when TRIGGER_UNIT is set and reason=manual otherwise', async () => {
-  // Case 1: TRIGGER_UNIT is set -> reason=timer
-  {
-    const env = setupTestEnv();
-    try {
-      env.ctx.env.TRIGGER_UNIT = 'scheduled-heartbeat.timer';
-      const res = await tick(env.ctx, { now: new Date('2026-11-12T14:00:00.000Z') });
-      assert.equal(res.code, 0);
-
-      // Verify all lines have sd-daemon prefix
-      for (const line of res.lines) {
-        assert.match(line, /^<[3-6]>[a-z]/, `Line '${line}' must carry an sd-daemon level prefix`);
-      }
-
-      const passLine = res.lines.find((l) => l.startsWith('<6>pass '));
-      assert.ok(passLine);
-      assert.match(passLine, /^<6>pass reason=timer took_ms=\d+ discover_ms=\d+ agencies=\d+ workflows=\d+$/);
-    } finally {
-      env.cleanup();
-    }
-  }
-
-  // Case 2: TRIGGER_UNIT not set -> reason=manual
-  {
-    const env = setupTestEnv();
-    try {
-      delete env.ctx.env.TRIGGER_UNIT;
-      const res = await tick(env.ctx, { now: new Date('2026-11-12T14:00:00.000Z') });
-      assert.equal(res.code, 0);
-
-      const passLine = res.lines.find((l) => l.startsWith('<6>pass '));
-      assert.ok(passLine);
-      assert.match(passLine, /^<6>pass reason=manual took_ms=\d+ discover_ms=\d+ agencies=\d+ workflows=\d+$/);
-    } finally {
-      env.cleanup();
-    }
+test('T13 --inbox missing exits 2 with the message', async () => {
+  const env = setupEnv();
+  try {
+    const code = await tickMain(['--now', '2026-11-12T14:00:00.000Z'], { ...env.ctx, inbox: null });
+    assert.equal(code, 2);
+    assert.ok(env.err.join('').includes('scheduled: --inbox is required'), env.err.join(''));
+    assert.equal(fs.existsSync(env.state), false);
+  } finally {
+    env.cleanup();
   }
 });
 
-test('CLI verb main parses flags and prints lines', async () => {
-  const env = setupTestEnv();
+test('C3.12 every tick line carries an sd-daemon level prefix; pass carries reason, items and waiting', async () => {
+  const env = setupEnv();
   try {
-    const outLines = [];
-    const errLines = [];
-    const testCtx = {
-      ...env.ctx,
-      out: (s) => outLines.push(s),
-      err: (s) => errLines.push(s),
-    };
+    env.item('hb', hourly());
+    env.ctx.env.TRIGGER_UNIT = 'scheduled-heartbeat.timer';
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    const res = await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+    for (const line of res.lines) assert.match(line, /^<[3-6]>[a-z]/, line);
+    assert.match(res.lines.at(-1), /^<6>pass reason=timer took_ms=\d+ discover_ms=\d+ agencies=1 items=1 waiting=1$/);
+    delete env.ctx.env.TRIGGER_UNIT;
+    const again = await tick(env.ctx, { now: at('2026-11-12T12:10:00.000Z') });
+    assert.match(again.lines.at(-1), /^<6>pass reason=manual /);
+  } finally {
+    env.cleanup();
+  }
+});
 
-    const code = await tickMain(['--now', '2026-11-12T14:00:00.000Z', '--state-dir', env.fakeState], testCtx);
-    assert.equal(code, 0);
-    assert.ok(outLines.some((l) => l.includes('<6>pass ')));
+test('the verb takes --inbox, --state-dir, --home and --floor-instance flags over the environment defaults', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly());
+    const other = join(env.tmpDir, 'other-inbox');
+    const state = join(env.tmpDir, 'other-state');
+    const args = ['--inbox', other, '--state-dir', state, '--home', env.home];
+    assert.equal(await tickMain([...args, '--now', '2026-11-12T11:00:00.000Z'], env.ctx), 0);
+    assert.equal(await tickMain([...args, '--now=2026-11-12T12:00:10.000Z', '--json'], env.ctx), 0);
+    assert.deepEqual(fs.readdirSync(other).filter((n) => n.endsWith('.json')), ['master~hb@20261112T1200Z.json']);
+    assert.ok(fs.existsSync(join(state, 'heartbeat.json')));
+    assert.equal(fs.existsSync(env.state), false);
+    assert.equal(JSON.parse(env.out.at(-1)).code, 0);
+    assert.equal(await tickMain(['--inbox', other, '--bogus'], env.ctx), 2);
   } finally {
     env.cleanup();
   }

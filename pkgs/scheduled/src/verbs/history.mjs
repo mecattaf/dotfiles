@@ -1,386 +1,84 @@
-// history.mjs — the `scheduled history` verb.
+// scheduled history [ID] [--inbox DIR] [--json] [-n N] (scheduled-jsonc §5)
 //
-// Spec ref: C2.15 (read-only node:sqlite over sched_history_v1 and sched_attempts_v1)
-//           DESIGN 5.4 (the SQLite schema and views)
-//           DESIGN 10.1 (CLI syntax and exit codes)
-//           DESIGN b.11 (History and inspection)
+// What the floor's Source did with each record, newest first: `<inbox>/.done/*.json` (received) and
+// `<inbox>/.bad/*.json` (refused, with its `.error` line). The work itself is the superagent's record:
+// its Ticket and the dshd unit's session. ID is `<agency>:<item>` or a bare item, matched on the record
+// itself, so the history of a removed item still shows.
 
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import {
-  openHistoryDb,
-  parseDurationMs,
-  queryHistory,
-  queryAttempts,
-  queryEdits,
-  isInstancePruned,
-  journalCommand,
-  formatHistoryTable,
-  formatAttemptsOutput,
-  formatEditsTable,
-} from '../lib/history.mjs';
+import { readRecord } from '../lib/inbox.mjs';
 
-export { openHistoryDb };
+const USAGE = 'usage: scheduled history [ID] [--inbox DIR] [--json] [-n N]';
 
-/**
- * Parse argument list for `scheduled history`.
- *
- * Syntax:
- *   scheduled history (ID | --all) [-n N] [--since DUR] [--json]
- *   scheduled history ID --occurrence KEY [--log] [--json]
- *   scheduled history ID --edits [--diff] [--json]
- *
- * @param {string[]} args
- * @returns {object}
- */
-export function parseArgs(args) {
-  const result = {
-    id: null,
-    all: false,
-    limit: null,
-    since: null,
-    json: false,
-    occurrence: null,
-    log: false,
-    edits: false,
-    diff: false,
-    stateDir: null,
-    help: false,
-    errors: [],
-  };
-
-  const positional = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--help' || arg === '-h') {
-      result.help = true;
-      return result;
-    }
-    if (arg === '--all') {
-      result.all = true;
-    } else if (arg === '--json') {
-      result.json = true;
-    } else if (arg === '--log') {
-      result.log = true;
-    } else if (arg === '--edits') {
-      result.edits = true;
-    } else if (arg === '--diff') {
-      result.diff = true;
-    } else if (arg === '-n') {
-      i++;
-      if (i >= args.length) {
-        result.errors.push('-n requires an argument');
-      } else {
-        const val = parseInt(args[i], 10);
-        if (isNaN(val) || val <= 0 || String(val) !== args[i].trim()) {
-          result.errors.push(`invalid -n limit: ${args[i]}`);
-        } else {
-          result.limit = val;
-        }
+/** Every handled record in `inbox`, newest `due` first. */
+export function handled(inbox) {
+  const rows = [];
+  for (const state of ['done', 'bad']) {
+    const dir = join(inbox, `.${state}`);
+    let names;
+    try { names = readdirSync(dir).filter((n) => n.endsWith('.json') && !n.startsWith('.')); } catch { continue; }
+    for (const name of names) {
+      const rec = readRecord(dir, name) ?? {};
+      let error = null;
+      if (state === 'bad') {
+        try { error = readFileSync(join(dir, `${name}.error`), 'utf8').trim() || null; } catch { /* none */ }
       }
-    } else if (arg.startsWith('-n=')) {
-      const valStr = arg.slice(3);
-      const val = parseInt(valStr, 10);
-      if (isNaN(val) || val <= 0 || String(val) !== valStr.trim()) {
-        result.errors.push(`invalid -n limit: ${valStr}`);
-      } else {
-        result.limit = val;
-      }
-    } else if (/^-n\d+$/.test(arg)) {
-      const val = parseInt(arg.slice(2), 10);
-      if (val <= 0) {
-        result.errors.push(`invalid -n limit: ${arg.slice(2)}`);
-      } else {
-        result.limit = val;
-      }
-    } else if (arg === '--since') {
-      i++;
-      if (i >= args.length) {
-        result.errors.push('--since requires an argument');
-      } else {
-        result.since = args[i];
-      }
-    } else if (arg.startsWith('--since=')) {
-      result.since = arg.slice(8);
-    } else if (arg === '--occurrence') {
-      i++;
-      if (i >= args.length) {
-        result.errors.push('--occurrence requires an argument');
-      } else {
-        result.occurrence = args[i];
-      }
-    } else if (arg.startsWith('--occurrence=')) {
-      result.occurrence = arg.slice(13);
-    } else if (arg === '--state-dir') {
-      i++;
-      if (i >= args.length) {
-        result.errors.push('--state-dir requires an argument');
-      } else {
-        result.stateDir = args[i];
-      }
-    } else if (arg.startsWith('--state-dir=')) {
-      result.stateDir = arg.slice(12);
-    } else if (arg.startsWith('-')) {
-      result.errors.push(`unknown option: ${arg}`);
-    } else {
-      positional.push(arg);
-    }
-  }
-
-  if (positional.length > 1) {
-    result.errors.push(`unexpected positional arguments: ${positional.slice(1).join(' ')}`);
-  } else if (positional.length === 1) {
-    result.id = positional[0];
-  }
-
-  return result;
-}
-
-/**
- * Entry point for the `history` verb.
- *
- * @param {string[]} args  argv after `history`
- * @param {object} ctx     shared execution context
- * @returns {Promise<number>} exit code
- */
-export async function main(args, ctx) {
-  const parsed = parseArgs(args);
-
-  if (parsed.help) {
-    ctx.out(`Usage:
-  scheduled history (ID | --all) [-n N] [--since DUR] [--json]
-  scheduled history ID --occurrence KEY [--log] [--json]
-  scheduled history ID --edits [--diff] [--json]
-`);
-    return 0;
-  }
-
-  if (parsed.errors.length > 0) {
-    for (const err of parsed.errors) {
-      ctx.err(`scheduled: ${err}\n`);
-    }
-    return 2;
-  }
-
-  if (parsed.all && parsed.id) {
-    ctx.err('scheduled: cannot specify both --all and a workflow ID\n');
-    return 2;
-  }
-
-  if (!parsed.all && !parsed.id) {
-    ctx.err('scheduled: must specify a workflow ID or --all\n');
-    return 2;
-  }
-
-  if (parsed.occurrence && parsed.all) {
-    ctx.err('scheduled: --occurrence requires a workflow ID, not --all\n');
-    return 2;
-  }
-
-  if (parsed.edits && parsed.all) {
-    ctx.err('scheduled: --edits requires a workflow ID, not --all\n');
-    return 2;
-  }
-
-  if (parsed.occurrence && parsed.edits) {
-    ctx.err('scheduled: cannot specify both --occurrence and --edits\n');
-    return 2;
-  }
-
-  if (parsed.diff && !parsed.edits) {
-    ctx.err('scheduled: --diff requires --edits\n');
-    return 2;
-  }
-
-  if (parsed.log && !parsed.occurrence) {
-    ctx.err('scheduled: --log requires --occurrence\n');
-    return 2;
-  }
-
-  if ((parsed.limit !== null || parsed.since !== null) && (parsed.occurrence || parsed.edits)) {
-    ctx.err('scheduled: -n and --since cannot be used with --occurrence or --edits\n');
-    return 2;
-  }
-
-
-  // Validate --since format before touching the database
-  let sinceMs = null;
-  if (parsed.since) {
-    try {
-      sinceMs = parseDurationMs(parsed.since);
-    } catch (err) {
-      ctx.err(`scheduled: ${err.message}\n`);
-      return 2;
-    }
-  }
-
-  const stateDir = parsed.stateDir || ctx.stateDir || join(ctx.home, '.agency', 'state', 'master');
-
-  // -------------------------------------------------------------------------
-  // Form 3: `scheduled history ID --edits [--diff] [--json]`
-  // -------------------------------------------------------------------------
-  if (parsed.edits) {
-    let edits;
-    try {
-      edits = queryEdits({ stateDir, id: parsed.id });
-    } catch (err) {
-      ctx.err(`scheduled: state directory unreadable: ${err.message}\n`);
-      return 4;
-    }
-    if (parsed.diff) {
-      // The last two stored revisions of the workflow, older first (blobs under revisions/).
-      const stored = edits.filter((e) => typeof e.file === 'string' && e.file && !e.removed);
-      if (stored.length < 2) {
-        ctx.err(`scheduled: ${parsed.id} has ${stored.length} stored revision(s); --diff needs two\n`);
-        return 1;
-      }
-      const [newer, older] = stored;
-      const read = (e) => readFileSync(join(stateDir, 'revisions', `${e.file}.jsonc`), 'utf8');
-      let a, b;
-      try { a = read(older); b = read(newer); } catch (err) {
-        ctx.err(`scheduled: revision blob unreadable: ${err.message}\n`);
-        return 4;
-      }
-      ctx.out(unifiedDiff(a, b, `${parsed.id}@${older.revision} (${older.seen_at}, ${older.by})`,
-        `${parsed.id}@${newer.revision} (${newer.seen_at}, ${newer.by})`));
-      return 0;
-    }
-    if (parsed.json) {
-      ctx.out(JSON.stringify(edits, null, 2) + '\n');
-      return 0;
-    }
-    ctx.out(formatEditsTable(edits));
-    return 0;
-  }
-
-  // -------------------------------------------------------------------------
-  // Forms 1 & 2: Database operations over sched_history_v1 / sched_attempts_v1
-  // -------------------------------------------------------------------------
-  const dbPath = join(stateDir, 'orchestrator.sqlite');
-  let db;
-  let shouldClose = false;
-
-  try {
-    if (ctx.db) {
-      db = ctx.db;
-    } else {
-      if (!existsSync(dbPath)) {
-        ctx.err(`scheduled: database not found or unreadable: ${dbPath}\n`);
-        return 4;
-      }
-      db = openHistoryDb(dbPath);
-      shouldClose = true;
-    }
-  } catch (err) {
-    ctx.err(`scheduled: database not found or unreadable: ${err.message}\n`);
-    return 4;
-  }
-
-  if (ctx._dbRef) {
-    ctx._dbRef.current = db;
-    shouldClose = false;
-  }
-
-  // -------------------------------------------------------------------------
-  // Form 2: `scheduled history ID --occurrence KEY [--log] [--json]`
-  // -------------------------------------------------------------------------
-  if (parsed.occurrence) {
-    let attempts;
-    try {
-      attempts = queryAttempts(db, parsed.occurrence);
-    } catch (err) {
-      ctx.err(`scheduled: database not found or unreadable: ${err.message}\n`);
-      if (shouldClose) db.close();
-      return 4;
-    }
-
-    if (parsed.log) {
-      if (attempts.length === 0) {
-        ctx.err(`scheduled: no attempts found for occurrence ${parsed.occurrence}\n`);
-        if (shouldClose) db.close();
-        return 1;
-      }
-      const latest = attempts[attempts.length - 1];
-      const pruned = isInstancePruned(ctx, latest.instance);
-      if (pruned) {
-        ctx.out('instance pruned\n');
-        ctx.out(`${journalCommand(latest)}\n`);
-        if (shouldClose) db.close();
-        return 0;
-      }
-      const dshd = ctx.dshd || process.env.SCHEDULED_DSHD;
-      const res = spawnSync(dshd, ['read', '-n', '200', latest.instance], {
-        encoding: 'utf8',
-        env: ctx.env || process.env,
-        stdio: ['ignore', 'pipe', 'pipe'],
+      rows.push({
+        occurrence: name.slice(0, -'.json'.length),
+        namespace: typeof rec.namespace === 'string' ? rec.namespace : null,
+        item: typeof rec.item === 'string' ? rec.item : null,
+        kind: rec.kind ?? null,
+        due: typeof rec.due === 'string' ? rec.due : null,
+        missed: typeof rec.missed === 'number' ? rec.missed : null,
+        revision: rec.revision ?? null,
+        by: rec.by ?? null,
+        state,
+        error,
       });
-      if (res.error || res.status !== 0) {
-        ctx.out('instance pruned\n');
-        ctx.out(`${journalCommand(latest)}\n`);
-      } else {
-        ctx.out(res.stdout);
-      }
-      if (shouldClose) db.close();
-      return 0;
     }
-
-    if (parsed.json) {
-      ctx.out(JSON.stringify(attempts, null, 2) + '\n');
-    } else {
-      ctx.out(formatAttemptsOutput(attempts, ctx));
-    }
-    if (shouldClose) db.close();
-    return 0;
   }
-
-  // -------------------------------------------------------------------------
-  // Form 1: `scheduled history (ID | --all) [-n N] [--since DUR] [--json]`
-  // -------------------------------------------------------------------------
-  let rows;
-  try {
-    rows = queryHistory(db, {
-      id: parsed.all ? null : parsed.id,
-      all: parsed.all,
-      sinceMs,
-      limit: parsed.limit,
-      now: typeof ctx.now === 'function' ? ctx.now() : new Date(),
-    });
-  } catch (err) {
-    ctx.err(`scheduled: database not found or unreadable: ${err.message}\n`);
-    if (shouldClose) db.close();
-    return 4;
-  }
-
-  if (parsed.json) {
-    ctx.out(JSON.stringify(rows, null, 2) + '\n');
-  } else {
-    ctx.out(formatHistoryTable(rows, { all: parsed.all }));
-  }
-
-  if (shouldClose) db.close();
-  return 0;
+  const at = (r) => (r.due ? Date.parse(r.due) : -Infinity);
+  return rows.sort((a, b) => at(b) - at(a) || b.occurrence.localeCompare(a.occurrence));
 }
 
-/**
- * A unified diff with whole-file context (workflow files are at most 64 KiB):
- * `---`/`+++` headers, then every line prefixed ' ', '-' or '+', from an LCS.
- */
-export function unifiedDiff(a, b, labelA, labelB) {
-  const x = a.split('\n'), y = b.split('\n');
-  if (x.at(-1) === '') x.pop();
-  if (y.at(-1) === '') y.pop();
-  const n = x.length, m = y.length;
-  const lcs = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
-    lcs[i][j] = x[i] === y[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+/** Rows of item `id` (`<agency>:<item>` or a bare item). */
+export function ofItem(rows, id) {
+  const colon = id.lastIndexOf(':');
+  const [ns, item] = colon >= 0 ? [id.slice(0, colon), id.slice(colon + 1)] : [null, id];
+  return rows.filter((r) => r.item === item && (ns === null || r.namespace === ns));
+}
+
+export async function main(args, ctx) {
+  let json = false;
+  let n = 20;
+  let inbox = ctx.inbox;
+  let id = null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--json') json = true;
+    else if (a === '-n') {
+      n = parseInt(args[++i], 10);
+      if (!Number.isInteger(n) || n < 1) { ctx.err('scheduled history: -n must be a positive integer\n'); return 2; }
+    } else if (a === '--inbox') {
+      inbox = args[++i];
+      if (!inbox) { ctx.err(`scheduled history: ${USAGE}\n`); return 2; }
+    } else if (a.startsWith('-') || id !== null) { ctx.err(`scheduled history: ${USAGE}\n`); return 2; }
+    else id = a;
   }
-  const out = [`--- ${labelA}`, `+++ ${labelB}`, `@@ -1,${n} +1,${m} @@`];
-  let i = 0, j = 0;
-  while (i < n || j < m) {
-    if (i < n && j < m && x[i] === y[j]) { out.push(` ${x[i]}`); i++; j++; }
-    else if (i < n && (j >= m || lcs[i + 1][j] >= lcs[i][j + 1])) { out.push(`-${x[i]}`); i++; }
-    else { out.push(`+${y[j]}`); j++; }
+  if (!inbox) { ctx.err('scheduled: --inbox is required\n'); return 2; }
+
+  let rows = handled(inbox);
+  if (id) rows = ofItem(rows, id);
+  rows = rows.slice(0, n);
+  if (json) {
+    ctx.out(JSON.stringify({ v: 1, inbox, rows }) + '\n');
+    return 0;
   }
-  return out.join('\n') + '\n';
+  if (rows.length === 0) { ctx.out('no handled records\n'); return 0; }
+  for (const r of rows) {
+    const missed = r.missed === null ? '-' : String(r.missed);
+    ctx.out(`${r.due ?? '-'}  ${r.state.padEnd(4)}  ${(r.kind ?? '-').padEnd(8)}  missed=${missed}  ${r.revision ?? '-'}  ${r.by ?? '-'}  ${r.occurrence}${r.error ? `  error: ${r.error}` : ''}\n`);
+  }
+  return 0;
 }
