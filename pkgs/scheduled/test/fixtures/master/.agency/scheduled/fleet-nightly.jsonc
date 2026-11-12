@@ -8,7 +8,7 @@
   "job": {
     "prompt": [
       "If /run/current-system/sw/bin/fleet-update-start is not an executable file, say so and end: the launcher is not installed yet.",
-      "Tonight's night key is the date of the Due time in the header minus 12 hours.",
+      "Tonight's night key is the date 12 hours before the Due or Requested time on the header's second line.",
       "If ~/.local/state/fleet-update/completions/<night key>.json exists and has ok: true, quote it and end.",
       "1. Run: fleet-update-start --json. Quote the receipt. A launch receipt has ok: false and proves launch only.",
       "2. Run: fleet-update --status --json. Say which stage the job is in and which targets are pending, and why.",

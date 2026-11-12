@@ -49,6 +49,22 @@ test('C6.1: the items are master:fleet-nightly, master:floor-upkeep and master:j
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 
+// The fork's scheduled Source writes the header's second line as "Due <iso>; …" for an occurrence and as
+// "Requested <iso> by …" for `scheduled run`, so an item that reads a time from the header must name both.
+test('C6.1: an item that reads a time from the header names both second lines, Due and Requested', async () => {
+  const h = home();
+  try {
+    const readers = [];
+    for (const f of FILES) {
+      const { prompt } = await validateFile(join(h, '.agency/scheduled', f));
+      if (!/\bDue\b/.test(prompt)) continue;
+      readers.push(f);
+      assert.match(prompt, /\bDue or Requested time\b/, f);
+    }
+    assert.deepEqual(readers, ['fleet-nightly.jsonc', 'journal-day.jsonc']);
+  } finally { rmSync(h, { recursive: true, force: true }); }
+});
+
 test('R-S5: with every item enabled false, ticks hand off nothing and call no dshd', async () => {
   const h = home();
   try {
