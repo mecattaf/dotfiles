@@ -15,7 +15,7 @@
       "This is a request to you, the superagent, not work for a worker. Do not accept it as a ticket.",
       "The night key is the date of the Due time in the header minus 12 hours, as YYYY-MM-DD.",
       "If orchestrator_workflow_status shows a fleet-nightly run for that night key still running, start nothing and ignore this trigger with the reason: already running <that run id>.",
-      "Otherwise call orchestrator_workflow_start with script .agency/workflows/fleet-nightly.js, cwd the agency folder (the record's cwd), args {\"night\": \"<night key>\"} and trigger_id this trigger's id.",
+      "Otherwise call orchestrator_workflow_start with script .agency/workflows/fleet-nightly.js, cwd the agency folder (the Working directory in the header), args {\"night\": \"<night key>\"} and trigger_id this trigger's id.",
       "Then ignore this trigger with the reason: started workflow <the run id you got>."
     ]
   }
