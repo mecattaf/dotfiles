@@ -1419,12 +1419,13 @@
             && nixpkgs.lib.hasSuffix "/bin/bash" (builtins.elemAt iw 2)
             && builtins.elemAt iw 3 == "-l"
             && ds.user == "tom"
-            && dw == [
-              (builtins.elemAt iw 0)
-              "--handoff"
-              (builtins.elemAt iw 2)
-              "-l"
-            ];
+            &&
+              dw == [
+                (builtins.elemAt iw 0)
+                "--handoff"
+                (builtins.elemAt iw 2)
+                "-l"
+              ];
           assert (cfgOf "client").services.getty.autologinUser == "tom";
           assert clientHome.xdg.configFile ? "domicile/domicile.tsx";
           assert clientHome.xdg.configFile ? "domicile/imagine";
