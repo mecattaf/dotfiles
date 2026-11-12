@@ -125,11 +125,10 @@ external desktop menus are retired; use the native Domicile APIs. strix-coordina
 keeps its independent Tailscale fallback; use ordinary OpenSSH. Speech defaults to
 client; synthesis stays on compute. These are cutover targets, not a claim
 that the migration is live. Preserve Herdr sessions. Reboot remains a
-deliberate, supervised step. Nightly activation of NAS and strix-coordinator is
-unattended: the Scheduled `fleet-nightly` item launches `fleet-update`
-(#642), which activates only an idle, inspected target and never reboots. Tom,
-2026-11-10, on the earlier rule that overnight runs never switch: "this one can
-be overruled. let's get the scheduler built and configured first."
+deliberate, supervised step. Activation of NAS and strix-coordinator, attended
+or overnight, is decided by the master agency's fleet update protocol (see
+Updates above), never by code in this repository; it activates only an idle,
+inspected target and never reboots.
 
 **Runtime isolation (2026-09-16 incident).** Tests and experiments that source
 shell-script fragments, clean runtime directories, or launch test compositors

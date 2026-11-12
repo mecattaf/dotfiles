@@ -100,9 +100,8 @@ lib.mkIf osConfig.dshd.enable {
       # Linger starts the user manager at boot: one tick soon after a
       # power cut, even when no hour was missed.
       OnStartupSec = "2min";
-      # A missed hour runs once at boot, never a backlog. Safe here,
-      # unlike update-center's Persistent=false: a tick only decodes,
-      # links records and wakes.
+      # A missed hour runs once at boot, never a backlog. Safe here: a
+      # tick only decodes, links records and wakes.
       Persistent = true;
     };
     Install.WantedBy = [ "timers.target" ];
