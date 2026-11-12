@@ -35,7 +35,6 @@ const kept = Object.fromEntries(
 const keybindings = {
   ...kept,
   "Meta+Return": exec("domicile-apps", "terminal"),
-  "Alt+space": agency("ambient-chat", "toggle"),
   "Meta+Shift+Return": exec("domicile-apps", "rescue"),
   "Control+n": exec("domicile-apps", "chrome"),
   "Control+Shift+n": exec("domicile-apps", "chrome", "--incognito"),
@@ -80,10 +79,7 @@ const keybindings = {
 ownedChords({ keybindings });
 
 const imagineShell = runImagine({
-  ambientChat: { launcher: "agency-chat-ambient-bootstrap" },
-  chatWindow: { launcher: "agency-chat-window", bindAltEnter: true },
-  sessionCatalogue: { relay: "agency-chat-catalogue", server: "agency-web", terminalLauncher: "agency-chat-terminal" },
-  layoutPersistence: { identity: "agency-layout-identity", restartRecovery: true },
+  layoutPersistence: { identity: "agency-layout-identity" },
   webBrowser: { command: ["domicile-apps", "chrome"] },
   policy: {
     upperDisplay: upperPanel,

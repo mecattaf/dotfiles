@@ -65,14 +65,14 @@ python3 query.py --registry desktops.json --desktop zenbook --workspace 4 \
 
 ## Proof and limits
 
-Evidence checkpoint: `/home/tom/wednesday/agency-overnight-20261105/dsh-domicile/`.
+Evidence checkpoint: the 2026-11-05 run receipts, kept outside this repository.
 
 - Eight new TS projection/protocol tests; existing Imagine suite and bundle pass against exact installed stock dependencies. Seven Python schema/transport/private-directory/socket tests cover schema mutations, privacy and cross-references through compute runtime-test.
 - Final real private stock Domicile run5: eleven native command/file queries; native/native/browser workspace membership, workspace move, scratchpad hide/show, repaint-stable revisions, stale-revision refusal, page reload with new mount epoch, retained native/browser identities, actual socket discovery/peer verification, actual lock refusal and zero captured JS exceptions. Both native process and PTY identities stayed unchanged before owned teardown.
 - Tests ran only on strix-coordinator through strict tailnet and target runtime-test. Private D-Bus and private PAM fixture use existing supported launch seams; no engine/source patch or host PAM change. The public top-level launcher does not accept compositor `--pam-confdir`; a tiny private argv wrapper adds it to the unchanged compositor.
 - Preserved initial missing private D-Bus environment, private-PAM flag placement failure, initial private-tree import failure and first lock test's explicit native refusal to lock without PAM. Expected private portal/systemd availability errors and the pre-existing Chrome allocator teardown dump remain retained. Passing query behavior does not mean teardown is clean.
 - The production NAS→Zenbook route is now qualified: four bounded native read-only queries validate the real two-output homes/membership and stable agency-web host window identity. Owner1001/modes0700+0600, immutable Imagine source and actual command hookup pass. Both original DSH/native Claude bindings, eight tracked core/broker identities and the exact liked whitepoint survive automatic refresh. No live lock test, content screenshot, mutation or DSH tool registration was performed.
-- Live authority: `~/wednesday/agency-overnight-20261105/dsh-domicile-integration/RECEIPT.md`, `CANDIDATE.json` and `LIVE-RETENTION.json`. Exact current profile is `qxw1v5385jzkmhd30pnjgz1nlf7v0whd`, stock SDK67c29a9 / engine62a671f. The NAS registry uses existing strict Tailnet client authority with masters disabled; no client DSH/listener/provider credentials. No claim of full i3ipc parity or persistent layout restore.
+- Live authority: the integration receipt, candidate and live-retention records of the same run, kept outside this repository. Exact current profile is `qxw1v5385jzkmhd30pnjgz1nlf7v0whd`, stock SDK67c29a9 / engine62a671f. The NAS registry uses existing strict Tailnet client authority with masters disabled; no client DSH/listener/provider credentials. No claim of full i3ipc parity or persistent layout restore.
 - These learning updates are newer than the deployed locked local NAR; source publication is not authorized and future packaging must deliberately repin it. The separate matched touchpad SDK/engine must be qualified together before changing the watched source under a loaded engine.
 
 ## First-party DSH capability follow-up (staged)
@@ -83,7 +83,7 @@ desktop allowlist. A private actual NAS Host passed snapshot/WS1/stale queries;
 no production profile or native adapter was changed. The separate native bridge
 proposal passes actual rc.2 cold-history lifecycle validation with controlled
 SDK calls and no provider request. Final copied pack3 adds tested owned-process
-cancellation. See `~/wednesday/agency-overnight-20261105/dsh-domicile-capability/`.
+cancellation. Its receipts are kept outside this repository.
 
 The trusted registry may optionally name `sshConfig`, an absolute regular
 owner0600 file used with `ssh -F`; strict tailnet/key/master options remain
