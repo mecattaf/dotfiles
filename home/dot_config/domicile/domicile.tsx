@@ -79,6 +79,11 @@ const keybindings = {
 ownedChords({ keybindings });
 
 const imagineShell = runImagine({
+  // Blue-light protection on every display, all the time, through
+  // Domicile's per-display API (docs/domicile-display-temperatures.md):
+  // the Duo panels keep their kanshi-era warmth, the ASUS 5K gets 4000 K,
+  // the warmth the old external monitors used.
+  displayTemperatures: { [upperPanel]: 3850, [lowerPanel]: 3350, [external5k]: 4000 },
   layoutPersistence: { identity: "agency-layout-identity" },
   webBrowser: { command: ["domicile-apps", "chrome"] },
   policy: {
@@ -90,8 +95,10 @@ const imagineShell = runImagine({
 
 });
 
+// Per-display policy above replaces the global scheduled night light.
 export const Shell = imagineShell;
 export const shell_options = {
+  nightLight: { schedule: "off" },
   brightness: { automatic: false },
   font: "Anthropic Sans",
 };
@@ -141,6 +148,8 @@ export const output = {
   ],
 };
 export const input = {
+  // Keep the quick held-key response in native clients and browser pages.
+  keyboard: { repeat: { delay_ms: 200, rate: 25 } },
   "touchpad": {
     "tap": true,
     "tap_button_map": "lrm",
