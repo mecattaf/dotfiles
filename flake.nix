@@ -2045,6 +2045,12 @@
           configurations = self.nixosConfigurations;
         };
 
+        # The commands staged Scheduled items name exist on the NAS.
+        scheduled-commands = import ./tests/scheduled-commands {
+          inherit pkgs;
+          configurations = self.nixosConfigurations;
+        };
+
         # Scheduled in a NixOS VM: the NAS's own heartbeat units with the
         # dshd module and the stub dsh; hand-off, clock back, power cut,
         # switch, surfacing and the run-now storm (KVM; the builders
