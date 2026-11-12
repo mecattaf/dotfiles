@@ -1,0 +1,32 @@
+[
+  {
+    "v": 1,
+    "kind": "schedule",
+    "namespace": "master",
+    "item": "journal-day",
+    "name": "Journal day: midnight nudge",
+    "cwd": "/home/user",
+    "file": "/home/user/.agency/scheduled/journal-day.jsonc",
+    "due": "2026-11-12T23:00:00.000Z",
+    "missed": 2,
+    "revision": "3f2a9c1b7d4e",
+    "text": "Reply READY and end.",
+    "by": "scheduled-heartbeat",
+    "at": "2026-11-12T23:00:41.512Z"
+  },
+  {
+    "v": 1,
+    "kind": "manual",
+    "namespace": "projects/crm",
+    "item": "probe-ready",
+    "cwd": "/home/user/projects/crm",
+    "file": "/home/user/projects/crm/.agency/scheduled/probe-ready.jsonc",
+    "due": "2026-11-12T08:15:02.004Z",
+    "run": "01KE6Q3W8ZJ4S7T2V9XN5R0B1C",
+    "missed": 0,
+    "revision": "a1b2c3d4e5f6",
+    "text": "Reply READY and end.",
+    "by": "scheduled-run",
+    "at": "2026-11-12T08:15:02.004Z"
+  }
+]

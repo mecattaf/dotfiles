@@ -12,18 +12,16 @@ import path from 'node:path';
 import { main as lsVerb } from '../src/verbs/ls.mjs';
 import { resolveId } from '../src/lib/resolve.mjs';
 
-function makeTempAgency(root, stem, content, { isProposal = false } = {}) {
+function makeTempAgency(root, stem, content) {
   const agencyDir = path.join(root, '.agency');
-  const workflowsDir = path.join(agencyDir, 'workflows');
-  const targetDir = isProposal ? path.join(workflowsDir, 'proposed') : workflowsDir;
-  fs.mkdirSync(targetDir, { recursive: true, mode: 0o700 });
+  const scheduledDir = path.join(agencyDir, 'scheduled');
+  fs.mkdirSync(scheduledDir, { recursive: true, mode: 0o700 });
   fs.chmodSync(agencyDir, 0o700);
-  fs.chmodSync(workflowsDir, 0o700);
-  if (isProposal) fs.chmodSync(targetDir, 0o700);
+  fs.chmodSync(scheduledDir, 0o700);
 
-  const filePath = path.join(targetDir, `${stem}.jsonc`);
+  const filePath = path.join(scheduledDir, `${stem}.jsonc`);
   fs.writeFileSync(filePath, content, { mode: 0o600 });
-  return { agencyDir, workflowsDir, filePath };
+  return { agencyDir, scheduledDir, filePath };
 }
 
 function makeFakeSystemctl(dir, { activeState = 'active', result = 'success', nextElapse = '1762820000000000', fail = false } = {}) {
@@ -75,6 +73,7 @@ test('ls: text header line from systemctl show on success', async () => {
   const fakeSys = makeFakeSystemctl(tmpHome, { activeState: 'active' });
 
   makeTempAgency(tmpHome, 'daily-sync', JSON.stringify({
+    enabled: true,
     on: { schedule: [{ cron: '0 6 * * 1', timezone: 'Europe/Paris' }] },
     job: { prompt: 'Sync tasks' },
   }));
@@ -85,7 +84,7 @@ test('ls: text header line from systemctl show on success', async () => {
   assert.equal(code, 0);
   const lines = ctx._out.join('').trim().split('\n');
   assert.ok(lines[0].startsWith('heartbeat: active'), `Expected heartbeat line, got: ${lines[0]}`);
-  assert.ok(lines.some((l) => l.includes('master:daily-sync') && l.includes('valid')));
+  assert.ok(lines.some((l) => l.includes('master:daily-sync') && l.includes('enabled')));
 });
 
 test('ls: systemctl failure prints heartbeat: unknown', async () => {
@@ -100,56 +99,52 @@ test('ls: systemctl failure prints heartbeat: unknown', async () => {
   assert.equal(lines[0], 'heartbeat: unknown');
 });
 
-test('ls: invalid workflows sort first, before valid, paused, proposal', async () => {
+test('ls: invalid items sort first, before enabled and disabled', async () => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sched-ls-sort-'));
   const fakeSys = makeFakeSystemctl(tmpHome);
 
-  // 1. Valid workflow (starts with 'a' alphabetically)
+  // 1. Enabled item (starts with 'a' alphabetically)
   makeTempAgency(tmpHome, 'aaa-valid', JSON.stringify({
+    enabled: true,
     on: { schedule: [{ cron: '0 6 * * 1', timezone: 'UTC' }] },
     job: { prompt: 'Valid task' },
   }));
 
-  // 2. Invalid workflow (starts with 'z')
+  // 2. Invalid item (starts with 'z')
   makeTempAgency(tmpHome, 'zzz-invalid', 'INVALID JSON CONTENT');
 
-  // 3. Paused workflow
+  // 3. Disabled item
   makeTempAgency(tmpHome, 'mmm-paused', JSON.stringify({
     enabled: false,
     on: { schedule: [{ cron: '0 6 * * 1', timezone: 'UTC' }] },
     job: { prompt: 'Paused task' },
   }));
 
-  // 4. Proposal
-  makeTempAgency(tmpHome, 'ppp-prop', JSON.stringify({
-    enabled: false,
-    'x-proposal': { by: 'tom', at: '2026-11-12T00:00:00Z', why: 'test' },
-    on: { schedule: [{ cron: '0 6 * * 1', timezone: 'UTC' }] },
-    job: { prompt: 'Prop task' },
-  }), { isProposal: true });
-
   const ctx = makeCtx({ home: tmpHome, systemctl: fakeSys });
   const code = await lsVerb(['--json'], ctx);
   assert.equal(code, 0);
 
   const json = JSON.parse(ctx._out.join(''));
-  assert.equal(json.workflows.length, 4);
+  assert.equal(json.items.length, 3);
 
   // Invalid must be first!
-  assert.equal(json.workflows[0].id, 'master:zzz-invalid');
-  assert.equal(json.workflows[0].state, 'invalid');
+  assert.equal(json.items[0].id, 'master:zzz-invalid');
+  assert.equal(json.items[0].state, 'invalid');
 
-  const states = json.workflows.map((w) => w.state);
-  assert.ok(states.includes('valid'));
-  assert.ok(states.includes('paused'));
-  assert.ok(states.includes('proposal'));
+  const states = json.items.map((w) => w.state);
+  assert.ok(states.includes('enabled'));
+  assert.ok(states.includes('disabled'));
+  const disabled = json.items.find((w) => w.state === 'disabled');
+  assert.equal(disabled.enabled, false);
+  assert.equal(disabled.next, null, 'a disabled item has no next instant');
 });
 
-test('ls: --json output shape contains heartbeat, agencies, workflows', async () => {
+test('ls: --json output shape contains heartbeat, agencies, items', async () => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sched-ls-json-'));
   const fakeSys = makeFakeSystemctl(tmpHome, { activeState: 'active' });
 
   makeTempAgency(tmpHome, 'task-one', JSON.stringify({
+    enabled: true,
     on: { schedule: [{ cron: '0 6 * * 1', timezone: 'Europe/Paris' }] },
     job: { prompt: 'Do something' },
   }));
@@ -162,12 +157,12 @@ test('ls: --json output shape contains heartbeat, agencies, workflows', async ()
   assert.ok(parsed.heartbeat);
   assert.equal(parsed.heartbeat.activeState, 'active');
   assert.ok(Array.isArray(parsed.agencies));
-  assert.ok(Array.isArray(parsed.workflows));
-  assert.equal(parsed.workflows.length, 1);
-  assert.equal(parsed.workflows[0].id, 'master:task-one');
-  assert.equal(parsed.workflows[0].state, 'valid');
-  assert.ok(parsed.workflows[0].revision);
-  assert.ok(parsed.workflows[0].next);
+  assert.ok(Array.isArray(parsed.items));
+  assert.equal(parsed.items.length, 1);
+  assert.equal(parsed.items[0].id, 'master:task-one');
+  assert.equal(parsed.items[0].state, 'enabled');
+  assert.ok(parsed.items[0].revision);
+  assert.ok(parsed.items[0].next);
 });
 
 test('ls: --agency filters to specified agency', async () => {
@@ -176,6 +171,7 @@ test('ls: --agency filters to specified agency', async () => {
 
   // Master agency
   makeTempAgency(tmpHome, 'master-task', JSON.stringify({
+    enabled: true,
     on: { schedule: [{ cron: '0 6 * * 1', timezone: 'UTC' }] },
     job: { prompt: 'Master' },
   }));
@@ -183,6 +179,7 @@ test('ls: --agency filters to specified agency', async () => {
   // Sub-agency: crm
   const crmDir = path.join(tmpHome, 'crm');
   makeTempAgency(crmDir, 'crm-task', JSON.stringify({
+    enabled: true,
     on: { schedule: [{ cron: '0 6 * * 1', timezone: 'UTC' }] },
     job: { prompt: 'CRM' },
   }));
@@ -194,13 +191,14 @@ test('ls: --agency filters to specified agency', async () => {
   assert.equal(code, 0);
 
   const json = JSON.parse(ctx._out.join(''));
-  assert.equal(json.workflows.length, 1);
-  assert.equal(json.workflows[0].id, 'crm:crm-task');
+  assert.equal(json.items.length, 1);
+  assert.equal(json.items[0].id, 'crm:crm-task');
 });
 
 test('resolveId: resolves <agency>:<stem> and bare <stem> when unique', async () => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sched-resolve-'));
   makeTempAgency(tmpHome, 'unique-task', JSON.stringify({
+    enabled: true,
     on: { schedule: [{ cron: '0 6 * * 1', timezone: 'UTC' }] },
     job: { prompt: 'Unique' },
   }));
@@ -218,7 +216,7 @@ test('resolveId: resolves <agency>:<stem> and bare <stem> when unique', async ()
   assert.equal(r2.id, 'master:unique-task');
 });
 
-test('resolveId: refuses unknown workflow (exit 1)', async () => {
+test('resolveId: refuses unknown item (exit 1)', async () => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sched-resolve-unk-'));
   const ctx = makeCtx({ home: tmpHome });
 
@@ -226,7 +224,7 @@ test('resolveId: refuses unknown workflow (exit 1)', async () => {
     () => resolveId(ctx, 'non-existent'),
     (err) => err.exitCode === 1
   );
-  assert.ok(ctx._err.join('').includes("workflow 'non-existent' not found"));
+  assert.ok(ctx._err.join('').includes("item 'non-existent' not found"));
 });
 
 test('resolveId: refuses ambiguous bare stem across multiple agencies (exit 1)', async () => {
@@ -234,6 +232,7 @@ test('resolveId: refuses ambiguous bare stem across multiple agencies (exit 1)',
 
   // master:shared-task
   makeTempAgency(tmpHome, 'shared-task', JSON.stringify({
+    enabled: true,
     on: { schedule: [{ cron: '0 6 * * 1', timezone: 'UTC' }] },
     job: { prompt: 'Master shared' },
   }));
@@ -241,6 +240,7 @@ test('resolveId: refuses ambiguous bare stem across multiple agencies (exit 1)',
   // sub:shared-task
   const subDir = path.join(tmpHome, 'sub');
   makeTempAgency(subDir, 'shared-task', JSON.stringify({
+    enabled: true,
     on: { schedule: [{ cron: '0 6 * * 1', timezone: 'UTC' }] },
     job: { prompt: 'Sub shared' },
   }));
@@ -251,7 +251,7 @@ test('resolveId: refuses ambiguous bare stem across multiple agencies (exit 1)',
     () => resolveId(ctx, 'shared-task'),
     (err) => err.exitCode === 1 && err.candidates.length === 2
   );
-  assert.ok(ctx._err.join('').includes('ambiguous workflow id'));
+  assert.ok(ctx._err.join('').includes('ambiguous item id'));
 });
 
 test('C2.8: ls --json carries discovery problems (an agency named master under ~)', async () => {

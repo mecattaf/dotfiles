@@ -37,7 +37,7 @@ function cleanupTempDir(dir) {
 function setupAgency(home, agencyId, useSymlink = false, createErrors = false) {
   const agencyPath = agencyId === 'master' ? home : path.join(home, agencyId);
   const agencyDir = path.join(agencyPath, '.agency');
-  const workflowsDir = path.join(agencyDir, 'workflows');
+  const workflowsDir = path.join(agencyDir, 'scheduled');
   
   // Create directory structure
   fs.mkdirSync(agencyPath, { recursive: true });
@@ -95,7 +95,7 @@ function setupNestedAgencies(home) {
   
   for (const agencyPath of [nested1, nested2]) {
     const agencyDir = path.join(agencyPath, '.agency');
-    const workflowsDir = path.join(agencyDir, 'workflows');
+    const workflowsDir = path.join(agencyDir, 'scheduled');
     
     fs.mkdirSync(agencyPath, { recursive: true });
     fs.mkdirSync(agencyDir, { recursive: true });
@@ -121,13 +121,13 @@ function setupExcludedDirectories(home) {
   // Create .agency in excluded directories (should not be discovered)
   const dotAgency = path.join(dotDir, '.agency');
   fs.mkdirSync(dotAgency, { recursive: true });
-  const dotWorkflows = path.join(dotAgency, 'workflows');
+  const dotWorkflows = path.join(dotAgency, 'scheduled');
   fs.mkdirSync(dotWorkflows, { recursive: true });
   fs.writeFileSync(path.join(dotWorkflows, 'dot-workflow.jsonc'), '{}');
   
   const nodeModulesAgency = path.join(nodeModulesDir, '.agency');
   fs.mkdirSync(nodeModulesAgency, { recursive: true });
-  const nodeModulesWorkflows = path.join(nodeModulesAgency, 'workflows');
+  const nodeModulesWorkflows = path.join(nodeModulesAgency, 'scheduled');
   fs.mkdirSync(nodeModulesWorkflows, { recursive: true });
   fs.writeFileSync(path.join(nodeModulesWorkflows, 'node-workflow.jsonc'), '{}');
 }
@@ -140,14 +140,14 @@ function setupAgencyNameError(home) {
   // Create master agency (this is allowed)
   const masterAgency = path.join(home, '.agency');
   fs.mkdirSync(masterAgency, { recursive: true });
-  fs.mkdirSync(path.join(masterAgency, 'workflows'), { recursive: true });
-  fs.writeFileSync(path.join(masterAgency, 'workflows', 'master-workflow.jsonc'), '{}');
+  fs.mkdirSync(path.join(masterAgency, 'scheduled'), { recursive: true });
+  fs.writeFileSync(path.join(masterAgency, 'scheduled', 'master-workflow.jsonc'), '{}');
   
   // Create master/master directory (should cause agency-name error)
   const masterMaster = path.join(home, 'master', '.agency');
   fs.mkdirSync(masterMaster, { recursive: true });
-  fs.mkdirSync(path.join(masterMaster, 'workflows'), { recursive: true });
-  fs.writeFileSync(path.join(masterMaster, 'workflows', 'invalid-master.jsonc'), '{}');
+  fs.mkdirSync(path.join(masterMaster, 'scheduled'), { recursive: true });
+  fs.writeFileSync(path.join(masterMaster, 'scheduled', 'invalid-master.jsonc'), '{}');
 }
 
 // Test suite
@@ -175,17 +175,28 @@ describe('Scheduled Agency Discovery', () => {
     assert.strictEqual(result.agencies[0].id, 'master');
     assert.strictEqual(result.agencies[0].root, home);
     
-    // Should discover 3 workflows + 1 invalid + 2 proposed = 5 files total
-    // But invalid files are ignored, so 3 + 2 = 5 files
-    assert.strictEqual(result.files.length, 5);
-    
-    // Check all files have correct structure
+    // 3 items; the invalid stem is a problem, and proposed/ beneath scheduled/ is not read
+    assert.deepStrictEqual(result.files.map((f) => f.id), ['master:workflow1', 'master:workflow2', 'master:workflow3']);
     for (const file of result.files) {
-      assert.ok(['master:workflow1', 'master:workflow2', 'master:workflow3', 'master:proposed1', 'master:proposed2'].includes(file.id));
       assert.strictEqual(file.agency, 'master');
-      assert.ok(file.path.endsWith('.jsonc'));
-      assert.ok([false, false, false, true, true].includes(file.proposal));
+      assert.ok(file.path.includes(`${path.sep}.agency${path.sep}scheduled${path.sep}`));
+      assert.strictEqual('proposal' in file, false);
     }
+    assert.ok(result.problems.some((p) => p.code === 'stem'));
+  });
+
+  it('D1 finds <agency>/.agency/scheduled/*.jsonc and ignores .agency/workflows/ and proposed/', async () => {
+    const agencyDir = path.join(testHome, '.agency');
+    for (const dir of ['scheduled', 'workflows', path.join('scheduled', 'proposed')]) {
+      fs.mkdirSync(path.join(agencyDir, dir), { recursive: true, mode: 0o700 });
+    }
+    fs.chmodSync(agencyDir, 0o700);
+    fs.writeFileSync(path.join(agencyDir, 'scheduled', 'kept.jsonc'), '{}', { mode: 0o600 });
+    fs.writeFileSync(path.join(agencyDir, 'workflows', 'old.jsonc'), '{}', { mode: 0o600 });
+    fs.writeFileSync(path.join(agencyDir, 'scheduled', 'proposed', 'prop.jsonc'), '{}', { mode: 0o600 });
+    fs.writeFileSync(path.join(agencyDir, 'scheduled', '.kept.jsonc.123.tmp'), '{}', { mode: 0o600 });
+    const result = await discover({ home: testHome, uid: process.getuid() });
+    assert.deepStrictEqual(result.files.map((f) => f.id), ['master:kept']);
   });
   
   // Test 2: Nested agency discovery
@@ -309,8 +320,8 @@ describe('Scheduled Agency Discovery', () => {
     assert.strictEqual(ownershipProblems.length, 0);
   });
 
-  // Test 10: D/.agency/workflows may itself be a symlink
-  it('should follow symlinked workflows directory', async () => {
+  // Test 10: D/.agency/scheduled may itself be a symlink
+  it('should follow a symlinked scheduled directory', async () => {
     const { home, uid } = setupAgency(testHome, 'linked-workflows-agency', true);
     
     const result = await discover({ home, uid });
@@ -319,7 +330,7 @@ describe('Scheduled Agency Discovery', () => {
     assert.strictEqual(result.agencies[0].id, 'linked-workflows-agency');
     
     const agencyFiles = result.files.filter(f => f.agency === 'linked-workflows-agency');
-    assert.strictEqual(agencyFiles.length, 5);
+    assert.strictEqual(agencyFiles.length, 3);
   });
 
   // Test 11: Depth limit - agency roots found down to depth 3, walk down to depth 4
@@ -335,11 +346,11 @@ describe('Scheduled Agency Discovery', () => {
     const depth4Root = path.join(depth3Root, 'd');
     const depth5Dir = path.join(depth4Root, 'e');
 
-    fs.mkdirSync(path.join(depth3Root, '.agency', 'workflows'), { recursive: true });
-    fs.writeFileSync(path.join(depth3Root, '.agency', 'workflows', 'wf3.jsonc'), '{}');
+    fs.mkdirSync(path.join(depth3Root, '.agency', 'scheduled'), { recursive: true });
+    fs.writeFileSync(path.join(depth3Root, '.agency', 'scheduled', 'wf3.jsonc'), '{}');
 
-    fs.mkdirSync(path.join(depth4Root, '.agency', 'workflows'), { recursive: true });
-    fs.writeFileSync(path.join(depth4Root, '.agency', 'workflows', 'wf4.jsonc'), '{}');
+    fs.mkdirSync(path.join(depth4Root, '.agency', 'scheduled'), { recursive: true });
+    fs.writeFileSync(path.join(depth4Root, '.agency', 'scheduled', 'wf4.jsonc'), '{}');
 
     fs.mkdirSync(depth5Dir, { recursive: true });
 
@@ -363,41 +374,41 @@ describe('Scheduled Agency Discovery', () => {
     const uid = fs.statSync(testHome).uid;
 
     // 1. ~/.agency/ exists
-    fs.mkdirSync(path.join(testHome, '.agency', 'workflows'), { recursive: true });
-    fs.writeFileSync(path.join(testHome, '.agency', 'workflows', 'root-wf.jsonc'), '{}');
+    fs.mkdirSync(path.join(testHome, '.agency', 'scheduled'), { recursive: true });
+    fs.writeFileSync(path.join(testHome, '.agency', 'scheduled', 'root-wf.jsonc'), '{}');
 
     // 2. ~/a/b/.agency/workflows/w.jsonc exists
     const abRoot = path.join(testHome, 'a', 'b');
-    fs.mkdirSync(path.join(abRoot, '.agency', 'workflows'), { recursive: true });
-    fs.writeFileSync(path.join(abRoot, '.agency', 'workflows', 'w.jsonc'), '{}');
+    fs.mkdirSync(path.join(abRoot, '.agency', 'scheduled'), { recursive: true });
+    fs.writeFileSync(path.join(abRoot, '.agency', 'scheduled', 'w.jsonc'), '{}');
 
     // 3. Root deeper than depth 3 (given)
     const deepRoot = path.join(testHome, 'lvl1', 'lvl2', 'lvl3', 'lvl4');
-    fs.mkdirSync(path.join(deepRoot, '.agency', 'workflows'), { recursive: true });
-    fs.writeFileSync(path.join(deepRoot, '.agency', 'workflows', 'deep.jsonc'), '{}');
+    fs.mkdirSync(path.join(deepRoot, '.agency', 'scheduled'), { recursive: true });
+    fs.writeFileSync(path.join(deepRoot, '.agency', 'scheduled', 'deep.jsonc'), '{}');
 
     // 4. Reachable only through a symlink
     const outside = createTempDir();
     try {
       const outsideAgency = path.join(outside, 'sym-agency');
-      fs.mkdirSync(path.join(outsideAgency, '.agency', 'workflows'), { recursive: true });
-      fs.writeFileSync(path.join(outsideAgency, '.agency', 'workflows', 'sym.jsonc'), '{}');
+      fs.mkdirSync(path.join(outsideAgency, '.agency', 'scheduled'), { recursive: true });
+      fs.writeFileSync(path.join(outsideAgency, '.agency', 'scheduled', 'sym.jsonc'), '{}');
       fs.symlinkSync(outsideAgency, path.join(testHome, 'sym-link'));
 
       // 5. Inside a dot-directory
       const dotRoot = path.join(testHome, '.config', 'my-agency');
-      fs.mkdirSync(path.join(dotRoot, '.agency', 'workflows'), { recursive: true });
-      fs.writeFileSync(path.join(dotRoot, '.agency', 'workflows', 'dot.jsonc'), '{}');
+      fs.mkdirSync(path.join(dotRoot, '.agency', 'scheduled'), { recursive: true });
+      fs.writeFileSync(path.join(dotRoot, '.agency', 'scheduled', 'dot.jsonc'), '{}');
 
       // 6. Inside node_modules
       const nmRoot = path.join(testHome, 'node_modules', 'pkg-agency');
-      fs.mkdirSync(path.join(nmRoot, '.agency', 'workflows'), { recursive: true });
-      fs.writeFileSync(path.join(nmRoot, '.agency', 'workflows', 'nm.jsonc'), '{}');
+      fs.mkdirSync(path.join(nmRoot, '.agency', 'scheduled'), { recursive: true });
+      fs.writeFileSync(path.join(nmRoot, '.agency', 'scheduled', 'nm.jsonc'), '{}');
 
       // 7. ~/master/.agency/ gives error agency-name
       const masterAgency = path.join(testHome, 'master', '.agency');
-      fs.mkdirSync(path.join(masterAgency, 'workflows'), { recursive: true });
-      fs.writeFileSync(path.join(masterAgency, 'workflows', 'invalid.jsonc'), '{}');
+      fs.mkdirSync(path.join(masterAgency, 'scheduled'), { recursive: true });
+      fs.writeFileSync(path.join(masterAgency, 'scheduled', 'invalid.jsonc'), '{}');
 
       const result = await discover({ home: testHome, uid });
 

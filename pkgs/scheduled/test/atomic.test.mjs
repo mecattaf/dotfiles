@@ -8,7 +8,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import os from 'node:os';
 
-import { writeAtomic, linkExclusive, appendLine } from '../src/lib/atomic.mjs';
+import { writeAtomic, linkExclusive } from '../src/lib/atomic.mjs';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -91,42 +91,15 @@ describe('linkExclusive', () => {
     await linkExclusive(tmpSpool, dest, 'x');
     const leftover = tmpSpool;
     const { readdirSync } = await import('node:fs');
-    const remaining = readdirSync(leftover).filter(f => f.endsWith('.json'));
-    assert.equal(remaining.length, 0, 'no temp files should remain');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// appendLine
-// ---------------------------------------------------------------------------
-
-describe('appendLine', () => {
-  let dir;
-  before(() => { dir = tmpDir(); });
-  after(() => rm(dir, { recursive: true, force: true }));
-
-  it('appends a JSON line to a new file', async () => {
-    const path = join(dir, 'ledger.jsonl');
-    await appendLine(path, { v: 1, msg: 'hello' });
-    const lines = readFileSync(path, 'utf8').trim().split('\n');
-    assert.equal(lines.length, 1);
-    assert.deepEqual(JSON.parse(lines[0]), { v: 1, msg: 'hello' });
+    assert.deepEqual(readdirSync(leftover), [], 'no temp files should remain');
   });
 
-  it('appends multiple lines', async () => {
-    const path = join(dir, 'multi.jsonl');
-    await appendLine(path, { a: 1 });
-    await appendLine(path, { b: 2 });
-    await appendLine(path, { c: 3 });
-    const lines = readFileSync(path, 'utf8').trim().split('\n');
-    assert.equal(lines.length, 3);
-    assert.deepEqual(JSON.parse(lines[2]), { c: 3 });
-  });
-
-  it('each line ends with a newline', async () => {
-    const path = join(dir, 'newline.jsonl');
-    await appendLine(path, { x: 1 });
-    const content = readFileSync(path, 'utf8');
-    assert.ok(content.endsWith('\n'), 'file must end with newline');
+  it('answers exists without linking when the exists check holds, and leaves no temp file', async () => {
+    const dest = join(incoming, 'occ4.json');
+    const result = await linkExclusive(tmpSpool, dest, 'x', { exists: () => true });
+    assert.equal(result, 'exists');
+    assert.equal(existsSync(dest), false);
+    const { readdirSync } = await import('node:fs');
+    assert.deepEqual(readdirSync(tmpSpool), []);
   });
 });

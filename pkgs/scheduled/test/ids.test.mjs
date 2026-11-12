@@ -9,9 +9,8 @@ import {
   agencyId,
   parseId,
   spoolStamp,
-  censusStamp,
-  spoolName,
-  manualSpoolName,
+  occurrenceName,
+  runName,
   ulid,
 } from '../src/lib/ids.mjs';
 
@@ -107,49 +106,26 @@ describe('spoolStamp', () => {
 });
 
 // ---------------------------------------------------------------------------
-// censusStamp
+// occurrenceName and runName (inbox record names)
 // ---------------------------------------------------------------------------
 
-describe('censusStamp', () => {
-  it('formats 2026-11-12T00:00:41.000Z correctly', () => {
-    const d = new Date('2026-11-12T00:00:41.000Z');
-    assert.equal(censusStamp(d), '20261112T000041Z');
+describe('occurrenceName', () => {
+  it('builds a schedule record name', () => {
+    const due = new Date('2026-11-12T00:00:00.000Z');
+    assert.equal(occurrenceName({ namespace: 'master', item: 'fleet-nightly', due }), 'master~fleet-nightly@20261112T0000Z.json');
   });
-  it('includes seconds', () => {
-    const d = new Date('2026-11-12T14:35:07.000Z');
-    assert.equal(censusStamp(d), '20261112T143507Z');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// spoolName
-// ---------------------------------------------------------------------------
-
-describe('spoolName', () => {
-  it('builds scheduled occurrence name', () => {
-    const d = new Date('2026-11-12T00:00:00.000Z');
-    const name = spoolName({ agency: 'master', stem: 'fleet-nightly', instant: d });
-    assert.equal(name, 'master~fleet-nightly@20261112T0000Z.json');
-  });
-  it('replaces / in agency with - in spool name', () => {
-    const d = new Date('2026-11-12T00:00:00.000Z');
-    const name = spoolName({ agency: 'mecattaf/crm', stem: 'sync', instant: d });
-    assert.equal(name, 'mecattaf-crm~sync@20261112T0000Z.json');
+  it('replaces / in a namespace with +', () => {
+    const due = new Date('2026-11-12T00:00:00.000Z');
+    assert.equal(occurrenceName({ namespace: 'projects/crm', item: 'sync', due }), 'projects+crm~sync@20261112T0000Z.json');
   });
 });
 
-// ---------------------------------------------------------------------------
-// manualSpoolName
-// ---------------------------------------------------------------------------
-
-describe('manualSpoolName', () => {
-  it('builds manual occurrence name', () => {
-    const name = manualSpoolName({ agency: 'master', stem: 'fleet-nightly', ulid: '01JABCD1234567890ABCDE' });
-    assert.equal(name, 'master~fleet-nightly@manual~01JABCD1234567890ABCDE.json');
+describe('runName', () => {
+  it('builds a manual run record name', () => {
+    assert.equal(runName({ namespace: 'master', item: 'fleet-nightly', run: '01JABCD1234567890ABCDEFGHJ' }), 'master~fleet-nightly@run~01JABCD1234567890ABCDEFGHJ.json');
   });
-  it('replaces / in agency with - in spool name', () => {
-    const name = manualSpoolName({ agency: 'mecattaf/crm', stem: 'sync', ulid: 'TESTULIDVALUE123456789' });
-    assert.equal(name, 'mecattaf-crm~sync@manual~TESTULIDVALUE123456789.json');
+  it('replaces / in a namespace with +', () => {
+    assert.equal(runName({ namespace: 'projects/crm', item: 'sync', run: 'X' }), 'projects+crm~sync@run~X.json');
   });
 });
 

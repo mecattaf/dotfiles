@@ -1,25 +1,20 @@
-// tick.mjs — heartbeat tick algorithm (phases 0-8).
+// tick.mjs — the heartbeat tick, scheduled-jsonc §4 (phases 0-10).
 //
-// Spec ref: §6 (The heartbeat tick algorithm)
-//           §6.1 (Discovery)
-//           §6.2 (The wake table)
-//           §6.3 (Journal lines and exit codes)
-//           §5.1, §5.3, §b.1, §b.12
+// A nudger only: it decodes the cron times of every agency's .agency/scheduled/*.jsonc, links one
+// occurrence record per due item into the superagent's inbox, withdraws its own records of items no longer
+// enabled, and starts the floor instance when records wait. It holds no superagent logic: it opens no
+// orchestrator database, calls no floor API, runs no `dshd run` and runs no item command.
 
-import { join, dirname } from 'node:path';
-import path from 'node:path';
+import { join, dirname, sep } from 'node:path';
 import { statSync } from 'node:fs';
 import { readFile, open, unlink, mkdir, link } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { discover } from './discover.mjs';
 import { validateFile } from './validate.mjs';
-import { revision } from './schema.mjs';
 import { instantsBetween } from './cron.mjs';
-import { wakeFloor } from './floor.mjs';
+import { dshdRunner, floorState, wake, LIVE } from './floor.mjs';
 import { writeAtomic } from './atomic.mjs';
-import { ensureSpool, handOff, writeCensus, waitingCount } from './spool.mjs';
-import { recordRevision, known } from './ledger.mjs';
+import { HEARTBEAT, handOff, makeRecord, readRecord, recordProblem, waiting, withdraw } from './inbox.mjs';
 
 /** This boot's id, or null off Linux. */
 async function currentBoot() {
@@ -130,95 +125,118 @@ export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 
   }
 }
 
+/** One intake entry: the cached parse of one item file, keyed by path in intake.json. */
+function entryOf(f, st, v, prev, { now, lastTick }) {
+  const valid = Boolean(v.value);
+  const enabled = valid && v.value.enabled === true;
+  let armedSince = null;
+  if (valid && enabled) {
+    if (prev?.valid && prev.enabled && prev.armedSince) armedSince = prev.armedSince;
+    // Fixed after being invalid: anchored to lastTick, so the latest missed instant is still due.
+    else if (prev && !prev.valid) armedSince = lastTick.toISOString();
+    // New, or enabled now: instants before this tick never fire (T10).
+    else armedSince = now.toISOString();
+  }
+  return {
+    id: f.id,
+    dev: String(st.dev),
+    ino: String(st.ino),
+    size: Number(st.size),
+    mtimeNs: String(st.mtimeNs),
+    revision: v.revision ?? null,
+    problems: v.problems || [],
+    firstSeen: prev?.firstSeen || now.toISOString(),
+    armedSince,
+    valid,
+    enabled,
+    promptFile: Boolean(v.value?.job?.['prompt-file']),
+    name: v.value?.name ?? null,
+    on: v.value?.on ?? {},
+    text: v.prompt ?? null,
+  };
+}
+
+const sameStat = (prev, st) => prev && prev.dev === String(st.dev) && prev.ino === String(st.ino)
+  && prev.size === Number(st.size) && prev.mtimeNs === String(st.mtimeNs);
+
 /**
- * Execute one scheduled tick pass.
+ * Execute one tick pass.
  *
  * @param {object} ctx Context from makeContext()
  * @param {object} [opts]
  * @param {Date|string} [opts.now] Clock override
- * @param {string} [opts.stateDir] State directory override
+ * @param {string} [opts.stateDir] Heartbeat state (heartbeat.json, intake.json, .tick.lock)
+ * @param {string} [opts.inbox] The superagent's inbox (required)
+ * @param {string|null} [opts.floorInstance] The floor's dshd instance; null: never call dshd
+ * @param {string} [opts.home] Agency discovery root, agency id `master`
+ * @param {(argv: string[]) => Promise<{code: number, stdout: string, stderr: string}>} [opts.run] dshd runner
  * @returns {Promise<{code: number, lines: string[]}>}
  */
-export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt } = {}) {
+export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inboxOpt, floorInstance: floorOpt, home: homeOpt, run: runOpt } = {}) {
   const passStart = performance.now();
   const stateDir = stateDirOpt || ctx.stateDir;
+  const inbox = inboxOpt || ctx.inbox;
+  const floorInstance = floorOpt === undefined ? (ctx.floorInstance ?? null) : floorOpt;
+  const home = homeOpt || ctx.home;
+  if (!inbox) throw new Error('--inbox is required');
 
   const now = nowOpt
     ? (nowOpt instanceof Date ? nowOpt : new Date(nowOpt))
     : (typeof ctx.now === 'function' ? ctx.now() : new Date());
-
-  if (Number.isNaN(now.getTime())) {
-    throw new Error(`Invalid now timestamp: ${nowOpt}`);
-  }
+  if (Number.isNaN(now.getTime())) throw new Error(`Invalid now timestamp: ${nowOpt}`);
 
   const lines = [];
+  const run = runOpt || dshdRunner(ctx.dshd, { ...process.env, ...(ctx.env || {}) });
 
-  // -------------------------------------------------------------------------
-  // Phase 0: Lock
-  // -------------------------------------------------------------------------
-  const lockPath = join(stateDir, '.tick.lock');
-  const releaseLock = await acquireLock(lockPath);
+  // Phase 0: lock.
+  await mkdir(stateDir, { recursive: true, mode: 0o700 });
+  const releaseLock = await acquireLock(join(stateDir, '.tick.lock'));
 
   try {
-    // -----------------------------------------------------------------------
-    // Phase 1: Guard
-    // -----------------------------------------------------------------------
-    let hostMachineId = '';
+    // Phase 1: guard. State from another machine or a newer major version is never overwritten.
+    let hostMachineId;
     try {
       hostMachineId = (await readFile(ctx.machineIdFile, 'utf8')).trim();
     } catch {
       hostMachineId = 'unknown';
     }
-
     const heartbeatPath = join(stateDir, 'heartbeat.json');
-    let heartbeat = null;
-    try {
-      heartbeat = JSON.parse(await readFile(heartbeatPath, 'utf8'));
-    } catch (err) {
-      if (err.code !== 'ENOENT') {
-        lines.push(`<3>guard error reading heartbeat.json: ${err.message}`);
-        return { code: 1, lines };
-      }
-    }
-
-    if (heartbeat !== null) {
-      if (typeof heartbeat.v === 'number' && Math.floor(heartbeat.v) > 1) {
-        lines.push(`<3>guard higher state version: v=${heartbeat.v}`);
-        return { code: 1, lines };
-      }
-      if (heartbeat.machineId && hostMachineId && heartbeat.machineId !== hostMachineId) {
-        lines.push('<3>guard machine-id differs: state from another host');
-        return { code: 1, lines };
-      }
-    }
-
     const intakePath = join(stateDir, 'intake.json');
-    let intake = null;
+    const readState = async (p) => {
+      try {
+        return JSON.parse(await readFile(p, 'utf8'));
+      } catch (err) {
+        if (err.code === 'ENOENT') return null;
+        throw Object.assign(err, { statePath: p });
+      }
+    };
+    let heartbeat, intake;
     try {
-      intake = JSON.parse(await readFile(intakePath, 'utf8'));
+      heartbeat = await readState(heartbeatPath);
+      intake = await readState(intakePath);
     } catch (err) {
-      if (err.code !== 'ENOENT') {
-        lines.push(`<3>guard error reading intake.json: ${err.message}`);
+      lines.push(`<3>guard error reading ${err.statePath.split(sep).pop()}: ${err.message}`);
+      return { code: 1, lines };
+    }
+    for (const state of [heartbeat, intake]) {
+      if (state && typeof state.v === 'number' && Math.floor(state.v) > 1) {
+        lines.push(`<3>guard higher state version: v=${state.v}`);
         return { code: 1, lines };
       }
     }
-
-    if (intake !== null && typeof intake.v === 'number' && Math.floor(intake.v) > 1) {
-      lines.push(`<3>guard higher state version: v=${intake.v}`);
+    if (heartbeat?.machineId && hostMachineId && heartbeat.machineId !== hostMachineId) {
+      lines.push('<3>guard machine-id differs: state from another host');
       return { code: 1, lines };
     }
 
     const isFirstTick = heartbeat === null;
     const lastTick = isFirstTick ? now : new Date(heartbeat.lastTick);
 
-    // -----------------------------------------------------------------------
-    // Phase 2: Intake
-    // -----------------------------------------------------------------------
+    // Phase 2: intake. Unchanged files reuse their cached parse; a file written within 2 s keeps its last one.
     const discStart = performance.now();
-    const disc = await discover({ home: ctx.home, uid: ctx.uid });
+    const disc = await discover({ home, uid: ctx.uid });
     const discover_ms = Math.round(performance.now() - discStart);
 
-    // Track new agencies
     const prevAgencies = intake?.agencies || {};
     const currentAgencies = {};
     for (const ag of disc.agencies) {
@@ -232,308 +250,150 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt } = {}) {
 
     const prevFiles = intake?.files || {};
     const currentFiles = {};
-    const workflows = [];
+    const items = [];
 
     for (const f of disc.files) {
-      const filePath = f.path;
-      const prev = prevFiles[filePath];
-
-      let st = null;
+      const prev = prevFiles[f.path];
+      let st;
       try {
-        st = statSync(filePath, { bigint: true });
+        st = statSync(f.path, { bigint: true });
       } catch (err) {
-        // Gone since discovery: it is absent from this census. Any other error
-        // (EACCES, EIO, a busy mount) is not a removal: carry the previous
-        // parse, or the floor would read the workflow removed and cancel its
-        // waiting occurrences (Zen second opinion #2).
+        // Gone since discovery: removed. Any other error (EACCES, EIO, a busy mount) is not a removal: the
+        // previous parse is carried, or its waiting record would be withdrawn (Zen second opinion #2).
         if (err?.code !== 'ENOENT' && prev) {
-          const statProb = { severity: 'warning', code: 'stat', line: 0, col: 0, message: `stat failed (${err?.code ?? 'error'}); previous parse used` };
-          const problems = [statProb, ...(prev.problems || []).filter((p) => p.code !== 'stat')];
-          currentFiles[filePath] = { ...prev, id: f.id };
-          workflows.push({ id: f.id, ...prev, file: f, path: filePath, problems, isYoung: true });
+          const problems = [{ severity: 'warning', code: 'stat', line: 0, col: 0, message: `stat failed (${err?.code ?? 'error'}); previous parse used` },
+            ...(prev.problems || []).filter((p) => p.code !== 'stat')];
+          currentFiles[f.path] = { ...prev, problems, id: f.id };
+          items.push({ ...prev, file: f, problems });
         }
         continue;
       }
 
-      const mtimeMs = Number(st.mtimeMs);
-      // Young means written within 2 s of now, either side. A mtime further in
-      // the future was set under a clock that has since gone back (a power cut,
-      // a corrected RTC): the file is not being written now, so it is read, or it
-      // would stay unparsed until the clock caught up (found by the VM check).
-      const age = now.getTime() - mtimeMs;
-      const isYoung = age > -2000 && age < 2000;
-
-      if (isYoung) {
+      // Young means written within 2 s of now, either side. A mtime further in the future was set under a clock
+      // that has since gone back: the file is not being written now, so it is read (found by the VM check).
+      const age = now.getTime() - Number(st.mtimeMs);
+      if (age > -2000 && age < 2000) {
+        const young = { severity: 'warning', code: 'young', line: 0, col: 0, message: 'File is younger than 2s; previous parse used' };
         if (prev) {
-          const youngProb = { severity: 'warning', code: 'young', line: 0, col: 0, message: 'File is younger than 2s; previous parse used' };
-          const problems = [youngProb, ...(prev.problems || [])];
-          currentFiles[filePath] = { ...prev, problems, id: f.id };
-          workflows.push({ id: f.id, ...prev, file: f, path: filePath, problems, isYoung: true });
+          const problems = [young, ...(prev.problems || []).filter((p) => p.code !== 'young')];
+          currentFiles[f.path] = { ...prev, problems, id: f.id };
+          items.push({ ...prev, file: f, problems });
         } else {
-          const youngProb = { severity: 'warning', code: 'young', line: 0, col: 0, message: 'File is younger than 2s; previous parse used' };
-          const problems = [youngProb];
-          // No stat is cached for a file never parsed: the next pass must parse it,
-          // or the unchanged-stat reuse below would keep this placeholder (invalid,
-          // unscheduled) until the file changed (evaluation review, C3.4).
-          currentFiles[filePath] = {
-            id: f.id,
-            dev: null,
-            ino: null,
-            size: null,
-            mtimeNs: null,
-            revision: null,
-            problems,
-            firstSeen: now.toISOString(),
-            armedSince: null,
-            valid: false,
-            enabled: false,
-          };
-          workflows.push({
-            id: f.id,
-            file: f,
-            path: filePath,
-            revision: null,
-            valid: false,
-            enabled: false,
-            problems,
-            spec: null,
-            isYoung: true,
-          });
+          // No stat is cached for a file never parsed, so the next pass parses it (evaluation review, C3.4).
+          const placeholder = { id: f.id, dev: null, ino: null, size: null, mtimeNs: null, revision: null, problems: [young],
+            firstSeen: now.toISOString(), armedSince: null, valid: false, enabled: false, placeholder: true };
+          currentFiles[f.path] = placeholder;
+          items.push({ ...placeholder, file: f });
         }
-      } else if (
-        prev &&
-        prev.dev === String(st.dev) &&
-        prev.ino === String(st.ino) &&
-        prev.size === Number(st.size) &&
-        prev.mtimeNs === String(st.mtimeNs)
-      ) {
-        // Reuse cached parse
-        currentFiles[filePath] = { ...prev, id: f.id };
-        workflows.push({ id: f.id, ...prev, file: f, path: filePath });
-      } else {
-        // New or changed file
-        const valRes = await validateFile(filePath, { uid: ctx.uid, proposal: f.proposal });
-        const problems = valRes.problems || [];
-        const valid = !problems.some((p) => p.severity === 'error');
-        const rev = valRes.value?._revision ?? (valRes.bytes ? revision(valRes.bytes, valRes.promptBytes) : null);
-        const enabled = valid ? (valRes.value?.spec?.enabled ?? valRes.value?.enabled ?? true) : false;
-        const on = valRes.value?.spec?.on ?? valRes.value?.on ?? {};
-
-        const isRevKnown = rev ? await known(stateDir, f.id, rev) : false;
-        if (rev && !isRevKnown) {
-          await recordRevision(stateDir, {
-            workflow: f.id,
-            revision: rev,
-            fileBytes: valRes.bytes,
-            promptBytes: valRes.promptBytes,
-            by: 'tick',
-            valid,
-            at: now,
-          });
-
-          if (!valid) {
-            const firstErr = problems.find((p) => p.severity === 'error') || problems[0] || { line: 0, col: 0 };
-            lines.push(`<4>invalid workflow=${f.id} rev=${rev} at=${firstErr.line}:${firstErr.col}`);
-          }
-        }
-
-        const firstSeen = prev?.firstSeen || now.toISOString();
-        let armedSince = null;
-        if (valid && enabled && !f.proposal) {
-          if (!prev || !prev.valid || !prev.enabled || !prev.armedSince) {
-            if (prev && !prev.valid) {
-              // Fixed: anchor to lastTick so latest missed instant is due
-              armedSince = lastTick ? lastTick.toISOString() : now.toISOString();
-            } else {
-              // Brand new valid & enabled file or re-enabled
-              armedSince = now.toISOString();
-            }
-          } else {
-            armedSince = prev.armedSince;
-          }
-        }
-
-        const fileRecord = {
-          id: f.id,
-          dev: String(st.dev),
-          ino: String(st.ino),
-          size: Number(st.size),
-          mtimeNs: String(st.mtimeNs),
-          revision: rev,
-          problems,
-          firstSeen,
-          armedSince,
-          valid,
-          enabled,
-          on,
-        };
-        currentFiles[filePath] = fileRecord;
-        workflows.push({
-          id: f.id,
-          file: f,
-          path: filePath,
-          revision: rev,
-          valid,
-          enabled,
-          on,
-          problems,
-          armedSince,
-          firstSeen,
-        });
+        continue;
       }
+
+      // A prompt-file is read at each tick: an item that names one is never served from the cache.
+      if (sameStat(prev, st) && !prev.promptFile && !prev.placeholder) {
+        // The cached parse, without the warnings of a pass that could not read the file.
+        const problems = (prev.problems || []).filter((p) => p.code !== 'stat' && p.code !== 'young');
+        currentFiles[f.path] = { ...prev, problems, id: f.id };
+        items.push({ ...prev, problems, file: f });
+        continue;
+      }
+
+      const v = await validateFile(f.path, { uid: ctx.uid });
+      const entry = entryOf(f, st, v, prev, { now, lastTick });
+      if (!entry.valid && entry.revision && entry.revision !== prev?.revision) {
+        const first = entry.problems.find((p) => p.severity === 'error') || { line: 0, col: 0 };
+        lines.push(`<4>invalid item=${f.id} rev=${entry.revision} at=${first.line}:${first.col}`);
+      }
+      currentFiles[f.path] = entry;
+      items.push({ ...entry, file: f });
     }
 
-    // -----------------------------------------------------------------------
-    // Phase 3: Census
-    // -----------------------------------------------------------------------
-    const censusWorkflows = workflows.map((w) => ({
-      id: w.id,
-      file: w.path,
-      state: w.valid ? 'valid' : 'invalid',
-      enabled: Boolean(w.enabled),
-      revision: w.revision,
-      problems: w.problems || [],
-    }));
-
-    const census = {
-      v: 1,
-      kind: 'census',
-      at: now.toISOString(),
-      machineId: hostMachineId,
-      workflows: censusWorkflows,
-    };
-    await writeCensus(stateDir, census);
-
-    // -----------------------------------------------------------------------
-    // Phase 4: Decode
-    // -----------------------------------------------------------------------
-    let clockWentBack = false;
-    const dueRecords = [];
-
-    if (now.getTime() < lastTick.getTime()) {
+    // Phase 4: decode. Per valid, enabled item: one record for the latest instant in (max(lastTick, armedSince), now].
+    const clockWentBack = now.getTime() < lastTick.getTime();
+    const due = [];
+    if (clockWentBack) {
       lines.push('<4>clock went back');
-      clockWentBack = true;
     } else if (!isFirstTick) {
-      for (const w of workflows) {
-        if (w.valid && w.enabled && !w.file?.proposal && w.on?.schedule?.length > 0) {
-          const anchorTime = w.armedSince
-            ? Math.max(lastTick.getTime(), new Date(w.armedSince).getTime())
-            : lastTick.getTime();
-          const anchor = new Date(anchorTime);
-          const instants = instantsBetween(w.on.schedule, anchor, now);
-
-          if (instants.length > 0) {
-            const latestInstant = instants[instants.length - 1];
-            const missed = instants.length - 1;
-            lines.push(`<6>decode workflow=${w.id} due=${latestInstant.toISOString()}`);
-            dueRecords.push({
-              v: 1,
-              kind: 'schedule',
-              occurrence: `${w.id}@${latestInstant.toISOString()}`,
-              workflow: w.id,
-              agency: w.file?.root || ctx.home,
-              file: w.path,
-              instant: latestInstant.toISOString(),
-              missed,
-              revision: w.revision,
-              by: 'scheduled-heartbeat',
-              inputs: {},
-              at: now.toISOString(),
-            });
-          }
-        }
+      for (const it of items) {
+        if (!it.valid || !it.enabled || !(it.on?.schedule?.length > 0) || !it.text) continue;
+        const anchor = new Date(Math.max(lastTick.getTime(), it.armedSince ? new Date(it.armedSince).getTime() : 0));
+        const instants = instantsBetween(it.on.schedule, anchor, now);
+        if (instants.length === 0) continue;
+        due.push({ it, instant: instants[instants.length - 1], missed: instants.length - 1 });
       }
     }
 
-    // -----------------------------------------------------------------------
-    // Phase 5: Hand off
-    // -----------------------------------------------------------------------
-    if (!clockWentBack) {
-      for (const rec of dueRecords) {
-        await handOff(stateDir, rec);
+    // Phase 5: hand off.
+    let handOffFaulted = false;
+    for (const { it, instant, missed } of due) {
+      const record = makeRecord({
+        kind: 'schedule', namespace: it.file.agency, item: it.file.stem, name: it.name ?? undefined,
+        cwd: it.file.root, file: it.file.path, due: instant, missed, revision: it.revision, text: it.text,
+        by: HEARTBEAT, at: now,
+      });
+      const problem = recordProblem(record);
+      if (problem) {
+        lines.push(`<3>decode item=${it.id} due=${instant.toISOString()} result=refused reason=${JSON.stringify(problem)}`);
+        handOffFaulted = true;
+        continue;
+      }
+      try {
+        const { result } = await handOff(inbox, record);
+        lines.push(`<6>decode item=${it.id} due=${instant.toISOString()} result=${result}`);
+      } catch (err) {
+        lines.push(`<3>decode item=${it.id} due=${instant.toISOString()} error=${JSON.stringify(err.message)}`);
+        handOffFaulted = true;
       }
     }
 
-    // -----------------------------------------------------------------------
-    // Phase 6: Commit
-    // -----------------------------------------------------------------------
+    // Phase 6: floor state, read once and only when a record waits.
+    let floor = null;
+    if (floorInstance && waiting(inbox).length > 0) floor = await floorState(floorInstance, run);
+
+    // Phase 7: withdraw this heartbeat's records of items no longer valid and enabled, unless the Source reads now.
+    if (!(floor && LIVE.has(floor.state))) {
+      const known = new Map();
+      for (const it of items) known.set(`${it.file.root}\0${it.file.stem}`, it);
+      const under = (p) => p === home || p.startsWith(home.endsWith(sep) ? home : home + sep);
+      for (const name of waiting(inbox)) {
+        const rec = readRecord(inbox, name);
+        if (!rec || rec.by !== HEARTBEAT || rec.kind !== 'schedule' || typeof rec.cwd !== 'string' || !under(rec.cwd)) continue;
+        const it = known.get(`${rec.cwd}\0${rec.item}`);
+        if (it?.placeholder || (it?.valid && it.enabled)) continue;
+        const reason = !it ? 'removed' : it.valid ? 'disabled' : 'invalid';
+        if (withdraw(inbox, name)) lines.push(`<5>withdrawn occurrence=${name.slice(0, -'.json'.length)} reason=${reason}`);
+      }
+    }
+
+    // Phase 8: commit. A clock that went back keeps lastTick and the cache as they were.
     let commitFaulted = false;
     if (!clockWentBack) {
       try {
-        const heartbeatData = {
-          v: 1,
-          machineId: hostMachineId,
-          lastTick: now.toISOString(),
-        };
-        await writeAtomic(heartbeatPath, JSON.stringify(heartbeatData, null, 2) + '\n');
-
-        const intakeData = {
-          v: 1,
-          files: currentFiles,
-          agencies: currentAgencies,
-        };
-        await writeAtomic(intakePath, JSON.stringify(intakeData, null, 2) + '\n');
+        await writeAtomic(heartbeatPath, JSON.stringify({ v: 1, machineId: hostMachineId, lastTick: now.toISOString() }, null, 2) + '\n');
+        await writeAtomic(intakePath, JSON.stringify({ v: 1, files: currentFiles, agencies: currentAgencies }, null, 2) + '\n');
       } catch (err) {
         lines.push(`<3>guard error committing state: ${err.message}`);
         commitFaulted = true;
       }
     }
 
-    // -----------------------------------------------------------------------
-    // Phase 7: Floor
-    // -----------------------------------------------------------------------
+    // Phase 9: wake.
+    const waitingCount = waiting(inbox).length;
     let floorFaulted = false;
     try {
-      const waiting = await waitingCount(stateDir);
-      const runner = (argv) => new Promise((resolve) => {
-        const nodeDir = path.dirname(process.execPath);
-        const env = {
-          ...process.env,
-          ...(ctx.env || {}),
-          PATH: process.env.PATH ? `${nodeDir}:${process.env.PATH}` : nodeDir,
-        };
-        execFile(ctx.dshd, argv, { timeout: 150_000, env }, (error, stdout, stderr) => {
-          const outStr = String(stdout || '');
-          const errStr = String(stderr || '');
-          if (error && typeof error.code === 'number') {
-            resolve({ code: error.code, stdout: outStr, stderr: errStr });
-          } else if (error) {
-            resolve({ code: 7, stdout: outStr, stderr: errStr || error.message });
-          } else {
-            resolve({ code: 0, stdout: outStr, stderr: errStr });
-          }
-        });
-      });
-
-      const floorRes = await wakeFloor({
-        dshd: ctx.dshd,
-        floorUrl: ctx.floorUrl,
-        waiting,
-        run: runner,
-      });
-
-      if (floorRes.lines?.length > 0) {
-        lines.push(...floorRes.lines);
-      }
-      if (floorRes.fault) {
-        floorFaulted = true;
-      }
+      const res = await wake({ instance: floorInstance, waiting: waitingCount, floor, run });
+      lines.push(...res.lines);
+      floorFaulted = res.fault;
     } catch (err) {
-      lines.push(`<3>floor error=${err.message}`);
+      lines.push(`<3>floor error=${JSON.stringify(err.message)}`);
       floorFaulted = true;
     }
 
-    // -----------------------------------------------------------------------
-    // Phase 8: Summary
-    // -----------------------------------------------------------------------
-    const reason = ctx.env.TRIGGER_UNIT ? 'timer' : 'manual';
+    // Phase 10: summary.
+    const reason = ctx.env?.TRIGGER_UNIT ? 'timer' : 'manual';
     const took_ms = Math.round(performance.now() - passStart);
-    lines.push(
-      `<6>pass reason=${reason} took_ms=${took_ms} discover_ms=${discover_ms} agencies=${disc.agencies.length} workflows=${disc.files.length}`
-    );
+    lines.push(`<6>pass reason=${reason} took_ms=${took_ms} discover_ms=${discover_ms} agencies=${disc.agencies.length} items=${disc.files.length} waiting=${waitingCount}`);
 
-    const code = (commitFaulted || floorFaulted) ? 1 : 0;
-    return { code, lines };
+    return { code: (handOffFaulted || commitFaulted || floorFaulted) ? 1 : 0, lines };
   } finally {
     await releaseLock();
   }

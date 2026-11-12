@@ -4,8 +4,8 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { resolve, basename, dirname, join } from 'node:path';
-import { parseWorkflow, formatProblems, revision } from '../lib/schema.mjs';
+import { resolve, basename } from 'node:path';
+import { parseItem, formatProblems, revision } from '../lib/schema.mjs';
 import { scheduleProblems } from '../lib/cron.mjs';
 import { validateFile } from '../lib/validate.mjs';
 import { discover } from '../lib/discover.mjs';
@@ -17,7 +17,7 @@ function usage(ctx) {
 /**
  * Build a JSON result object for one file.
  */
-function buildJsonResult(filePath, problems, value, bytes, promptBytes, workflowId) {
+function buildJsonResult(filePath, problems, value, bytes, promptBytes, itemId) {
   const errors = problems.filter(p => p.severity === 'error');
   const valid = errors.length === 0;
   let rev = null;
@@ -25,7 +25,7 @@ function buildJsonResult(filePath, problems, value, bytes, promptBytes, workflow
     try { rev = revision(bytes, promptBytes); } catch {}
   }
   return {
-    workflow: workflowId ?? basename(filePath, '.jsonc'),
+    item: itemId ?? basename(filePath, '.jsonc'),
     path: filePath,
     revision: rev,
     valid,
@@ -39,9 +39,6 @@ function buildJsonResult(filePath, problems, value, bytes, promptBytes, workflow
     })),
   };
 }
-
-/** A file directly under `<agency>/.agency/workflows/proposed/` is a proposal (DESIGN 4.2 x-proposal). */
-const inProposed = (p) => basename(dirname(p)) === 'proposed' && basename(dirname(dirname(p))) === 'workflows';
 
 export async function main(args, ctx) {
   const paths = [];
@@ -69,7 +66,7 @@ export async function main(args, ctx) {
     }
   }
 
-  // --all: every workflow and proposal discovery finds under the listed agencies (DESIGN 10.1).
+  // --all: every item discovery finds.
   const discovered = new Map();
   if (allMode) {
     const { files } = await discover({ home: ctx.home, uid: ctx.uid });
@@ -78,7 +75,7 @@ export async function main(args, ctx) {
       discovered.set(file.path, file);
     }
     if (paths.length === 0) {
-      ctx.out(jsonOutput ? JSON.stringify({ v: 1, results: [] }) + '\n' : 'No workflows found.\n');
+      ctx.out(jsonOutput ? JSON.stringify({ v: 1, results: [] }) + '\n' : 'No scheduled items found.\n');
       return 0;
     }
   }
@@ -99,7 +96,7 @@ export async function main(args, ctx) {
       return 4;
     }
 
-    const { value, problems } = parseWorkflow(text, { proposal: inProposed(filePath) });
+    const { value, problems } = parseItem(text);
     // Cron check
     if (value?.on?.schedule?.length) {
       const cronProbs = scheduleProblems(value.on.schedule);
@@ -107,8 +104,7 @@ export async function main(args, ctx) {
     }
 
     const bytes = Buffer.from(text, 'utf8');
-    const workflowId = basename(filePath, '.jsonc');
-    const result = buildJsonResult(filePath, problems, value, bytes, null, workflowId);
+    const result = buildJsonResult(filePath, problems, value, bytes, null, basename(filePath, '.jsonc'));
 
     if (jsonOutput) {
       ctx.out(JSON.stringify({ v: 1, results: [result] }) + '\n');
@@ -129,13 +125,8 @@ export async function main(args, ctx) {
 
   for (const filePath of paths) {
     const found = discovered.get(filePath);
-    const { problems, value, bytes, promptBytes } = await validateFile(filePath, {
-      uid: ctx.uid,
-      proposal: found?.proposal ?? inProposed(filePath),
-    });
-
-    const workflowId = found?.id ?? basename(filePath, '.jsonc');
-    const result = buildJsonResult(filePath, problems, value, bytes, promptBytes, workflowId);
+    const { problems, value, bytes, promptBytes } = await validateFile(filePath, { uid: ctx.uid });
+    const result = buildJsonResult(filePath, problems, value, bytes, promptBytes, found?.id ?? basename(filePath, '.jsonc'));
     results.push({ filePath, problems, result });
 
     if (!result.valid) anyError = true;

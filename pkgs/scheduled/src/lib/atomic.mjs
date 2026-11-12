@@ -3,6 +3,7 @@
 // All writes go through a tmp file → fsync → rename pattern so readers never
 // see a partial file. Directory fsyncs ensure the rename survives a crash.
 
+import { randomBytes } from 'node:crypto';
 import { open, rename, link, unlink } from 'node:fs/promises';
 import { openSync, fsyncSync, closeSync } from 'node:fs';
 import { dirname, basename, join } from 'node:path';
@@ -34,7 +35,7 @@ export async function writeAtomic(path, data, { mode = 0o600 } = {}) {
   const tmp = join(dir, `.${basename(path)}.${process.pid}.tmp`);
   const fh = await open(tmp, 'w', mode);
   try {
-    await fh.write(typeof data === 'string' ? data : data);
+    await fh.write(data);
     await fh.sync();
   } finally {
     await fh.close();
@@ -44,58 +45,36 @@ export async function writeAtomic(path, data, { mode = 0o600 } = {}) {
 }
 
 /**
- * Write `data` into `tmpDir/<basename(destPath)>.<pid>`, fsync, then
- * hard-link to `destPath`.  Unlinks the temp after a successful link.
- * Returns `'created'` on success or `'exists'` when `destPath` already
- * exists (EEXIST).  Any other error is re-thrown.
+ * Write `data` into `tmpDir/<basename(destPath)>.<pid>.<6 random hex>` (mode 0600), fsync, then hard-link
+ * it to `destPath` and unlink the temp. Returns `'created'`, or `'exists'` when `destPath` already exists
+ * (EEXIST) or `exists()` answers true after the temp is written. Any other error is re-thrown.
  *
  * @param {string} tmpDir
  * @param {string} destPath
  * @param {string | Buffer | Uint8Array} data
+ * @param {{ exists?: () => boolean }} [opts]
  * @returns {Promise<'created' | 'exists'>}
  */
-export async function linkExclusive(tmpDir, destPath, data) {
-  const tmp = join(tmpDir, `${basename(destPath)}.${process.pid}`);
+export async function linkExclusive(tmpDir, destPath, data, { exists } = {}) {
+  const tmp = join(tmpDir, `${basename(destPath)}.${process.pid}.${randomBytes(3).toString('hex')}`);
   const fh = await open(tmp, 'w', 0o600);
   try {
-    await fh.write(typeof data === 'string' ? data : data);
+    await fh.write(data);
     await fh.sync();
   } finally {
     await fh.close();
   }
   try {
+    if (exists?.()) return 'exists';
     await link(tmp, destPath);
   } catch (err) {
-    await unlink(tmp).catch(() => {});
     if (err.code === 'EEXIST') return 'exists';
     throw err;
-  }
-  await unlink(tmp).catch(() => {});
-  // The new name is durable only once its directory is (C3.2): a power cut
-  // after link() could otherwise lose the record the commit then skips.
-  const dirFd = openSync(dirname(destPath), 'r');
-  try {
-    fsyncSync(dirFd);
   } finally {
-    closeSync(dirFd);
+    await unlink(tmp).catch(() => {});
   }
+  // The new name is durable only once its directory is: a power cut after link() could otherwise lose
+  // the record the commit then skips.
+  fsyncDir(dirname(destPath));
   return 'created';
-}
-
-/**
- * Append one JSON line (JSON.stringify(obj) + '\n') to `path` using
- * O_APPEND so concurrent writers do not corrupt each other, then fsyncs.
- *
- * @param {string} path
- * @param {object} obj
- */
-export async function appendLine(path, obj) {
-  const line = JSON.stringify(obj) + '\n';
-  const fh = await open(path, 'a', 0o600);
-  try {
-    await fh.write(line);
-    await fh.sync();
-  } finally {
-    await fh.close();
-  }
 }
