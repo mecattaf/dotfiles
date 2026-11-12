@@ -72,10 +72,12 @@ test('tmp-ageing: weekly, disabled, reports /tmp work at risk and touches none o
   const text = lines.join('\n');
   assert.match(text, /build no sync tool, sweep or schedule for it/, 'carries the push-habit rule');
   assert.match(text, /git -C <dir> log --oneline --branches --not --remotes/, 'unpushed commits without network');
-  assert.match(text, /git -C <dir> status --porcelain --branch/);
+  assert.match(text, /git --no-optional-locks -C <dir> status --porcelain --branch/, 'status must not refresh the index');
+  assert.doesNotMatch(text, /(?<!--no-optional-locks )-C <dir> status/, 'every status read skips the index refresh');
+  assert.match(text, /do not override safe\.directory/, 'a checkout another user owns is skipped, not trusted');
   assert.match(text, /\/nix\/var\/nix\/gcroots\/auto/);
   assert.match(text, /journalctl -u gc-root-reaper --since -8d/);
   assert.match(text, /\*\.bundle/);
-  for (const word of ['push', 'fetch', 'commit', 'bundle', 'worktree', 'branch', 'GC root', 'file'])
+  for (const word of ['push', 'fetch', 'commit', 'bundle', 'worktree', 'branch', 'GC root', 'file', 'index'])
     assert.ok(never.includes(word), `Never line names ${word}`);
 });
