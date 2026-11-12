@@ -628,6 +628,9 @@
               modules = [ { disko.rootMountPoint = "/mnt/strix-worker-install"; } ];
             }).config.system.build.diskoScript;
           nas-home-migrate = self.nixosConfigurations.nas.config.system.build.nas-home-migrate;
+          # `nix build .#dsh-master`: NAS's rendered Master profiles and the
+          # dsh-master CLI, byte-identical to what switch activation renders.
+          dsh-master = self.nixosConfigurations.nas.config.home-manager.users.tom.programs.dsh.master.package;
           # `nix build .#substrate-pusher`, `.#substrate-puller`: the strix's
           # gentle capacity pusher and its interpreter-host puller from the
           # pinned substrate sha (pkgs/substrate-apps), installed by
