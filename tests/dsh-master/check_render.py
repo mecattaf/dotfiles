@@ -28,6 +28,22 @@ WEB = "@deepseek-ai/dsh-web-app"
 HEADLESS = "@deepseek-ai/dsh-headless"
 PERMISSION_ROWS = {"sandbox", "sandbox-policy", "approval", "permission"}
 PIN = re.compile(r"^github:mecattaf/[a-z-]+#floor-v2\.[0-9]+$")
+# How a seed rule addresses its two readers, and its length bound: half of the
+# fork's RuleSchema limit, since every enabled rule sits in the main Session's
+# prompt and every matched one in a worker's brief.
+ASSESSOR_CLAUSE = "If you are assessing it: "
+WORKER_CLAUSE = "If you are the worker running this ticket, only this sentence applies to you: "
+RULE_CHARS = 1000
+# The fork's assessmentOutcome (src/policy.ts) turns an accept into `ignore
+# directionUnsettled` unless the assessor declares implementation_requested,
+# a target_basis other than undetermined and no requires_design_decision.
+# Upstream's admission prompt lets a matched rule define those facts for its
+# category, so each seed rule states all three before its worker clause.
+DIRECTION_FACTS = {
+    "implementation_requested": "an implementation request by ",
+    "target_basis": "its target is ",
+    "requires_design_decision": "needs no design decision",
+}
 
 
 def load(package):
@@ -224,17 +240,57 @@ def main(package, expect_path):
         problems.append(f"admission is {seed.get('admission')}")
     subtest("seed file holds both rules and both admission rows", problems)
 
+    # A rule has two readers: the main Session assesses Triggers by it, and
+    # the fork's executor copies a matched rule verbatim into the worker's
+    # brief, where it "takes precedence". So each rule describes its
+    # Triggers, then has one assessor clause, and ends with one worker clause,
+    # the same in every rule; the orchestrator tools appear only in the
+    # assessor clause, since a dshd worker has none. The description states
+    # the three direction facts, or an accept by the rule never dispatches.
     problems = []
+    clauses = set()
+    for rule_id, rule in rules.items():
+        text = rule.get("instruction", "")
+        assess, work = text.find(ASSESSOR_CLAUSE), text.find(WORKER_CLAUSE)
+        if text.count(ASSESSOR_CLAUSE) != 1 or text.count(WORKER_CLAUSE) != 1 or not 0 < assess < work:
+            problems.append(f"rule {rule_id}: no description, then one {ASSESSOR_CLAUSE!r}, then one {WORKER_CLAUSE!r}")
+            continue
+        worker = text[work:]
+        clauses.add(worker)
+        for fact, phrase in DIRECTION_FACTS.items():
+            if phrase not in text[:work]:
+                problems.append(f"rule {rule_id}: settles no {fact} (no {phrase!r} before the worker clause)")
+        for phrase in ("in the current folder", "your final message is the result", "you have no orchestrator tools"):
+            if phrase not in worker:
+                problems.append(f"rule {rule_id}: the worker clause does not say {phrase!r}")
+        for tool in re.finditer(r"orchestrator_\w+", text):
+            if not assess < tool.start() < work:
+                problems.append(f"rule {rule_id}: {tool.group()} outside the assessor clause")
+        if len(text) > RULE_CHARS:
+            problems.append(f"rule {rule_id}: {len(text)} characters, more than {RULE_CHARS}")
+    if len(clauses) > 1:
+        problems.append(f"the worker clauses differ: {sorted(clauses)}")
+    subtest("each seed rule settles direction and tells the assessor, then the worker, what to do", problems)
+
+    # dsh's own workspace keys plus the build policy, so pnpm 11 has no
+    # undecided build script (ERR_PNPM_IGNORED_BUILDS, exit 1). render owns
+    # the file like the other two, so the manifest lists it under `files`.
+    problems = []
+    want = {"packages": ["."], "nodeLinker": "hoisted", "autoInstallPeers": False}
+    if expect["allowBuilds"]:
+        want["allowBuilds"] = expect["allowBuilds"]
+    if expect["allowBuilds"].get("msgpackr-extract") is None:
+        problems.append("allowBuilds decides nothing for msgpackr-extract, which the fork's interpreter pulls in")
     for name, profile in manifest["profiles"].items():
         path = os.path.join(package, "profiles", name, "pnpm-workspace.yaml")
-        if not os.path.isfile(path) or profile.get("once", {}).get("pnpm-workspace.yaml") is None:
-            problems.append(f"{name}: no pnpm-workspace.yaml in the folder or the manifest")
+        if not os.path.isfile(path) or profile["files"].get("pnpm-workspace.yaml") is None or "once" in profile:
+            problems.append(f"{name}: pnpm-workspace.yaml is not a rendered file of the folder and the manifest")
             continue
         with open(path, encoding="utf-8") as stream:
             workspace = yaml.safe_load(stream)
-        if workspace != {"packages": ["."], "nodeLinker": "hoisted", "autoInstallPeers": False}:
+        if workspace != want:
             problems.append(f"{name}: pnpm-workspace.yaml is {workspace}")
-    subtest("every folder carries dsh's pnpm workspace", problems)
+    subtest("every folder carries dsh's pnpm workspace and a build policy", problems)
 
     problems = []
     policy = {row["id"]: row for row in expect["policyRows"]}

@@ -8,13 +8,11 @@
 
 The rendered folders come from the package (pkgs/dsh-master/default.nix) or
 from --from DIR, a `nix build .#dsh-master` result. render writes only
-$DSH_HOME/profiles/master*/{cordis.patch.yml,package.json,.dsh-master.json},
-each by temporary file and rename, and only when the content differs, plus
-dsh's own pnpm-workspace.yaml when a folder has none (dsh writes it when it
-creates a profile and owns it after), and in that file only the configured
-allowBuilds keys that are absent or that dsh left undecided. It never runs
-pnpm and never touches cordis.yml, pnpm-lock.yaml or node_modules, which
-belong to dsh. install and check run the dsh that dshd runs (the
+$DSH_HOME/profiles/master*/{cordis.patch.yml,package.json,pnpm-workspace.yaml,
+.dsh-master.json}, each by temporary file and rename, and only when the
+content differs; pnpm-workspace.yaml is dsh's own text plus the folders' build
+policy. It never runs pnpm and never touches cordis.yml, pnpm-lock.yaml or
+node_modules, which belong to dsh. install and check run the dsh that dshd runs (the
 manifest's `dsh`): the fleet wrapper refuses `dsh plugin`, and its policy
 overlays would hide what a dshd instance really composes. settings seed is
 a client of the floor's management API: it upserts rules and admission cells
@@ -27,7 +25,6 @@ import hashlib
 import json
 import os
 import re
-import stat
 import subprocess
 import sys
 import tempfile
@@ -37,9 +34,7 @@ import urllib.request
 import yaml
 
 NAME = re.compile(r"master(-[a-z0-9][a-z0-9-]*)?")
-FILES = (("cordis.patch.yml", 0o644), ("package.json", 0o600))
-# Written only when missing: dsh owns them once they exist.
-ONCE = (("pnpm-workspace.yaml", 0o644),)
+FILES = (("cordis.patch.yml", 0o644), ("package.json", 0o600), ("pnpm-workspace.yaml", 0o644))
 WORKSPACE = "pnpm-workspace.yaml"
 # What dsh's plugin manager writes for a build script awaiting a decision
 # (dsh-plugin-manager build-approval UNDECIDED_BUILD).
@@ -158,42 +153,6 @@ def mapping(value):
     return value if isinstance(value, dict) else {}
 
 
-def yaml_key(name):
-    return name if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) else json.dumps(name)
-
-
-def decided(text, builds):
-    """The workspace text with each configured build decided, or None when it already is.
-
-    A key is set only when it is absent or dsh left it undecided: a person's own
-    true or false and every other key stay. The text is edited in place, and
-    rewritten whole only when the edit would not parse to the wanted mapping."""
-    data = yaml.safe_load(text) if text.strip() else {}
-    if not isinstance(data, dict):
-        raise Failure("is not a YAML mapping")
-    have = data.get("allowBuilds")
-    if have is not None and not isinstance(have, dict):
-        raise Failure("allowBuilds is not a mapping")
-    have = have or {}
-    todo = {name: value for name, value in sorted(builds.items()) if have.get(name, UNDECIDED) == UNDECIDED}
-    if not todo:
-        return None
-    want = dict(data, allowBuilds={**have, **todo})
-    new = text if not text or text.endswith("\n") else text + "\n"
-    lines = {name: f"{yaml_key(name)}: {'true' if value else 'false'}" for name, value in todo.items()}
-    if "allowBuilds" not in data:
-        new += "allowBuilds:\n" + "".join(f"  {line}\n" for line in lines.values())
-    for name, line in lines.items() if "allowBuilds" in data else ():
-        if name in have:
-            pattern = rf"(?m)^([ \t]+)(['\"]?){re.escape(name)}\2:[ \t]*{re.escape(UNDECIDED)}[ \t]*$"
-            new = re.sub(pattern, lambda m: m[1] + line, new, count=1)
-        else:
-            new = re.sub(r"(?m)^allowBuilds:[ \t]*\n", lambda m: m[0] + "  " + line + "\n", new, count=1)
-    if yaml.safe_load(new) != want:
-        new = yaml.safe_dump(want, sort_keys=False, default_flow_style=False)
-    return new
-
-
 def workspace(folder):
     """The folder's workspace text, or None when there is none."""
     path = os.path.join(folder, WORKSPACE)
@@ -233,7 +192,9 @@ def render(args):
             if live == want:
                 continue
             if live is not None and live != rendered.get(file):
-                print(f"dsh-master: {name}/{file} was changed outside dsh-master; replacing it", file=sys.stderr)
+                # A folder rendered before dsh-master owned the file has no digest of it.
+                why = "was changed outside dsh-master" if file in rendered or not rendered else "predates dsh-master rendering it"
+                print(f"dsh-master: {name}/{file} {why}; replacing it", file=sys.stderr)
             with open(os.path.join(source, "profiles", name, file), "rb") as stream:
                 data = stream.read()
             if hashlib.sha256(data).hexdigest() != want:
@@ -242,28 +203,6 @@ def render(args):
             package_changed = package_changed or file == "package.json"
             if not args.quiet:
                 print(f"updated {name}/{file}")
-        for file, mode in ONCE:
-            if os.path.lexists(os.path.join(folder, file)):
-                continue
-            with open(os.path.join(source, "profiles", name, file), "rb") as stream:
-                data = stream.read()
-            if hashlib.sha256(data).hexdigest() != profile["once"][file]:
-                raise Failure(f"{source}/profiles/{name}/{file} does not match its manifest digest")
-            write_atomic(folder, file, data, mode)
-            if not args.quiet:
-                print(f"created {name}/{file}")
-        builds = manifest.get("allowBuilds") or {}
-        if builds:
-            text = workspace(folder)
-            try:
-                new = decided(text, builds)
-            except (Failure, yaml.YAMLError) as error:
-                raise Failure(f"{name}/{WORKSPACE}: {error}") from error
-            if new is not None:
-                mode = stat.S_IMODE(os.stat(os.path.join(folder, WORKSPACE)).st_mode)
-                write_atomic(folder, WORKSPACE, new.encode("utf-8"), mode)
-                if not args.quiet:
-                    print(f"updated {name}/{WORKSPACE} (allowBuilds)")
         write_state(folder, {"rendered": dict(profile["files"]), "installed": state.get("installed")})
         # Every render until an install records this package.json, not only the one that changed it.
         if state.get("installed") != profile["files"]["package.json"]:
@@ -335,11 +274,9 @@ def install(args):
         folder = profile_folder(home, name, create=False)
         package = os.path.join(folder, "package.json")
         want = profile["files"]["package.json"]
-        if sha256(package) != want or sha256(os.path.join(folder, "cordis.patch.yml")) != profile["files"]["cordis.patch.yml"]:
+        # Without pnpm-workspace.yaml pnpm treats the folder as no workspace and pulls the DSH peers from the registry.
+        if any(sha256(os.path.join(folder, file)) != profile["files"][file] for file, _ in FILES):
             raise Failure(f"{name} is not the rendered version; run dsh-master render first")
-        # Without it pnpm treats the folder as no workspace and pulls the DSH peers from the registry.
-        if not all(os.path.isfile(os.path.join(folder, file)) for file, _ in ONCE):
-            raise Failure(f"{name} has no pnpm-workspace.yaml; run dsh-master render first")
         with open(package, encoding="utf-8") as stream:
             dependencies = json.load(stream)["dependencies"]
         # pnpm replaces lib/ and the served client.js under a live process.
@@ -443,18 +380,10 @@ def check(args):
 def status(args):
     manifest = load_manifest(args.source)
     home = dsh_home()
-    builds = manifest.get("allowBuilds") or {}
     for name, profile in sorted(manifest["profiles"].items()):
         folder = os.path.join(home, "profiles", name)
-        current = all(sha256(os.path.join(folder, file)) == profile["files"][file] for file, _ in FILES) and all(
-            os.path.isfile(os.path.join(folder, file)) for file, _ in ONCE
-        )
+        current = all(sha256(os.path.join(folder, file)) == profile["files"][file] for file, _ in FILES)
         text = workspace(folder) if os.path.isdir(folder) else None
-        if current and builds:
-            try:
-                current = decided(text or "", builds) is None
-            except (Failure, yaml.YAMLError):
-                current = False
         installed = read_state(folder).get("installed") == profile["files"]["package.json"]
         modules = os.path.isdir(os.path.join(folder, "node_modules"))
         pending = pending_builds(text)

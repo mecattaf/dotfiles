@@ -7,10 +7,10 @@
 #      bundle the only bundle difference, engine on only in master, no
 #      permission rows, the pair rows, the seat, the policy;
 #   3. dsh-master render in a scratch DSH_HOME: confined to profiles/master*,
-#      idempotent, restores a changed file and says so, writes dsh's own
-#      pnpm-workspace.yaml (compared with what the release's dsh writes for a
-#      new profile) only where none exists, and in it decides only the
-#      configured allowBuilds keys that are absent or undecided; install
+#      idempotent, restores a changed file and says so, owns
+#      pnpm-workspace.yaml: dsh's own text (compared with what the release's
+#      dsh writes for a new profile) plus the build policy, replacing a copy
+#      that differs, one DSH's plugin manager changed included; install
 #      judges the folder and its lockfile, and refuses a profile a running
 #      dshd instance uses;
 #   4. dsh-master settings seed against a stub of the floor's settings API;
@@ -28,15 +28,6 @@ let
   master = cfg.package;
   releaseDsh = lib.getExe' nas.config.dshd.releases.nas.dsh "dsh";
   python = pkgs.python3.withPackages (ps: [ ps.pyyaml ]);
-  # dsh's own text plus the configured build decisions: what render leaves.
-  buildLines = lib.concatStrings (
-    lib.mapAttrsToList (name: allow: "  ${name}: ${lib.boolToString allow}\n") cfg.allowBuilds
-  );
-  withBuilds = text: if cfg.allowBuilds == { } then text else text + "allowBuilds:\n" + buildLines;
-  decidedWorkspace = pkgs.writeText "pnpm-workspace.yaml" (
-    withBuilds (builtins.readFile master.pnpmWorkspace)
-  );
-  ownWorkspace = pkgs.writeText "pnpm-workspace.yaml" (withBuilds "packages: [.]\n");
   # `dshd ls` and `dshd get` as dshd prints them: floor runs $STUB_PROFILE.
   dshdStub = pkgs.writeShellScript "dshd-stub" ''
     case "$1" in
@@ -57,6 +48,7 @@ let
       pairEnv = lib.mapAttrs (_: pair: { inherit (pair) env maxWorkers; }) cfg.pairs;
       presets = lib.mapAttrs (_: pair: pair.preset) cfg.pairs;
       inherit (cfg)
+        allowBuilds
         defaultPair
         stateDir
         claudeConfigDir
@@ -103,7 +95,8 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   tree() { (cd "$1" && find . -printf '%p %m %y\n' | sort && find . -type f -print0 | sort -z | xargs -0 sha256sum); }
 
   # 3. Confinement and idempotency. A foreign profile and dsh's own files
-  # in a Master folder must come through byte-identical.
+  # in a Master folder must come through byte-identical; a workspace file
+  # that is not the rendered one is replaced and reported.
   export DSH_HOME="$TMPDIR/dsh-home"
   mkdir -p "$DSH_HOME/profiles/web" "$DSH_HOME/profiles/master/node_modules/x"
   echo '{"name":"dsh-profile-web"}' > "$DSH_HOME/profiles/web/package.json"
@@ -115,18 +108,21 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   keep() { (cd "$DSH_HOME" && sha256sum cordis.patch.yml profiles/web/* profiles/master/cordis.yml profiles/master/pnpm-lock.yaml); }
   keep > "$TMPDIR/keep.before"
 
-  $dm render > "$TMPDIR/first.out"
-  # The workspace file a new folder gets is the one dsh itself writes.
+  $dm render > "$TMPDIR/first.out" 2> "$TMPDIR/first.err"
+  # The workspace file starts with the text dsh itself writes for a new
+  # profile; the build policy follows it.
   DSH_HOME="$TMPDIR/init-home" ${releaseDsh} plugin --profile master-init version-exemptions > /dev/null
-  cmp "$TMPDIR/init-home/profiles/master-init/pnpm-workspace.yaml" ${master.pnpmWorkspace}
-  for p in master-gufo master-opus; do
-    cmp ${decidedWorkspace} "$DSH_HOME/profiles/$p/pnpm-workspace.yaml"
+  cmp "$TMPDIR/init-home/profiles/master-init/pnpm-workspace.yaml" ${master.dshWorkspace}
+  head -c "$(stat -c %s ${master.dshWorkspace})" ${master.pnpmWorkspace} | cmp - ${master.dshWorkspace}
+  grep -qx '  "msgpackr-extract": false' ${master.pnpmWorkspace}
+  for p in master master-gufo master-opus; do
+    cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/$p/pnpm-workspace.yaml"
     test "$(stat -c %a "$DSH_HOME/profiles/$p/pnpm-workspace.yaml")" = 644
-    grep -qx "created $p/pnpm-workspace.yaml" "$TMPDIR/first.out"
+    grep -qx "updated $p/pnpm-workspace.yaml" "$TMPDIR/first.out"
   done
-  if grep -q 'created master/' "$TMPDIR/first.out"; then exit 1; fi
-  # A folder's own workspace keeps its keys; render adds only the decisions.
-  cmp ${ownWorkspace} "$DSH_HOME/profiles/master/pnpm-workspace.yaml"
+  # master had a workspace file and no render state: someone else wrote it.
+  grep -qx 'dsh-master: master/pnpm-workspace.yaml was changed outside dsh-master; replacing it' "$TMPDIR/first.err"
+  test "$(wc -l < "$TMPDIR/first.err")" = 1
   for p in master master-gufo master-opus; do
     grep -qx "install needed: $p" "$TMPDIR/first.out"
     cmp ${master}/profiles/$p/cordis.patch.yml "$DSH_HOME/profiles/$p/cordis.patch.yml"
@@ -146,30 +142,31 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   keep | cmp - "$TMPDIR/keep.before"
   $dm status | grep >/dev/null -x 'master: rendered current, installed no, node_modules present'
 
-  # install refuses a folder without the workspace file, before running dsh;
-  # status calls it stale.
+  # install refuses a folder without the workspace file, or with another
+  # one, before running dsh; status calls it stale.
   rm "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
   $dm status | grep >/dev/null -x 'master-gufo: rendered stale, installed no, node_modules absent'
   if $dm install --dsh /nonexistent master-gufo 2> "$TMPDIR/noworkspace.err"; then exit 1; fi
-  grep -q 'master-gufo has no pnpm-workspace.yaml' "$TMPDIR/noworkspace.err"
+  grep -q 'master-gufo is not the rendered version' "$TMPDIR/noworkspace.err"
   $dm render --quiet
-  cmp ${decidedWorkspace} "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
-
-  # dsh records an undecided build after a failed install: render decides
-  # the configured one, keeps a person's own decision and the other keys,
-  # and status says what is still pending.
-  ws="$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
-  { cat ${master.pnpmWorkspace}; printf 'allowBuilds:\n  msgpackr-extract: set this to true or false\n  other-native: set this to true or false\n'; } > "$ws"
-  chmod 600 "$ws"
-  $dm status | grep >/dev/null -x 'master-gufo: rendered stale, installed no, node_modules absent, builds pending: msgpackr-extract, other-native'
-  $dm render | grep >/dev/null -x 'updated master-gufo/pnpm-workspace.yaml (allowBuilds)'
-  ${python}/bin/python3 -I -c 'import sys, yaml; d = yaml.safe_load(open(sys.argv[1])); assert d["allowBuilds"] == {"msgpackr-extract": False, "other-native": "set this to true or false"} and d["nodeLinker"] == "hoisted", d' "$ws"
-  test "$(stat -c %a "$ws")" = 600
-  $dm status | grep >/dev/null -x 'master-gufo: rendered current, installed no, node_modules absent, builds pending: other-native'
-  { cat ${master.pnpmWorkspace}; printf 'allowBuilds:\n  msgpackr-extract: true\n'; } > "$ws"
-  if $dm render | grep >/dev/null 'master-gufo/pnpm-workspace'; then exit 1; fi
-  grep -qx '  msgpackr-extract: true' "$ws"
-  cp ${decidedWorkspace} "$ws"
+  cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
+  # A build DSH's plugin manager recorded as pending (dsh-plugin-manager
+  # recordPendingBuilds) is replaced by the rendered policy, and said so.
+  printf '  esbuild: set this to true or false\n' >> "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
+  $dm status | grep >/dev/null -x 'master-gufo: rendered stale, installed no, node_modules absent, builds pending: esbuild'
+  if $dm install --dsh /nonexistent master-gufo 2> /dev/null; then exit 1; fi
+  $dm render --quiet 2> "$TMPDIR/pending.err"
+  grep -qx 'dsh-master: master-gufo/pnpm-workspace.yaml was changed outside dsh-master; replacing it' "$TMPDIR/pending.err"
+  cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
+  # A folder rendered before render owned the file (its state records no
+  # digest of it) gets the file replaced, with that reason.
+  python3 -I -c 'import json, sys; s = json.load(open(sys.argv[1])); s["rendered"].pop("pnpm-workspace.yaml"); json.dump(s, open(sys.argv[1], "w"))' \
+    "$DSH_HOME/profiles/master-gufo/.dsh-master.json"
+  cp ${master.dshWorkspace} "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
+  $dm render --quiet 2> "$TMPDIR/migrate.err"
+  grep -qx 'dsh-master: master-gufo/pnpm-workspace.yaml predates dsh-master rendering it; replacing it' "$TMPDIR/migrate.err"
+  cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
+  grep -q '"pnpm-workspace.yaml"' "$DSH_HOME/profiles/master-gufo/.dsh-master.json"
 
   # install judges the folder, not dsh's exit: a lockfile that locks this
   # package.json and a built lib/ for each dependency (.js for the fork,
