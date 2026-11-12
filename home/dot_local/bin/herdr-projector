@@ -18,8 +18,9 @@
 #
 # `--remote-keybindings server` is NOT optional: in `local` mode the client
 # strips its own [[keys.command]] bindings and never merges the server's
-# (src/client/shell/config.rs:158-162,195), so the tally popups (prefix+t,
-# prefix+shift+s, ...) would silently stop working from the laptop.
+# (src/client/shell/config.rs:158-162,195), so any server-side command
+# bindings would silently stop working from the laptop. (The Tally popups that
+# first needed this went with Tally on 2026-09-30.)
 #
 # RECONNECT (seam 1, option (a)). A plain `herdr --remote` has no reconnect:
 # on a lost link it prints "lost connection to remote Herdr ... Run `herdr

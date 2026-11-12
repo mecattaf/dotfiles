@@ -84,7 +84,7 @@ in
   # No clock (D32, Tom 2026-09-30): the weekly Tally producer that started it
   # went with the Tally sunset. The unit is the whole workflow, so it stays
   # replicable by any caller: `sudo systemctl start journal-archive` by hand,
-  # or a factory (substrate) schedule running that same command over ssh. Its
+  # or an agency scheduled item running that same command over ssh. Its
   # exit code carries the liveness verdict described above.
   systemd.services.journal-archive = lib.mkIf (config.myFleet.has "brain") {
     description = "Move rotated remote journal files from NAS NVMe to HDD";

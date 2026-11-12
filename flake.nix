@@ -21,8 +21,8 @@
     # is either an upstream binary (chrome), a leaf tool (uv), or the
     # versioned kernel attr whose whole doctrine is point-fix-only advance.
     #
-    # The lock entry is the reviewed revision. The Projects nightly checker
-    # proposes lock bumps in update/nixpkgs-fresh PRs; it never deploys.
+    # The lock entry is the reviewed revision. Lock bumps land as reviewed PRs
+    # and never deploy on their own (the nightly fleet update is disabled).
     # rollingInputOverrides remains available to explicit fleet candidates.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
@@ -127,17 +127,18 @@
     };
 
     # llm-agents.nix — numtide's daily-rebuilt catalog of ~100 AI coding agents
-    # and tooling (claude-code, codex, gemini-cli, opencode, crush, goose, amp,
-    # ...). Its `overlays.default` exposes the whole set, prebuilt against its OWN
+    # and tooling (claude-code, codex, opencode, crush, goose, amp, ...). Its
+    # `overlays.default` exposes the whole set, prebuilt against its OWN
     # fresh nixpkgs-unstable, under the namespaced `pkgs.llm-agents.*` — so it
     # neither re-evaluates our nixpkgs nor collides with it. This is how we get
     # newest claude-code DECOUPLED from our (deliberately lagging) nixpkgs pin.
-    # Nightly fleet builds re-resolve this input at HEAD via
-    # `rollingInputOverrides`; `nix flake update llm-agents` updates the local and
-    # failure-fallback lock without touching kernel/Mesa.
+    # Explicit fleet candidates may re-resolve this input at HEAD via
+    # `rollingInputOverrides` (the nightly fleet update is disabled);
+    # `nix flake update llm-agents` updates the lock without touching kernel/Mesa.
     # Deliberately NO inputs.nixpkgs.follows — following our pin would rebuild
     # against stale deps and miss the numtide cache (substituter added in
-    # modules/common.nix). home/home.nix installs the entire set via buildEnv.
+    # modules/common.nix). home/agent-tools.nix installs an allowlist of it
+    # (`keepFromLlmAgents`) via buildEnv.
     llm-agents.url = "github:numtide/llm-agents.nix";
 
     # NAS session supervision; DSH itself still comes from llm-agents.
@@ -177,14 +178,16 @@
     };
 
     # herdr — the terminal workspace manager for AI coding agents
-    # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
-    # replaces everything this repo used to invent for itself: the home-grown
-    # kitten tier, its session layer, and its title-naming pipeline are all
-    # deleted in favour of one server holding every PTY.
+    # (github.com/herdrdev/herdr, Apache-2.0). It replaced everything this repo
+    # used to invent for itself: the home-grown kitten tier, its session layer,
+    # and its title-naming pipeline were deleted in favour of one server holding
+    # every PTY. Herdr itself is now out of the picture (#729): it stays
+    # installed on the NAS and holds live sessions until a replacement carries
+    # them.
     #
-    # PINNED TO A REV, not a branch: v0.9.1 (2026-09-16) is the current release
-    # (plugin API + the agent sidebar), and nixpkgs carries an older release. Bump by
-    # editing the rev here, deliberately, the way nixpkgs-paperless is bumped.
+    # PINNED TO A REV, not a branch (v0.9.3 today; nixpkgs carries an older
+    # release). Bump by editing the rev here, deliberately, the way
+    # nixpkgs-paperless is bumped.
     #
     # Consume `packages.<sys>.herdr` ONLY (home/herdr.nix). Upstream composes
     # rust-overlay into its own pkgs fixpoint to build the Rust toolchain from
@@ -265,8 +268,9 @@
       system = "x86_64-linux";
 
       # Inputs whose PACKAGE CONTENT may move independently of the committed
-      # flake.lock during the nightly fleet transaction. The strix resolves
-      # each once and passes the same immutable URLs to every build and activation.
+      # flake.lock in an explicit fleet candidate build (the nightly fleet
+      # update is disabled). The strix resolves each once and passes the same
+      # immutable URLs to every build and activation.
       #
       # This is intentionally NOT the main nixpkgs input: kernel/Mesa remain behind
       # an explicit lock-file review. These inputs are isolated package catalogs or
@@ -1310,15 +1314,10 @@
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and the user timers are all real. What
           # it must NOT pick up are the things gated on being the strix —
-          # the Tally daemon, voxtype, and since 2026-09-11 the graphical
-          # session itself (no display output on that box: Tom's ruling).
-
-          # …and the herdr SERVER. The worker still gets the herdr binary (it is
-          # how `herdr --remote strix` works at all), just no unit.
-
-          # The BINARY, though, is the worker's too — the client is how you
-          # reach a server at all (`herdr --remote strix`). One server
-          # (ruling B5, #309 settled), clients elsewhere, unchanged.
+          # voxtype, and since 2026-09-11 the graphical session itself (no
+          # display output on that box: Tom's ruling) — nor a herdr server: the
+          # one server is the NAS's (ruling B5), and Herdr is retiring (#729).
+          # The worker itself is dormant until its replacement arrives.
 
           # The shared browser desktop and chrome-stream left strix-coordinator
           # on 2026-10-31 (#651): no host declares the browser-desktop user
@@ -2789,7 +2788,8 @@
           # retired engine formats are absent from both wanted set and catalog.
           # Each list is everything that host holds since the 2026-10-25
           # loans, so a default borrow restores it and prune keeps it. The
-          # coordinator's disk cannot hold Flash-Next Q8 or the ds4 Q2 (D-A).
+          # coordinator's disk cannot hold Flash-Next Q8, nor could it hold the
+          # since-retired ds4 Q2 (D-A).
           assert
             nixpkgs.lib.sort builtins.lessThan strix.services.local-models.artifacts
             == nixpkgs.lib.sort builtins.lessThan [
@@ -2828,7 +2828,8 @@
           # attribute — no deployments, no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           # Plus Gufo's collection (lib/gufo-models.json), as gufo-org/gufo
-          # v0.22.0 plus Q8 and the separately pinned ds4 V4.1 model.
+          # v0.22.0 plus Q8; the ds4 V4.1 rows were retired on 2026-11-08
+          # (lib/ds4-models.json is empty).
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "d3-ultra-bf16"

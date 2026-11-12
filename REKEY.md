@@ -75,8 +75,9 @@ to Gufo control. Hardware qualification and model staging remain required.
   overwrite a refreshed live credential.
 - Take a final capture with harness writers quiescent. Initial online database
   captures are preservation copies, not an atomic final handover.
-- Substrate stays paused. Its rekey provides central escrow; it does not enable
-  a runner or finish the DSH runner contract.
+- Substrate is retired. Its two token ciphertexts are still declared in
+  `secrets.nix` as escrow only; they enable no runner and are delivered to no
+  unit.
 - Keep coordinator Chrome per Tom's latest instruction. Preserve its profiles
   and encrypted NAS/admin keyring recovery escrow before firmware changes. A
   board-bound TPM blob alone cannot recover after a fresh install or PCR change.
