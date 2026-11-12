@@ -25,7 +25,7 @@ let
     name = "imagine-production";
     src = inputs.imagine;
     filter =
-      path: type:
+      path: _type:
       let
         relative = if path == imagineRoot then "" else lib.removePrefix "${imagineRoot}/" path;
         production = relative == "" || relative == "src" || lib.hasPrefix "src/" relative;

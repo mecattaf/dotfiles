@@ -109,6 +109,7 @@ pkgs.testers.runNixOSTest {
   testScript = ''
     import datetime as dt
     import json
+    import os
     import re
     import shlex
 
@@ -120,6 +121,9 @@ pkgs.testers.runNixOSTest {
     CLI = f"env SCHEDULED_INBOX={INBOX} SCHEDULED_FLOOR_INSTANCE=floor"
     CLI_NO_FLOOR = f"env -u SCHEDULED_FLOOR_INSTANCE SCHEDULED_INBOX={INBOX}"
     WAIT = 300
+    # S4 boots the guest with its clock this far past an hour mark, so the
+    # boot tick and the OnStartupSec tick two minutes later share an hour.
+    S4_PAST_HOUR = 300
 
 
     def tom(command: str, bus: bool = True) -> str:
@@ -281,10 +285,26 @@ pkgs.testers.runNixOSTest {
         run(f"{STUB_FLOOR} {INBOX}")
         before = last_tick()
         nas.crash()
-        # The guest clock comes back at host time, about three hours on.
-        nas.start(allow_reboot=True)
+        # The guest clock would come back at host time, about three hours on, and the
+        # two ticks below would straddle an hour mark whenever the cut fell within
+        # about 150 s before one (the second tick then rightly hands off the new hour).
+        # Pin it instead, from the guest's own last tick: S4_PAST_HOUR past the hour,
+        # three hours on. The VM's run script reads QEMU_OPTS.
+        pin = (hours(before) + 3) * 3600 + S4_PAST_HOUR
+        saved = os.environ.get("QEMU_OPTS")
+        os.environ["QEMU_OPTS"] = f"-rtc base={dt.datetime.fromtimestamp(pin, dt.timezone.utc):%Y-%m-%dT%H:%M:%S}"
+        try:
+            nas.start(allow_reboot=True)
+        finally:
+            if saved is None:
+                del os.environ["QEMU_OPTS"]
+            else:
+                os.environ["QEMU_OPTS"] = saved
         boot()
         wait_tick(before)
+        print(f"S4: pin {pin}, boot tick {last_tick()}, guest {nas.succeed('date -u +%FT%TZ').strip()}")
+        # The pin held: the boot tick ran in the pinned hour.
+        assert hours(last_tick()) == pin // 3600, (last_tick(), pin)
         after_boot = records()
         fresh = [n for n in after_boot if n not in pending]
         assert len(fresh) == 1, (after_boot, pending)
