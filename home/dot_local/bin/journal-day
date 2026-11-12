@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Select a permanent journal-day cwd; only the convenience link rotates."""
 import argparse
+import contextlib
 from datetime import datetime
 import fcntl
 import json
@@ -10,6 +11,50 @@ import re
 import sys
 import tempfile
 from zoneinfo import ZoneInfo
+
+# Harness launchers whose argv[0] (or comm) marks an open session. argv[0] is
+# what counts: wrapped binaries and node CLIs often carry another comm.
+SESSION_COMMANDS = ('claude', 'codex', 'dsh')
+EX_TEMPFAIL = 75
+
+
+class Busy(ValueError):
+    """A session still works in the day an unattended rotation would leave."""
+
+
+def ancestry(proc_root):
+    try:
+        pid = int(os.readlink(proc_root / 'self'))
+    except (OSError, ValueError):
+        pid = os.getpid()
+    seen = set()
+    while pid > 0 and pid not in seen:
+        seen.add(pid)
+        try:
+            status = (proc_root / str(pid) / 'status').read_text()
+            pid = int(re.search(r'^PPid:\s*(\d+)', status, re.M).group(1))
+        except (OSError, AttributeError, ValueError):
+            break
+    return seen
+
+
+def open_sessions(folder, commands, proc_root):
+    """Harness processes outside the caller's own ancestry with a cwd in folder."""
+    callers = ancestry(proc_root)
+    found = []
+    for entry in sorted(proc_root.iterdir(), key=lambda entry: entry.name):
+        if not entry.name.isdigit() or int(entry.name) in callers:
+            continue
+        try:
+            cwd = Path(os.readlink(entry / 'cwd'))
+            argv0 = (entry / 'cmdline').read_bytes().split(b'\0', 1)[0]
+            comm = (entry / 'comm').read_text().strip()
+        except OSError:
+            continue
+        name = Path(os.fsdecode(argv0)).name
+        if (name in commands or comm in commands) and (cwd == folder or folder in cwd.parents):
+            found.append(f'pid {entry.name} ({name or comm})')
+    return found
 
 
 def atomic_json(path, value):
@@ -33,7 +78,7 @@ def dated_path(root, path):
     return path
 
 
-def select(config, seat=None, resume=False, now=None):
+def select(config, seat=None, resume=False, now=None, dry_run=False, proc_root=Path('/proc')):
     root = Path(config['journal_root']).expanduser().resolve(strict=True)
     alias = Path(config['today_link']).expanduser().absolute()
     if not root.is_dir() or not alias.parent.is_dir():
@@ -44,13 +89,20 @@ def select(config, seat=None, resume=False, now=None):
         'XDG_STATE_HOME', Path.home() / '.local/state')) / 'journal-day')).expanduser()
     if state_root.is_symlink():
         raise ValueError('State directory must not be a symlink')
-    state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if state_root.stat().st_uid != os.getuid():
+    if not dry_run:
+        state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if state_root.exists() and state_root.stat().st_uid != os.getuid():
         raise ValueError('State directory belongs to another user')
-    os.chmod(state_root, 0o700)
     # The external scheduler can call this same helper. No timer is installed.
-    with (state_root / 'lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    # A dry run takes no lock and writes nothing, not even the state directory.
+    if dry_run:
+        lock = contextlib.nullcontext()
+    else:
+        os.chmod(state_root, 0o700)
+        lock = (state_root / 'lock').open('a')
+    with lock:
+        if not dry_run:
+            fcntl.flock(lock, fcntl.LOCK_EX)
         state_path = state_root / 'state.json'
         state = json.loads(state_path.read_text()) if state_path.exists() else {'seats': {}}
         previous = None
@@ -70,6 +122,18 @@ def select(config, seat=None, resume=False, now=None):
         zone = ZoneInfo(config.get('timezone', 'Europe/Paris'))
         day = (now or datetime.now(zone)).astimezone(zone)
         destination = root / day.strftime('%Y/%m/%d')
+        if destination.exists():
+            destination = dated_path(root, destination)
+        # An unattended rotation waits while a session still works in the day it
+        # would leave; a seat launch is a person choosing the new day.
+        if seat is None and previous not in (None, destination):
+            sessions = open_sessions(previous, config.get('session_commands', SESSION_COMMANDS),
+                                     proc_root)
+            if sessions:
+                raise Busy(f'Refusing to rotate while a session is open in {previous}: '
+                           + ', '.join(sessions))
+        if dry_run:
+            return destination
         destination.mkdir(parents=True, exist_ok=True)
         destination = dated_path(root, destination)
         if previous is not None:
@@ -105,12 +169,17 @@ def main():
         Path.home() / '.config')) / 'journal-day.json')))
     parser.add_argument('--seat', help='Remember the physical cwd for a fresh seat launch')
     parser.add_argument('--resume-seat', help='Return the last seat cwd without rotating today')
+    parser.add_argument('--dry-run', action='store_true',
+                        help='Print the directory a run would select; create, write or rotate nothing')
     args = parser.parse_args()
     if args.seat and args.resume_seat:
         parser.error('--seat and --resume-seat are mutually exclusive')
     try:
         print(select(json.loads(args.config.read_text()), args.seat or args.resume_seat,
-                     args.resume_seat is not None))
+                     args.resume_seat is not None, dry_run=args.dry_run))
+    except Busy as error:
+        print('journal-day: ' + str(error), file=sys.stderr)
+        return EX_TEMPFAIL
     except (OSError, ValueError, KeyError) as error:
         print('journal-day: ' + str(error), file=sys.stderr)
         return 1

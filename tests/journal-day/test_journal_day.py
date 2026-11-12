@@ -1,3 +1,4 @@
+import contextlib
 import importlib.machinery
 import importlib.util
 import os
@@ -6,6 +7,7 @@ import tempfile
 import unittest
 import json
 import shutil
+import signal
 import subprocess
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -243,10 +245,16 @@ class Rollover(unittest.TestCase):
         config_path.write_text(json.dumps(self.config))
         today = self.journal / datetime.now(ZoneInfo('Europe/Paris')).strftime('%Y/%m/%d')
         self.assertNotEqual(today, self.old)
-        session = subprocess.Popen(['journal-day-test-session', '60'],
-                                   executable=shutil.which('sleep'), cwd=self.old)
-        self.addCleanup(session.wait)
-        self.addCleanup(session.kill)
+        # A shell under an assumed argv[0], in its own group so no child outlives it.
+        session = subprocess.Popen(['journal-day-test-session', '-c', 'sleep 60; :'],
+                                   executable=shutil.which('sh'), cwd=self.old,
+                                   start_new_session=True)
+
+        def stop():
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(session.pid, signal.SIGKILL)
+            session.wait()
+        self.addCleanup(stop)
 
         def run(*args):
             return subprocess.run([str(SOURCE), '--config', str(config_path), *args],
@@ -258,12 +266,12 @@ class Rollover(unittest.TestCase):
             self.assertIn('journal-day-test-session', busy.stderr)
         self.assertEqual(self.alias.resolve(), self.old)
         self.assertFalse(today.exists())
-        session.kill()
-        session.wait()
+        stop()
         planned = run('--dry-run')
         self.assertEqual((planned.returncode, planned.stdout.strip()), (0, str(today)))
         self.assertFalse(today.exists())
-        self.assertFalse(self.state.exists())
+        # Refused runs and the dry run record nothing; only the lock file exists.
+        self.assertFalse((self.state / 'state.json').exists())
         done = run()
         self.assertEqual((done.returncode, done.stdout.strip()), (0, str(today)))
         self.assertEqual(self.alias.resolve(), today)
