@@ -33,12 +33,22 @@ Rules the renderer keeps, each asserted by `checks.dsh-master`:
 - A pair is a folder: add one to `programs.dsh.master.pairs` and it renders
   `master-<name>`. `defaultPair` picks the pair of a Ticket whose Trigger
   names none.
+- dsh headless binds no agent preset, so a worker folder inserts the preset
+  registry and, for a pair with a `preset` (`claude` for a Claude pair),
+  dsh-claude's `headless-preset` binder. A pair of another provider binds
+  none: the `claude` preset sends every request to Claude Code, and a Gufo
+  worker under it fails its first turn.
+- Both plugins are pinned to one release tag, `programs.dsh.master.tag`
+  (`floor-v2.<n>`; `floor-v2.0` is the placeholder before the first
+  release). `superagent` or `claude` overrides one pin on its own.
 
 ## Commands
 
 Activation runs `dsh-master render --quiet`. It copies the rendered files
 into `~/.dsh/profiles/master*` when they differ, says when a copy was
-changed by hand, and never runs pnpm. The other steps are by hand:
+changed by hand, and never runs pnpm. A folder without `pnpm-workspace.yaml`
+also gets the one dsh writes for a new profile; render never replaces it.
+The other steps are by hand:
 
 ```sh
 dsh-master render            # what activation does, with a line per file
@@ -49,8 +59,10 @@ dsh-master settings seed     # once, after the floor's first start
 ```
 
 `install` runs `/etc/dshd/releases/default/bin/dsh plugin --profile <p>
-install` under a 600 s timeout and then judges the folder, not the exit:
-`package.json` unchanged, a lockfile, and a built `lib/` for each dependency.
+install` under a 600 s timeout, with pnpm and git on PATH, and then judges
+the folder, not the exit: `package.json` unchanged, a lockfile, and a built
+`lib/` for each dependency. Without the folder's `pnpm-workspace.yaml` pnpm
+would pull the plugins' DSH peers from the registry, so install refuses it.
 The fleet wrapper refuses `dsh plugin`. After a pin moves (`superagent`,
 `claude`), render prints `install needed: <p>`.
 
