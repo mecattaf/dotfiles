@@ -25,6 +25,12 @@ compiled in, answering `POST /v1/embeddings`. It has the text TTL (600 s), the
 `/ready` check and no group, so it is swapped like every other route and never
 resident beside Flash-Next. Every other route keeps the `gufo` input.
 
+One non-Gufo route shares the supervisor: `hy-memory-30b-a3b`
+([`modules/hy-memory.nix`](../modules/hy-memory.nix), #603), a plain
+`llama-server` from nixpkgs-fresh for the hy_v3 architecture that Gufo does
+not load. It serves the borrowed Library GGUF, has the text TTL (600 s), a
+`/health` check and no tools, and is never on PATH.
+
 `gufo-switch flash|qwen38-27b|qwen38-27b-q8` explicitly warms a model through
 llama-swap. Ordinary API requests select their model without this command.
 `gufo-switch off` stops the endpoint and its children. Direct Gufo units
