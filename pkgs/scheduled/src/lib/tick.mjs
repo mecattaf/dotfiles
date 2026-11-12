@@ -306,7 +306,8 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
 
       const v = await validateFile(f.path, { uid: ctx.uid, pairs });
       const entry = entryOf(f, st, v, prev, { now, lastTick });
-      if (!entry.valid && entry.revision && entry.revision !== prev?.revision) {
+      // Once per revision, and once more when a valid parse turns invalid unchanged (the floor's pairs changed).
+      if (!entry.valid && entry.revision && (entry.revision !== prev?.revision || prev?.valid)) {
         const first = entry.problems.find((p) => p.severity === 'error') || { line: 0, col: 0 };
         lines.push(`<4>invalid item=${f.id} rev=${entry.revision} at=${first.line}:${first.col}`);
       }

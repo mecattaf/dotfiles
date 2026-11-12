@@ -115,6 +115,7 @@ test('P9 a pair the floor no longer has is refused at the next tick although the
     const entry = env.entry('master:local');
     assert.equal(entry.valid, false);
     assert.deepEqual(entry.problems.map((p) => p.code), ['unknown-pair']);
+    assert.ok(res.lines.some((l) => l.startsWith(`<4>invalid item=master:local rev=${entry.revision} at=`)), res.lines.join('\n'));
     assert.ok(res.lines.includes('<5>withdrawn occurrence=master~local@20261112T1200Z reason=invalid'), res.lines.join('\n'));
     assert.deepEqual(env.records(), []);
 
