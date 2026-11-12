@@ -400,7 +400,7 @@ def status(args):
         )
     profiles = os.path.join(home, "profiles")
     for name in sorted(os.listdir(profiles)) if os.path.isdir(profiles) else []:
-        if NAME.match(name) and name not in manifest["profiles"] and os.path.isdir(os.path.join(profiles, name)):
+        if NAME.fullmatch(name) and name not in manifest["profiles"] and os.path.isdir(os.path.join(profiles, name)):
             print(f"{name}: orphan, not rendered by this build (remove it by hand when no instance uses it)")
     return 1 if behind else 0
 

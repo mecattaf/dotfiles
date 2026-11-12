@@ -122,7 +122,8 @@ assert
 # The Claude pair binds dsh-claude's preset; Gufo binds none.
 assert cfg.pairs.opus.preset == "claude" && cfg.pairs.gufo.preset == null;
 assert pinsFollowTag retagged && retagged.claude == "github:mecattaf/dsh-claude#floor-v2.99";
-assert !(pinsFollowTag overridden) && overridden.claude == "github:mecattaf/dsh-claude#${overridden.tag}";
+assert
+  !(pinsFollowTag overridden) && overridden.claude == "github:mecattaf/dsh-claude#${overridden.tag}";
 pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   set -euo pipefail
   export HOME="$TMPDIR/home" PYTHONDONTWRITEBYTECODE=1
@@ -258,7 +259,7 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
     mkdir -p "$f/node_modules/dsh-superagent/lib" "$f/node_modules/@norman-else/dsh-claude/lib"
     touch "$f/node_modules/dsh-superagent/lib/index.js" "$f/node_modules/@norman-else/dsh-claude/lib/index.mjs"
     ${python}/bin/python3 -I ${./lockfile.py} "$f"
-    STUB_PROFILE=none $dm $di --dsh ${pkgs.coreutils}/bin/true $p | grep >/dev/null -x "installed $p"
+    STUB_PROFILE=web $dm $di --dsh ${pkgs.coreutils}/bin/true $p | grep >/dev/null -x "installed $p"
   done
   mkdir "$DSH_HOME/profiles/master-retired"
   status 0
