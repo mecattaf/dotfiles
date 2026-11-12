@@ -279,7 +279,7 @@ directory every node works in), and optionally `args`, `pair` and
   [scheduled.md](scheduled.md#starting-a-workflow-from-an-item). This is
   the path the live rehearsal exercises.
 - A message to the main Session in the web app, such as "Run
-  /home/tom/work/acme/release-notes.workflow.js in /home/tom/work/acme on
+  /home/me/work/acme/release-notes.workflow.js in /home/me/work/acme on
   the gufo pair". This path has not yet been exercised end to end.
 
 **Check a run** by asking the main Session for its status:

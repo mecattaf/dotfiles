@@ -26,8 +26,8 @@ workflow scripts start there, never from an item.
 
 ## From the seat: the first item
 
-Run these as Tom's user on the NAS. The `scheduled` program and the two
-environment variables it needs (`SCHEDULED_INBOX`,
+Run these on the NAS as the user who owns the agencies. The `scheduled`
+program and the two environment variables it needs (`SCHEDULED_INBOX`,
 `SCHEDULED_FLOOR_INSTANCE`) come together: the installed command carries
 the inbox and floor as defaults (a wrapper), so Claude Code, a Herdr pane,
 dsh-web's terminal and a plain shell all reach the same inbox and floor
@@ -98,8 +98,8 @@ changes the next occurrence.
 | `$schema`, `x-*` | no | ignored, kept |
 
 The file name is the item id: `^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$`.
-The file, `scheduled/` and `.agency/` must be Tom's and not group- or
-world-writable, because an item's work runs with full permissions.
+The file, `scheduled/` and `.agency/` must belong to the user the heartbeat
+runs as and not be group- or world-writable, because an item's work runs with full permissions.
 
 Any condition, outcome check, hold or context goes into `job.prompt` in
 words: the main Session judges it when the occurrence arrives ("skip if
@@ -163,10 +163,10 @@ The work is the report: there is no report file and no result table.
 | Did the floor get the record? | `scheduled history [ID]`: `done` or `bad` with the error |
 | Which unit ran it | `dshd ls` lists units named `sa-…-a<k>`; `dshd get --json <unit>` shows the labels `superagent.ticket`, `superagent.assignment` and `superagent.pair`, the cwd and the exit |
 | What the worker printed | `dshd read <unit>` (last 200 lines; `-n N`, `-f` while it runs) |
-| The worker's full session, Claude pairs | `~/.claude-work/projects/<cwd slug>/<session>.jsonl`, the cc2 seat. The slug is the agency path with every `/` and `.` as `-`: `~/work/acme` is `-home-tom-work-acme` |
+| The worker's full session, Claude pairs | `~/.claude-work/projects/<cwd slug>/<session>.jsonl`, the cc2 seat. The slug is the agency path with every `/` and `.` as `-`: `/home/me/work/acme` is `-home-me-work-acme` |
 | The worker's full session, every pair | `~/.dsh/sessions/--<cwd with / as ->--/session-<id>/session.v4.jsonl` |
 | The superagent's decision and the Ticket | the floor's panel (`dshd attach floor`), Trigger and Execution tabs; see [dsh-master.md](dsh-master.md#the-panel) |
-| The superagent's own transcript | `~/.claude-work/projects/-home-tom--agency-state-master/`: the main Session works in the `stateDir` |
+| The superagent's own transcript | `~/.claude-work/projects/<slug of the stateDir>/`, such as `-home-me--agency-state-master`: the main Session works in the `stateDir` |
 
 ## Failure is passive
 
@@ -193,7 +193,7 @@ when its prompt says so, which is also how a workflow runs on a schedule:
   "job": {
     "prompt": [
       "This is a request to you, the superagent, not work for a worker. Do not accept it as a ticket.",
-      "Call orchestrator_workflow_start with script /home/tom/work/acme/release-notes.workflow.js and cwd /home/tom/work/acme.",
+      "Call orchestrator_workflow_start with script /home/me/work/acme/release-notes.workflow.js and cwd /home/me/work/acme.",
       "Then ignore this trigger with the reason: started workflow <the run id you got>."
     ]
   }

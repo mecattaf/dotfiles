@@ -32,8 +32,8 @@ on the floor's default pair.
   `--prompt-file .agency/prompts/x.md`, relative to the agency folder;
   write that file first). New items are always `"enabled": false`. For
   a new agency, `mkdir -p <folder>/.agency` first.
-- Show Tom the next instants (`scheduled show ID -n 3`, printed in UTC)
-  and say them in his local time.
+- Show the next instants (`scheduled show ID -n 3`, printed in UTC)
+  and say them in local time.
 - Arm only what Tom asked for: `scheduled set ID enabled true`. To
   disarm: `scheduled set ID enabled false`. The first hourly tick that
   sees an item armed fires nothing, so arming less than an hour before
