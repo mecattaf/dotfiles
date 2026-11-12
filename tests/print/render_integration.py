@@ -12,6 +12,7 @@ import unittest
 SCRIPT = Path(os.environ["PRINT_PAPER_SCRIPT"])
 SPEC = importlib.util.spec_from_file_location("print_paper", SCRIPT)
 print_paper = importlib.util.module_from_spec(SPEC)
+sys.modules["print_paper"] = print_paper
 SPEC.loader.exec_module(print_paper)
 
 
