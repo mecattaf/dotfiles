@@ -682,6 +682,11 @@
           inherit pkgs self;
           inherit (nixpkgs) lib;
         };
+        # `nix build .#<name>` is the derivation the installing host ships.
+        packages-host-drv = import ./tests/packages-host-drv {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
         fleet-roles = import ./tests/fleet-roles {
           inherit pkgs self;
           inherit (nixpkgs) lib;
