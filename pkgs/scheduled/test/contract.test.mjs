@@ -3,13 +3,18 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { tick } from '../src/lib/tick.mjs';
 import { main as runMain } from '../src/verbs/run.mjs';
 import { setupEnv, hourly } from './helpers.mjs';
 
-const FIXTURE = JSON.parse(fs.readFileSync(fileURLToPath(new URL('./fixtures/occurrence-v1.json', import.meta.url)), 'utf8'));
+const FIXTURE_BYTES = fs.readFileSync(fileURLToPath(new URL('./fixtures/occurrence-v1.json', import.meta.url)));
+const FIXTURE = JSON.parse(FIXTURE_BYTES.toString('utf8'));
+// The fork's tests/fixtures/scheduled-occurrence-v1.json at floor/scheduled @28635d4. A change on either
+// side changes this digest: copy the fork's bytes again and update it here, never edit the fixture alone.
+const FORK_FIXTURE_SHA256 = '170bb0c7cc2da3b75fc8c369380dd08084372c56798658ee9185825b3b8e8849';
 // `pair` is a record field this side never writes: work runs on the floor's default pair.
 const shape = (record) => Object.fromEntries(Object.entries(record).filter(([k]) => k !== 'pair').map(([k, v]) => [k, typeof v]).sort());
 const fixtureOf = (kind) => FIXTURE.find((r) => r.kind === kind);
@@ -46,4 +51,9 @@ test('C1 a tick\'s record and a run\'s record have exactly the field set and typ
   } finally {
     env.cleanup();
   }
+});
+
+test('C2 test/fixtures/occurrence-v1.json is the fork\'s exact bytes: 982 bytes, sha256 170bb0c7…8849', () => {
+  assert.equal(FIXTURE_BYTES.length, 982);
+  assert.equal(crypto.createHash('sha256').update(FIXTURE_BYTES).digest('hex'), FORK_FIXTURE_SHA256);
 });
