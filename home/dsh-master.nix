@@ -85,8 +85,9 @@ in
       # tarballs hold the built lib/. floor-v2.1 was the first release;
       # floor-v2.2 adds the executor's long-run Session read; floor-v2.3
       # registers the superagent's tool parameters as plain JSON, which the
-      # Claude bridge needs. Move this with each new tag.
-      default = "floor-v2.3";
+      # Claude bridge needs; floor-v2.4 has dsh-claude's bridge call DSH 0.2's
+      # batch tool executor. Move this with each new tag.
+      default = "floor-v2.4";
       description = "Release tag both plugin pins name, unless `superagent` or `claude` is set.";
     };
     superagent = mkOption {
