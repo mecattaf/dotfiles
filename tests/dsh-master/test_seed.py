@@ -93,7 +93,9 @@ class Seed(unittest.TestCase):
         with open(SEED, encoding="utf-8") as stream:
             seed = json.load(stream)
         self.assertEqual(sorted(seed), ["admission", "eval", "rules"])
-        self.assertEqual(seed["eval"], {"mode": "auto"})
+        self.assertEqual(seed["eval"], {"mode": "auto", "timeoutSeconds": 600})
+        # The fork's EvalConfigSchema bounds (src/limits.ts evalTimeoutSeconds).
+        self.assertTrue(30 <= seed["eval"]["timeoutSeconds"] <= 600)
         for rule in seed["rules"]:
             self.assertEqual(sorted(rule), ["enabled", "id", "instruction", "name"])
             self.assertRegex(rule["id"], r"^[a-zA-Z0-9_-]{1,80}$")
@@ -112,7 +114,7 @@ class Seed(unittest.TestCase):
         self.assertEqual([rule["id"] for rule in policy["rules"]], ["own", "scheduled", "workflow-node"])
         self.assertEqual(policy["sources"]["scheduled"]["admission"]["occurrence"], {"unlistedUnaddressed": "inferred"})
         self.assertEqual(policy["sources"]["workflow"]["admission"]["workflow"], {"unlistedUnaddressed": "inferred"})
-        self.assertEqual(floor.blocks["eval"]["value"], {"mode": "auto", "timeoutSeconds": 120, "model": None})
+        self.assertEqual(floor.blocks["eval"]["value"], {"mode": "auto", "timeoutSeconds": 600, "model": None})
         self.assertEqual(self.run_seed(floor), (0, "unchanged\n", ""))
         self.assertEqual(floor.puts, ["policy", "eval"])
 
@@ -121,25 +123,38 @@ class Seed(unittest.TestCase):
         policy = floor.blocks["policy"]["value"]
         policy["rules"].append({"id": "scheduled", "name": "Old", "enabled": False, "instruction": "old"})
         policy["sources"]["scheduled"] = {"allowed": [{"id": "x"}], "admission": {"occurrence": {"listedUnaddressed": "explicit"}}}
-        self.assertEqual(self.run_seed(floor), (0, "changed policy\n", ""))
+        self.assertEqual(self.run_seed(floor), (0, "changed policy eval\n", ""))
         policy = floor.blocks["policy"]["value"]
         self.assertEqual([rule["name"] for rule in policy["rules"]], ["Own", "Scheduled items", "Workflow node"])
         self.assertEqual(policy["sources"]["scheduled"]["allowed"], [{"id": "x"}])
         self.assertEqual(policy["sources"]["scheduled"]["admission"]["occurrence"], {"listedUnaddressed": "explicit", "unlistedUnaddressed": "inferred"})
 
+    def test_raises_the_eval_time_limit_and_never_lowers_it(self):
+        floor = Floor(mode="auto")
+        self.assertEqual(self.run_seed(floor)[:2], (0, "changed policy eval\n"))
+        self.assertEqual(floor.blocks["eval"]["value"], {"mode": "auto", "timeoutSeconds": 600, "model": None})
+        self.assertEqual(self.run_seed(floor)[:2], (0, "unchanged\n"))
+        # A limit a person set at least as long as the seed's stays.
+        floor = Floor(mode="auto")
+        floor.blocks["eval"]["value"]["timeoutSeconds"] = 600
+        floor.blocks["policy"]["value"]["rules"] = []
+        self.assertEqual(self.run_seed(floor)[:2], (0, "changed policy\n"))
+        self.assertEqual(floor.puts, ["policy"])
+
     def test_never_turns_a_mode_down(self):
         floor = Floor(mode="off")
         code, out, err = self.run_seed(floor)
-        self.assertEqual((code, out), (0, "changed policy\n"))
+        # The time limit still rises; the mode a person switched off stays off.
+        self.assertEqual((code, out), (0, "changed policy eval\n"))
         self.assertIn("eval.mode is off", err)
-        self.assertEqual(floor.blocks["eval"]["value"]["mode"], "off")
+        self.assertEqual(floor.blocks["eval"]["value"], {"mode": "off", "timeoutSeconds": 600, "model": None})
 
     def test_leaves_an_unknown_mode_alone(self):
         floor = Floor(mode="paused")
         code, out, err = self.run_seed(floor)
         self.assertEqual((code, out), (0, "changed policy\n"))
         self.assertIn("eval.mode is 'paused'", err)
-        self.assertEqual(floor.blocks["eval"]["value"]["mode"], "paused")
+        self.assertEqual(floor.blocks["eval"]["value"], {"mode": "paused", "timeoutSeconds": 120, "model": None})
 
     def test_rereads_once_on_a_conflict_and_fails_on_a_second(self):
         floor = Floor()

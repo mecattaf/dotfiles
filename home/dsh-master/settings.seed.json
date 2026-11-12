@@ -1,6 +1,7 @@
 {
   "eval": {
-    "mode": "auto"
+    "mode": "auto",
+    "timeoutSeconds": 600
   },
   "rules": [
     {

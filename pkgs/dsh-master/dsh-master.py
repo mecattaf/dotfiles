@@ -359,13 +359,22 @@ def seeded(blocks, seed):
             changes["policy"] = (policy, blocks["policy"]["revision"])
     if "eval" in seed:
         current = blocks["eval"]["value"]
+        value = dict(current)
         have, want = current.get("mode"), seed["eval"]["mode"]
-        if have == "off" and want != "off":
-            print("dsh-master: eval.mode is off in the Store (a person switched it off); left alone", file=sys.stderr)
-        elif have not in MODES:
+        timeout = seed["eval"].get("timeoutSeconds")
+        if have not in MODES:
+            # An eval block this tool does not know is left whole.
             print(f"dsh-master: eval.mode is {have!r} in the Store, not one of {', '.join(MODES)}; left alone", file=sys.stderr)
-        elif MODES.index(want) > MODES.index(have):
-            changes["eval"] = (dict(current, mode=want), blocks["eval"]["revision"])
+        else:
+            if have == "off" and want != "off":
+                print("dsh-master: eval.mode is off in the Store (a person switched it off); left alone", file=sys.stderr)
+            elif MODES.index(want) > MODES.index(have):
+                value["mode"] = want
+            # The time one assessment gets (fork EvalConfigSchema): raised like the mode, never lowered below what a person set.
+            if timeout is not None and timeout > current.get("timeoutSeconds", 0):
+                value["timeoutSeconds"] = timeout
+        if value != current:
+            changes["eval"] = (value, blocks["eval"]["revision"])
     return changes
 
 
@@ -407,7 +416,7 @@ def main(argv):
             command.add_argument("--dsh", help="the dsh to run (default: the manifest's, the one dshd runs)")
             command.add_argument("profiles", nargs="*", metavar="PROFILE")
     settings = commands.add_parser("settings").add_subparsers(dest="settings", required=True)
-    seed = settings.add_parser("seed", help="upsert the seed's rules and admission cells, raise eval.mode")
+    seed = settings.add_parser("seed", help="upsert the seed's rules and admission cells, raise eval.mode and eval.timeoutSeconds")
     seed.add_argument("file", nargs="?", help="seed file (default: this build's settings.seed.json)")
     seed.add_argument("--url", default="http://127.0.0.1:3082", help="the floor's web server")
     seed.add_argument("--from", dest="source", default=default_source(), help="a dsh-master build (default: this one)")
