@@ -36,7 +36,7 @@ stdenvNoCC.mkDerivation {
     share=$out/share/scheduled
     nm=$share/node_modules
     mkdir -p $nm/@deepseek-ai $nm/jsonc-parser
-    cp -r src test $share/
+    cp -r src $share/
     tar -xzf ${jsoncParser} -C $nm/jsonc-parser --strip-components=1
     # Linked, not copied: Node resolves the real path, so dsh-util-time
     # finds its own Temporal polyfill and rrule beside it in dsh's tree.

@@ -176,23 +176,23 @@ test('ls: --agency filters to specified agency', async () => {
     job: { prompt: 'Master' },
   }));
 
-  // Sub-agency: crm
-  const crmDir = path.join(tmpHome, 'crm');
-  makeTempAgency(crmDir, 'crm-task', JSON.stringify({
+  // Sub-agency: widgets
+  const widgetsDir = path.join(tmpHome, 'widgets');
+  makeTempAgency(widgetsDir, 'widgets-task', JSON.stringify({
     enabled: true,
     on: { schedule: [{ cron: '0 6 * * 1', timezone: 'UTC' }] },
-    job: { prompt: 'CRM' },
+    job: { prompt: 'Widgets' },
   }));
 
   const ctx = makeCtx({ home: tmpHome, systemctl: fakeSys });
 
-  // Filter to crm
-  const code = await lsVerb(['--agency', 'crm', '--json'], ctx);
+  // Filter to widgets
+  const code = await lsVerb(['--agency', 'widgets', '--json'], ctx);
   assert.equal(code, 0);
 
   const json = JSON.parse(ctx._out.join(''));
   assert.equal(json.items.length, 1);
-  assert.equal(json.items[0].id, 'crm:crm-task');
+  assert.equal(json.items[0].id, 'widgets:widgets-task');
 });
 
 test('resolveId: resolves <agency>:<stem> and bare <stem> when unique', async () => {

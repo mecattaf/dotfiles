@@ -1,4 +1,4 @@
-// scheduled set ID PATH (VALUE | --unset) [--expect REV] (C2.11)
+// scheduled set ID PATH (VALUE | --unset) [--expect REV] (docs/scheduled.md, Everyday commands; test/write.test.mjs C2.11)
 // jsonc-parser's modify + applyEdits: comments survive and only the touched text changes.
 import { readFileSync } from 'node:fs';
 import * as jsonc from 'jsonc-parser';

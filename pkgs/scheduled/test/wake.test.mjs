@@ -1,4 +1,4 @@
-// wake.test.mjs — the wake table (scheduled-jsonc §4, §8 W1-W10): one test per row, then the stub dshd.
+// wake.test.mjs — the wake table (docs/scheduled.md, A tick, step 6; rows W1-W10): one test per row, then the stub dshd.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

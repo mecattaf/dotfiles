@@ -1,6 +1,6 @@
 // inbox.mjs — the hand-off to the superagent: one occurrence record v1 per file in an inbox directory.
 //
-// The record format is the fork's (scheduled-source §2; test/fixtures/occurrence-v1.json is byte-identical
+// The record format is the fork's (its docs/006-deployment.md, Scheduled occurrences; test/fixtures/occurrence-v1.json is byte-identical
 // to the fork's tests/fixtures/scheduled-occurrence-v1.json). The fork's Source reads `<inbox>/*.json`, moves
 // what it received into `.done/` and what it refused into `.bad/`. This side writes only `<inbox>/*.json`
 // (through `.tmp/`) and withdraws its own schedule records; it never reads, moves or deletes `.done/` or `.bad/`.
@@ -17,6 +17,8 @@ export const HEARTBEAT = 'scheduled-heartbeat';
 export const RUN = 'scheduled-run';
 
 const NAMESPACE_RE = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/;
+/** The most `missed` the fork's Source accepts; a longer outage is reported as this many. */
+export const MISSED_MAX = 100_000;
 
 /** Creates `<inbox>` and `<inbox>/.tmp` with mode 0700. */
 async function ensureInbox(inbox) {
@@ -38,7 +40,7 @@ async function ensureInbox(inbox) {
  * @param {string} o.file       absolute path of the .jsonc
  * @param {Date} o.due          latest due instant, or the request time of a run
  * @param {string} [o.run]      ULID of a manual run
- * @param {number} o.missed
+ * @param {number} o.missed     due instants before `due` without a record; capped at MISSED_MAX
  * @param {string} o.revision
  * @param {string} o.text       the prompt as read now
  * @param {string} o.by
@@ -56,7 +58,7 @@ export function makeRecord({ kind, namespace, item, name, cwd, file, due, run, m
     file,
     due: due.toISOString(),
     ...(kind === 'manual' ? { run } : {}),
-    missed,
+    missed: Math.min(missed, MISSED_MAX),
     revision,
     text,
     by,

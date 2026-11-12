@@ -25,8 +25,8 @@ describe('STEM_RE', () => {
   it('accepts single digit', () => {
     assert.ok(STEM_RE.test('0'));
   });
-  it('accepts fleet-nightly', () => {
-    assert.ok(STEM_RE.test('fleet-nightly'));
+  it('accepts example-daily', () => {
+    assert.ok(STEM_RE.test('example-daily'));
   });
   it('accepts update-check', () => {
     assert.ok(STEM_RE.test('update-check'));
@@ -61,7 +61,7 @@ describe('agencyId', () => {
     assert.equal(agencyId('/home/tom', '/home/tom'), 'master');
   });
   it('returns relative path for sub-agency', () => {
-    assert.equal(agencyId('/home/tom/mecattaf/crm', '/home/tom'), 'mecattaf/crm');
+    assert.equal(agencyId('/home/me/work/widgets', '/home/me'), 'work/widgets');
   });
   it('returns single-segment relative path', () => {
     assert.equal(agencyId('/home/tom/work', '/home/tom'), 'work');
@@ -73,15 +73,15 @@ describe('agencyId', () => {
 // ---------------------------------------------------------------------------
 
 describe('parseId', () => {
-  it('splits master:fleet-nightly correctly', () => {
-    assert.deepEqual(parseId('master:fleet-nightly'), {
+  it('splits master:example-daily correctly', () => {
+    assert.deepEqual(parseId('master:example-daily'), {
       agency: 'master',
-      stem: 'fleet-nightly',
+      stem: 'example-daily',
     });
   });
   it('splits sub-agency id correctly', () => {
-    assert.deepEqual(parseId('mecattaf/crm:sync-contacts'), {
-      agency: 'mecattaf/crm',
+    assert.deepEqual(parseId('work/widgets:sync-contacts'), {
+      agency: 'work/widgets',
       stem: 'sync-contacts',
     });
   });
@@ -112,7 +112,7 @@ describe('spoolStamp', () => {
 describe('occurrenceName', () => {
   it('builds a schedule record name', () => {
     const due = new Date('2026-11-12T00:00:00.000Z');
-    assert.equal(occurrenceName({ namespace: 'master', item: 'fleet-nightly', due }), 'master~fleet-nightly@20261112T0000Z.json');
+    assert.equal(occurrenceName({ namespace: 'master', item: 'example-daily', due }), 'master~example-daily@20261112T0000Z.json');
   });
   it('replaces / in a namespace with +', () => {
     const due = new Date('2026-11-12T00:00:00.000Z');
@@ -122,7 +122,7 @@ describe('occurrenceName', () => {
 
 describe('runName', () => {
   it('builds a manual run record name', () => {
-    assert.equal(runName({ namespace: 'master', item: 'fleet-nightly', run: '01JABCD1234567890ABCDEFGHJ' }), 'master~fleet-nightly@run~01JABCD1234567890ABCDEFGHJ.json');
+    assert.equal(runName({ namespace: 'master', item: 'example-daily', run: '01JABCD1234567890ABCDEFGHJ' }), 'master~example-daily@run~01JABCD1234567890ABCDEFGHJ.json');
   });
   it('replaces / in a namespace with +', () => {
     assert.equal(runName({ namespace: 'team/widgets', item: 'sync', run: 'X' }), 'team+widgets~sync@run~X.json');

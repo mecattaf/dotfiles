@@ -1,4 +1,4 @@
-// history.test.mjs — scheduled history over the Source's .done/ and .bad/ (scheduled-jsonc §5, §8 H1-H2).
+// history.test.mjs — scheduled history over the Source's .done/ and .bad/ (docs/scheduled.md, Everyday commands; rows H1-H2).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

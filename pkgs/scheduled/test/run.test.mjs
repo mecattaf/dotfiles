@@ -1,4 +1,4 @@
-// run.test.mjs — scheduled run (scheduled-jsonc §5, §8 R1-R4).
+// run.test.mjs — scheduled run (docs/scheduled.md, Everyday commands; rows R1-R4).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -92,6 +92,37 @@ test('run takes --home, --inbox and --floor-instance; --inbox missing exits 2; a
     assert.equal(names.length, 1);
     assert.equal(JSON.parse(fs.readFileSync(join(inbox, names[0]), 'utf8')).cwd, other);
     assert.deepEqual(env.dshdCalls(), [['get', '--json', 'rehearsal']]);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('run with no floor instance writes the record and says on stderr that it woke no floor', async () => {
+  const env = setupEnv({ stubState: { state: 'stopped', enabled: false, lastRun: { ending: 'stopped' } } });
+  try {
+    env.item('hb', hourly());
+    assert.equal(await runMain(['hb'], env.ctx), 0, env.err.join(''));
+    assert.equal(env.records().length, 1);
+    assert.match(env.out.join(''), / floor: none\n$/);
+    const err = env.err.join('');
+    assert.match(err, /no floor instance/);
+    assert.match(err, /--floor-instance/);
+    assert.match(err, /SCHEDULED_FLOOR_INSTANCE/);
+    assert.deepEqual(env.dshdCalls(), []);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('run with no inbox exits 2 and names the flag and the variable', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly());
+    assert.equal(await runMain(['hb'], { ...env.ctx, inbox: null }), 2);
+    const err = env.err.join('');
+    assert.match(err, /--inbox/);
+    assert.match(err, /SCHEDULED_INBOX/);
+    assert.deepEqual(env.records(), []);
   } finally {
     env.cleanup();
   }

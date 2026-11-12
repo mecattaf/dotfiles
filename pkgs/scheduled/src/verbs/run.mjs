@@ -1,4 +1,4 @@
-// scheduled run ID [--home DIR] [--inbox DIR] [--floor-instance NAME] [--json] (scheduled-jsonc §5)
+// scheduled run ID [--home DIR] [--inbox DIR] [--floor-instance NAME] [--json] (docs/scheduled.md, Everyday commands)
 //
 // Run now: validates the item (enabled or not), links one `manual` occurrence record into the inbox, then
 // applies the wake table with that record waiting. No database, no waiting for the work: the floor's
@@ -22,7 +22,7 @@ export async function main(args, ctx, { run: runOpt } = {}) {
   }
   const { opts, json } = parsed;
   if (!opts.inbox) {
-    ctx.err('scheduled: --inbox is required\n');
+    ctx.err('scheduled run: no inbox: pass --inbox DIR or set SCHEDULED_INBOX\n');
     return 2;
   }
 
@@ -54,6 +54,10 @@ export async function main(args, ctx, { run: runOpt } = {}) {
   const woke = await wake({ instance: opts.floorInstance, waiting: Math.max(1, waiting(opts.inbox).length), floor: null, run: runner });
   const floor = !opts.floorInstance ? 'none' : (woke.lines[0] ?? '').replace(/^<\d>/, '');
   for (const line of woke.lines) ctx.err(line.replace(/^<\d>/, 'scheduled run: ') + '\n');
+  // Never a silent skip: the record waits, and the next heartbeat tick wakes the floor it names.
+  if (!opts.floorInstance) {
+    ctx.err('scheduled run: no floor instance, so no floor was woken; the record waits for the next tick. Pass --floor-instance NAME or set SCHEDULED_FLOOR_INSTANCE\n');
+  }
 
   const occurrence = name.slice(0, -'.json'.length);
   if (json) ctx.out(JSON.stringify({ occurrence, file: `${opts.inbox}/${name}`, floor, result }) + '\n');

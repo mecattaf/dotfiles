@@ -156,6 +156,25 @@ assert builtins.all (name: h.home.file ? ${name}) [
   ".claude/skills"
   ".claude-work/skills"
 ];
+# The seat skill roots stay frozen (hosts/nas/default.nix); the scheduled skill
+# is the one link added inside each, into the checkout like every raw dotfile.
+assert builtins.all (seat: !h.home.file."${seat}/skills".enable) [
+  ".agents"
+  ".claude"
+  ".claude-work"
+];
+assert builtins.all
+  (
+    seat:
+    h.home.file."${seat}/skills/scheduled".enable
+    &&
+      toString h.home.file."${seat}/skills/scheduled".source
+      == toString (h.lib.rawDotfiles.link "dot_claude/skills/scheduled")
+  )
+  [
+    ".claude"
+    ".claude-work"
+  ];
 assert builtins.all (name: c.age.secrets ? ${name}) [
   "ssh-user-key"
   "atuin-key"
@@ -176,4 +195,14 @@ assert builtins.all (r: !(builtins.elem registry.strix-coordinator.hostKey r.pub
 assert builtins.any (
   a: !a.assertion && lib.hasPrefix "TODO(Tom): private fork rev" a.message
 ) unfilled.assertions;
-pkgs.runCommand "nas-agent-host" { } ''touch "$out"''
+# The generation itself: each seat root holds exactly the scheduled link,
+# which resolves into the checkout, and .agents/skills is not in it at all.
+pkgs.runCommand "nas-agent-host" { files = h.home-files; } ''
+  for seat in .claude .claude-work; do
+    test "$(ls -A "$files/$seat/skills")" = scheduled
+    hop=$(readlink "$files/$seat/skills/scheduled")
+    test "$(readlink "$hop")" = ${lib.escapeShellArg "${h.rawDotfiles.repoDir}/home/dot_claude/skills/scheduled"}
+  done
+  test ! -e "$files/.agents/skills"
+  touch "$out"
+''

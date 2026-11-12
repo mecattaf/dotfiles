@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // cli.mjs — the `scheduled` command-line entry point.
 //
-// Every verb is loaded lazily; a verb whose module has not been written yet
-// prints "scheduled: <verb> is not built yet" and exits 2.
+// Every verb is loaded lazily, so a `scheduled run` loads only its own module.
+// A module that fails to load (a packaging fault) is an unhandled error, exit 1.
 
 import { makeContext } from './lib/context.mjs';
 
 const VERSION = '0.2.0';
 
 // ---------------------------------------------------------------------------
-// Usage text (spec §10.1)
+// Usage text (docs/scheduled.md, Everyday commands)
 // ---------------------------------------------------------------------------
 
 const USAGE = `\
@@ -30,7 +30,7 @@ USAGE:
   scheduled run ID [--home DIR] [--inbox DIR] [--floor-instance NAME] [--json]
   scheduled history [ID] [--inbox DIR] [-n N] [--json]
   scheduled tick --inbox DIR [--state-dir DIR] [--home DIR] [--floor-instance NAME]
-                 [--now ISO] [--json]
+                 [--now ISO --state-dir DIR] [--json]
 
 ENVIRONMENT:
   SCHEDULED_INBOX           default --inbox (the superagent's <stateDir>/inbox/scheduled)
@@ -97,28 +97,13 @@ async function main() {
 
   // Load verb module lazily.
   const args = argv.slice(1);
-  let mod;
-  try {
-    mod = await import(VERB_MODULES[verb]);
-  } catch (err) {
-    if (err.code === 'ERR_MODULE_NOT_FOUND') {
-      process.stderr.write(`scheduled: ${verb} is not built yet\n`);
-      process.exit(2);
-    }
-    throw err;
-  }
-
-  if (typeof mod.main !== 'function') {
-    process.stderr.write(`scheduled: ${verb} is not built yet\n`);
-    process.exit(2);
-  }
-
+  const mod = await import(VERB_MODULES[verb]);
   const code = await mod.main(args, ctx);
   process.exit(typeof code === 'number' ? code : 0);
 }
 
 main().catch((err) => {
-  // The tick's journal lines carry a syslog priority (DESIGN 12, C3.12); so does its crash.
+  // The tick's journal lines carry a syslog priority (docs/scheduled.md, Journal queries; C3.12 in test/tick.test.mjs); so does its crash.
   const prefix = process.argv[2] === 'tick' ? '<3>' : '';
   process.stderr.write(`${prefix}scheduled: unhandled error: ${err.message}\n`);
   process.exit(1);

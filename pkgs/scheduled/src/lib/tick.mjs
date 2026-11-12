@@ -1,13 +1,13 @@
-// tick.mjs — the heartbeat tick, scheduled-jsonc §4 (phases 0-10).
+// tick.mjs — the heartbeat tick (docs/scheduled.md, A tick), in phases 0-10.
 //
 // A nudger only: it decodes the cron times of every agency's .agency/scheduled/*.jsonc, links one
 // occurrence record per due item into the superagent's inbox, withdraws its own records of items no longer
 // enabled, and starts the floor instance when records wait. It holds no superagent logic: it opens no
 // orchestrator database, calls no floor API, runs no `dshd run` and runs no item command.
 
-import { join, dirname, sep } from 'node:path';
+import { join, dirname, basename, sep } from 'node:path';
 import { statSync } from 'node:fs';
-import { readFile, open, unlink, mkdir, link } from 'node:fs/promises';
+import { readFile, readdir, stat, open, unlink, mkdir, link } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 import { discover } from './discover.mjs';
 import { validateFile } from './validate.mjs';
@@ -64,7 +64,7 @@ export async function holderAlive(content, { boot, start = processStart } = {}) 
  * @param {number} [opts.timeoutMs=60000]
  * @returns {Promise<() => Promise<void>>} Release function
  */
-export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 300000, boot: bootOpt } = {}) {
+export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 60000, boot: bootOpt } = {}) {
   await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
   const start = Date.now();
   const boot = bootOpt === undefined ? await currentBoot() : bootOpt;
@@ -73,7 +73,7 @@ export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 
   // The lock is created complete: its text is written and fsynced under a
   // private name, then link()ed into place, which fails with EEXIST while
   // another holder has it. So a lock file is never seen empty half-written
-  // (evaluation review, C3.7), and an empty one can only be damage.
+  // (test/lock.test.mjs), and an empty one can only be damage.
   const tmp = `${lockPath}.${process.pid}.tmp`;
   {
     const fh = await open(tmp, 'w', 0o600);
@@ -125,6 +125,37 @@ export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 
   }
 }
 
+/** The stat tuple a problem is logged once for: identity, content and permissions. */
+const statKey = (st) => st ? [st.dev, st.ino, st.size, st.mtimeNs, st.mode, st.uid].map(String).join('/') : '-';
+const statKeyOf = (p) => { try { return statKey(statSync(p, { bigint: true })); } catch { return '-'; } };
+
+/**
+ * What an invalid entry is logged once for: its revision, or, when it failed before its bytes were read
+ * (ownership, mode, size, not a regular file), its first error and stat tuple.
+ */
+const invalidKey = (e) => e ? (e.revision ?? e.invalidKey ?? null) : null;
+
+const TEMP_MAX_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Unlink what a killed tick left behind (TimeoutStartSec, a power cut): `<inbox>/.tmp/*` and the state dir's
+ * `.tick.lock.<pid>.tmp` and `.<file>.<pid>.tmp`, all older than 1 h. Run under the lock; a live writer's
+ * temporary file is seconds old.
+ */
+async function sweepTemporaries(dirs, nowMs) {
+  for (const { dir, match } of dirs) {
+    let names;
+    try { names = await readdir(dir); } catch { continue; }
+    for (const name of names) {
+      if (!match(name)) continue;
+      try {
+        const st = await stat(join(dir, name));
+        if (st.isFile() && nowMs - st.mtimeMs > TEMP_MAX_AGE_MS) await unlink(join(dir, name));
+      } catch {}
+    }
+  }
+}
+
 /** One intake entry: the cached parse of one item file, keyed by path in intake.json. */
 function entryOf(f, st, v, prev, { now, lastTick }) {
   const valid = Boolean(v.value);
@@ -134,8 +165,14 @@ function entryOf(f, st, v, prev, { now, lastTick }) {
     if (prev?.valid && prev.enabled && prev.armedSince) armedSince = prev.armedSince;
     // Fixed after being invalid: anchored to lastTick, so the latest missed instant is still due.
     else if (prev && !prev.valid) armedSince = lastTick.toISOString();
-    // New, or enabled now: instants before this tick never fire (T10).
-    else armedSince = now.toISOString();
+    // New, or enabled now: instants before this tick never fire (T10), unless the file was written after
+    // the last tick: then it is armed when written, so an item enabled between two hourly timer ticks
+    // fires the instants after the edit at the next tick. The first tick has lastTick = now.
+    else {
+      const written = typeof st.mtimeNs === 'bigint' ? Number(st.mtimeNs / 1000000n) : Number(st.mtimeMs);
+      const edited = written > lastTick.getTime() && written < now.getTime();
+      armedSince = (edited ? new Date(written) : now).toISOString();
+    }
   }
   return {
     id: f.id,
@@ -143,7 +180,12 @@ function entryOf(f, st, v, prev, { now, lastTick }) {
     ino: String(st.ino),
     size: Number(st.size),
     mtimeNs: String(st.mtimeNs),
+    mode: String(st.mode),
+    uid: String(st.uid),
     revision: v.revision ?? null,
+    invalidKey: !valid && !v.revision
+      ? (() => { const e = (v.problems || []).find((p) => p.severity === 'error'); return `${e?.code ?? 'error'}:${e?.message ?? ''}:${statKey(st)}`; })()
+      : null,
     problems: v.problems || [],
     firstSeen: prev?.firstSeen || now.toISOString(),
     armedSince,
@@ -156,8 +198,11 @@ function entryOf(f, st, v, prev, { now, lastTick }) {
   };
 }
 
+// Mode and owner too: a chmod or chown changes neither content nor mtime, and an item must stay ours and not
+// group- or world-writable (validate.mjs). An entry written before these fields existed is parsed once more.
 const sameStat = (prev, st) => prev && prev.dev === String(st.dev) && prev.ino === String(st.ino)
-  && prev.size === Number(st.size) && prev.mtimeNs === String(st.mtimeNs);
+  && prev.size === Number(st.size) && prev.mtimeNs === String(st.mtimeNs)
+  && prev.mode === String(st.mode) && prev.uid === String(st.uid);
 
 /**
  * Execute one tick pass.
@@ -193,6 +238,11 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
   const releaseLock = await acquireLock(join(stateDir, '.tick.lock'));
 
   try {
+    await sweepTemporaries([
+      { dir: join(inbox, '.tmp'), match: () => true },
+      { dir: stateDir, match: (n) => n.startsWith('.') && n.endsWith('.tmp') },
+    ], Date.now()); // the wall clock, never --now: a writer's file is seconds old in real time
+
     // Phase 1: guard. State from another machine or a newer major version is never overwritten.
     let hostMachineId;
     try {
@@ -237,6 +287,12 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
     const disc = await discover({ home, uid: ctx.uid });
     const discover_ms = Math.round(performance.now() - discStart);
 
+    // A folder discovery could not read hides its items, it does not remove them: their previous parse is
+    // carried and their waiting records are kept, as for a file whose stat fails.
+    const unreadable = disc.unreadable || [];
+    const within = (dir, p) => p === dir || p.startsWith(dir.endsWith(sep) ? dir : dir + sep);
+    const shadowed = (p) => unreadable.some((u) => within(u.path, p));
+
     const prevAgencies = intake?.agencies || {};
     const currentAgencies = {};
     for (const ag of disc.agencies) {
@@ -247,10 +303,43 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
         currentAgencies[ag.id] = prevAgencies[ag.id];
       }
     }
+    for (const [id, ag] of Object.entries(prevAgencies)) {
+      if (!currentAgencies[id] && typeof ag?.root === 'string' && shadowed(join(ag.root, '.agency', 'scheduled'))) currentAgencies[id] = ag;
+    }
 
     const prevFiles = intake?.files || {};
     const currentFiles = {};
     const items = [];
+
+    const discovered = new Set(disc.files.map((f) => f.path));
+    let discoverFaulted = false;
+    for (const u of unreadable) {
+      const carried = Object.entries(prevFiles).filter(([p, prev]) => !discovered.has(p) && within(u.path, p) && prev?.id);
+      // A folder that hid nothing known (a stray unreadable folder in the walk) is not a fault.
+      if (!u.scheduled && carried.length === 0) continue;
+      lines.push(`<4>discover unreadable path=${u.path} error=${u.code}`);
+      discoverFaulted = true;
+      for (const [p, prev] of carried) {
+        if (currentFiles[p]) continue;
+        const problems = [{ severity: 'warning', code: 'stat', line: 0, col: 0, message: `folder unreadable (${u.code}); previous parse used` },
+          ...(prev.problems || []).filter((q) => q.code !== 'stat')];
+        const colon = prev.id.lastIndexOf(':');
+        const file = { agency: prev.id.slice(0, colon), root: dirname(dirname(dirname(p))), stem: basename(p, '.jsonc'), id: prev.id, path: p };
+        currentFiles[p] = { ...prev, problems };
+        items.push({ ...prev, file, problems });
+      }
+    }
+
+    // Problems of files discovery skips (a bad stem, ~/master/.agency, a writable .agency/) are logged once.
+    const prevNotices = new Set(Array.isArray(intake?.notices) ? intake.notices : []);
+    const notices = [];
+    for (const p of disc.problems) {
+      if (p.code === 'io' || discovered.has(p.path)) continue;
+      const key = `${p.code}\0${p.path}\0${statKeyOf(p.path)}`;
+      if (notices.includes(key)) continue;
+      notices.push(key);
+      if (!prevNotices.has(key)) lines.push(`<4>invalid path=${p.path} reason=${p.code}`);
+    }
 
     for (const f of disc.files) {
       const prev = prevFiles[f.path];
@@ -279,7 +368,7 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
           currentFiles[f.path] = { ...prev, problems, id: f.id };
           items.push({ ...prev, file: f, problems });
         } else {
-          // No stat is cached for a file never parsed, so the next pass parses it (evaluation review, C3.4).
+          // No stat is cached for a file never parsed, so the next pass parses it (C3.4 in test/ingest.test.mjs).
           const placeholder = { id: f.id, dev: null, ino: null, size: null, mtimeNs: null, revision: null, problems: [young],
             firstSeen: now.toISOString(), armedSince: null, valid: false, enabled: false, placeholder: true };
           currentFiles[f.path] = placeholder;
@@ -289,7 +378,8 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
       }
 
       // A prompt-file is read at each tick: an item that names one is never served from the cache.
-      if (sameStat(prev, st) && !prev.promptFile && !prev.placeholder) {
+      // Nor is one that failed before its bytes were read: a chmod changes no field of the stat tuple.
+      if (sameStat(prev, st) && !prev.promptFile && !prev.placeholder && prev.revision) {
         // The cached parse, without the warnings of a pass that could not read the file.
         const problems = (prev.problems || []).filter((p) => p.code !== 'stat' && p.code !== 'young');
         currentFiles[f.path] = { ...prev, problems, id: f.id };
@@ -297,11 +387,12 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
         continue;
       }
 
-      const v = await validateFile(f.path, { uid: ctx.uid });
+      const v = await validateFile(f.path, { uid: ctx.uid, now });
       const entry = entryOf(f, st, v, prev, { now, lastTick });
-      if (!entry.valid && entry.revision && entry.revision !== prev?.revision) {
-        const first = entry.problems.find((p) => p.severity === 'error') || { line: 0, col: 0 };
-        lines.push(`<4>invalid item=${f.id} rev=${entry.revision} at=${first.line}:${first.col}`);
+      if (!entry.valid && invalidKey(entry) !== invalidKey(prev)) {
+        const first = entry.problems.find((p) => p.severity === 'error') || { line: 0, col: 0, code: 'error' };
+        if (entry.revision) lines.push(`<4>invalid item=${f.id} rev=${entry.revision} at=${first.line}:${first.col}`);
+        else lines.push(`<4>invalid item=${f.id} reason=${first.code}`);
       }
       currentFiles[f.path] = entry;
       items.push({ ...entry, file: f });
@@ -357,6 +448,7 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
       for (const name of waiting(inbox)) {
         const rec = readRecord(inbox, name);
         if (!rec || rec.by !== HEARTBEAT || rec.kind !== 'schedule' || typeof rec.cwd !== 'string' || !under(rec.cwd)) continue;
+        if (shadowed(join(rec.cwd, '.agency', 'scheduled'))) continue;
         const it = known.get(`${rec.cwd}\0${rec.item}`);
         if (it?.placeholder || (it?.valid && it.enabled)) continue;
         const reason = !it ? 'removed' : it.valid ? 'disabled' : 'invalid';
@@ -368,8 +460,10 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
     let commitFaulted = false;
     if (!clockWentBack) {
       try {
+        // The intake first: a crash between the two keeps the old lastTick, and re-deciding that window answers
+        // `exists` (T3). The other order would arm items first seen in this pass at the next tick.
+        await writeAtomic(intakePath, JSON.stringify({ v: 1, files: currentFiles, agencies: currentAgencies, notices }, null, 2) + '\n');
         await writeAtomic(heartbeatPath, JSON.stringify({ v: 1, machineId: hostMachineId, lastTick: now.toISOString() }, null, 2) + '\n');
-        await writeAtomic(intakePath, JSON.stringify({ v: 1, files: currentFiles, agencies: currentAgencies }, null, 2) + '\n');
       } catch (err) {
         lines.push(`<3>guard error committing state: ${err.message}`);
         commitFaulted = true;
@@ -393,7 +487,7 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
     const took_ms = Math.round(performance.now() - passStart);
     lines.push(`<6>pass reason=${reason} took_ms=${took_ms} discover_ms=${discover_ms} agencies=${disc.agencies.length} items=${disc.files.length} waiting=${waitingCount}`);
 
-    return { code: (handOffFaulted || commitFaulted || floorFaulted) ? 1 : 0, lines };
+    return { code: (handOffFaulted || commitFaulted || floorFaulted || discoverFaulted) ? 1 : 0, lines };
   } finally {
     await releaseLock();
   }

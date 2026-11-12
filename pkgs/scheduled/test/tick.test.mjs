@@ -1,4 +1,4 @@
-// tick.test.mjs — scheduled tick v2 (scheduled-jsonc §4, §8 T1-T13; ports C3.1-C3.7, C3.9, C3.12).
+// tick.test.mjs — scheduled tick v2 (docs/scheduled.md, A tick; rows T1-T13, plus C3.1-C3.7, C3.9, C3.12).
 // Run: cd pkgs/scheduled && node --test 'test/*.test.mjs'
 
 import test from 'node:test';
@@ -32,29 +32,29 @@ test('T1 a first tick writes heartbeat.json and intake.json in the state dir, no
 test('T2 an hourly item and a lastTick 3 hours old link exactly one record: latest instant, missed 2, revision, frozen text, cwd the agency realpath, namespace, by scheduled-heartbeat', async () => {
   const env = setupEnv();
   try {
-    env.item('fleet-nightly', hourly({ name: 'Fleet nightly', job: { prompt: ['Line one.', 'Line two.'] } }));
+    env.item('example-hourly', hourly({ name: 'Example hourly', job: { prompt: ['Line one.', 'Line two.'] } }));
     await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
     const res = await tick(env.ctx, { now: at('2026-11-12T14:00:30.000Z') });
     assert.equal(res.code, 0);
-    assert.deepEqual(env.records(), ['master~fleet-nightly@20261112T1400Z.json']);
-    const rec = env.record('master~fleet-nightly@20261112T1400Z.json');
+    assert.deepEqual(env.records(), ['master~example-hourly@20261112T1400Z.json']);
+    const rec = env.record('master~example-hourly@20261112T1400Z.json');
     assert.deepEqual(rec, {
       v: 1,
       kind: 'schedule',
       namespace: 'master',
-      item: 'fleet-nightly',
-      name: 'Fleet nightly',
+      item: 'example-hourly',
+      name: 'Example hourly',
       cwd: env.home,
-      file: join(env.scheduled, 'fleet-nightly.jsonc'),
+      file: join(env.scheduled, 'example-hourly.jsonc'),
       due: '2026-11-12T14:00:00.000Z',
       missed: 2,
-      revision: env.entry('master:fleet-nightly').revision,
+      revision: env.entry('master:example-hourly').revision,
       text: 'Line one.\nLine two.',
       by: 'scheduled-heartbeat',
       at: '2026-11-12T14:00:30.000Z',
     });
     assert.match(rec.revision, /^[0-9a-f]{12}$/);
-    assert.ok(res.lines.includes('<6>decode item=master:fleet-nightly due=2026-11-12T14:00:00.000Z result=created'), res.lines.join('\n'));
+    assert.ok(res.lines.includes('<6>decode item=master:example-hourly due=2026-11-12T14:00:00.000Z result=created'), res.lines.join('\n'));
   } finally {
     env.cleanup();
   }
@@ -257,12 +257,32 @@ test('T10 an item enabled now does not fire instants before it was armed', async
     await tick(env.ctx, { now: at('2026-11-12T09:00:00.000Z') });
     await tick(env.ctx, { now: at('2026-11-12T11:30:00.000Z') });
     env.item('hb', hourly(), new Date('2026-11-12T11:40:00.000Z'));
-    // Armed at 11:45: the 10:00 and 11:00 instants never fire.
+    // Armed at 11:40, when the file was written: the 10:00 and 11:00 instants never fire.
     await tick(env.ctx, { now: at('2026-11-12T11:45:00.000Z') });
     assert.deepEqual(env.records(), []);
+    assert.equal(env.entry('master:hb').armedSince, '2026-11-12T11:40:00.000Z');
     await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
     assert.deepEqual(env.records(), ['master~hb@20261112T1200Z.json']);
     assert.equal(env.record('master~hb@20261112T1200Z.json').missed, 0);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T10 with only the hourly timer, an item enabled at 11:40 fires 12:00 at the 12:00 tick, not 13:00', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly({ enabled: false }));
+    await tick(env.ctx, { now: at('2026-11-12T11:00:05.000Z') });
+    env.item('hb', hourly(), new Date('2026-11-12T11:40:00.000Z'));
+    await tick(env.ctx, { now: at('2026-11-12T12:00:05.000Z') });
+    assert.deepEqual(env.records(), ['master~hb@20261112T1200Z.json']);
+    assert.equal(env.record('master~hb@20261112T1200Z.json').missed, 0);
+    // A file stamped before the last tick (a copy that kept its mtime) is armed now, as before.
+    env.item('old', hourly(), new Date('2026-11-01T00:00:00.000Z'));
+    await tick(env.ctx, { now: at('2026-11-12T13:00:05.000Z') });
+    assert.equal(env.entry('master:old').armedSince, '2026-11-12T13:00:05.000Z');
+    assert.deepEqual(env.records().filter((n) => n.startsWith('master~old@')), []);
   } finally {
     env.cleanup();
   }
@@ -320,6 +340,41 @@ test('T13 --inbox missing exits 2 with the message', async () => {
     assert.equal(code, 2);
     assert.ok(env.err.join('').includes('scheduled: --inbox is required'), env.err.join(''));
     assert.equal(fs.existsSync(env.state), false);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T13b --now without an explicit --state-dir exits 2 and writes nothing (review SCHED-3)', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly());
+    const code = await tickMain(['--now', '2026-12-01T00:00:00.000Z'], env.ctx);
+    assert.equal(code, 2);
+    assert.ok(env.err.join('').includes('--now needs an explicit --state-dir'), env.err.join(''));
+    assert.equal(fs.existsSync(env.state), false);
+    assert.deepEqual(env.records(), []);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T14 a tick sweeps temporary files over an hour old from the inbox .tmp/ and the state dir, and keeps fresh ones (review SCHED-8)', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly());
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    const tmp = join(env.inbox, '.tmp');
+    fs.mkdirSync(tmp, { recursive: true, mode: 0o700 });
+    const old = new Date(Date.now() - 2 * 3600 * 1000);
+    const stale = [join(tmp, 'master~hb@20261112T1000Z.json.4242.a1b2c3'), join(env.state, '.tick.lock.4242.tmp'), join(env.state, '.heartbeat.json.4242.tmp')];
+    for (const p of stale) { fs.writeFileSync(p, 'x'); fs.utimesSync(p, old, old); }
+    const fresh = join(tmp, 'master~hb@20261112T1100Z.json.4343.d4e5f6');
+    fs.writeFileSync(fresh, 'x');
+    await tick(env.ctx, { now: at('2026-11-12T11:30:00.000Z') });
+    for (const p of stale) assert.equal(fs.existsSync(p), false, p);
+    assert.equal(fs.existsSync(fresh), true);
+    assert.deepEqual(fs.readdirSync(env.state).sort(), ['heartbeat.json', 'intake.json']);
   } finally {
     env.cleanup();
   }

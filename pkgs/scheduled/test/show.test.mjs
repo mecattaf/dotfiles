@@ -36,15 +36,15 @@ function makeCtx(overrides = {}) {
 const item = (extra = {}) => JSON.stringify({ enabled: false, on: { schedule: [{ cron: '0 6 * * 1', timezone: 'Europe/Paris' }] }, job: { prompt: 'Summarise.' }, ...extra });
 
 test('C2.1: show --json gives the parsed item, its revision, its state and the next instants', async () => {
-  const { tmpRoot, filePath } = makeTempAgency('fleet-nightly', item());
+  const { tmpRoot, filePath } = makeTempAgency('example-weekly', item());
   const ctx = makeCtx({ home: path.dirname(tmpRoot) });
   assert.equal(await showVerb([filePath, '--json', '-n', '2'], ctx), 0, ctx._err.join(''));
   const output = JSON.parse(ctx._out.join(''));
   assert.equal(output.v, 1);
-  assert.equal(output.id, `${path.basename(tmpRoot)}:fleet-nightly`);
+  assert.equal(output.id, `${path.basename(tmpRoot)}:example-weekly`);
   assert.equal(output.state, 'disabled');
   assert.match(output.revision, /^[0-9a-f]{12}$/);
-  assert.deepEqual(output.spec, { name: 'fleet-nightly', enabled: false, on: { schedule: [{ cron: '0 6 * * 1', timezone: 'Europe/Paris' }] }, job: { prompt: 'Summarise.' } });
+  assert.deepEqual(output.spec, { name: 'example-weekly', enabled: false, on: { schedule: [{ cron: '0 6 * * 1', timezone: 'Europe/Paris' }] }, job: { prompt: 'Summarise.' } });
   assert.deepEqual(output.next, ['2026-11-16T05:00:00.000Z', '2026-11-23T05:00:00.000Z']);
   assert.equal(output.records, null, 'no inbox: no records');
 });
