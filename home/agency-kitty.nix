@@ -63,7 +63,7 @@ in
       };
     };
     # Kitty's raw configuration is a whole-directory link. Keep generated store
-    # paths at a neutral destination, consumed by its optional globinclude.
+    # paths at a neutral destination, consumed by its optional include.
     xdg.configFile."agency-kitty/kitty.conf" = lib.mkIf isSeat {
       text = ''
         # Generated only after the native transport candidate is enabled.
