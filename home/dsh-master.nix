@@ -82,9 +82,9 @@ in
     tag = mkOption {
       type = types.strMatching "floor-v2\\.[0-9]+";
       # The one value a release moves: both forks cut floor-v2.<n> tags whose
-      # tarballs hold the built lib/. floor-v2.0 is a placeholder until the
-      # first release exists.
-      default = "floor-v2.0";
+      # tarballs hold the built lib/. floor-v2.1 is the first release; move
+      # this with each new tag.
+      default = "floor-v2.1";
       description = "Release tag both plugin pins name, unless `superagent` or `claude` is set.";
     };
     superagent = mkOption {

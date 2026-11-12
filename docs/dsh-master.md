@@ -39,8 +39,8 @@ Rules the renderer keeps, each asserted by `checks.dsh-master`:
   none: the `claude` preset sends every request to Claude Code, and a Gufo
   worker under it fails its first turn.
 - Both plugins are pinned to one release tag, `programs.dsh.master.tag`
-  (`floor-v2.<n>`; `floor-v2.0` is the placeholder before the first
-  release). `superagent` or `claude` overrides one pin on its own.
+  (`floor-v2.<n>`, first `floor-v2.1`). `superagent` or `claude` overrides
+  one pin on its own.
 
 ## Commands
 
