@@ -122,7 +122,8 @@ assert
 # The Claude pair binds dsh-claude's preset; Gufo binds none.
 assert cfg.pairs.opus.preset == "claude" && cfg.pairs.gufo.preset == null;
 assert pinsFollowTag retagged && retagged.claude == "github:mecattaf/dsh-claude#floor-v2.99";
-assert !(pinsFollowTag overridden) && overridden.claude == "github:mecattaf/dsh-claude#${overridden.tag}";
+assert
+  !(pinsFollowTag overridden) && overridden.claude == "github:mecattaf/dsh-claude#${overridden.tag}";
 pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   set -euo pipefail
   export HOME="$TMPDIR/home" PYTHONDONTWRITEBYTECODE=1
