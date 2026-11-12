@@ -1,5 +1,6 @@
 // Copied 12 Nov 2026 from ~/.agency/workflows/journal-day.jsonc (kept there).
 // Rewritten to the scheduled-item schema: outcome.check and context moved into the prompt.
+// 12 Nov: the prompt uses journal-day's own config and exit 75 (open session) instead of naming paths.
 {
   "name": "Journal day: midnight nudge",
   // Off (Tom, 11 Nov: "make sure there are no scheduled work in the morning").
@@ -7,12 +8,14 @@
   "on": { "schedule": [ { "cron": "0 0 * * *", "timezone": "Europe/Paris" } ] },
   "job": {
     "prompt": [
-      "Take the local date (Europe/Paris) of the Due or Requested time on the second line of the header above.",
-      "If ~/today already resolves to ~/notes/journal/YYYY/MM/DD for that date, do nothing and say so.",
-      "Otherwise run ~/.local/bin/journal-day once, with no arguments. It is idempotent and takes its own lock.",
-      "It rotates only the ~/today link; it never moves, copies or deletes day contents and never touches running sessions.",
-      "Report the path it prints. If it exits non-zero, report its stderr word for word and stop.",
-      "Change nothing else: no other file, no notes, no Projects item."
+      "Rotate the today link with the journal-day helper. Nothing else moves; the day it leaves stays where it is.",
+      "Run ~/.local/bin/journal-day once, with no arguments (never --seat or --resume-seat). It decides the day from",
+      "its own config and clock, takes its own lock, creates the day folder if missing and replaces only the link.",
+      "It is idempotent: if the link is already right it changes nothing and prints the same path.",
+      "Exit 0: report the path it prints. Exit 75: a harness session is still open in the day the link would leave;",
+      "quote its stderr line word for word and end without retrying (the next fresh seat launch or the next night rotates).",
+      "Any other non-zero exit: quote its stderr word for word and stop. ~/.local/bin/journal-day --dry-run previews a run.",
+      "Change nothing else: no other file, no notes, no chat capture, no drain, no Projects item, no links in home."
     ]
   }
 }
