@@ -354,6 +354,9 @@ tick; `reason=manual` means it ran any other way. A healthy tick:
 | Symptom | What it means | What to do |
 |---|---|---|
 | `<4>invalid item=... rev=... at=l:c` | An item fails validation and is skipped. It is logged once per revision. | Fix the file, then `scheduled validate --all` |
+| `<4>invalid item=... reason=ownership\|file` | An item fails before its bytes are read: not ours, group- or world-writable, not a regular file, over 64 KiB or unreadable. Logged once per error and stat tuple. | `chmod 600` or fix the file; the next tick reads it again |
+| `<4>invalid path=... reason=stem\|agency-name\|ownership` | Discovery skipped a file or folder: a stem that is not `[a-z0-9-]`, `~/master/.agency`, or a writable `.agency/`. Logged once. | Rename or fix it |
+| `<4>discover unreadable path=... error=...` | A `scheduled/` folder, or a folder above known items, cannot be read. Its items keep their last parse and their waiting records are kept; the tick exits 1. | Restore the folder's permissions or mount |
 | `<5>withdrawn occurrence=... reason=disabled\|removed\|invalid` | A waiting record of an item that is no longer valid and enabled was withdrawn | Intended |
 | `<4>floor masked waiting=N` | The floor unit is masked; records wait | Unmask deliberately, or accept that the floor is off |
 | `<3>floor action=start state=failed child=...` | The floor crashed. The tick restarted it and exits 1 anyway, so the crash is seen. | `journalctl --user -u dshd@floor.service`, fix, check the next tick |
@@ -362,6 +365,7 @@ tick; `reason=manual` means it ran any other way. A healthy tick:
 | `<3>floor state=unavailable error=...` | dshd could not be asked | Check dshd and the user manager |
 | `<3>guard machine-id differs: state from another host` | `~/.local/state/scheduled` came from a different machine | Restore the local state; never share it between hosts |
 | `<4>clock went back` | The clock is behind `lastTick` | Nothing is handed off; `lastTick` is kept |
+| `scheduled tick: --now needs an explicit --state-dir` | A `--now` pass would commit its `lastTick` into the heartbeat's own state | Pass a scratch `--state-dir` |
 | records stay in the inbox | The floor's Source is not reading | `dshd get --json floor`; the Source moves each record to `.done/` or `.bad/` |
 | `.bad/<name>.error` | The Source refused a record | `scheduled history ID` shows the error |
 | `done` in history, but no unit | The superagent ignored the occurrence, or the Trigger waits for an Eval | The panel's Eval tab shows the Decision and its reason |
@@ -376,7 +380,11 @@ the program and leaves `~/.agency` untouched. To quiet things without a
 generation switch, use one of these:
 - `scheduled set ID enabled false` for an item;
 - stop the timer through Home Manager;
-- `dshd stop floor`, which leaves records waiting.
+- `dshd stop floor`, which holds only until a tick finds a waiting
+  record: the heartbeat starts a stopped floor, even one stopped by
+  intent, and `scheduled run` starts it at once. To keep the floor down,
+  set the items `enabled false` first, or mask the unit (the tick then
+  logs `<4>floor masked`).
 
 Waiting records of a disabled item are withdrawn at the next tick while
 the floor is stopped.
