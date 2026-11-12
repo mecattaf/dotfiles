@@ -671,6 +671,30 @@
               touch "$out"
             '';
 
+        # #734: greetd's default_session restarts Domicile behind a loop guard.
+        # Runs the client's exact guard binary with stub session and rescue.
+        domicile-greetd-guard =
+          let
+            words = nixpkgs.lib.splitString " " self.nixosConfigurations.client.config.services.greetd.settings.default_session.command;
+          in
+          pkgs.runCommand "domicile-greetd-guard" { } ''
+            guard=${builtins.head words}
+            export HOME=$TMPDIR/home XDG_STATE_HOME=$TMPDIR/state
+            printf '#!/bin/sh\necho session\n' > s; printf '#!/bin/sh\necho rescue "$@"\n' > r
+            chmod +x s r
+            run() { "$guard" ./s ./r -l 2>/dev/null; }
+            [ "$(run)" = session ]; [ "$(run)" = session ]; [ "$(run)" = session ]
+            [ "$(run)" = "rescue -l" ]; [ "$(run)" = "rescue -l" ]
+            # Starts older than the window, or from another boot, do not count.
+            sed -i 's/ [0-9]*$/ 1/' "$XDG_STATE_HOME/domicile/greetd-starts"
+            [ "$(run)" = session ]
+            sed -i 's/^[^ ]* / otherboot /' "$XDG_STATE_HOME/domicile/greetd-starts"
+            [ "$(run)" = session ]; [ "$(run)" = session ]
+            [ "$(run)" = session ]; [ "$(run)" = "rescue -l" ]
+            if "$guard" ./s 2>/dev/null; then exit 1; fi
+            touch "$out"
+          '';
+
         fleet-agent-transport = import ./tests/fleet-agent-transport {
           inherit pkgs self;
           inherit (nixpkgs) lib;
@@ -1361,6 +1385,21 @@
           ) displayHosts;
           assert (cfgOf "client").myDisplay.enable;
           assert (cfgOf "client").systemd.services.greetd.restartIfChanged == false;
+          # #734: after a greetd restart or a desktop exit, default_session
+          # starts Domicile through the loop guard (a bare shell fails here),
+          # with Tom's login shell as its fallback and VT2-6 getty kept.
+          assert
+            let
+              ds = (cfgOf "client").services.greetd.settings.default_session;
+              words = nixpkgs.lib.splitString " " ds.command;
+            in
+            ds.user == "tom"
+            && builtins.length words == 4
+            && nixpkgs.lib.hasSuffix "/bin/domicile-greetd-guard" (builtins.elemAt words 0)
+            && nixpkgs.lib.hasSuffix "/bin/domicile-physical-session" (builtins.elemAt words 1)
+            && nixpkgs.lib.hasSuffix "/bin/bash" (builtins.elemAt words 2)
+            && builtins.elemAt words 3 == "-l";
+          assert (cfgOf "client").services.getty.autologinUser == "tom";
           assert clientHome.xdg.configFile ? "domicile/domicile.tsx";
           assert clientHome.xdg.configFile ? "domicile/imagine";
           # MacTahoe on every session (non-negotiable): Home Manager's gtk
