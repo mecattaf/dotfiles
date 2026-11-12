@@ -7,13 +7,13 @@
       "id": "scheduled",
       "name": "Scheduled items",
       "enabled": true,
-      "instruction": "A Trigger of the scheduled Source whose first line starts with [Scheduled occurrence] or [Scheduled item, run now] is an implementation request by the owner of the working directory it names. The text after the blank line is the complete task, its target is that working directory, and it needs no design decision: quote its first line and the task's first sentence as intent evidence. Accept it as one ticket titled with the namespace:item of the first line, and copy the task's first sentence into the scope. Post no acknowledgement: it has no channel. An open ticket from an earlier occurrence of the same item is no reason to ignore it; each occurrence is its own run. Ignore it only when the task text itself says it no longer applies at the time you read it, judged from the Due time, and give that reason. Never merge two occurrences into one ticket, and never shorten, change or add to the task."
+      "instruction": "A Trigger of the scheduled Source whose first line starts with [Scheduled occurrence] or [Scheduled item, run now] is an implementation request by the owner of the working directory it names: the text after the blank line is the complete task, its target is that directory, and it needs no design decision. If you are assessing it: quote its first line and the task's first sentence as intent evidence, and accept it silently as its own ticket, titled with the first line's namespace:item and scoped to the task's first sentence. An open ticket of an earlier occurrence is no reason to ignore it; ignore it only when the task text itself says it no longer applies at its Due time, and give that reason. If you are the worker running this ticket, only this sentence applies to you: do the task in the trigger text in the current folder; your final message is the result; you have no orchestrator tools."
     },
     {
       "id": "workflow-node",
       "name": "Workflow node",
       "enabled": true,
-      "instruction": "A Trigger from the workflow Source is the next node of a workflow run that a person started, and it proceeds by default. Accept it unless other pending work should run first; then hold it by ignoring it with a reason that starts with 'hold:', and release it later with orchestrator_trigger_requeue. A held node keeps its workflow waiting; it is not skipped. Never stop a running ticket to reorder work."
+      "instruction": "A Trigger from the workflow Source is the next node of a workflow run that a person started, and it proceeds by default. If you are assessing it: accept it unless other pending work should run first; then hold it by ignoring it with a reason that starts with 'hold:', and release it later with orchestrator_trigger_requeue. A held node keeps its run waiting and is not skipped; never stop a running ticket to reorder work. If you are the worker running this ticket, only this sentence applies to you: do the task in the trigger text in the current folder; your final message is the result; you have no orchestrator tools."
     }
   ],
   "admission": {
