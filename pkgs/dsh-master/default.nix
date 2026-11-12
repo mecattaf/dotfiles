@@ -76,6 +76,28 @@ let
   ];
   policyRows = lib.filter (row: !(builtins.elem row.id dropped)) dsh.policyRows;
 
+  # master only: a Session opened by hand in the panel starts at the fleet's
+  # workspace-write and asks, under the pinned dsh-bwrap runner, instead of
+  # following DSH_PERMISSION_MODE (danger-full-access under dshd). The
+  # superagent pins its own Sessions to danger-full-access (the fork's
+  # sessions.ts), so that preset is restated beside the fleet's two.
+  fleetRow = id: lib.findFirst (row: (row.id or null) == id) (throw "fleet policy has no ${id} row") dsh.policyRows;
+  panelRows =
+    let
+      permission = fleetRow "permission";
+    in
+    [
+      (fleetRow "sandbox")
+      (fleetRow "sandbox-policy")
+      (fleetRow "approval")
+      (lib.recursiveUpdate permission {
+        config.presets.danger-full-access = {
+          sandbox = "danger-full-access";
+          approval = "never";
+        };
+      })
+    ];
+
   # The same row in every folder but for `engine` (contracts: dormancy, executor).
   superagentRow = engine: {
     id = "dsh-superagent";
@@ -116,7 +138,7 @@ let
   # Rows any DSH composition of the app bundle has; the offline check dumps
   # them against the first-party bundles alone.
   firstParty = {
-    master = [
+    master = panelRows ++ [
       {
         id = "agent-default-model";
         config = route settings.pairs.${settings.defaultPair};
