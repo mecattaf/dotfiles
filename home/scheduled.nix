@@ -23,8 +23,6 @@ let
   inbox = "${config.programs.dsh.master.stateDir}/inbox/scheduled";
   # The floor's dshd instance; the name the Master floor recipe keeps.
   floorInstance = "floor";
-  # The port the Master web profile serves on, which the tunnel forwards.
-  webPort = toString config.programs.dsh.master.webPort;
 in
 lib.mkIf osConfig.dshd.enable {
   # Tom, Claude Code and the dsh-web panel run the same program, and
@@ -94,26 +92,31 @@ lib.mkIf osConfig.dshd.enable {
   # NAS-owned, like the live agency-web-client-tunnel; nothing of
   # Scheduled runs on the Zenbook. No store path in this text, so an
   # openssh bump never makes fleet-update hold a switch for it.
-  systemd.user.services.scheduled-panel-tunnel = {
-    Unit = {
-      Description = "Master floor dsh-web: NAS loopback ${webPort} on the Zenbook";
-      After = [ "network-online.target" ];
-      StartLimitIntervalSec = 0;
+  systemd.user.services.scheduled-panel-tunnel =
+    let
+      # The port the Master web profile serves on.
+      webPort = toString config.programs.dsh.master.webPort;
+    in
+    {
+      Unit = {
+        Description = "Master floor dsh-web: NAS loopback ${webPort} on the Zenbook";
+        After = [ "network-online.target" ];
+        StartLimitIntervalSec = 0;
+      };
+      Service = {
+        ExecStart = lib.concatStringsSep " " [
+          "/run/current-system/sw/bin/ssh -N -T -o BatchMode=yes"
+          "-o HostName=100.121.160.100 -o HostKeyAlias=client"
+          "-o ForwardAgent=no -o ControlMaster=no -o ControlPath=none"
+          "-o ExitOnForwardFailure=yes -o ServerAliveInterval=30"
+          "-o ServerAliveCountMax=3"
+          "-R 127.0.0.1:${webPort}:127.0.0.1:${webPort} client"
+        ];
+        # The Zenbook sleeps and roams: retry quietly, forever.
+        Restart = "always";
+        RestartSec = "30s";
+        UMask = "0077";
+      };
+      Install.WantedBy = [ "default.target" ];
     };
-    Service = {
-      ExecStart = lib.concatStringsSep " " [
-        "/run/current-system/sw/bin/ssh -N -T -o BatchMode=yes"
-        "-o HostName=100.121.160.100 -o HostKeyAlias=client"
-        "-o ForwardAgent=no -o ControlMaster=no -o ControlPath=none"
-        "-o ExitOnForwardFailure=yes -o ServerAliveInterval=30"
-        "-o ServerAliveCountMax=3"
-        "-R 127.0.0.1:${webPort}:127.0.0.1:${webPort} client"
-      ];
-      # The Zenbook sleeps and roams: retry quietly, forever.
-      Restart = "always";
-      RestartSec = "30s";
-      UMask = "0077";
-    };
-    Install.WantedBy = [ "default.target" ];
-  };
 }
