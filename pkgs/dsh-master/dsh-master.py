@@ -552,8 +552,6 @@ def settings_seed(args):
 
 
 def main(argv):
-    # Piped (activation, tee), stdout would otherwise come after later folders' errors.
-    sys.stdout.reconfigure(line_buffering=True)
     parser = argparse.ArgumentParser(prog="dsh-master", description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
     for name, handler in (("render", render), ("install", install), ("check", check), ("status", status)):
@@ -587,4 +585,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
+    # Piped (activation, tee), stdout would otherwise come after later folders' errors.
+    sys.stdout.reconfigure(line_buffering=True)
     sys.exit(main(sys.argv[1:]))
