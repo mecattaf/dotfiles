@@ -42,7 +42,7 @@ let
         env = mkOption {
           type = types.attrsOf types.str;
           default = { };
-          description = "Environment of this pair's units. Recorded in each unit's recipe: public values only.";
+          description = "Environment of this pair's units. Recorded in each unit's recipe and its Assignment binding, and passed in the dshd run argv: public values only; a real key belongs in DSH's credential store.";
         };
         maxWorkers = mkOption {
           type = types.nullOr types.ints.positive;
@@ -122,7 +122,7 @@ in
       type = types.port;
       # scheduled-panel-tunnel forwards this port (home/scheduled.nix).
       default = 3082;
-      description = "Loopback port of the master web profile.";
+      description = "Loopback port of the master web profile. The floor's management API there takes no token, so the port grants control equal to tom's shell to any local uid and to whatever its tunnel forwards it to.";
     };
     dshdCommand = mkOption {
       type = types.str;
@@ -150,8 +150,10 @@ in
           reasoningEffort = "medium";
         };
         # Gufo serves one generation at a time. The bearer is the public dummy
-        # the keyless server takes (pkgs/dsh), never a secret. No preset: the
-        # worker runs dsh's own agent on the gufo provider.
+        # the keyless server takes (pkgs/dsh), never a secret: a pair's env
+        # lands in argv, the unit recipe and the Assignment binding, so a real
+        # key (a Gufo control token) goes in DSH's credential store instead.
+        # No preset: the worker runs dsh's own agent on the gufo provider.
         gufo = {
           provider = "gufo";
           model = localModel.modelId;
