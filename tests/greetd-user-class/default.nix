@@ -44,12 +44,12 @@ pkgs.testers.runNixOSTest {
     };
   };
   testScript = ''
-    def log():
+    def entries():
         return machine.succeed("cat /tmp/greetd-log").split("\n")
 
     def classes(n):
         machine.wait_until_succeeds(f"test $(wc -l < /tmp/greetd-log) -ge {n}", timeout=60)
-        lines = [l.split()[:2] for l in log() if l]
+        lines = [l.split()[:2] for l in entries() if l]
         print(lines)
         return lines
 
