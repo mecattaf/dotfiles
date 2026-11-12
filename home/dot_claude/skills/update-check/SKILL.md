@@ -5,8 +5,9 @@ description: Run the dotfiles nightly update check on the strix and digest what 
 
 # Update check
 
-The nightly update check is mechanical by default (#550). The optional digest is comment-only. The clock is a routine on the
-substrate floor (substrate T-7); nothing in dotfiles schedules it. The logic
+The nightly update check is mechanical by default (#550). The optional digest is comment-only. The clock is the master
+Scheduled item `cli-update` (`pkgs/scheduled/test/fixtures/master/.agency/scheduled/cli-update.jsonc`,
+copied to `~/.agency/scheduled/`). It ships disabled, and only Tom arms it. The logic
 is here: `update-check` (home/dot_local/bin/update-check) does every
 mechanical step, and this skill is the part that reads.
 
@@ -65,7 +66,8 @@ such as an option a new release renamed. Otherwise leave it for Tom.
 
 ## 2. Optional digest, only when Tom asks
 
-The nightly routine does not invoke this section. An explicit request to
+The nightly check invokes this section only through step 3 of the
+`cli-update` brief: arming that item is Tom asking. An explicit request to
 digest authorizes one PR comment only: no commits, pushes or config changes.
 
 Imported upstream notes stay inside collision-safe literal text fences. The
