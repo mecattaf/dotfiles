@@ -28,12 +28,19 @@ WEB = "@deepseek-ai/dsh-web-app"
 HEADLESS = "@deepseek-ai/dsh-headless"
 PERMISSION_ROWS = {"sandbox", "sandbox-policy", "approval", "permission"}
 PIN = re.compile(r"^github:mecattaf/[a-z-]+#floor-v2\.[0-9]+$")
-# How a seed rule addresses its two readers, and its length bound: half of the
-# fork's RuleSchema limit, since every enabled rule sits in the main Session's
-# prompt and every matched one in a worker's brief.
+# How a seed rule addresses its two readers, and its length bound: well under
+# the fork's RuleSchema limit (2000), since every enabled rule sits in the main
+# Session's prompt and every matched one in a worker's brief.
 ASSESSOR_CLAUSE = "If you are assessing it: "
 WORKER_CLAUSE = "If you are the worker running this ticket, only this sentence applies to you: "
-RULE_CHARS = 1000
+RULE_CHARS = 1300
+# A seed rule nudges the main Session; it never decides for it. So every rule
+# lets the assessor hold its Trigger behind other pending work, and the
+# scheduled rule lets an item's task address the main Session itself (for
+# example to start a workflow) instead of becoming a ticket.
+HOLD_CLAUSE = ("unless other pending work should run first; then hold it by ignoring it with a reason "
+               "that starts with 'hold:', and release it later with orchestrator_trigger_requeue")
+SELF_CLAUSE = "If the task asks you, the superagent, to act yourself rather than accept it, "
 # The fork's assessmentOutcome (src/policy.ts) turns an accept into `ignore
 # directionUnsettled` unless the assessor declares implementation_requested,
 # a target_basis other than undetermined and no requires_design_decision.
@@ -271,6 +278,17 @@ def main(package, expect_path):
     if len(clauses) > 1:
         problems.append(f"the worker clauses differ: {sorted(clauses)}")
     subtest("each seed rule settles direction and tells the assessor, then the worker, what to do", problems)
+
+    problems = []
+    for rule_id, rule in rules.items():
+        text = rule.get("instruction", "")
+        assessor = text[text.find(ASSESSOR_CLAUSE):text.find(WORKER_CLAUSE)]
+        if HOLD_CLAUSE not in assessor:
+            problems.append(f"rule {rule_id}: the assessor clause gives no hold path ({HOLD_CLAUSE!r})")
+    scheduled = rules.get("scheduled", {}).get("instruction", "")
+    if SELF_CLAUSE not in scheduled[scheduled.find(ASSESSOR_CLAUSE):scheduled.find(WORKER_CLAUSE)]:
+        problems.append(f"rule scheduled: the assessor clause does not say {SELF_CLAUSE!r}")
+    subtest("each seed rule lets the assessor hold its Trigger, and a scheduled task may ask the assessor to act", problems)
 
     problems = []
     for name, profile in manifest["profiles"].items():

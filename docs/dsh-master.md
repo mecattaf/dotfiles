@@ -82,8 +82,13 @@ folder, and the final message is the result. The description also settles the
 three direction facts that dsh-superagent requires before an accept
 dispatches: whose implementation request the Trigger is, what its target is,
 and that it needs no design decision. Without them an accept is recorded as
-`ignore directionUnsettled`. `checks.dsh-master` asserts that shape and keeps
-each rule within 1000 characters.
+`ignore directionUnsettled`. A rule nudges the main Session and never decides
+for it: each assessor clause lets it hold the Trigger behind other pending work
+(ignore with a reason that starts with `hold:`, release with
+`orchestrator_trigger_requeue`), and the `scheduled` rule lets an item's task
+ask the main Session to act itself, for example to start a workflow, instead
+of becoming a ticket. `checks.dsh-master` asserts that shape and keeps each
+rule within 1300 characters.
 
 Before a switch, `nix build .#dsh-master -o result-dsh-master` gives the same
 bytes activation will render, and `result-dsh-master/bin/dsh-master render`
