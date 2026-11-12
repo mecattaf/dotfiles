@@ -5,7 +5,7 @@
   pkgs,
   ...
 }:
-# The Master configuration (docs/scheduled.md): one source for the DSH profile
+# The Master configuration (docs/dsh-master.md): one source for the DSH profile
 # folders of the master agency's superagent, rendered by pkgs/dsh-master as
 #
 #   master          web app, superagent engine on: the floor instance
@@ -199,6 +199,18 @@ in
         }
       ];
       description = "Rows of the fork bundle's other plugins, the same in every folder (a worker never applies them: they inject the orchestrator service).";
+    };
+    allowBuilds = mkOption {
+      type = types.attrsOf types.bool;
+      # pnpm 11 ends an install with ERR_PNPM_IGNORED_BUILDS (exit 1) while a
+      # dependency's build script is undecided. The fork's interpreter pulls
+      # effect -> msgpackr -> the optional native msgpackr-extract, whose
+      # prebuilt @msgpackr-extract/* binaries cover Linux x64 and arm64, so its
+      # script stays off.
+      default = {
+        msgpackr-extract = false;
+      };
+      description = "pnpm `allowBuilds` of every Master folder's pnpm-workspace.yaml: whether each named package's build script runs.";
     };
     settingsSeed = mkOption {
       type = types.path;

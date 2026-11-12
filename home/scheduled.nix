@@ -23,15 +23,30 @@ let
   inbox = "${config.programs.dsh.master.stateDir}/inbox/scheduled";
   # The floor's dshd instance; the name the Master floor recipe keeps.
   floorInstance = "floor";
+  # Tom, Claude Code and the dsh-web panel run the same program, and
+  # `scheduled run` and `history` find the same inbox and floor. The
+  # defaults live in the installed command: Home Manager's session
+  # variables reach no NAS shell (useUserPackages puts hm-session-vars.sh
+  # under /etc/profiles, which ~/.bash_profile does not source), nor Herdr
+  # or Claude Code. A variable set by hand still wins.
+  cli = pkgs.symlinkJoin {
+    name = "scheduled-${pkgs.scheduled.version}";
+    paths = [ pkgs.scheduled ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      wrapProgram $out/bin/scheduled \
+        --set-default SCHEDULED_INBOX ${lib.escapeShellArg inbox} \
+        --set-default SCHEDULED_FLOOR_INSTANCE ${floorInstance}
+    '';
+    passthru = {
+      unwrapped = pkgs.scheduled;
+      inherit inbox floorInstance;
+    };
+    meta.mainProgram = "scheduled";
+  };
 in
 lib.mkIf osConfig.dshd.enable {
-  # Tom, Claude Code and the dsh-web panel run the same program, and
-  # `scheduled run` and `history` find the same inbox and floor.
-  home.packages = [ pkgs.scheduled ];
-  home.sessionVariables = {
-    SCHEDULED_INBOX = inbox;
-    SCHEDULED_FLOOR_INSTANCE = floorInstance;
-  };
+  home.packages = [ cli ];
 
   systemd.user.services.scheduled-heartbeat = {
     Unit = {
@@ -60,9 +75,16 @@ lib.mkIf osConfig.dshd.enable {
       # heartbeat.json, intake.json and .tick.lock: ~/.local/state/scheduled
       # ($STATE_DIRECTORY), never the superagent's stateDir.
       StateDirectory = "scheduled";
+      # systemd's default is 0755; the files are 0600, keep their names private too.
+      StateDirectoryMode = "0700";
       NoNewPrivileges = true;
       UMask = "0077";
-      # Longer than dshd's startupTimeout (150 s) for a floor start.
+      # The walk of ~ never competes with an interactive session for CPU
+      # (home/harness-records.nix). The floor dshd starts is its own unit
+      # and keeps its own priority.
+      Nice = 10;
+      # Longer than dshd's startupTimeout (150 s) plus the tick lock's
+      # 60 s wait, so systemd never kills a tick before it logs why.
       TimeoutStartSec = "5min";
     };
   };
@@ -86,30 +108,35 @@ lib.mkIf osConfig.dshd.enable {
     Install.WantedBy = [ "timers.target" ];
   };
 
-  # The Scheduled panel on the Zenbook's loopback (docs/scheduled.md).
+  # The Master floor's dsh-web on the Zenbook's loopback (docs/scheduled.md).
   # NAS-owned, like the live agency-web-client-tunnel; nothing of
   # Scheduled runs on the Zenbook. No store path in this text, so an
   # openssh bump never makes fleet-update hold a switch for it.
-  systemd.user.services.scheduled-panel-tunnel = {
-    Unit = {
-      Description = "Scheduled panel: NAS loopback 3082 on the Zenbook";
-      After = [ "network-online.target" ];
-      StartLimitIntervalSec = 0;
+  systemd.user.services.scheduled-panel-tunnel =
+    let
+      # The port the Master web profile serves on.
+      webPort = toString config.programs.dsh.master.webPort;
+    in
+    {
+      Unit = {
+        Description = "Master floor dsh-web: NAS loopback ${webPort} on the Zenbook";
+        After = [ "network-online.target" ];
+        StartLimitIntervalSec = 0;
+      };
+      Service = {
+        ExecStart = lib.concatStringsSep " " [
+          "/run/current-system/sw/bin/ssh -N -T -o BatchMode=yes"
+          "-o HostName=100.121.160.100 -o HostKeyAlias=client"
+          "-o ForwardAgent=no -o ControlMaster=no -o ControlPath=none"
+          "-o ExitOnForwardFailure=yes -o ServerAliveInterval=30"
+          "-o ServerAliveCountMax=3"
+          "-R 127.0.0.1:${webPort}:127.0.0.1:${webPort} client"
+        ];
+        # The Zenbook sleeps and roams: retry quietly, forever.
+        Restart = "always";
+        RestartSec = "30s";
+        UMask = "0077";
+      };
+      Install.WantedBy = [ "default.target" ];
     };
-    Service = {
-      ExecStart = lib.concatStringsSep " " [
-        "/run/current-system/sw/bin/ssh -N -T -o BatchMode=yes"
-        "-o HostName=100.121.160.100 -o HostKeyAlias=client"
-        "-o ForwardAgent=no -o ControlMaster=no -o ControlPath=none"
-        "-o ExitOnForwardFailure=yes -o ServerAliveInterval=30"
-        "-o ServerAliveCountMax=3"
-        "-R 127.0.0.1:3082:127.0.0.1:3082 client"
-      ];
-      # The Zenbook sleeps and roams: retry quietly, forever.
-      Restart = "always";
-      RestartSec = "30s";
-      UMask = "0077";
-    };
-    Install.WantedBy = [ "default.target" ];
-  };
 }

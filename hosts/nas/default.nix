@@ -1,9 +1,14 @@
 {
+  config,
   inputs,
   lib,
   pkgs,
   ...
 }:
+let
+  # The checkout link every raw dotfile uses (home/raw-dotfiles-guard.nix).
+  scheduledSkill = config.home-manager.users.tom.lib.rawDotfiles.link "dot_claude/skills/scheduled";
+in
 {
   imports = [
     ./agent-host.nix
@@ -75,6 +80,11 @@
     ".agents/skills".enable = lib.mkForce false;
     ".claude/skills".enable = lib.mkForce false;
     ".claude-work/skills".enable = lib.mkForce false;
+    # The one skill added to the frozen seat roots: the scheduled skill
+    # (docs/scheduled.md), as one link per seat beside the entries already
+    # there. Nothing else in either root is linked, backed up or replaced.
+    ".claude/skills/scheduled".source = scheduledSkill;
+    ".claude-work/skills/scheduled".source = scheduledSkill;
   };
 
   # Central credentials move here with the brain role. Ciphertexts must be
