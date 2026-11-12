@@ -73,32 +73,42 @@ function collectOccurrences(cron, fromMs, windowMs, maxCount = 500) {
   return result;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+// One formatter per zone: building an Intl.DateTimeFormat costs far more than using one.
+const formatters = new Map();
 
-/** `YYYY-MM-DDTHH:MM` wall-clock minute of `ms` in `timeZone`. */
-function wallMinute(ms, timeZone) {
-  const parts = {};
-  for (const { type, value } of new Intl.DateTimeFormat('en-CA', {
-    timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-  }).formatToParts(ms)) parts[type] = value;
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+/** The wall-clock minute of `ms` in `timeZone`, as milliseconds of the same fields read in UTC. */
+function wallMs(ms, timeZone) {
+  let format = formatters.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-CA', {
+      timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    });
+    formatters.set(timeZone, format);
+  }
+  const f = {};
+  for (const { type, value } of format.formatToParts(ms)) f[type] = Number(value);
+  return Date.UTC(f.year, f.month - 1, f.day, f.hour, f.minute);
 }
 
 /**
- * Whether `cron` in `timeZone` skips a wall time the expression names. The same expression in UTC lists the wall
- * times it names, with no DST; one missing from the zone's own list fell in a spring-forward gap. A fall-back
- * overlap gives a wall time once (the earlier instant), which is not a skip.
+ * Whether `cron` in `timeZone` skips a wall time the expression names. Between two consecutive occurrences where
+ * the zone's offset grows (a spring-forward gap), any wall time the same expression names in UTC, where there is
+ * no DST, was skipped. A fall-back overlap gives a wall time once (the earlier instant), which is not a skip.
  */
 function skipsWallTime(expr, timeZone, occurrences) {
-  if (occurrences.length < 2) return false;
-  const utc = Cron.parse(expr, 'UTC');
-  if (utc.kind !== 'accepted') return false;
-  const first = occurrences[0];
-  const last = occurrences[occurrences.length - 1];
-  const local = new Set(occurrences.map((ms) => wallMinute(ms, timeZone)));
-  // A zone is at most 14 h from UTC: wall times a day inside the window's ends are covered by both lists.
-  for (const ms of collectOccurrences(utc.rule, first + DAY_MS, last - first - 2 * DAY_MS, 20000)) {
-    if (!local.has(new Date(ms).toISOString().slice(0, 16))) return true;
+  let utc = null;
+  let prevWall = wallMs(occurrences[0], timeZone);
+  for (let j = 1; j < occurrences.length; j++) {
+    const wall = wallMs(occurrences[j], timeZone);
+    const grew = (wall - occurrences[j]) > (prevWall - occurrences[j - 1]);
+    if (grew) {
+      utc ??= Cron.parse(expr, 'UTC');
+      if (utc.kind !== 'accepted') return false;
+      // Wall times strictly between the two occurrences' wall times are ones the zone did not give.
+      const next = utc.rule.next(prevWall);
+      if (next && new Date(next).getTime() < wall) return true;
+    }
+    prevWall = wall;
   }
   return false;
 }
