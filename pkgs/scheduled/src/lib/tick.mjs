@@ -64,7 +64,7 @@ export async function holderAlive(content, { boot, start = processStart } = {}) 
  * @param {number} [opts.timeoutMs=60000]
  * @returns {Promise<() => Promise<void>>} Release function
  */
-export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 300000, boot: bootOpt } = {}) {
+export async function acquireLock(lockPath, { retryIntervalMs = 25, timeoutMs = 60000, boot: bootOpt } = {}) {
   await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
   const start = Date.now();
   const boot = bootOpt === undefined ? await currentBoot() : bootOpt;
@@ -134,8 +134,14 @@ function entryOf(f, st, v, prev, { now, lastTick }) {
     if (prev?.valid && prev.enabled && prev.armedSince) armedSince = prev.armedSince;
     // Fixed after being invalid: anchored to lastTick, so the latest missed instant is still due.
     else if (prev && !prev.valid) armedSince = lastTick.toISOString();
-    // New, or enabled now: instants before this tick never fire (T10).
-    else armedSince = now.toISOString();
+    // New, or enabled now: instants before this tick never fire (T10), unless the file was written after
+    // the last tick: then it is armed when written, so an item enabled between two hourly timer ticks
+    // fires the instants after the edit at the next tick. The first tick has lastTick = now.
+    else {
+      const written = typeof st.mtimeNs === 'bigint' ? Number(st.mtimeNs / 1000000n) : Number(st.mtimeMs);
+      const edited = written > lastTick.getTime() && written < now.getTime();
+      armedSince = (edited ? new Date(written) : now).toISOString();
+    }
   }
   return {
     id: f.id,

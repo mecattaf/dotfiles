@@ -10,7 +10,7 @@ import { setupEnv, hourly } from './helpers.mjs';
 
 const at = (iso) => new Date(iso);
 
-test('C3.4 an item first seen in a pass: no instant before first sight is due (written 13:58 with cron 0 13 * * *, nothing at 14:00)', async () => {
+test('C3.4 an item first seen in a pass: no instant before it was written is due (written 13:58 with cron 0 13 * * *, nothing at 14:00)', async () => {
   const env = setupEnv();
   try {
     env.heartbeat('2026-11-12T12:00:00.000Z');
@@ -18,7 +18,7 @@ test('C3.4 an item first seen in a pass: no instant before first sight is due (w
     const res = await tick(env.ctx, { now: at('2026-11-12T14:00:00.000Z') });
     assert.equal(res.code, 0);
     assert.deepEqual(env.records(), []);
-    assert.equal(env.entry('master:afternoon').armedSince, '2026-11-12T14:00:00.000Z');
+    assert.equal(env.entry('master:afternoon').armedSince, '2026-11-12T13:58:00.000Z');
   } finally {
     env.cleanup();
   }

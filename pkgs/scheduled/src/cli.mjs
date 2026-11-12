@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // cli.mjs — the `scheduled` command-line entry point.
 //
-// Every verb is loaded lazily; a verb whose module has not been written yet
-// prints "scheduled: <verb> is not built yet" and exits 2.
+// Every verb is loaded lazily, so a `scheduled run` loads only its own module.
+// A module that fails to load (a packaging fault) is an unhandled error, exit 1.
 
 import { makeContext } from './lib/context.mjs';
 
@@ -97,22 +97,7 @@ async function main() {
 
   // Load verb module lazily.
   const args = argv.slice(1);
-  let mod;
-  try {
-    mod = await import(VERB_MODULES[verb]);
-  } catch (err) {
-    if (err.code === 'ERR_MODULE_NOT_FOUND') {
-      process.stderr.write(`scheduled: ${verb} is not built yet\n`);
-      process.exit(2);
-    }
-    throw err;
-  }
-
-  if (typeof mod.main !== 'function') {
-    process.stderr.write(`scheduled: ${verb} is not built yet\n`);
-    process.exit(2);
-  }
-
+  const mod = await import(VERB_MODULES[verb]);
   const code = await mod.main(args, ctx);
   process.exit(typeof code === 'number' ? code : 0);
 }

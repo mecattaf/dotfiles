@@ -21,6 +21,8 @@ function checkOwnership(path, uid) {
   } catch {
     return `Cannot stat "${path}".`;
   }
+  // lstat: a symbolic link reads as mode 777, so name it rather than call it group-writable.
+  if (st.isSymbolicLink()) return `"${path}" is a symbolic link, not a regular file or folder.`;
   if (st.uid !== uid) return `"${path}" is not owned by uid ${uid}.`;
   if (st.mode & 0o022) return `"${path}" is writable by group or others (mode ${(st.mode & 0o777).toString(8)}).`;
   return null;

@@ -257,12 +257,32 @@ test('T10 an item enabled now does not fire instants before it was armed', async
     await tick(env.ctx, { now: at('2026-11-12T09:00:00.000Z') });
     await tick(env.ctx, { now: at('2026-11-12T11:30:00.000Z') });
     env.item('hb', hourly(), new Date('2026-11-12T11:40:00.000Z'));
-    // Armed at 11:45: the 10:00 and 11:00 instants never fire.
+    // Armed at 11:40, when the file was written: the 10:00 and 11:00 instants never fire.
     await tick(env.ctx, { now: at('2026-11-12T11:45:00.000Z') });
     assert.deepEqual(env.records(), []);
+    assert.equal(env.entry('master:hb').armedSince, '2026-11-12T11:40:00.000Z');
     await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
     assert.deepEqual(env.records(), ['master~hb@20261112T1200Z.json']);
     assert.equal(env.record('master~hb@20261112T1200Z.json').missed, 0);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T10 with only the hourly timer, an item enabled at 11:40 fires 12:00 at the 12:00 tick, not 13:00', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly({ enabled: false }));
+    await tick(env.ctx, { now: at('2026-11-12T11:00:05.000Z') });
+    env.item('hb', hourly(), new Date('2026-11-12T11:40:00.000Z'));
+    await tick(env.ctx, { now: at('2026-11-12T12:00:05.000Z') });
+    assert.deepEqual(env.records(), ['master~hb@20261112T1200Z.json']);
+    assert.equal(env.record('master~hb@20261112T1200Z.json').missed, 0);
+    // A file stamped before the last tick (a copy that kept its mtime) is armed now, as before.
+    env.item('old', hourly(), new Date('2026-11-01T00:00:00.000Z'));
+    await tick(env.ctx, { now: at('2026-11-12T13:00:05.000Z') });
+    assert.equal(env.entry('master:old').armedSince, '2026-11-12T13:00:05.000Z');
+    assert.deepEqual(env.records().filter((n) => n.startsWith('master~old@')), []);
   } finally {
     env.cleanup();
   }

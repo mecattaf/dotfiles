@@ -111,7 +111,7 @@ after one. The other steps are by hand:
 dsh-master render            # what activation does, with a line per file
 dsh-master install [P...]    # pnpm install per folder, through the dsh dshd runs
 dsh-master check [P...]      # --dump-config per folder: every rendered row, no patch warning
-dsh-master status            # per folder: rendered current|stale, installed current|no, node_modules present|absent
+dsh-master status            # per folder: rendered current|stale, installed current|no, node_modules present|absent; exit 1 if not all current
 dsh-master settings seed     # once, after the floor's first start
 ```
 
@@ -126,6 +126,9 @@ The fleet wrapper refuses `dsh plugin`. After a pin moves (`tag`,
 floor before installing into `master` (`dshd stop floor`, install, `dshd
 start floor`); a worker folder is read when each unit boots, so install it
 while none of its units runs.
+Until every folder is installed at its rendered pins, `dsh-master status`
+exits 1; it also lists `master*` folders no build renders (a removed pair)
+as orphans, which fail nothing.
 
 `settings seed` reads the floor's Store settings through its management API,
 upserts the rules and admission cells of `home/dsh-master/settings.seed.json`

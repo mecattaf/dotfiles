@@ -3,7 +3,7 @@
     dsh-master render [--from DIR] [--quiet]   copy the rendered files into $DSH_HOME
     dsh-master install [PROFILE...]           install each profile's plugins
     dsh-master check [PROFILE...]             assert the rows in each config dump
-    dsh-master status                         rendered, installed, current
+    dsh-master status                         rendered, installed, current (exit 1 if not)
     dsh-master settings seed [FILE] [--url U] seed the floor's Store settings
 
 The rendered folders come from the package (pkgs/dsh-master/default.nix) or
@@ -283,18 +283,27 @@ def check(args):
 
 
 def status(args):
+    """One line per rendered folder; exit 1 when any is stale or not installed at its rendered pins.
+    A master* folder this build does not render (a removed pair) is listed as an orphan, which is
+    not a failure: nothing starts it."""
     manifest = load_manifest(args.source)
     home = dsh_home()
+    behind = False
     for name, profile in sorted(manifest["profiles"].items()):
         folder = os.path.join(home, "profiles", name)
         current = all(sha256(os.path.join(folder, file)) == profile["files"][file] for file, _ in FILES)
         installed = read_state(folder).get("installed") == profile["files"]["package.json"]
         modules = os.path.isdir(os.path.join(folder, "node_modules"))
+        behind = behind or not (current and installed)
         print(
             f"{name}: rendered {'current' if current else 'stale'}, "
             f"installed {'current' if installed else 'no'}, node_modules {'present' if modules else 'absent'}"
         )
-    return 0
+    profiles = os.path.join(home, "profiles")
+    for name in sorted(os.listdir(profiles)) if os.path.isdir(profiles) else []:
+        if NAME.match(name) and name not in manifest["profiles"] and os.path.isdir(os.path.join(profiles, name)):
+            print(f"{name}: orphan, not rendered by this build (remove it by hand when no instance uses it)")
+    return 1 if behind else 0
 
 
 MODES = ("off", "observe", "auto")
@@ -358,7 +367,10 @@ def seeded(blocks, seed):
 def settings_seed(args):
     with open(args.file or os.path.join(args.source, "share", "dsh-master", "settings.seed.json"), encoding="utf-8") as stream:
         seed = json.load(stream)
-    base = args.url.rstrip("/") + "/orchestrator/api/settings"
+    url = args.url or load_manifest(args.source).get("url")
+    if not url:
+        raise Failure("no floor URL: this build's manifest names none; pass --url")
+    base = url.rstrip("/") + "/orchestrator/api/settings"
     for attempt in (1, 2):
         changes = seeded(api(base)["blocks"], seed)
         if not changes:
@@ -395,7 +407,7 @@ def main(argv):
     settings = commands.add_parser("settings").add_subparsers(dest="settings", required=True)
     seed = settings.add_parser("seed", help="upsert the seed's rules and admission cells, raise eval.mode")
     seed.add_argument("file", nargs="?", help="seed file (default: this build's settings.seed.json)")
-    seed.add_argument("--url", default="http://127.0.0.1:3082", help="the floor's web server")
+    seed.add_argument("--url", help="the floor's web server (default: the rendered master's webserver port)")
     seed.add_argument("--from", dest="source", default=default_source(), help="a dsh-master build (default: this one)")
     seed.set_defaults(handler=settings_seed)
     args = parser.parse_args(argv)

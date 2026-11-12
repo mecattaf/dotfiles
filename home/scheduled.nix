@@ -23,15 +23,30 @@ let
   inbox = "${config.programs.dsh.master.stateDir}/inbox/scheduled";
   # The floor's dshd instance; the name the Master floor recipe keeps.
   floorInstance = "floor";
+  # Tom, Claude Code and the dsh-web panel run the same program, and
+  # `scheduled run` and `history` find the same inbox and floor. The
+  # defaults live in the installed command: Home Manager's session
+  # variables reach no NAS shell (useUserPackages puts hm-session-vars.sh
+  # under /etc/profiles, which ~/.bash_profile does not source), nor Herdr
+  # or Claude Code. A variable set by hand still wins.
+  cli = pkgs.symlinkJoin {
+    name = "scheduled-${pkgs.scheduled.version}";
+    paths = [ pkgs.scheduled ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      wrapProgram $out/bin/scheduled \
+        --set-default SCHEDULED_INBOX ${lib.escapeShellArg inbox} \
+        --set-default SCHEDULED_FLOOR_INSTANCE ${floorInstance}
+    '';
+    passthru = {
+      unwrapped = pkgs.scheduled;
+      inherit inbox floorInstance;
+    };
+    meta.mainProgram = "scheduled";
+  };
 in
 lib.mkIf osConfig.dshd.enable {
-  # Tom, Claude Code and the dsh-web panel run the same program, and
-  # `scheduled run` and `history` find the same inbox and floor.
-  home.packages = [ pkgs.scheduled ];
-  home.sessionVariables = {
-    SCHEDULED_INBOX = inbox;
-    SCHEDULED_FLOOR_INSTANCE = floorInstance;
-  };
+  home.packages = [ cli ];
 
   systemd.user.services.scheduled-heartbeat = {
     Unit = {
@@ -62,7 +77,12 @@ lib.mkIf osConfig.dshd.enable {
       StateDirectory = "scheduled";
       NoNewPrivileges = true;
       UMask = "0077";
-      # Longer than dshd's startupTimeout (150 s) for a floor start.
+      # The walk of ~ never competes with an interactive session for CPU
+      # (home/harness-records.nix). The floor dshd starts is its own unit
+      # and keeps its own priority.
+      Nice = 10;
+      # Longer than dshd's startupTimeout (150 s) plus the tick lock's
+      # 60 s wait, so systemd never kills a tick before it logs why.
       TimeoutStartSec = "5min";
     };
   };
