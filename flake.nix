@@ -3021,6 +3021,27 @@
               touch "$out"
             '';
 
+        # A login bash and every fish read Home Manager's session variables
+        # from the per-user profile (useUserPackages), with ~/.nix-profile as
+        # the fallback; fish skips PATH. Fixtures only.
+        hm-session-vars =
+          pkgs.runCommand "hm-session-vars"
+            {
+              nativeBuildInputs = [
+                pkgs.bashInteractive
+                pkgs.fish
+                pkgs.coreutils
+                pkgs.gnused
+                pkgs.gnugrep
+              ];
+              BASH_PROFILE = ./home/dot_bash_profile;
+              FISH_READER = ./home/dot_config/fish/conf.d/hm-session-vars.fish;
+            }
+            ''
+              bash ${./tests/hm-session-vars/test.sh}
+              touch "$out"
+            '';
+
         failure-marker-reconcile =
           pkgs.runCommand "failure-marker-reconcile"
             {
