@@ -2,14 +2,13 @@ Kitty uses the separately qualified source recipe `pkgs/kitty-0.50.nix`.
 Moving `nixpkgs-fresh` changes some build inputs but does not advance that
 recipe's literal version/tag/source hash/Go vendor hash.
 
-The existing update checker now watches `kovidgoyal/kitty` stable GitHub
-releases directly through its issue-watch path. It compares complete versions
-against the client and NAS packages, including patch releases, and ignores
-drafts, prereleases and nonnumeric tags. One review issue is reused per release;
-a previously closed issue remains closed. The normal nightly routine includes
-this watch. `update-check --only kitty --dry-run --json` provides a read-only
-manual check; omitting `--dry-run` may create its review issue. Neither path
-edits the recipe, builds a candidate, switches a system or restarts a terminal.
+Watching `kovidgoyal/kitty` stable GitHub releases belongs to the master
+agency's fleet update protocol, outside this repository (the `update-check`
+program that used to do it here is retired). The watch compares complete
+versions against the client and NAS packages, including patch releases, and
+ignores drafts, prereleases and nonnumeric tags. One review issue is reused per
+release; a previously closed issue remains closed. The watch never edits the
+recipe, builds a candidate, switches a system or restarts a terminal.
 
 Adoption remains a reviewed source change:
 
@@ -43,6 +42,5 @@ Adoption remains a reviewed source change:
    a running Kitty or retained NAS process.
 
 If the version-named recipe is renamed, update its overlay import and this
-watch's review instructions together. The checker implementation remains the
-existing `home/dot_local/bin/update-check`; its clock stays on the Projects
-routine, with no new timer or service.
+page together. Nothing in this repository watches Kitty releases or adds a
+timer or service for it.

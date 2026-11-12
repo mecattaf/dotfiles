@@ -555,9 +555,6 @@
         let
           amdAi = inputs.nix-amd-ai.packages.${system};
           strixAi = inputs.nix-strix-halo.packages.${system};
-          # The Cloudflare Substrate's box-side programs, vendored from
-          # agency-agency/substrate at the sha in pkgs/substrate-apps/SYNC.md.
-          substrateApps = pkgs.callPackage ./pkgs/substrate-apps { };
         in
         {
           # Flake-level builds: the same derivations the hosts on the main
@@ -567,7 +564,6 @@
             qwentts
             qwen-speech
             speech-session
-            academic-ocr
             paper-render
             utility-model
             call-diarize
@@ -600,7 +596,6 @@
           inherit (self.nixosConfigurations.nas.pkgs)
             brother-print-text
             fleet-status
-            local-ai-monthly
             mnemon
             music-acquire
             paper-daemon
@@ -639,12 +634,6 @@
           # `nix build .#dsh-master`: NAS's rendered Master profiles and the
           # dsh-master CLI, byte-identical to what switch activation renders.
           dsh-master = self.nixosConfigurations.nas.config.home-manager.users.tom.programs.dsh.master.package;
-          # `nix build .#substrate-pusher`, `.#substrate-puller`: the strix's
-          # gentle capacity pusher and its interpreter-host puller from the
-          # pinned substrate sha (pkgs/substrate-apps), installed by
-          # modules/substrate.nix.
-          substrate-pusher = substrateApps.pusher;
-          substrate-puller = substrateApps.puller;
         };
 
       # `nix build .#models.<id>` retired with the 2026-08-21 "weights leave
@@ -794,13 +783,6 @@
               python3 ${./tests/antigravity-accounts/check_native.py}
                 touch "$out"
             '';
-
-        # modules/substrate.nix rendered OFF on the strix and armed with
-        # fixtures (tests/substrate-modules); every assertion is eval-time.
-        substrate-modules = import ./tests/substrate-modules {
-          inherit pkgs self;
-          inherit (nixpkgs) lib;
-        };
 
         # DF-5: the vendored Cargo.lock must equal upstream's at the pinned rev.
         # A build-time comparison, not an evaluation-time read, so evaluation
@@ -958,7 +940,6 @@
           assert strix.services.gufo.enable;
           assert strix.services.gufo.llm.sessions == 1;
           assert strix.services.gufo.llm.context == 102400;
-          assert !(strix.systemd.user.services ? substrate-puller);
           pkgs.runCommand "gufo-unit-policy" { } ''
             touch "$out"
           '';
@@ -1264,8 +1245,8 @@
           # Production compute has no Herdr server; its protection is tested on
           # the brain role fixture in herdr-oom-isolation.
           assert !(strixHome.systemd.user.services ? herdr);
-          # The seats oracle's peer cache and substrate's metersDir outlive the
-          # seat feeder that used to write it (home/harness-records.nix).
+          # The seats oracle's peer cache outlives the seat feeder that used to
+          # write it (home/harness-records.nix).
           assert
             !(builtins.elem "d %h/.local/state/tally-rewrite/meters 0700 - - -" strixHome.systemd.user.tmpfiles.rules);
           # herdr WITHOUT the kitten (#385, 2026-09-13). herdr-kitten is gone
@@ -1290,8 +1271,8 @@
               nixpkgs.lib.hasPrefix "map " l
               && (nixpkgs.lib.hasInfix " hk " l || nixpkgs.lib.hasPrefix "map ctrl+b " l)
             ) (nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/kitty/kitty.conf)));
-          # Without `--remote-keybindings server` a projector strips the tally
-          # [[keys.command]] popups (herdr src/client/shell/config.rs:158-162).
+          # Without `--remote-keybindings server` a projector strips the server's
+          # [[keys.command]] bindings (herdr src/client/shell/config.rs:158-162).
           assert nixpkgs.lib.hasInfix "--remote-keybindings server" (
             builtins.readFile ./home/dot_local/bin/herdr-projector
           );
@@ -1785,34 +1766,8 @@
               touch "$out"
             '';
 
-        # nightly-record (dotfiles#298): five lanes, five rows, every night,
-        # from the harness transcripts and nothing else. Same shape as
-        # print-paper — the real program, driven against fixtures.
-        nightly-record =
-          pkgs.runCommand "nightly-record"
-            {
-              nativeBuildInputs = [ pkgs.python3 ];
-            }
-            ''
-              set -euo pipefail
-
-              export HOME="$TMPDIR/home"
-              export PYTHONDONTWRITEBYTECODE=1
-              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
-              export NIGHTLY_RECORD_SCRIPT=${./home/dot_local/bin/nightly-record}
-              export NIGHTLY_RECORD_FIXTURES=${./tests/nightly-record/fixtures}
-              mkdir -p "$HOME"
-
-              python3 -m unittest discover \
-                -s ${./tests/nightly-record} \
-                -p 'test_*.py' \
-                -v
-
-              touch "$out"
-            '';
-
         # #313 — raw-dotfiles-guard, the real binary against fixture checkouts:
-        # one missing nightly-record must fail naming it, a complete one must
+        # one missing program must fail naming it, a complete one must
         # pass, and no checkout at all only warns. The eval half pins what
         # each host's guard checks and that it runs before writeBoundary.
         # These lists are pinned ON PURPOSE: adding a user unit that runs
@@ -1857,7 +1812,7 @@
           pkgs.runCommand "raw-dotfiles-guard" { } ''
             # stdenv runs with errexit; the stale fixture must be allowed to fail.
             set +e -u
-            progs="claude-transcript-mirror nightly-record tally-seat-feeder util-row util-sampler"
+            progs="claude-transcript-mirror journal-day seats util-row util-sampler"
             mk() {
               mkdir -p "$1/.git" "$1/home/dot_local/bin"
               for p in $progs; do
@@ -1874,12 +1829,12 @@
             case "$res" in *"ok (5 programs)"*) ;; *) echo "complete fixture: no ok line" >&2; exit 1 ;; esac
 
             mk "$TMPDIR/stale"
-            rm "$TMPDIR/stale/home/dot_local/bin/nightly-record"
+            rm "$TMPDIR/stale/home/dot_local/bin/journal-day"
             res=$(${lib.getExe guard} "$TMPDIR/stale" $progs 2>&1)
             rc=$?
             echo "$res"
             [ "$rc" -ne 0 ] || { echo "stale fixture: guard passed" >&2; exit 1; }
-            case "$res" in *"bin/nightly-record does not exist"*) ;; *) echo "stale fixture: nightly-record not named" >&2; exit 1 ;; esac
+            case "$res" in *"bin/journal-day does not exist"*) ;; *) echo "stale fixture: journal-day not named" >&2; exit 1 ;; esac
             case "$res" in *"bin/util-row does not exist"*) echo "stale fixture: named a present program" >&2; exit 1 ;; esac
 
             res=$(${lib.getExe guard} "$TMPDIR/absent" $progs 2>&1)
@@ -1915,13 +1870,6 @@
               touch "$out"
             '';
 
-        # update-check (#550): the nightly update check's contract, hermetically.
-        # A fake nix and gh stand in for upstream and GitHub around a real git
-        # origin: one PR per moved input, a draft on a failed gate, nothing on a
-        # quiet night, review commits carried across a rebuilt bump, the PR
-        # closed when main catches up; and lib/update-watch.json is read
-        # against this flake.lock, so a watched input that stops being bumpable
-        # turns the check red.
         downloads-mirror =
           let
             fixtureSsh = pkgs.writeShellScriptBin "ssh" ''
@@ -1950,34 +1898,6 @@
                 self.nixosConfigurations.client.config.home-manager.users.tom.xdg.configFile."systemd/user/downloads-mirror-notify.service".source
               }
               python3 -m unittest discover -s ${./tests/downloads-mirror} -p 'test_*.py' -v
-              touch "$out"
-            '';
-
-        update-check =
-          pkgs.runCommand "update-check"
-            {
-              nativeBuildInputs = [
-                pkgs.python3
-                pkgs.git
-              ];
-              PYTHONTZPATH = "${pkgs.tzdata}/share/zoneinfo";
-            }
-            ''
-              set -euo pipefail
-
-              export HOME="$TMPDIR/home"
-              export PYTHONDONTWRITEBYTECODE=1
-              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
-              export UPDATE_CHECK_SCRIPT=${./home/dot_local/bin/update-check}
-              export UPDATE_WATCH=${./lib/update-watch.json}
-              export UPDATE_FLAKE_LOCK=${./flake.lock}
-              mkdir -p "$HOME"
-
-              python3 -m unittest discover \
-                -s ${./tests/update-check} \
-                -p 'test_*.py' \
-                -v
-
               touch "$out"
             '';
 
@@ -2056,8 +1976,7 @@
         # HOME and DSH_HOME under $TMPDIR, no key path in the wrapper. Each dump
         # must leave stderr empty (a patch that matches no row warns there)
         # and carry the policy rows; tests/dsh-config/check_dump.py reads its
-        # expectations from pkgs.dsh's passthru. lib/update-watch.json builds
-        # this on every llm-agents bump.
+        # expectations from pkgs.dsh's passthru.
         dshd-nas = import ./tests/dshd-nas {
           inherit pkgs;
           configurations = self.nixosConfigurations;
@@ -2234,7 +2153,7 @@
         # ids, writes without HERDR_ENV=1) and the stderr-log unit test. Here:
         # jevcore's $out has the pinned build and no network path, the wrapper
         # composes `herdr` with every plugin row mounted and none skipped, the
-        # stock headless profile (substrate's) mounts none of them, and a boot
+        # stock headless profile mounts none of them, and a boot
         # of `herdr` with a blank task (it stops before any model call) prints
         # the ready lines of herdr-guard, dsh-herdr and jevcore on stderr.
         # Same sandbox as dsh-config: no network, a private DSH_HOME, no herdr,
@@ -2545,7 +2464,7 @@
               #              in prose about other people's systems protects
               #              nothing and costs the ability to write down why we
               #              don't do what they do. Everything that actually runs
-              #              — flake, modules, hosts, home, pkgs, overlays, flows,
+              #              — flake, modules, hosts, home, pkgs, overlays,
               #              scripts — stays swept.
               #
               # NB the failure was invisible to `nix flake check --no-build`,
@@ -2588,56 +2507,8 @@
             # `worker` is spelled by concatenation throughout this check for one
             # narrow reason that SURVIVES its reinstatement: the ripgrep sweep at
             # the bottom greps the flake's own source tree, and a literal here
-            # would match itself. It is no longer a "retired host" — see below.
+            # would match itself. It is no longer a retired host.
             retiredWorker = "work" + "er";
-            # HALF of Tom's old ruling survives, and the halves are now split
-            # (dotfiles#310, dotfiles#291). It used to read: the worker is a
-            # HOST again, never a Tally executor AND never a Tally pool.
-            #
-            #   STILL TRUE, and asserted structurally below: never an EXECUTOR.
-            #   All jobs execute locally on the strix, home/tally.nix
-            #   declares `executors = { }`, and the worker runs no daemon
-            #   (CONSOLIDATED §3 Q2). The GPU cooldown tripwire that used to
-            #   reach across for a lease is dead and deleted.
-            #
-            #   SUPERSEDED by CONSOLIDATED §3 Q1 at the sheet's default
-            #   (RULINGS.md R-2026-09-06-03, 2026-09-06): "capacity one per
-            #   device until jobs carry a VRAM request the engine reads". There
-            #   is now a per-GPU row for each of the two devices, and the second
-            #   one is named after the box that holds it. It is a ROW IN THE
-            #   COORDINATOR'S POOL TABLE, not an executor and not a daemon —
-            #   nothing leases it yet. It exists so the first job that runs over
-            #   there has a lane to name instead of borrowing the strix's
-            #   and lying about which device it sat on.
-            #
-            # A pool row and an executor are different objects; the old guard
-            # conflated them because, while the host was retired, no row could
-            # be anything but the first step back toward an executor.
-            # The sweep below is now TWO sweeps, because the relaxation Q1 needs
-            # is narrower than the file it lands in.
-            #
-            #   retiredExecutionPattern — the two RETIRED EXECUTOR attribute
-            #   names, still banned from home/tally.nix AND flows/. Nothing in
-            #   this branch wants either back.
-            #
-            #   retiredFlowHostPattern — the bare host name, banned from the
-            #   CODE under flows/ except in two spellings: the local inference endpoint
-            #   `http://<host>:8731` and the `<host>-gpu` pool. A flow is a
-            #   script that ENQUEUES work; a flow naming the other box as a
-            #   place to run is the executor half that stayed retired (Q2: one
-            #   daemon, on the strix). Dialling the box's inference
-            #   server over HTTP, or leasing the pool row that describes its
-            #   device (home/tally.nix declares it), is neither — every model
-            #   call on this fleet lands on the worker now. Prose (README.md)
-            #   is not checked. The pool row keeps its own structural
-            #   assertion below, which is stronger than a grep over prose.
-            retiredExecutionPattern = nixpkgs.lib.concatStringsSep "|" [
-              (retiredWorker + "Flake")
-              (retiredWorker + "Models")
-            ];
-            # The bare name subsumes the "<host>-gpu" pool name: a flow may name
-            # neither.
-            retiredFlowHostPattern = retiredWorker;
             activeHostSets = [
               (builtins.attrNames self.nixosConfigurations)
               (builtins.attrNames self.deploy.nodes)
@@ -2656,7 +2527,6 @@
               ("strix-" + "tb")
             ];
             removedModel = "qwo" + "pus";
-            monthlySources = import ./lib/local-ai-monthly-sources.nix;
           in
 
           assert nixpkgs.lib.all (hosts: hosts == expectedHosts) activeHostSets;
@@ -2979,10 +2849,6 @@
           assert strix.systemd.timers ? tripwire-coredump;
           assert strix.systemd.timers ? tripwire-user-unit-failure;
           assert strix.systemd.timers ? failure-marker-reconcile;
-          assert monthlySources.inference.provider == "gufo";
-          assert monthlySources.inference.url == "http://strix-coordinator:8731";
-          assert monthlySources.inference.compute_host == "strix-coordinator";
-          assert !(monthlySources.inference ? tally_pool);
           # ── NPU decommission, 2026-08-29 (fleet-7.2) ──────────────────────
           # These used to assert the NPU stack was PRESENT. The house style for
           # a removal is to flip them negative rather than delete them, so the
@@ -3022,17 +2888,6 @@
             fi
             if ${pkgs.ripgrep}/bin/rg --ignore-case --line-number '${removedModel}' ${self}; then
               echo "removed local-model identity found" >&2
-              exit 1
-            fi
-            if ${pkgs.ripgrep}/bin/rg --line-number '${retiredExecutionPattern}' \
-              ${./flows}; then
-              echo "retired Tally executor attribute found" >&2
-              exit 1
-            fi
-            if ${pkgs.ripgrep}/bin/rg --line-number --glob '!README.md' '${retiredFlowHostPattern}' \
-              ${./flows} \
-              | ${pkgs.ripgrep}/bin/rg --invert-match 'strix-${retiredWorker}|http://${retiredWorker}:8731|${retiredWorker}-gpu'; then
-              echo "a flow names the retired execution host outside its inference endpoint or GPU pool" >&2
               exit 1
             fi
             touch "$out"

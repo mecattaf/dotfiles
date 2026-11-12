@@ -4,24 +4,22 @@
   pkgs,
   ...
 }:
-# harness-records — what the agent harnesses leave behind, kept and counted.
+# harness-records — what the agent harnesses leave behind, kept.
 #
-# Two brain-role user services, hand-run since 2026-09-30 (no scheduled
-# agent work in dotfiles; the factory owns any schedule). Neither reads or
-# writes Tally state (Tally itself was removed the same day).
+# One brain-role user service, hand-run since 2026-09-30 (no scheduled
+# agent work in dotfiles). It neither reads nor writes Tally state (Tally
+# itself was removed the same day).
 #
 #   claude-transcript-mirror  keeps every Claude Code session past the
 #                             harness's own retention (dotfiles#293)
-#   nightly-record            counts what each seat spent, per lane, per day
-#                             (dotfiles#298)
 #
-# Brain-gated: these read seat state that exists on this box, and an
+# Brain-gated: it reads seat state that exists on this box, and an
 # ungated definition would ship the worker a unit with nothing to do.
 let
   isBrain = osConfig.myFleet.has "brain";
 
-  # A systemd user unit does not inherit the interactive session PATH, and both
-  # scripts are RAW dotfiles reached through the whole-dir ~/.local/bin
+  # A systemd user unit does not inherit the interactive session PATH, and the
+  # script is a RAW dotfile reached through the whole-dir ~/.local/bin
   # out-of-store symlink — editable without a rebuild, which is the point. So
   # the unit supplies the PATH explicitly rather than trusting the environment
   # the hand-written units happened to be started in.
@@ -30,8 +28,6 @@ let
     pkgs.rsync
     pkgs.coreutils
   ];
-
-  recordPath = lib.makeBinPath [ pkgs.python3 ];
 in
 {
   # ── the transcript mirror (Rule 9: nothing hand-installed stays so) ─────────
@@ -67,43 +63,15 @@ in
   #   systemctl --user start claude-transcript-mirror
   # The sources stay in ~/.claude*, so nothing is lost between runs.
 
-  # ── the nightly record (mined 10: outside tally) ───────────────────────────
-  #
-  # One row per seat-lane per day, appended to
-  # ~/.local/state/nightly-record/<date>.jsonl, read from the harnesses' own
-  # transcripts. It records; it does not admit, ration, or feed tally — wiring
-  # these numbers in as a pool usageMeter is dotfiles#304, after P06/EXP-002.
-  #
-  # The program is home/dot_local/bin/nightly-record: python3, stdlib only, so
-  # the unit needs nothing but a python3 on PATH.
-  systemd.user.services.nightly-record = lib.mkIf isBrain {
-    Unit.Description = "Record yesterday's per-seat token spend from the harness transcripts";
-    Service = {
-      Type = "oneshot";
-      # Same reason as the mirror: bulk reads over every seat's project tree.
-      Nice = 10;
-      Environment = [ "PATH=${recordPath}" ];
-      ExecStart = "%h/.local/bin/nightly-record";
-    };
-  };
-
-  # No timer (Tom, 2026-09-30): hand-run `systemctl --user start
-  # nightly-record` (yesterday), or `~/.local/bin/nightly-record --date
-  # YYYY-MM-DD` for a missed day; the transcripts stay on disk.
-
   # ── seat meters directory (outlives the Tally seat feeder) ────────────────
-  # `seats` reads its peer cache here and substrate's pusher names it as
-  # metersDir (modules/substrate.nix). The seat feeder that used to write it
+  # `seats` reads its peer cache here. The seat feeder that used to write it
   # (home/seat-feeder.nix) went with the Tally sunset on 2026-09-30; the
-  # directory stays declared so neither reader meets a missing path.
+  # directory stays declared so the reader never meets a missing path.
   systemd.user.tmpfiles.rules = lib.mkIf isBrain [
     "d %h/.local/state/tally-rewrite/meters 0700 - - -"
   ];
 
-  # Tools home/tally.nix used to install on the strix, kept: call
-  # diarization runs by hand now (its Tally events drop has no drain), and the
-  # monthly local-AI review is hand-run too.
-  home.packages =
-    lib.optionals isBrain [ pkgs.local-ai-monthly ]
-    ++ lib.optionals (osConfig.myFleet.has "compute") [ pkgs.call-diarize ];
+  # A tool home/tally.nix used to install on the strix, kept: call
+  # diarization runs by hand now (its Tally events drop has no drain).
+  home.packages = lib.optionals (osConfig.myFleet.has "compute") [ pkgs.call-diarize ];
 }

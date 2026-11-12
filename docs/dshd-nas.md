@@ -37,9 +37,9 @@ for the same session-preservation requirement; do not restart Herdr or the user
 manager to make an update work. Do not run GC, remove generations or reboot.
 
 `tests/dshd-deploy/gates.py` provides read-only admission, user-unit tree and
-protected process snapshots. `idle` uses update-check's existing
-`busy_reasons()`; only the actual deploying Herdr pane may be excluded, when
-there is one. Wait for idle rather than forcing it. Take `snapshot` immediately
+protected process snapshots. `idle` checks load, Nix builders and commands,
+and Herdr agent panes (its `busy_reasons()`, formerly update-check's); only the
+actual deploying Herdr pane may be excluded, when there is one. Wait for idle rather than forcing it. Take `snapshot` immediately
 before and after the switch, and `compare` them: user@1000, Herdr, its web UI,
 Agency Web and every existing DSH must retain PIDs and InvocationIDs. Keep the
 previous system closure available. Roll back only if a protected service is
