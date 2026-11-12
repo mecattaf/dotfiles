@@ -62,6 +62,8 @@ test('fleet-health: weekly, disabled, failed units on both hosts and / against t
   assert.match(text, /df -BG --output=target,avail,pcent \//);
   assert.match(text, /strix-coordinator df -BG --output=target,avail,pcent \//);
   assert.match(text, /less than 25G available/);
+  // Measured 12 Nov: the floor host had 23G free and builds nothing; the 25 GB rule binds the build host.
+  assert.match(text, /on the build host that stops nix builds; this host builds nothing, so there it is a figure to watch/);
   for (const word of ['start', 'stop', 'restart', 'reset', 'garbage', 'delete', 're-authenticate'])
     assert.ok(never.includes(word), `Never line names ${word}`);
   assert.match(never, /never restart Herdr or the user manager/, 'live agent sessions hang off both');
@@ -81,6 +83,8 @@ test('tmp-ageing: weekly, disabled, reports /tmp work at risk and touches none o
   assert.match(text, /\/nix\/var\/nix\/gcroots\/auto/);
   assert.match(text, /journalctl -u gc-root-reaper --since -8d/);
   assert.match(text, /\*\.bundle/);
+  // Measured 12 Nov: hundreds of checkouts per host; the table lists only those with work to lose.
+  assert.match(text, /List only checkouts with uncommitted work or commits on no remote, and give the count of the others\./);
   for (const word of ['push', 'fetch', 'commit', 'bundle', 'worktree', 'branch', 'GC root', 'file', 'index'])
     assert.ok(never.includes(word), `Never line names ${word}`);
 });
