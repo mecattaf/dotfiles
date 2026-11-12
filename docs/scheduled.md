@@ -36,7 +36,8 @@ dshd itself stays free of clocks ("NO SCHEDULES EVER").
 (`programs.dsh.master.stateDir`, default `~/.agency/state/master`), and it
 is the one value the two sides share. `home/scheduled.nix` passes
 `SCHEDULED_INBOX=<stateDir>/inbox/scheduled` to the service and to login
-shells. `tests/scheduled` asserts that the two agree.
+shells started after the switch that installs it (see Everyday commands).
+`tests/scheduled` asserts that the two agree.
 
 The floor's DSH profiles, `master` and one `master-<pair>` per worker
 pair, are rendered from one source; see [dsh-master.md](dsh-master.md).
@@ -157,6 +158,20 @@ take effect at the next hourly pass, never sooner.
 `run` works on a disabled item: `enabled: false` cancels only scheduled
 occurrences. It does not wait for the work. The superagent's own record
 (its Thread and Run) is where the work is followed.
+
+`run` and `history` take the inbox from `SCHEDULED_INBOX`, and `run` takes
+the floor from `SCHEDULED_FLOOR_INSTANCE`. Home Manager sets both only in
+login shells started after the switch, so a shell or Claude Code session
+already open has neither. There `run` exits 2 with `--inbox is required`,
+and with only the inbox set it writes the record but never starts a
+stopped floor (`floor: none`). In such a shell, export both first (for
+the default `stateDir`):
+
+```sh
+export SCHEDULED_INBOX=$HOME/.agency/state/master/inbox/scheduled SCHEDULED_FLOOR_INSTANCE=floor
+```
+
+or pass `--inbox DIR --floor-instance floor` to `run`.
 
 Exit codes: 0 ok, 1 refused or a fault, 2 usage, 3 revision conflict.
 
