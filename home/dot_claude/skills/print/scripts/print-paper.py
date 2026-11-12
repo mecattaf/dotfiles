@@ -911,7 +911,7 @@ def assess_layout(pages: list[PageText], facts: SourceFacts, geometry: Layout,
     rendered = "".join(stream)
     # Source preservation: every source character and word is on the page.
     # Repeated table headers and list markers may add text; nothing may be lost.
-    source_text = "".join(facts.text)
+    source_text = " ".join(facts.text)
     wanted, have = Counter(normalize_text(source_text)), Counter(rendered)
     short = {ch: wanted[ch] - have[ch] for ch in wanted if have[ch] < wanted[ch]}
     if short:

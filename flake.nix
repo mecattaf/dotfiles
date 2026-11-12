@@ -1747,6 +1747,8 @@
               ];
               FONTCONFIG_FILE = pkgs.paper-render.fonts;
               PRINT_PAPER_SCRIPT = ./home/dot_claude/skills/print/scripts/print-paper.py;
+              # #673: print-auto finds print-paper beside itself.
+              PRINT_SCRIPTS_DIR = ./home/dot_claude/skills/print/scripts;
             }
             ''
               export HOME="$TMPDIR/home"

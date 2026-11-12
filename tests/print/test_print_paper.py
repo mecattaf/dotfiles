@@ -4,6 +4,7 @@ import contextlib
 import importlib.util
 import io
 import os
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -193,6 +194,163 @@ class PageNumberCssTests(unittest.TestCase):
             self.assertIn("@bottom-center", page)
             self.assertIn("content: counter(page);", page)
             self.assertNotIn("<footer", page)
+
+
+class LayoutGateTests(unittest.TestCase):
+    """#673: deterministic page checks over synthetic PDF text geometry."""
+
+    W, H = 595.28, 841.89
+    GEO = print_paper.LAYOUTS["standard"]
+    LEFT = GEO.side_mm * print_paper.MM
+    TOP = GEO.top_mm * print_paper.MM
+
+    def line(self, text, y, x=None, width=300.0, height=12.0):
+        x = self.LEFT if x is None else x
+        return print_paper.TextLine(x, y, x + width, y + height, text.split())
+
+    def page(self, *lines, folio=None):
+        lines = list(lines)
+        if folio is not None:
+            lines.append(self.line(str(folio), self.H - 30, x=self.W - 60, width=5))
+        return print_paper.PageText(self.W, self.H, lines)
+
+    def body_lines(self, prefix, count, start=None):
+        start = self.TOP if start is None else start
+        return [self.line(f"{prefix} line {i} words", start + i * 15) for i in range(count)]
+
+    def assess(self, pages, body):
+        facts = print_paper.source_facts(body)
+        return print_paper.assess_layout(pages, facts, self.GEO, body_pt=11.25, table_pt=10.125)
+
+    def kinds(self, report, severity="hard"):
+        return [d["kind"] for d in report["defects"] if d["severity"] == severity]
+
+    def body_for(self, pages):
+        html = []
+        for page in pages:
+            for line in page.lines:
+                if line.text.isdigit():
+                    continue
+                if line.text.startswith("Section"):
+                    html.append(f"<h2>{line.text}</h2>")
+                else:
+                    html.append(f"<p>{line.text}</p>")
+        return "\n".join(html)
+
+    def test_clean_multipage_document_has_no_defects(self):
+        pages = [self.page(*self.body_lines("alpha", 45), folio=1),
+                 self.page(*self.body_lines("beta", 30), folio=2)]
+        report = self.assess(pages, self.body_for(pages))
+        self.assertEqual(report["defects"], [])
+        self.assertEqual(report["page_facts"][0]["lines"], 45)  # folio excluded
+
+    def test_heading_only_page_is_hard(self):
+        pages = [self.page(*self.body_lines("alpha", 45), folio=1),
+                 self.page(self.line("Section Ledger", self.TOP), folio=2),
+                 self.page(*self.body_lines("beta", 40), folio=3)]
+        report = self.assess(pages, self.body_for(pages))
+        self.assertIn("heading_only_page", self.kinds(report))
+        self.assertEqual(report["defects"][0]["page"], 2)
+
+    def test_heading_at_the_foot_of_a_page_is_hard(self):
+        lines = self.body_lines("alpha", 44) + [self.line("Section Next", self.TOP + 44 * 15)]
+        pages = [self.page(*lines, folio=1), self.page(*self.body_lines("beta", 30), folio=2)]
+        self.assertIn("heading_at_page_foot", self.kinds(self.assess(pages, self.body_for(pages))))
+
+    def test_near_empty_page_before_a_break_is_hard(self):
+        pages = [self.page(*self.body_lines("alpha", 3), folio=1),
+                 self.page(*self.body_lines("beta", 45), folio=2)]
+        self.assertIn("near_empty_page", self.kinds(self.assess(pages, self.body_for(pages))))
+
+    def test_short_final_page_is_soft_and_one_page_sparse_form_is_valid(self):
+        pages = [self.page(*self.body_lines("alpha", 45), folio=1),
+                 self.page(*self.body_lines("tail", 2), folio=2)]
+        report = self.assess(pages, self.body_for(pages))
+        self.assertEqual(self.kinds(report), [])
+        self.assertEqual(self.kinds(report, "soft"), ["short_tail"])
+        form = [self.page(self.line("Section Form", self.TOP),
+                          self.line("Name ____", self.TOP + 300), folio=1)]
+        self.assertEqual(self.assess(form, self.body_for(form))["defects"], [])
+
+    def test_ordinary_partly_filled_final_page_is_valid(self):
+        pages = [self.page(*self.body_lines("alpha", 45), folio=1),
+                 self.page(*self.body_lines("beta", 12), folio=2)]
+        self.assertEqual(self.assess(pages, self.body_for(pages))["defects"], [])
+
+    def test_clipped_and_overlapping_text_is_hard(self):
+        clipped = [self.page(self.line("wide words", self.TOP, width=self.W))]
+        self.assertIn("overflow", self.kinds(self.assess(clipped, "<p>wide words</p>")))
+        overlap = [self.page(self.line("first words", self.TOP), self.line("second words", self.TOP + 2))]
+        self.assertIn("overlap", self.kinds(
+            self.assess(overlap, "<p>first words</p><p>second words</p>")))
+
+    def test_lost_source_text_is_hard(self):
+        pages = [self.page(*self.body_lines("alpha", 5), folio=1)]
+        body = self.body_for(pages) + "<table><tr><td>DROPPED_ROW_TOKEN</td></tr></table>"
+        self.assertIn("content_missing", self.kinds(self.assess(pages, body)))
+
+    def test_hyphenated_and_cell_broken_words_still_count_as_present(self):
+        pages = [self.page(self.line("pagi-", self.TOP, width=40),
+                           self.line("other cell", self.TOP, x=self.LEFT + 200, width=60),
+                           self.line("nation", self.TOP + 15, width=40), folio=1)]
+        report = self.assess(pages, "<table><tr><td>pagination</td><td>other cell</td></tr></table>")
+        self.assertEqual(self.kinds(report), [])
+
+    def test_reading_order_is_checked(self):
+        pages = [self.page(self.line("second paragraph", self.TOP),
+                           self.line("first paragraph", self.TOP + 15))]
+        report = self.assess(pages, "<p>first paragraph</p><p>second paragraph</p>")
+        self.assertIn("reading_order", self.kinds(report))
+
+    def test_repeated_table_headers_are_not_lost_content(self):
+        pages = [self.page(self.line("Step Outcome", self.TOP), *self.body_lines("row", 40, self.TOP + 15), folio=1),
+                 self.page(self.line("Step Outcome", self.TOP), self.line("row tail words", self.TOP + 15), folio=2)]
+        body = ("<table><thead><tr><th>Step</th><th>Outcome</th></tr></thead><tbody>"
+                + "".join(f"<tr><td>row line {i} words</td></tr>" for i in range(40))
+                + "<tr><td>row tail words</td></tr></tbody></table>")
+        report = self.assess(pages, body)
+        self.assertEqual(self.kinds(report), [])
+
+    def test_giant_tables_are_advised_against_but_printed_as_submitted(self):
+        rows = "".join(f"<tr><td>r{i}</td></tr>" for i in range(40))
+        report = self.assess([self.page(self.line("r0", self.TOP))], f"<table>{rows}</table>")
+        self.assertEqual(report["advisories"][0]["kind"], "giant_table")
+
+    def test_type_floor_is_enforced_for_body_and_tables(self):
+        for layout in print_paper.LAYOUTS:
+            for profile in print_paper.PROFILES.values():
+                fitted = print_paper.fitted_profile(profile, layout)
+                self.assertGreaterEqual(fitted.size_pt, print_paper.BODY_FLOOR_PT)
+                css = print_paper.print_css(fitted, layout=layout)
+                table_pt = float(re.search(r"table \{\{?[^}]*font-size: ([0-9.]+)pt", css)[1])
+                self.assertGreaterEqual(table_pt, print_paper.TABLE_FLOOR_PT)
+        report = print_paper.assess_layout([], print_paper.SourceFacts(), self.GEO,
+                                           body_pt=9.0, table_pt=8.0)
+        self.assertIn("unreadable_type", self.kinds(report))
+
+    def test_snug_keeps_the_profile_type_size(self):
+        for profile in print_paper.PROFILES.values():
+            self.assertEqual(print_paper.fitted_profile(profile, "snug").size_pt, profile.size_pt)
+
+    def test_tables_flow_with_repeated_headers_and_unhyphenated_column_labels(self):
+        css = print_paper.print_css(print_paper.PROFILES["source-serif"])
+        table = css[css.index("\ntable {"):css.index("th, td")]
+        self.assertNotIn("avoid-page", table)
+        self.assertIn("display: table-header-group", css)
+        self.assertIn("tr { break-inside: avoid; }", css)
+        self.assertIn("hyphens: manual", css[css.index("\nth {"):])
+
+    def test_bbox_xhtml_is_parsed(self):
+        xhtml = ('<html xmlns="http://www.w3.org/1999/xhtml"><body><doc>'
+                 '<page width="595.28" height="841.89"><flow><block>'
+                 '<line xMin="85" yMin="57" xMax="200" yMax="70">'
+                 '<word xMin="85" yMin="57" xMax="120" yMax="70">Caf&#233;</word>'
+                 '<word xMin="125" yMin="57" xMax="200" yMax="70">text</word></line>'
+                 '</block></flow></page></doc></body></html>')
+        pages = print_paper.parse_bbox(xhtml)
+        self.assertEqual(len(pages), 1)
+        self.assertEqual(pages[0].lines[0].text, "Café text")
+        self.assertEqual(pages[0].lines[0].x_min, 85.0)
 
 
 class CupsCommandTests(unittest.TestCase):

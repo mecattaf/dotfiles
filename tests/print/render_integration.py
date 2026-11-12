@@ -153,18 +153,46 @@ class RealRendererTests(unittest.TestCase):
             root = Path(directory)
             self.render(root, "# Form\n\nName: ______\n\nDate: ______\n")
             self.assertEqual(self.measure["defects"], [])
-            paragraphs = [f"BODY_{i:03d}: " + "Words fill this page steadily. " * 12
-                          for i in range(200)]
-            for count in range(9, 30):
+            paragraphs = [f"BODY_{i:03d} is one short line." for i in range(120)]
+            for count in range(20, 120):
                 text = "# Tail\n\n" + "\n\n".join(paragraphs[:count])
                 self.render(root, text)
                 facts = self.measure["page_facts"]
                 if len(facts) == 2 and facts[-1]["lines"] <= 3:
                     break
             else:
-                self.skipTest("no source length produced a short tail page")
+                self.fail("no source length produced a short tail page")
         self.assertIn("short_tail", [d["kind"] for d in self.measure["defects"]])
         self.assertEqual(self.hard(), [])
+
+
+    def test_print_auto_selects_a_clean_candidate_and_records_the_evidence(self):
+        scripts = os.environ.get("PRINT_SCRIPTS_DIR")
+        if not scripts:
+            self.skipTest("PRINT_SCRIPTS_DIR is not set")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "read-up.md"
+            text = long_table_report(90)
+            source.write_text(text)
+            job = root / "job"
+            # No utility-model here: classification falls back, the page
+            # review is recorded as unavailable and the gate still decides.
+            env = {**os.environ, "PATH": os.environ["PATH"]}
+            result = subprocess.run([sys.executable, str(Path(scripts) / "print-auto.py"),
+                                     str(source), "--output-dir", str(job),
+                                     "--target-pages", "4"], capture_output=True, text=True, env=env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            decision = json.loads((job / "decision.json").read_text())
+            self.assertEqual(source.read_text(), text)
+            self.assertEqual(decision["quality_check"], "pass")
+            self.assertEqual(decision["quality"]["defects"], [])
+            self.assertIn(decision["page_review"]["status"], ("unavailable", "invalid"))
+            self.assertTrue(decision["candidates"])
+            pdf = job / decision["decision"]["filename"]
+            body = subprocess.check_output(["pdftotext", str(pdf), "-"], text=True)
+            for i in range(90):
+                self.assertIn(f"ROW_{i:03d}", body)
 
 
 if __name__ == "__main__":
