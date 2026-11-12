@@ -13,7 +13,9 @@ fail() {
 }
 
 root=$(mktemp -d)
-export HOME="$root/home" USER=fixture
+# fish sets USER from the uid, so the fixture uses the real name.
+USER=$(id -un)
+export HOME="$root/home" USER
 export XDG_CONFIG_HOME="$root/config" XDG_DATA_HOME="$root/data" XDG_CACHE_HOME="$root/cache"
 unset __HM_SESS_VARS_SOURCED SCHEDULED_INBOX HM_FIXTURE_HOME HM_FIXTURE_SHELL XDG_RUNTIME_DIR
 mkdir -p "$HOME" "$XDG_CONFIG_HOME/fish/conf.d" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
