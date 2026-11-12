@@ -1,4 +1,4 @@
-{ ... }:
+{ pkgs, ... }:
 # NAS front door for the plain-HTTP `.internal` sites. Caddy remains the
 # media/browser/handwriting front door after private artifact hosting was
 # retired on 2026-11-08; those vhosts are added here and by their host files.
@@ -16,6 +16,29 @@
       auto_https disable_redirects
       default_bind 10.42.0.1 127.0.0.1
     '';
+  };
+
+  # Boot guard (#744). On the 8 Nov boot Caddy started before 10.42.0.1 was
+  # on enp1s0, failed `bind: cannot assign requested address`, and stayed
+  # down: the module's RestartPreventExitStatus=1 makes that exit terminal,
+  # so restart-on-failure never retried. Wait for the address, bounded at
+  # 30 s, so a real fault still fails the unit. Same shape as AdGuard's
+  # wait-adguard-lan (modules/adguardhome.nix).
+  systemd.services.caddy = {
+    after = [ "NetworkManager-ensure-profiles.service" ];
+    wants = [ "NetworkManager-ensure-profiles.service" ];
+    serviceConfig.ExecStartPre = [
+      (pkgs.writeShellScript "wait-caddy-lan" ''
+        for _ in $(${pkgs.coreutils}/bin/seq 30); do
+          if ${pkgs.iproute2}/bin/ip -4 addr show dev enp1s0 | ${pkgs.gnugrep}/bin/grep -q '10\.42\.0\.1/'; then
+            exit 0
+          fi
+          ${pkgs.coreutils}/bin/sleep 1
+        done
+        echo "NAS LAN address 10.42.0.1 not on enp1s0 after 30 s" >&2
+        exit 1
+      '')
+    ];
   };
 
   # Memorable intranet names for the media services the NAS runs itself
