@@ -79,13 +79,13 @@ def serve(floor):
 
 
 class Seed(unittest.TestCase):
-    def run_seed(self, floor):
+    def run_seed(self, floor, seed=SEED):
         server = serve(floor)
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = dsh_master.main(["settings", "seed", SEED, "--url", f"http://127.0.0.1:{server.server_address[1]}"])
+            code = dsh_master.main(["settings", "seed", seed, "--url", f"http://127.0.0.1:{server.server_address[1]}"])
         return code, out.getvalue(), err.getvalue()
 
     def test_seed_file_fits_the_rule_and_admission_schemas(self):
@@ -140,6 +140,16 @@ class Seed(unittest.TestCase):
         self.assertEqual((code, out), (0, "changed policy\n"))
         self.assertIn("eval.mode is 'paused'", err)
         self.assertEqual(floor.blocks["eval"]["value"]["mode"], "paused")
+
+    def test_refuses_a_seed_mode_it_does_not_know_before_any_request(self):
+        floor = Floor()
+        path = os.path.join(os.environ.get("TMPDIR", "/tmp"), "bad-mode.seed.json")
+        with open(path, "w", encoding="utf-8") as stream:
+            json.dump({"eval": {"mode": "automatic"}}, stream)
+        code, out, err = self.run_seed(floor, path)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("eval.mode is 'automatic', not one of off, observe, auto", err)
+        self.assertEqual(floor.blocks["eval"]["revision"], 5)
 
     def test_rereads_once_on_a_conflict_and_fails_on_a_second(self):
         floor = Floor()
