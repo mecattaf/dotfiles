@@ -1,6 +1,9 @@
 // Copied 12 Nov 2026 from ~/.agency/workflows/fleet-nightly.jsonc (kept there).
 // Rewritten: window, if, outcome, attempts and context removed; their intent is in the prompt.
 // No retries exist any more: one occurrence is one run.
+// Needs fleet-update-start and fleet-update from #642 (modules/fleet-update.nix),
+// not merged: until it lands, arming this item ends the run at once
+// (tests/scheduled-commands/pending.json).
 {
   "name": "Dotfiles nightly update and fleet flash",
   "enabled": false,

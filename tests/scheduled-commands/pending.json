@@ -1,1 +1,3 @@
-{}
+{
+  "fleet-update-start": "installed by modules/fleet-update.nix in #642, not merged; fleet-nightly ends at once until it lands"
+}
