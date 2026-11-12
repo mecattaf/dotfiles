@@ -27,9 +27,9 @@ but it does not depend on any of them being alive.
 
 THE SEATS, and where each one's truth lives:
 
-  cc,cc2,cc3    Claude Code, three logins (~/.claude, ~/.claude-work,
-                ~/.claude-3). Truth: api.anthropic.com/api/oauth/usage, the
-                endpoint /usage calls, read with each seat's own OAuth token.
+  cc,cc2        Claude Code, two logins (~/.claude, ~/.claude-work).
+                Truth: api.anthropic.com/api/oauth/usage, the endpoint /usage
+                calls, read with each seat's own OAuth token.
                 Gives the five-hour window, the seven-day window, and — the
                 part the meter rows call UNKNOWN — the per-model weekly rows
                 in `limits[]` with scope.model.display_name. A token is read
@@ -40,23 +40,6 @@ THE SEATS, and where each one's truth lives:
                 is not a spend and needs no credential, so this is the default
                 path; --codex-live asks `codex app-server` over JSON-RPC
                 instead when a fresher number is worth the process.
-
-  pi-qwencloud  Qwen Cloud (Alibaba token-plan) publishes NO window endpoint.
-                Its allowance is a plan-credit page nothing here can read. But
-                it states the reset in its own refusal:
-                  "Your token-plan 1-week quota has been exhausted.
-                   The quota will reset at 09-12 08:02:00 UTC."
-                So the window is MEASURED-FROM-REFUSAL: parsed out of the last
-                429 this box received, never a made-up TTL. A free GET /models
-                confirms the key still authenticates; the quota-spending probe
-                is opt-in (--probe-qwen) because asking costs the thing being
-                measured. Credits are counted from dsh's plain-JSONL sessions
-                (~/.dsh/sessions), and still from pi's session logs
-                (~/.pi/agent/sessions) and the pi sessions the substrate
-                factory archived under ~/.local/state/substrate/transcripts:
-                pi was retired on 2026-10-25, but calls it made inside the
-                current 7-day window still count, and its logs hold the
-                window-calibration history.
 
   openrouter    OpenRouter, the paid key no harness routes to since pi was
                 retired (the token lives at /run/agenix/openrouter-token and is
@@ -154,14 +137,6 @@ HOME = Path(os.environ.get("SEATS_HOME") or Path.home())
 STATE = Path(os.environ.get("SEATS_STATE") or (HOME / ".local/state/seats"))
 
 USAGE_ENDPOINT = "https://api.anthropic.com/api/oauth/usage"
-QWEN_BASE = "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
-QWEN_KEY_FILE = os.environ.get("SEATS_QWEN_KEY_FILE")
-QWEN_HOLD_FILES = [Path(p) for p in
-                   (os.environ.get("SEATS_QWEN_HOLD") or "").split(":") if p] or [
-    HOME / ".local/state/seats/qwen-hold.json",
-    HOME / "sept7/plan/codex-lane/pi-hold.json",
-]
-
 # Set by the hermetic test, and useful by hand on a train: every outbound call
 # fails immediately, so what is left is exactly what this box can answer from
 # its own disk. Nothing degrades to a guess — the rows say CACHED or UNKNOWN.
@@ -181,68 +156,8 @@ OPENROUTER_CAP_USD = 12.0
 # the override is for a hand-run llama-server, not a second declared server.
 INFERENCE_URL = (os.environ.get("SEATS_INFERENCE_URL") or os.environ.get("LOCAL_MODEL_ENDPOINT", "")).rstrip("/")
 
-# ── the Qwen Cloud plan, and how a credit was priced ────────────────────────
-# Qwen Cloud meters in CREDITS and publishes no endpoint, so a percentage has
-# to be built out of two things this box can see: the plan's allowance, and
-# what a credit costs in tokens. The second was measured, not guessed.
-#
-# THE WINDOW. Four exhaustion events sit in pi's own session logs, each with
-# the provider's stated reset. Three of the four windows begin within 24
-# SECONDS of the first qwen call after the previous reset:
-#
-#   reset 2026-08-14T10:06Z   window opened 2026-08-07 11:07:19Z  (+61 min)
-#   reset 2026-08-22T13:34Z   window opened 2026-08-15 13:34:24Z  (+24 s)
-#   reset 2026-09-04T11:50Z   window opened 2026-08-28 11:50:09Z  (+ 9 s)
-#   reset 2026-09-12T08:02Z   window opened 2026-09-05 08:02:24Z  (+24 s)
-#
-# So the window is not a calendar week: it is SEVEN DAYS FROM FIRST USE after
-# the previous reset, and an idle box does not burn window. (The first row is
-# an hour out because it is the first window ever — something before pi's
-# logging opened it.)
-#
-# THE PRICE. Each of those four windows ended at exactly 10,000 credits, which
-# makes them four independent readings of one constant. Fitting output weight
-# and cache-read weight against all four:
-#
-#   input + output, cache reads free   spread 10.7%   192.5 tokens/credit
-#   any nonzero cache-read weight      strictly worse (best fit puts it at 0)
-#   cache reads alone                  spread 30.4%   — not what is metered
-#
-# CACHE READS ARE NOT CHARGED. That is the load-bearing finding: 98% of the
-# tokens crossing this seat are cache reads, so a meter that counted them
-# would have walled these windows five times sooner than they actually walled.
-#
-# The output weight is NOT identifiable from this data — the output:input ratio
-# sat at 0.33-0.37 in all four windows, so weighting output 1x or 6x moves the
-# spread only 10.7% -> 9.2%. Parity is therefore used, and the estimate holds
-# only for work with a similar shape. Deep-reasoning work would burn faster
-# than this says.
-QWEN_PLAN = {
-    "name": "Standard",
-    "credits_per_window": 10000,
-    "window_days": 7,
-    "tokens_per_credit": 192.5,
-    "counts": "input + output (cache reads are free)",
-    # PLAN TERM, stated on the pricing page: Standard runs 3-4 agents
-    # concurrently (Lite runs 1-2). Tom's rule for this box is to treat 4 as a
-    # hard ceiling. What is NOT established here is whether exceeding it costs
-    # extra credits per token — the four calibration windows were all worked
-    # inside the cap, so this data cannot see an overrun penalty. What it can
-    # see is that fan-out multiplies context re-sends, and input tokens ARE
-    # charged: five agents on one task bill five prompt prefixes, so the
-    # window drains faster whether or not the provider adds a surcharge.
-    "max_concurrent_agents": 4,
-    "calibration": {
-        "method": "four exhaustion events, each exactly 10000 credits",
-        "samples_tokens_per_credit": [183.2, 224.8, 193.1, 169.0],
-        "spread_pct": 10.7,
-        "observed_output_input_ratio": "0.33-0.37",
-        "caveat": "output weight is unidentifiable at this mix; assumes parity",
-    },
-}
-
 # The seat feeder (home/dot_local/bin/tally-seat-feeder, on a 30-second timer)
-# already calls this endpoint for all three Claude seats and leaves the raw
+# already called this endpoint for every Claude seat and leaves the raw
 # payload beside its meter rows. That reading is the SAME call this program
 # would make, already paid for, so it is consulted before the network is.
 PEER_CACHE_DIR = Path(os.environ.get("SEATS_PEER_CACHE_DIR")
@@ -433,19 +348,9 @@ DEFAULT_SEATS = [
      "config_dir": "~/.claude", "owner": "tom", "spend_root": "~/.claude/projects"},
     {"id": "cc2", "provider": "claude", "label": "Claude Max (work)",
      "config_dir": "~/.claude-work", "owner": "tom", "spend_root": "~/.claude-work/projects"},
-    {"id": "cc3", "provider": "claude", "label": "Claude (third login)",
-     "config_dir": "~/.claude-3", "owner": "tom", "spend_root": "~/.claude-3/projects"},
     {"id": "codex", "provider": "codex", "label": "Codex CLI",
      "config_dir": "~/.codex", "owner": "third-party", "spend_root": "~/.codex/sessions",
      "note": "RULINGS R-2026-09-06-02: this login is not Tom's — read by name, never spent."},
-    # One seat, one credit pool: dsh (pkgs/dsh) spends the same token plan
-    # pi did, so its sessions join this seat rather than a new one. The id
-    # stays, because the meter rows and substrate join on it, and so do pi's
-    # spend roots: its calls in the current window still count.
-    {"id": "pi-qwencloud", "provider": "qwen", "label": "Qwen Cloud (token-plan, via dsh)",
-     "owner": "tom",
-     "spend_root": ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts",
-                    "~/.dsh/sessions"]},
     {"id": "openrouter", "provider": "openrouter", "label": "OpenRouter (paid key, soft cap)",
      "owner": "tom", "meter": "usd"},
     {"id": "openrouter-free", "provider": "openrouter", "label": "OpenRouter free model (daily requests)",
@@ -489,8 +394,8 @@ def expand(value) -> Path | None:
 
 # The substrate factory archives every harness's session beside the job it
 # ran for (~/.local/state/substrate/transcripts/<run>/<job>/), so a directory
-# that holds pi-*.jsonl also holds the other harnesses' archives. Those are
-# another seat's spend and are skipped by basename, never read.
+# that holds one harness's archives also holds the others'. Those are another
+# seat's spend and are skipped by basename, never read.
 OTHER_HARNESS_PREFIXES = ("claude-", "codex-")
 
 
@@ -498,9 +403,8 @@ def spend_roots(spec, default=None) -> list[Path]:
     """The directories a seat's `spend_root` names, keeping only those present.
 
     `spend_root` is one path or a list of them: the harness's live session
-    store plus any archive of the same sessions kept elsewhere (for pi, the
-    factory's transcripts). A root that does not exist is skipped without a
-    word, so a box without the factory reports from the live store alone.
+    store plus any archive of the same sessions kept elsewhere. A root that
+    does not exist is skipped without a word, so a box without the factory reports from the live store alone.
     """
     value = spec.get("spend_root") or default
     values = value if isinstance(value, (list, tuple)) else [value]
@@ -651,7 +555,7 @@ def peer_cache_read(seat_id: str, max_age: float):
 def http_json(url: str, headers=None, timeout=HTTP_TIMEOUT, retries=2):
     """(payload, error). Never raises; the error is a lowercase line.
 
-    A 429 is retried with backoff rather than reported. Three Claude seats
+    A 429 is retried with backoff rather than reported. Two Claude seats
     asking at once — plus whatever timer is already polling — trips the shared
     limiter routinely, and a blank row is a worse answer than a two-second wait.
     A `retry-after` header is obeyed when it is short enough to be worth it.
@@ -1317,384 +1221,6 @@ def read_codex(spec, opts):
     if not seat["windows"]:
         seat["detail"] = "rate_limits record carried no window"
         return seat
-    return classify(seat)
-
-
-# ── provider: Qwen Cloud ────────────────────────────────────────────────────
-
-QUOTA_RESET = re.compile(
-    r"quota will reset at\s+(\d{4}-)?(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})\s*(UTC)?",
-    re.IGNORECASE)
-
-
-def parse_quota_reset(text, observed):
-    """The reset out of the provider's own refusal.
-
-    The 429 says '09-12 08:02:00 UTC' — a month and a day with no year, so the
-    year is the one that puts the reset AFTER the refusal and inside a year of
-    it. That is the only inference here, and it is stated rather than hidden.
-    """
-    match = QUOTA_RESET.search(str(text or ""))
-    if not match:
-        return None
-    year_text, month, day, hour, minute, second = match.group(1, 2, 3, 4, 5, 6)
-    base = observed or now()
-    for year in ([int(year_text[:4])] if year_text else [base.year, base.year + 1]):
-        try:
-            when = datetime(year, int(month), int(day), int(hour), int(minute),
-                            int(second), tzinfo=timezone.utc)
-        except ValueError:
-            continue
-        if when >= base - timedelta(days=1):
-            return when
-    return None
-
-
-QWEN_EVENTS_CACHE = STATE / "qwen-events.json"
-QWEN_EVENTS_CACHE_VERSION = 4   # bump when the scan changes what it extracts
-QWEN_PROVIDER = "qwen-token-plan"
-
-
-def dsh_time(record):
-    """A dsh session record's own stamp (`time`, epoch milliseconds), or None."""
-    value = record.get("time")
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return parse_ts(value / 1000)
-
-
-def dsh_fork_cut(record):
-    """True on the marker a forked dsh session writes after the events it copied.
-
-    dsh's fork (packages/core/session/src/fork.ts, buildForkSeed) copies the
-    parent's event prefix, `assistant/message` usage included, into the child
-    log and then writes {"type": "session/end-seed", "data": {"inherited":
-    true}}. Everything before that marker was billed in the parent's own file,
-    so a reader drops what it gathered from this file so far. Subagent child
-    logs carry no such marker and hold only their own calls.
-    """
-    if record.get("type") != "session/end-seed":
-        return False
-    data = record.get("data")
-    return isinstance(data, dict) and data.get("inherited") is True
-
-
-def dsh_qwen_usage(record):
-    """(epoch, input, output, cache) for one dsh token-plan reply, else None.
-
-    dsh (pkgs/dsh) writes plain JSONL sessions under ~/.dsh/sessions/<cwd>/
-    <session>/session.v4.jsonl, one `assistant/message` record per model call:
-      {"type": "assistant/message", "time": <epoch ms>,
-       "data": {"message": {"source": {"provider": ..., "model": ...}},
-                "usage": {"inputTokens", "outputTokens", "cacheReadTokens",
-                          "cacheWriteTokens"}}}
-    dsh's counts are disjoint, like pi's: inputTokens is UNCACHED input, so
-    billable stays input + output and cache reads stay free. Every model on the
-    route is priced at the one qwen3.8-max calibration (QWEN_PLAN), which
-    over-counts DeepSeek Flash: the error is on the safe side.
-    """
-    if record.get("type") != "assistant/message":
-        return None
-    data = record.get("data")
-    if not isinstance(data, dict):
-        return None
-    message = data.get("message")
-    source = message.get("source") if isinstance(message, dict) else None
-    if not isinstance(source, dict) or source.get("provider") != QWEN_PROVIDER:
-        return None
-    usage = data.get("usage")
-    stamp = dsh_time(record)
-    if stamp is None or not isinstance(usage, dict):
-        return None
-    return (stamp.timestamp(),
-            int(usage.get("inputTokens") or 0),
-            int(usage.get("outputTokens") or 0),
-            int(usage.get("cacheReadTokens") or 0) + int(usage.get("cacheWriteTokens") or 0))
-
-
-def qwen_events(roots):
-    """(events, resets) from pi's and dsh's own session logs, under every root.
-
-    events  sorted [(epoch, input, output)] for messages billed to the token
-            plan — and ONLY those. The same session store carries locally
-            served traffic (the Gufo server on Strix, a hand-run
-            llama-server), which costs this subscription nothing; counting it
-            would inflate the meter with locally-served tokens.
-    resets  every reset stamp the provider has ever stated in a refusal here.
-            That is what makes this self-sufficient: the window boundaries are
-            recovered from history, not from a state file someone has to keep.
-
-    Cached per file by (mtime, size). A month of this seat is ~3000 messages,
-    so the whole cache is small enough to keep whole. The key is the full
-    path, so files under several roots never collide in it.
-    """
-    events, resets = [], set()
-    if not roots:
-        return events, resets
-    try:
-        blob = json.loads(QWEN_EVENTS_CACHE.read_text(encoding="utf-8"))
-        cache = blob.get("files") or {} if blob.get("v") == QWEN_EVENTS_CACHE_VERSION else {}
-    except (OSError, ValueError):
-        cache = {}
-    fresh = {}
-    for path in spend_files(roots):
-        try:
-            stat = path.stat()
-        except OSError:
-            continue
-        key = f"{path}|{int(stat.st_mtime)}|{stat.st_size}"
-        entry = cache.get(key)
-        if entry is None:
-            rows, stamps = [], []
-            try:
-                with path.open(encoding="utf-8", errors="replace") as stream:
-                    for line in stream:
-                        refusal = "quota will reset at" in line
-                        seed = "session/end-seed" in line
-                        if not refusal and not seed and QWEN_PROVIDER not in line:
-                            continue
-                        try:
-                            record = json.loads(line)
-                        except ValueError:
-                            continue
-                        if seed and dsh_fork_cut(record):
-                            # A fork's copied prefix: billed in the parent.
-                            rows.clear()
-                            continue
-                        if refusal:
-                            # Anchored to the refusal's OWN timestamp: a reset
-                            # stated as "08-14" by a message sent in August is
-                            # August, not next August.
-                            anchor = parse_ts(record.get("timestamp")) or dsh_time(record)
-                            when = parse_quota_reset(line, anchor)
-                            if when:
-                                stamps.append(iso(when))
-                        reply = dsh_qwen_usage(record)
-                        if reply is not None:
-                            rows.append(list(reply[:3]))
-                            continue
-                        message = record.get("message")
-                        if not isinstance(message, dict) or message.get("provider") != QWEN_PROVIDER:
-                            continue
-                        usage = message.get("usage")
-                        moment = parse_ts(record.get("timestamp"))
-                        if moment is None or not isinstance(usage, dict):
-                            continue
-                        rows.append([moment.timestamp(),
-                                     int(usage.get("input") or 0),
-                                     int(usage.get("output") or 0)])
-            except OSError:
-                continue
-            entry = {"events": rows, "resets": sorted(set(stamps))}
-            cache[key] = entry
-        fresh[key] = entry
-        events.extend(tuple(row) for row in entry["events"])
-        resets.update(parse_ts(r) for r in entry["resets"])
-    events.sort()
-    try:
-        STATE.mkdir(parents=True, exist_ok=True)
-        QWEN_EVENTS_CACHE.write_text(
-            json.dumps({"v": QWEN_EVENTS_CACHE_VERSION, "files": fresh}), encoding="utf-8")
-    except OSError:
-        pass
-    return events, {r for r in resets if r}
-
-
-def read_qwen_hold():
-    """The newest hold record any lane on this box wrote. (record, path)."""
-    found = []
-    for path in QWEN_HOLD_FILES:
-        try:
-            record = json.loads(Path(path).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        stamp = parse_ts(record.get("last_seen_at") or record.get("observed_at"))
-        found.append((stamp or datetime.fromtimestamp(0, timezone.utc), record, str(path)))
-    if not found:
-        return None, None
-    _, record, path = max(found, key=lambda row: row[0])
-    return record, path
-
-
-def qwen_key():
-    value = os.environ.get("QWENCLOUD_TOKEN")
-    if value:
-        return value.strip(), "environment"
-    if not QWEN_KEY_FILE:
-        return None, "QwenCloud subscription retired; no saved key"
-    try:
-        return Path(QWEN_KEY_FILE).read_text(encoding="utf-8").strip(), QWEN_KEY_FILE
-    except OSError:
-        return None, None
-
-
-def qwen_probe_spend(key):
-    """The one probe that costs quota. Opt-in, one token, and it tells you.
-
-    Returns (held_until, raw_message). A 200 means the quota is open; a 429
-    carries the reset stamp that is the only window this provider publishes.
-    """
-    if OFFLINE:
-        return None, "offline: SEATS_NO_NETWORK=1"
-    body = json.dumps({"model": "qwen3.8-max", "max_tokens": 1,
-                       "messages": [{"role": "user", "content": "."}]}).encode()
-    request = urllib.request.Request(QWEN_BASE + "/chat/completions", data=body, headers={
-        "Authorization": f"Bearer {key}", "Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
-            response.read()
-        return None, "open (probe accepted)"
-    except urllib.error.HTTPError as error:
-        text = ""
-        try:
-            text = error.read().decode("utf-8", "replace")[:600]
-        except Exception:  # noqa: BLE001
-            pass
-        return parse_quota_reset(text, now()), f"HTTP {error.code}: {text}"
-    except Exception as error:  # noqa: BLE001
-        return None, f"unreachable: {error}"
-
-
-def read_qwen(spec, opts):
-    seat = blank_seat(spec, "unknown", "UNKNOWN")
-    seat["tier"] = "token-plan (weekly credits)"
-    key, key_source = qwen_key()
-
-    # 1. Reachability — free. GET /models spends no quota and proves the key
-    #    still authenticates, which is a different fact from having headroom.
-    reachable, auth_error = (None, "no api key on this box")
-    if key:
-        reachable, auth_error = http_json(QWEN_BASE + "/models",
-                                          {"Authorization": f"Bearer {key}"})
-
-    # 2. The window, out of the last refusal this box actually received.
-    hold, hold_path = read_qwen_hold()
-    held_until = None
-    if hold:
-        held_until = parse_ts(hold.get("held_until")) or parse_quota_reset(
-            hold.get("reason"), parse_ts(hold.get("observed_at")))
-
-    # 3. The spending probe, only when asked for.
-    probe_note = ""
-    if opts.probe_qwen and key:
-        probed, probe_note = qwen_probe_spend(key)
-        if probed:
-            held_until = probed
-            record = {"held": True, "reason": probe_note, "observed_at": iso(now()),
-                      "held_until": iso(probed), "written_by": "seats --probe-qwen"}
-            STATE.mkdir(parents=True, exist_ok=True)
-            (STATE / "qwen-hold.json").write_text(json.dumps(record, indent=1), encoding="utf-8")
-            hold_path = str(STATE / "qwen-hold.json")
-        elif probe_note.startswith("open"):
-            held_until = None
-
-    # 4. The window and the credits inside it, from pi's own logs. Every
-    #    reset the provider has ever stated here is recovered, so the current
-    #    window's start is derivable without any endpoint at all.
-    plan = load_qwen_plan()
-    events, resets = qwen_events(spend_roots(spec, default="~/.pi/agent/sessions"))
-    if held_until:
-        resets.add(held_until)
-    past = sorted(r for r in resets if r <= now())
-    future = sorted(r for r in resets if r > now())
-    last_reset = past[-1] if past else None
-    if future and (held_until is None or future[0] < held_until):
-        held_until = future[0]
-
-    seat["plan"] = plan
-    seat["source"] = {"kind": "429-refusal-text" if resets else "no-window-published",
-                      "base_url": QWEN_BASE, "key_source": key_source,
-                      "hold_record": hold_path or "", "reachable": reachable is not None,
-                      "probe": probe_note, "known_resets": [iso(r) for r in sorted(resets)],
-                      "events_scanned": len(events)}
-
-    # The window opens on FIRST USE after the previous reset and runs seven
-    # days from there — measured, see QWEN_PLAN. An idle box burns no window.
-    window_start = window_end = None
-    if last_reset is not None:
-        after = [e for e in events if e[0] > last_reset.timestamp()]
-        if after:
-            window_start = datetime.fromtimestamp(after[0][0], timezone.utc)
-            window_end = window_start + timedelta(days=plan["window_days"])
-    elif events:
-        window_start = datetime.fromtimestamp(events[0][0], timezone.utc)
-        window_end = window_start + timedelta(days=plan["window_days"])
-
-    # A window that ran its seven days without a refusal ends on its own; the
-    # provider states no reset for it, so nothing above moves past it. The
-    # next window opens on the first use after it ended, by the same rule.
-    # Without this the seat kept reporting a window that ended weeks ago, and
-    # the substrate floor refused the seat as 'projected' (factory defect 5).
-    while window_end is not None and window_end <= now():
-        after = [e for e in events if e[0] > window_end.timestamp()]
-        if not after:
-            window_start = window_end = None
-            break
-        window_start = datetime.fromtimestamp(after[0][0], timezone.utc)
-        window_end = window_start + timedelta(days=plan["window_days"])
-
-    billable = credits = utilization = None
-    if window_start is not None:
-        floor, ceiling = window_start.timestamp(), (window_end or now()).timestamp()
-        billable = sum(e[1] + e[2] for e in events if floor <= e[0] <= ceiling)
-        credits = billable / plan["tokens_per_credit"]
-        utilization = min(100.0, credits / plan["credits_per_window"] * 100.0)
-
-    # A live refusal outranks the estimate: the provider saying "exhausted"
-    # is a measurement, and an estimate that disagrees with it is wrong.
-    if held_until and held_until > now():
-        seat["windows"] = [window("qwen:weekly", "weekly (7d)", 10080, 100.0, held_until)]
-        seat["grade"] = "MEASURED-FROM-REFUSAL"
-        seat["state"], seat["usable"] = "spent", False
-        seat["free_at"] = iso(held_until)
-        seat["credits"] = {"allowance": plan["credits_per_window"],
-                           "used": plan["credits_per_window"], "remaining": 0,
-                           "unit": "credits", "counter": "provider", "resets_at": iso(held_until),
-                           "basis": "provider refusal"}
-        seat["detail"] = ("weekly quota exhausted; reset stated by the provider's own 429"
-                          + (f"; ~{billable:,} billable tokens spent this window"
-                             if billable else ""))
-        return add_pace(seat)
-
-    notes = []
-    if reachable is None and not OFFLINE:
-        notes.append(auth_error or "key does not authenticate")
-        if last_reset:
-            notes.append(f"last window reset {iso(last_reset)}")
-        seat["state"], seat["detail"] = "unauth", "; ".join(notes)
-        return seat
-
-    if window_start is None:
-        # Reset has passed and nothing has been spent since: the full
-        # allowance is there, and the seven days do not start until it is used.
-        seat["state"], seat["usable"], seat["grade"] = "open", True, "MEASURED"
-        seat["windows"] = [window("qwen:weekly", "weekly (7d)", 10080, 0.0, None)]
-        seat["credits"] = {"allowance": plan["credits_per_window"],
-                           "used": 0, "remaining": plan["credits_per_window"],
-                           "unit": "credits", "counter": "plan-ratio", "resets_at": None,
-                           "basis": "no use since the last reset"}
-        seat["detail"] = (f"full {plan['credits_per_window']:,} credits; the 7-day window "
-                          "opens on first use, not on the reset")
-        return seat
-
-    entry = window("qwen:weekly", "weekly (7d)", 10080, utilization, window_end)
-    entry["window_start"] = iso(window_start)
-    entry["basis"] = "estimated from measured credit price"
-    seat["windows"] = [entry]
-    # The bounds are measured; the position inside them is estimated from a
-    # calibrated constant. Grading it MEASURED would overclaim.
-    seat["grade"] = "ESTIMATED"
-    seat["credits"] = {"allowance": plan["credits_per_window"],
-                       "used": round(credits), "remaining": round(plan["credits_per_window"] - credits),
-                       "billable_tokens": billable,
-                       "tokens_per_credit": plan["tokens_per_credit"],
-                       # The counter the factory admits on (substrate D-S15): local tokens at the
-                       # calibrated tokens-per-credit, against the plan's weekly allowance.
-                       "unit": "credits", "counter": "plan-ratio", "resets_at": iso(window_end),
-                       "basis": f"{plan['counts']}, ±{plan['calibration']['spread_pct']}%"}
-    notes.append(f"~{round(credits):,} of {plan['credits_per_window']:,} credits "
-                 f"({billable:,} billable tokens), ±{plan['calibration']['spread_pct']}%")
-    seat["detail"] = "; ".join(notes)
     return classify(seat)
 
 
@@ -2371,7 +1897,7 @@ def attach_ledger(seats, specs):
 
 
 READERS = {"claude": read_claude, "codex": read_codex,
-           "qwen": read_qwen, "gufo": read_gufo, "openrouter": read_openrouter,
+           "gufo": read_gufo, "openrouter": read_openrouter,
            "none": read_none, "lane": read_lane}
 
 # Rows computed from other rows' readings, after the pool has run.
@@ -2474,50 +2000,7 @@ def _events_codex(path):
     return events
 
 
-def _events_pi(path):
-    """pi and dsh, token-plan traffic only.
-
-    The same session store carries locally served messages — the Gufo
-    server on Strix, a hand-run llama-server. Those cost the subscription
-    nothing, so counting them here would inflate a meter with local tokens.
-    A dsh session file is read by dsh_qwen_usage, under the same rule, and a
-    forked one only after its inherited prefix (dsh_fork_cut).
-    """
-    events = []
-    with path.open(encoding="utf-8", errors="replace") as stream:
-        for line in stream:
-            seed = "session/end-seed" in line
-            if not seed and '"usage"' not in line:
-                continue
-            try:
-                record = json.loads(line)
-            except ValueError:
-                continue
-            if seed and dsh_fork_cut(record):
-                # A fork's copied prefix: billed in the parent (dsh_fork_cut).
-                events.clear()
-                continue
-            reply = dsh_qwen_usage(record)
-            if reply is not None:
-                events.append(reply)
-                continue
-            if record.get("type") != "message":
-                continue
-            message = record.get("message") or {}
-            if message.get("provider") != QWEN_PROVIDER:
-                continue
-            usage = message.get("usage")
-            stamp = parse_ts(record.get("timestamp"))
-            if stamp is None or not isinstance(usage, dict):
-                continue
-            events.append((stamp.timestamp(),
-                           int(usage.get("input") or 0),
-                           int(usage.get("output") or 0),
-                           int(usage.get("cacheRead") or 0) + int(usage.get("cacheWrite") or 0)))
-    return events
-
-
-EXTRACTORS = {"claude": _events_claude, "codex": _events_codex, "qwen": _events_pi}
+EXTRACTORS = {"claude": _events_claude, "codex": _events_codex}
 
 
 def spend_since(spec, start: datetime, cache):
@@ -2896,20 +2379,6 @@ def recommend(seats):
 
 # ── main ────────────────────────────────────────────────────────────────────
 
-def load_qwen_plan():
-    """The plan table, overridable without touching the program."""
-    plan = dict(QWEN_PLAN)
-    try:
-        override = json.loads((HOME / ".config/seats/qwen-plan.json")
-                              .read_text(encoding="utf-8"))
-        if isinstance(override, dict):
-            plan.update(override)
-            plan["source"] = "~/.config/seats/qwen-plan.json"
-    except (OSError, ValueError):
-        pass
-    return plan
-
-
 def load_specs(only):
     path = HOME / ".config/seats/seats.json"
     specs = DEFAULT_SEATS
@@ -3005,8 +2474,6 @@ def main(argv=None):
     parser.add_argument("--codex-rollouts", action="store_true",
                         help="read Codex's own rollouts instead of asking the account "
                              "(no process spawned, but only as fresh as the last run)")
-    parser.add_argument("--probe-qwen", action="store_true",
-                        help="spend one Qwen token to learn the quota state")
     parser.add_argument("--probe", action="store_true",
                         help="free lanes: one cheap request per key, reading the rate-limit "
                              f"headers; answers are reused for {PROBE_TTL}s")

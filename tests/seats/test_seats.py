@@ -16,10 +16,6 @@ What it pins:
   * free_at is the earliest reset among the windows actually at the wall
   * Codex rate_limits come from the newest rollout that carries one, and its
     CUMULATIVE token totals are differenced rather than summed
-  * the Qwen window is parsed out of the provider's own 429 text, year and all,
-    and an expired hold stops holding
-  * Qwen credits sum pi's live sessions AND the pi sessions the substrate
-    factory archived, skipping the other harnesses' archives beside them
   * spend counts from the seat's own weekly window start, not a rolling week,
     and excludes events before it
   * --check returns 0 headroom / 1 spent / 2 unmeasurable
@@ -94,7 +90,7 @@ def window_cache(five_hour_pct, weekly_pct, weekly_reset, scoped=None,
 
 
 class SeatsFixture:
-    """A whole box on disk: three Claude seats, a Codex, a pi, two GPUs."""
+    """A whole box on disk: two Claude seats, a Codex, a GPU."""
 
     def __init__(self, root: pathlib.Path):
         self.root = root
@@ -156,90 +152,6 @@ class SeatsFixture:
         newer.write_text("\n".join(lines) + "\n")
         os.utime(newer, (NOW.timestamp(), NOW.timestamp()))
 
-    def qwen(self, messages=(), refusals=(), hold=None):
-        """messages: (when, input, output, cacheRead, provider). refusals:
-        (when, reset). hold: an explicit hold record, for the paths that still
-        depend on one."""
-        session = self.home / ".pi/agent/sessions/-proj"
-        session.mkdir(parents=True, exist_ok=True)
-        lines = [self.pi_message(*row) for row in messages]
-        for when, reset in refusals:
-            lines.append(json.dumps({
-                "type": "error", "timestamp": iso(when),
-                "error": ("429 insufficient_quota: Your token-plan 1-week quota has been "
-                          "exhausted. The quota will reset at %s UTC."
-                          % reset.strftime("%m-%d %H:%M:%S"))}))
-        (session / "s.jsonl").write_text("\n".join(lines) + "\n")
-        path = self.state / "qwen-hold.json"
-        if hold is not None:
-            path.write_text(json.dumps(hold))
-        elif path.exists():
-            path.unlink()
-        # The event cache is keyed by (mtime, size); a rewritten fixture in the
-        # same second with the same length must not be served from it.
-        for stale in self.state.glob("qwen-events.json"):
-            stale.unlink()
-        return path
-
-    @staticmethod
-    def pi_message(when, tin, tout, cache, provider):
-        """One pi session record, the shape live and archived files share."""
-        return json.dumps({
-            "type": "message", "timestamp": iso(when),
-            "message": {"provider": provider, "model": "qwen3.8-max",
-                        "usage": {"input": tin, "output": tout,
-                                  "cacheRead": cache, "cacheWrite": 0}}})
-
-    def dsh_session(self, messages, cwd="--home-tom-src--", session="session-0000",
-                    inherited=0):
-        """One dsh session file (plain JSONL, compression none). Field names
-        were read, structure only, from a real 0.2.1-rc.2 session.v4.jsonl;
-        every value here is synthetic. messages: (when, input, output,
-        cacheRead, provider). inherited: how many leading messages a fork
-        copied from its parent; the `session/end-seed` marker follows them
-        (dsh packages/core/session/src/fork.ts)."""
-        folder = self.home / ".dsh/sessions" / cwd / session
-        folder.mkdir(parents=True, exist_ok=True)
-        lines = [json.dumps({"type": "session", "version": 4, "id": session,
-                             "createdAt": 0, "cwd": "/home/tom/src"})]
-        for seq, (when, tin, tout, cache, provider) in enumerate(messages):
-            ms = int(when.timestamp() * 1000)
-            # The request records name the route too, and carry no usage:
-            # they must never be billed.
-            lines.append(json.dumps({
-                "type": "request/context", "seq": 3 * seq, "time": ms,
-                "data": {"provider": provider, "model": "deepseek-v4.1-flash",
-                         "contextWindow": 1000000}}))
-            lines.append(json.dumps({
-                "type": "assistant/message", "seq": 3 * seq + 1, "time": ms,
-                "data": {"turn": 1, "step": seq + 1,
-                         "message": {"role": "assistant", "content": [],
-                                     "source": {"kind": "model", "provider": provider,
-                                                "model": "deepseek-v4.1-flash"},
-                                     "id": f"m{seq}"},
-                         "usage": {"inputTokens": tin, "outputTokens": tout,
-                                   "cacheReadTokens": cache,
-                                   "totalTokens": tin + tout + cache}}}))
-            lines.append(json.dumps({"type": "step/end", "seq": 3 * seq + 2, "time": ms,
-                                     "data": {"turn": 1, "step": seq + 1}}))
-            if inherited and seq + 1 == inherited:
-                lines.append(json.dumps({"type": "session/end-seed", "seq": 3 * seq + 3,
-                                         "time": ms, "data": {"inherited": True}}))
-        path = folder / "session.v4.jsonl"
-        path.write_text("\n".join(lines) + "\n")
-        for stale in self.state.glob("qwen-events.json"):
-            stale.unlink()
-        return path
-
-    def substrate_archive(self, name, messages, job="run1/job1"):
-        """A harness session the factory archived at job end, beside the job's
-        other harness archives: <transcripts>/<run>/<job>/<name>.jsonl."""
-        job_dir = self.home / ".local/state/substrate/transcripts" / job
-        job_dir.mkdir(parents=True, exist_ok=True)
-        path = job_dir / f"{name}.jsonl"
-        path.write_text("\n".join(self.pi_message(*row) for row in messages) + "\n")
-        return path
-
     # ── driving the program ─────────────────────────────────────────────────
     def env(self, extra=None):
         env = {**os.environ,
@@ -247,8 +159,6 @@ class SeatsFixture:
                "SEATS_HOME": str(self.home),
                "SEATS_STATE": str(self.state),
                "SEATS_PEER_CACHE_DIR": str(self.peer),
-               "SEATS_QWEN_HOLD": str(self.state / "qwen-hold.json"),
-               "SEATS_QWEN_KEY_FILE": str(self.state / "no-such-key"),
                "SEATS_OPENROUTER_KEY_FILE": str(self.state / "no-such-openrouter-key"),
                "SEATS_AGENIX_DIR": str(self.root / "agenix"),
                "PYTHONDONTWRITEBYTECODE": "1",
@@ -285,26 +195,10 @@ class SeatsTest(unittest.TestCase):
             (inside, 1000, 200, 50_000), (before, 999_999, 999_999, 0)])
         # cc2: weekly at the wall.
         self.box.claude("cc2", ".claude-work", 0.0, 96.0, events=[(inside, 10, 5, 0)])
-        # cc3: tight, not spent.
-        self.box.claude("cc3", ".claude-3", 85.0, 20.0, events=[])
         codex_inside = NOW - timedelta(days=1)     # codex's window opens at NOW-3d
         self.box.codex(98.0, NOW + timedelta(days=4), totals=[
             (codex_inside, (1000, 100, 500)),
             (codex_inside + timedelta(hours=1), (2500, 400, 900))])
-        # Qwen: a reset four days ago, the window opened by first use three
-        # days ago, and 96,250 billable tokens spent inside it — 500 credits at
-        # the calibrated 192.5 tokens/credit, so 5.0% of the 10,000 allowance.
-        # The cache reads and the locally served (gufo) message must not be billed.
-        self.qwen_reset = NOW - timedelta(days=4)
-        self.qwen_opened = NOW - timedelta(days=3)
-        self.box.qwen(
-            messages=[
-                (self.qwen_reset - timedelta(hours=1), 500_000, 0, 0, "qwen-token-plan"),
-                (self.qwen_opened, 90_000, 6_250, 9_000_000, "qwen-token-plan"),
-                (self.qwen_opened + timedelta(hours=1), 999_999, 999_999, 0, "gufo"),
-            ],
-            refusals=[(self.qwen_reset - timedelta(days=2), self.qwen_reset)])
-
     # ── the shape of the answer ─────────────────────────────────────────────
     def test_every_seat_produces_exactly_one_row(self):
         report, seats = self.box.report()
@@ -330,10 +224,12 @@ class SeatsTest(unittest.TestCase):
     def test_thresholds_place_each_seat(self):
         _, seats = self.box.report()
         self.assertEqual(seats["cc"]["state"], "open")     # worst binding 45
-        self.assertEqual(seats["cc3"]["state"], "tight")   # worst binding 85
         self.assertEqual(seats["cc2"]["state"], "spent")   # worst binding 96
         self.assertFalse(seats["cc2"]["usable"])
-        self.assertTrue(seats["cc3"]["usable"], "tight is still usable")
+        self.box.claude("cc", ".claude", 85.0, 20.0)
+        _, seats = self.box.report()
+        self.assertEqual(seats["cc"]["state"], "tight")    # worst binding 85
+        self.assertTrue(seats["cc"]["usable"], "tight is still usable")
 
     def test_free_at_is_the_walled_windows_reset(self):
         _, seats = self.box.report()
@@ -378,193 +274,6 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(spend["tokens_in"], 2500)
         self.assertEqual(spend["tokens_out"], 400)
         self.assertEqual(spend["cache_tokens"], 900)
-
-    # ── Qwen Cloud ──────────────────────────────────────────────────────────
-    def test_qwen_window_opens_on_first_use_not_on_the_reset(self):
-        _, seats = self.box.report()
-        entry = seats["pi-qwencloud"]["windows"][0]
-        self.assertEqual(entry["window_start"], iso(self.qwen_opened))
-        self.assertEqual(entry["resets_at"], iso(self.qwen_opened + timedelta(days=7)),
-                         "seven days from first use, not seven days from the reset")
-
-    def test_qwen_resets_are_recovered_from_the_refusal_history(self):
-        _, seats = self.box.report()
-        self.assertIn(iso(self.qwen_reset),
-                      seats["pi-qwencloud"]["source"]["known_resets"])
-
-    def test_qwen_credits_come_from_billable_tokens_only(self):
-        _, seats = self.box.report()
-        qwen = seats["pi-qwencloud"]
-        self.assertEqual(qwen["grade"], "ESTIMATED")
-        credits = qwen["credits"]
-        # 90,000 + 6,250 = 96,250 billable; the 9,000,000 cache reads, the
-        # gufo message and the pre-window message are all excluded.
-        self.assertEqual(credits["billable_tokens"], 96_250)
-        self.assertEqual(credits["used"], 500)
-        self.assertEqual(credits["remaining"], 9_500)
-        self.assertEqual(qwen["windows"][0]["used_pct"], 5.0)
-        self.assertEqual(qwen["state"], "open")
-
-    def test_factory_archived_pi_sessions_are_billed_too(self):
-        # CMP-2: the factory saves its pi sessions and archives them under
-        # substrate's transcripts at job end; those tokens are this seat's
-        # spend as much as a hand-run pi session is, and the two roots sum.
-        self.box.substrate_archive("pi-session", [
-            (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 500_000, "qwen-token-plan")])
-        _, seats = self.box.report()
-        qwen = seats["pi-qwencloud"]
-        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 11_000)
-        self.assertEqual(qwen["spend"]["tokens_in"], 90_000 + 10_000)
-        self.assertEqual(qwen["spend"]["tokens_out"], 6_250 + 1_000)
-        self.assertEqual(qwen["spend"]["sessions"], 2, "the live file and the archive")
-
-    def test_other_harnesses_archives_beside_pi_are_not_billed(self):
-        # The same job dir holds claude-*.jsonl and codex-*.jsonl; a qwen-looking
-        # line in one of those is another seat's record, skipped by basename.
-        looks_like_qwen = [(self.qwen_opened + timedelta(hours=2),
-                            999_999, 999_999, 0, "qwen-token-plan")]
-        self.box.substrate_archive("pi-session", [
-            (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 0, "qwen-token-plan")])
-        self.box.substrate_archive("claude-x", looks_like_qwen)
-        self.box.substrate_archive("codex-y", looks_like_qwen)
-        _, seats = self.box.report()
-        qwen = seats["pi-qwencloud"]
-        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 11_000)
-        self.assertEqual(qwen["spend"]["sessions"], 2)
-
-    def test_the_pi_seat_names_both_spend_roots(self):
-        spec = importlib.util.spec_from_loader(
-            "seats_mod_pi", importlib.machinery.SourceFileLoader("seats_mod_pi", SCRIPT))
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        pi = next(s for s in mod.DEFAULT_SEATS if s["id"] == "pi-qwencloud")
-        self.assertEqual(pi["spend_root"],
-                         ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts",
-                          "~/.dsh/sessions"])
-
-    def test_dsh_sessions_are_billed_to_the_same_seat(self):
-        # T-31: dsh spends the same token plan through its qwen-token-plan
-        # route, so its replies join this seat's credits and spend. Uncached
-        # input + output only; the cache reads and the request records are not.
-        self.box.dsh_session([
-            (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 500_000, "qwen-token-plan")])
-        _, seats = self.box.report()
-        qwen = seats["pi-qwencloud"]
-        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 11_000)
-        self.assertEqual(qwen["spend"]["tokens_in"], 90_000 + 10_000)
-        self.assertEqual(qwen["spend"]["tokens_out"], 6_250 + 1_000)
-        self.assertEqual(qwen["spend"]["sessions"], 2, "the pi file and the dsh session")
-
-    def test_a_forked_dsh_session_bills_its_inherited_calls_once(self):
-        # A fork copies the parent's assistant/message records, usage and
-        # all, ahead of a session/end-seed marker; only the calls after the
-        # marker are the fork's own.
-        parent_call = (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 0,
-                       "qwen-token-plan")
-        own_call = (self.qwen_opened + timedelta(hours=3), 20_000, 2_000, 0,
-                    "qwen-token-plan")
-        self.box.dsh_session([parent_call], session="session-parent")
-        self.box.dsh_session([parent_call, own_call], session="session-fork", inherited=1)
-        _, seats = self.box.report()
-        qwen = seats["pi-qwencloud"]
-        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 11_000 + 22_000)
-        self.assertEqual(qwen["spend"]["tokens_in"], 90_000 + 10_000 + 20_000)
-        self.assertEqual(qwen["spend"]["tokens_out"], 6_250 + 1_000 + 2_000)
-        self.assertEqual(qwen["spend"]["sessions"], 3, "the pi file, the parent and the fork")
-
-    def test_dsh_traffic_on_other_routes_is_never_billed(self):
-        # A later local route (the gufo row) lands in the same session store.
-        self.box.dsh_session([
-            (self.qwen_opened + timedelta(hours=2), 999_999, 999_999, 0, "gufo")])
-        _, seats = self.box.report()
-        qwen = seats["pi-qwencloud"]
-        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250)
-        self.assertEqual(qwen["spend"]["tokens_in"], 90_000)
-
-    def test_qwen_local_traffic_is_never_billed(self):
-        _, seats = self.box.report()
-        # The gufo message carries ~2M tokens and would dominate both
-        # the credit estimate and the spend row if the provider went unchecked.
-        self.assertEqual(seats["pi-qwencloud"]["spend"]["tokens_in"], 90_000)
-
-    def test_a_live_refusal_outranks_the_estimate(self):
-        held = NOW + timedelta(days=3)
-        self.box.qwen(
-            messages=[(NOW - timedelta(hours=2), 10, 10, 0, "qwen-token-plan")],
-            refusals=[(NOW - timedelta(hours=1), held)])
-        _, seats = self.box.report()
-        qwen = seats["pi-qwencloud"]
-        self.assertEqual(qwen["grade"], "MEASURED-FROM-REFUSAL")
-        self.assertEqual(qwen["state"], "spent")
-        self.assertEqual(qwen["free_at"], iso(held))
-        self.assertEqual(qwen["credits"]["remaining"], 0,
-                         "the provider saying exhausted beats an estimate saying otherwise")
-
-    def test_an_elapsed_qwen_window_rolls_to_the_next_first_use(self):
-        # Defect 5: a window that ran its seven days without a refusal must not
-        # be reported forever; the next one opens on the first use after it.
-        first = NOW - timedelta(days=18)
-        latest = NOW - timedelta(hours=2)
-        self.box.qwen(
-            messages=[(first, 500_000, 0, 0, "qwen-token-plan"),
-                      (latest, 15_000, 4_250, 0, "qwen-token-plan")],
-            refusals=[(NOW - timedelta(days=21), NOW - timedelta(days=20))])
-        _, seats = self.box.report()
-        qwen = seats["pi-qwencloud"]
-        entry = qwen["windows"][0]
-        self.assertEqual(entry["window_start"], iso(latest))
-        self.assertEqual(entry["resets_at"], iso(latest + timedelta(days=7)))
-        self.assertEqual(qwen["credits"]["resets_at"], iso(latest + timedelta(days=7)))
-        self.assertEqual(qwen["credits"]["billable_tokens"], 19_250,
-                         "only the new window's tokens count")
-        self.assertEqual(qwen["state"], "open")
-
-    def test_qwen_windows_chain_across_several_elapsed_weeks(self):
-        uses = [NOW - timedelta(days=18), NOW - timedelta(days=9), NOW - timedelta(hours=1)]
-        self.box.qwen(
-            messages=[(when, 1_000, 1_000, 0, "qwen-token-plan") for when in uses],
-            refusals=[(NOW - timedelta(days=21), NOW - timedelta(days=20))])
-        _, seats = self.box.report()
-        self.assertEqual(seats["pi-qwencloud"]["windows"][0]["window_start"], iso(uses[-1]))
-
-    def test_an_elapsed_qwen_window_with_no_later_use_reads_full(self):
-        self.box.qwen(
-            messages=[(NOW - timedelta(days=18), 500_000, 0, 0, "qwen-token-plan")],
-            refusals=[(NOW - timedelta(days=21), NOW - timedelta(days=20))])
-        _, seats = self.box.report()
-        qwen = seats["pi-qwencloud"]
-        self.assertEqual(qwen["state"], "open")
-        self.assertEqual(qwen["credits"]["remaining"], 10_000)
-        self.assertIsNone(qwen["credits"]["resets_at"])
-        self.assertIn("opens on first use", qwen["detail"])
-
-    def test_qwen_with_no_use_since_the_reset_holds_the_full_allowance(self):
-        self.box.qwen(refusals=[(NOW - timedelta(days=3), NOW - timedelta(days=1))])
-        _, seats = self.box.report()
-        qwen = seats["pi-qwencloud"]
-        self.assertEqual(qwen["state"], "open")
-        self.assertEqual(qwen["credits"]["remaining"], 10_000)
-        self.assertEqual(qwen["windows"][0]["used_pct"], 0.0)
-        self.assertIn("opens on first use", qwen["detail"])
-
-    def test_the_plan_terms_are_published_with_the_seat(self):
-        _, seats = self.box.report()
-        plan = seats["pi-qwencloud"]["plan"]
-        self.assertEqual(plan["credits_per_window"], 10_000)
-        self.assertEqual(plan["window_days"], 7)
-        self.assertEqual(plan["max_concurrent_agents"], 4)
-        self.assertIn("cache reads are free", plan["counts"])
-
-    def test_the_plan_can_be_overridden_without_editing_the_program(self):
-        config = self.box.home / ".config/seats"
-        config.mkdir(parents=True, exist_ok=True)
-        (config / "qwen-plan.json").write_text(json.dumps(
-            {"credits_per_window": 2500, "tokens_per_credit": 192.5}))
-        _, seats = self.box.report()
-        credits = seats["pi-qwencloud"]["credits"]
-        self.assertEqual(credits["allowance"], 2500)
-        self.assertEqual(credits["used"], 500)
-        self.assertEqual(seats["pi-qwencloud"]["windows"][0]["used_pct"], 20.0)
 
     # ── scoped model caps: repeated from the API, never converted ───────────
     def test_scoped_and_account_limits_are_both_reported_verbatim(self):
@@ -664,9 +373,10 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(seats["cc"]["free_at"], iso(self.box.weekly_reset))
 
     def test_thresholds_carry_an_ungraded_payload(self):
+        self.box.claude("cc", ".claude", 85.0, 20.0)
         _, seats = self.box.report()
-        self.assertEqual(seats["cc3"]["state"], "tight")   # 85%, ungraded payload
-        self.assertIn("local threshold", seats["cc3"]["state_basis"])
+        self.assertEqual(seats["cc"]["state"], "tight")    # 85%, ungraded payload
+        self.assertIn("local threshold", seats["cc"]["state_basis"])
 
     def test_overage_terms_are_reported(self):
         _, seats = self.box.report()
@@ -691,15 +401,15 @@ class SeatsTest(unittest.TestCase):
 
     # ── failure is a row, not a silence ─────────────────────────────────────
     def test_a_missing_store_still_produces_a_row(self):
-        for path in (self.box.peer / ".window-cache-cc3.json",
-                     self.box.home / ".claude-3/.credentials.json"):
+        for path in (self.box.peer / ".window-cache-cc2.json",
+                     self.box.home / ".claude-work/.credentials.json"):
             path.unlink()
         result = self.box.run("--json")
         self.assertEqual(result.returncode, 0)
         seats = {s["id"]: s for s in json.loads(result.stdout)["seats"]}
-        self.assertIn("cc3", seats)
-        self.assertEqual(seats["cc3"]["state"], "unauth")
-        self.assertEqual(seats["cc3"]["windows"], [])
+        self.assertIn("cc2", seats)
+        self.assertEqual(seats["cc2"]["state"], "unauth")
+        self.assertEqual(seats["cc2"]["windows"], [])
         self.assertEqual(seats["cc"]["state"], "open", "one dead seat is not seven")
 
     def test_offline_reports_the_gpu_rows_without_guessing(self):
@@ -721,48 +431,34 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(self.box.run("--check", "no-such-seat").returncode, 2)
 
     def test_check_honours_window_and_threshold(self):
-        # cc3 is 85% on the session window and 20% weekly, so which window is
+        # cc at 85% on the session window and 20% weekly: which window is
         # asked about decides the answer, and so does where the wall is put.
-        self.assertEqual(self.box.run("--check", "cc3", "--window", "seven_day").returncode, 0)
-        self.assertEqual(self.box.run("--check", "cc3", "--window", "five_hour").returncode, 0)
+        self.box.claude("cc", ".claude", 85.0, 20.0)
+        self.assertEqual(self.box.run("--check", "cc", "--window", "seven_day").returncode, 0)
+        self.assertEqual(self.box.run("--check", "cc", "--window", "five_hour").returncode, 0)
         self.assertEqual(
-            self.box.run("--check", "cc3", "--window", "five_hour",
+            self.box.run("--check", "cc", "--window", "five_hour",
                          "--threshold", "80").returncode, 1)
         self.assertEqual(
-            self.box.run("--check", "cc3", "--threshold", "80").returncode, 1,
+            self.box.run("--check", "cc", "--threshold", "80").returncode, 1,
             "--window any takes the worst binding window")
 
     def test_pick_names_the_seat_with_the_most_headroom(self):
-        # Qwen sits at 5% of its allowance, so it outranks cc's 55% even after
-        # the estimate is docked its own ±10.7% calibration spread.
+        # cc has 55 points left; cc2 and codex are at the wall.
         result = self.box.run("--pick")
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout.strip(), "pi-qwencloud")
-
-    def test_an_estimate_is_ranked_at_the_conservative_end_of_its_error_bar(self):
-        # Qwen at 50% leaves 50 points, docked to 39.3 by the spread, so cc's
-        # measured 55 wins — a calibrated guess must not beat a measurement on
-        # a margin thinner than the calibration's own uncertainty.
-        self.box.qwen(
-            messages=[(self.qwen_opened, 962_500, 0, 0, "qwen-token-plan")],
-            refusals=[(self.qwen_reset - timedelta(days=2), self.qwen_reset)])
-        _, seats = self.box.report()
-        self.assertEqual(seats["pi-qwencloud"]["windows"][0]["used_pct"], 50.0)
-        self.assertEqual(self.box.run("--pick").stdout.strip(), "cc")
+        self.assertEqual(result.stdout.strip(), "cc")
 
     def test_pick_fails_when_nothing_is_open(self):
-        for seat, config in (("cc", ".claude"), ("cc2", ".claude-work"), ("cc3", ".claude-3")):
+        for seat, config in (("cc", ".claude"), ("cc2", ".claude-work")):
             self.box.claude(seat, config, 99.0, 99.0)
-        self.box.qwen(
-            messages=[(NOW - timedelta(hours=2), 10, 10, 0, "qwen-token-plan")],
-            refusals=[(NOW - timedelta(hours=1), NOW + timedelta(days=3))])
         self.assertEqual(self.box.run("--pick").returncode, 1)
 
     # ── the other renderings ────────────────────────────────────────────────
     def test_table_tsv_and_jsonl_all_render(self):
         table = self.box.run()
         self.assertEqual(table.returncode, 0)
-        self.assertIn("cc3", table.stdout)
+        self.assertIn("cc2", table.stdout)
         self.assertIn("SEAT", table.stdout)
         for line in table.stdout.splitlines():
             self.assertNotIn("\t", line, "the table must not emit tabs")
@@ -778,10 +474,10 @@ class SeatsTest(unittest.TestCase):
         self.assertTrue(all("generated_at" in row for row in rows))
 
     def test_only_filters_by_id_and_by_provider(self):
-        _, seats = self.box.report("--only", "cc3")
-        self.assertEqual(list(seats), ["cc3"])
+        _, seats = self.box.report("--only", "cc2")
+        self.assertEqual(list(seats), ["cc2"])
         _, seats = self.box.report("--only", "claude")
-        self.assertEqual(sorted(seats), ["cc", "cc2", "cc3"])
+        self.assertEqual(sorted(seats), ["cc", "cc2"])
 
     def test_no_token_is_ever_printed(self):
         for args in ([], ["--json"], ["--tsv"], ["--jsonl"]):
@@ -1217,7 +913,6 @@ class BurndownLedgerTest(unittest.TestCase):
         expires = NOW + timedelta(hours=35)
         self.box.claude("cc", ".claude", 10.0, 15.0, credit=(250.0, 0.0, expires))
         self.box.claude("cc2", ".claude-work", 0.0, 4.0, credit=(250.0, 160.73, expires))
-        self.box.claude("cc3", ".claude-3", 0.0, 0.0)
         _, seats = self.box.report("--only", "claude,claude-credit")
         cc = seats["cc-credit"]
         self.assertEqual(cc["provider"], "claude-credit")
@@ -1233,8 +928,6 @@ class BurndownLedgerTest(unittest.TestCase):
         self.assertAlmostEqual(cc2["credits"]["remaining"], 89.27)
         self.assertEqual(cc2["state"], "open")
         self.assertIn("$89.27 of $250.00 left", cc2["detail"])
-        self.assertIn("payload carries no cloud credit", seats["cc3-credit"]["detail"]
-                      if "cc3-credit" in seats else "payload carries no cloud credit")
         # The credit row alone still reads (through the sibling's cache).
         _, alone = self.box.report("--only", "cc2-credit")
         self.assertEqual(list(alone), ["cc2-credit"])

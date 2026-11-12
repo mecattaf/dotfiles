@@ -53,6 +53,9 @@ masks=(/run/agenix.d "/run/user/$uid")
 if [ -d /run/agenix ] && [ ! -L /run/agenix ]; then
   masks+=(/run/agenix)
 fi
+# ~/.claude-3 (the retired cc3 seat) and ~/.pi (the retired pi harness) are
+# history, but their directories, credentials included, are kept in the home,
+# so they stay masked.
 for d in .config/herdr .claude .claude-work .claude-3 .codex .pi .dsh; do
   masks+=("$HOME/$d")
 done
