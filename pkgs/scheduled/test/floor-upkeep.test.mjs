@@ -62,7 +62,7 @@ test('FU2 the brief covers ended tickets, .done growth and failed records, from 
   assert.match(prompt, /superagent\.ticket/);
   assert.ok(commands(prompt).includes('dshd get --json <name>'));
   assert.ok(commands(prompt).some((c) => /^dshd read -n \d+ <name>$/.test(c)));
-  assert.match(prompt, /possibly stuck/);
+  assert.match(prompt, /still running whose run began before the last day, as possibly stuck/);
   // .done growth and records the floor has not read.
   assert.match(prompt, /<inbox>\/\.done/);
   assert.match(prompt, /<inbox>\/\.bad/);
