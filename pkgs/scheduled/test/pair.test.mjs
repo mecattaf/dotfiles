@@ -12,6 +12,7 @@ import { parseItem, normalize, jsonSchema } from '../src/lib/schema.mjs';
 import { pairsOf } from '../src/lib/context.mjs';
 import { tick } from '../src/lib/tick.mjs';
 import { main as runMain } from '../src/verbs/run.mjs';
+import { main as showMain } from '../src/verbs/show.mjs';
 import { setupEnv, hourly } from './helpers.mjs';
 
 const PAIRS = ['opus', 'gufo'];
@@ -146,6 +147,22 @@ test('P10 scheduled run carries the item\'s pair into the manual record, and ref
     assert.equal(await runMain(['master:far'], env.ctx), 1);
     assert.match(env.err.join(''), /error\[unknown-pair\]/);
     assert.deepEqual(env.records(), [name]);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('P11 scheduled show names the item\'s pair, or the default pair when it names none', async () => {
+  const env = setupEnv();
+  try {
+    env.ctx.pairs = PAIRS;
+    const local = env.item('local', hourly({ pair: 'gufo' }));
+    const plain = env.item('plain', hourly());
+    assert.equal(await showMain([local], env.ctx), 0, env.err.join(''));
+    assert.ok(env.out.join('').includes('enabled: true\npair: gufo\n'), env.out.join(''));
+    env.out.length = 0;
+    assert.equal(await showMain([plain], env.ctx), 0, env.err.join(''));
+    assert.ok(env.out.join('').includes('enabled: true\npair: default\n'), env.out.join(''));
   } finally {
     env.cleanup();
   }

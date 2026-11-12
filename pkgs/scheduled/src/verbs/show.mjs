@@ -85,6 +85,7 @@ export async function main(args, ctx) {
   ctx.out(`state: ${norm.state}\n`);
   ctx.out(`name: ${norm.spec.name}\n`);
   ctx.out(`enabled: ${norm.spec.enabled}\n`);
+  ctx.out(`pair: ${norm.spec.pair ?? 'default'}\n`);
   if (norm.next.length > 0) {
     ctx.out(norm.spec.enabled ? 'next occurrences:\n' : 'next occurrences (once enabled):\n');
     for (const d of norm.next) ctx.out(`  ${d}\n`);
