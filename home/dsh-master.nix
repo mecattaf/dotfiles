@@ -5,7 +5,7 @@
   pkgs,
   ...
 }:
-# The Master configuration (docs/scheduled.md): one source for the DSH profile
+# The Master configuration (docs/dsh-master.md): one source for the DSH profile
 # folders of the master agency's superagent, rendered by pkgs/dsh-master as
 #
 #   master          web app, superagent engine on: the floor instance
