@@ -657,5 +657,9 @@ in
   );
   # Row ids the policy touches, for checks.dsh-config.
   policyIds = map (row: row.id) policy;
+  # The policy rows as data, for profiles that carry the policy in their own
+  # layer instead of the wrapper's overlay (pkgs/dsh-master: dshd runs the
+  # unwrapped dsh, which never adds the overlays).
+  policyRows = policy;
   disabledIds = map (row: row.id) (lib.filter (row: row.disabled or false) policy);
 }
