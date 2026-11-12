@@ -41,7 +41,7 @@ test('the nudge validates, is off, and asks the main Session to start the script
 
 test('meta names the workflow and its two phases', { skip }, async () => {
   const { extractMeta } = await interpreter();
-  const meta = extractMeta(source());
+  const { meta } = extractMeta(source());
   assert.equal(meta.name, 'day-prep');
   assert.deepEqual(meta.phases.map((p) => p.title), ['read', 'write']);
 });
