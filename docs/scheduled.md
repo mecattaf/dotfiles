@@ -197,7 +197,7 @@ when its prompt says so, which is also how a workflow runs on a schedule:
 ```
 
 `scheduled run work/acme:release-notes` starts it now. This is the start
-path the 12 Nov 2026 rehearsal exercises (gate P-W0).
+path the live rehearsal exercises.
 
 ## The pieces
 
