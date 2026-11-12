@@ -1,20 +1,22 @@
-// Copied 12 Nov 2026 from ~/.agency/workflows/fleet-nightly.jsonc (kept there).
-// Rewritten: window, if, outcome, attempts and context removed; their intent is in the prompt.
-// No retries exist any more: one occurrence is one run.
+// Copied 12 Nov 2026 from ~/.agency/workflows/fleet-nightly.jsonc (kept there), then rewritten the same night
+// into the start nudge of Tom's midnight sequence (2026-09-20 R6/R7): "a midnight sequence full archival
+// followed by a dedicated dotfiles operation: check if open gh issues that were filed today are closed otherwise
+// cc opus works on them (culminating in a clean tree); then does the atomic fleet update so that the morning is
+// fresh". The order lives in the workflow script .agency/workflows/fleet-nightly.js; this item only asks the
+// superagent to start it (a jsonc item is a nudge; there is no workflow key). The old fleet-update steps are the
+// script's last node. 01:00 follows journal-day's 00:00 nudge and stays out of the 02:00 DST gap.
 {
-  "name": "Dotfiles nightly update and fleet flash",
+  "name": "Midnight sequence: archival, today's dotfiles issues, fleet update",
+  // Off (Tom, 11 Nov: "make sure there are no scheduled work in the morning"). Only Tom arms it.
   "enabled": false,
   "on": { "schedule": [ { "cron": "0 1 * * *", "timezone": "Europe/Paris" } ] },
   "job": {
     "prompt": [
-      "If /run/current-system/sw/bin/fleet-update-start is not an executable file, say so and end: the launcher is not installed yet.",
-      "Tonight's night key is the date of the Due time in the header minus 12 hours.",
-      "If ~/.local/state/fleet-update/completions/<night key>.json exists and has ok: true, quote it and end.",
-      "1. Run: fleet-update-start --json. Quote the receipt. A launch receipt has ok: false and proves launch only.",
-      "2. Run: fleet-update --status --json. Say which stage the job is in and which targets are pending, and why.",
-      "3. If ~/.local/state/fleet-update/completions/ holds a receipt for the previous night, list what it installed and what stayed pending.",
-      "Do not run nixos-rebuild, switch, reboot, start, stop or restart a unit, merge a PR, or edit ~/mecattaf/dotfiles: fleet-update owns those steps.",
-      "End with one line: launched, already running, or the error, quoted."
+      "This is a request to you, the superagent, not work for a worker. Do not accept it as a ticket.",
+      "The night key is the date of the Due time in the header minus 12 hours, as YYYY-MM-DD.",
+      "If orchestrator_workflow_status shows a fleet-nightly run for that night key still running, start nothing and ignore this trigger with the reason: already running <that run id>.",
+      "Otherwise call orchestrator_workflow_start with script .agency/workflows/fleet-nightly.js, cwd the agency folder (the record's cwd), args {\"night\": \"<night key>\"} and trigger_id this trigger's id.",
+      "Then ignore this trigger with the reason: started workflow <the run id you got>."
     ]
   }
 }

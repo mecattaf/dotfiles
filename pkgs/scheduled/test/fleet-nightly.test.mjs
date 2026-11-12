@@ -64,6 +64,9 @@ async function runScript(args, answer) {
     result = await fn(agent, parallel, undefined, phase, log, () => ({}), undefined,
       args === undefined ? undefined : JSON.stringify(args));
   } catch (e) { error = e; }
+  // The interpreter hands the result back as JSON (sandbox toJson); so does this harness, which also drops the
+  // script realm's prototypes.
+  if (result !== undefined) result = JSON.parse(JSON.stringify(result));
   return { calls, phases, logs, result, error };
 }
 
@@ -160,7 +163,7 @@ test('N8: the worker briefs carry the guardrails: no force-push, no merge, no NA
   assert.match(by['issue-801'], /strix-coordinator/);
   assert.match(by['issue-801'], /25 GB/);
   assert.match(by['clean-tree'], /--ff-only/);
-  assert.match(by['clean-tree'], /never stash, reset, clean/);
+  assert.match(by['clean-tree'], /[Nn]ever stash, reset, clean/);
   assert.match(by['fleet-update'], /df -h \//);
   assert.match(by['fleet-update'], /25 GB/);
   assert.match(by['fleet-update'], /nas is an activation target/);
