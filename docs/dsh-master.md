@@ -1,0 +1,79 @@
+# The Master profiles
+
+The master agency's superagent (the `dsh-superagent` fork, Claude Opus as
+its brain through dsh-claude) runs from one configuration,
+`programs.dsh.master` in `home/dsh-master.nix`. DSH composes its app from
+the bundles a profile lists, and dshd takes one transport per profile, so
+`pkgs/dsh-master` renders that one source as one folder per transport and
+pair:
+
+| Profile | App | `dsh-superagent.engine` | Runs |
+|---|---|---|---|
+| `master` | `dsh-web-app` | `true` | the `floor` dshd instance: the superagent, its main Session, the panel on 127.0.0.1:3082 |
+| `master-opus` | `dsh-headless` | `false` | one worker per dshd unit, Claude Opus at medium effort (the default pair) |
+| `master-gufo` | `dsh-headless` | `false` | one worker per dshd unit, Gufo `qwen3.8-flash-next`, one at a time |
+
+Rules the renderer keeps, each asserted by `checks.dsh-master`:
+
+- Every folder lists the same dependencies and the same non-app bundles
+  (base, dsh-claude, dsh-superagent). No folder lists both apps: the headless
+  layer turns authorization off for the whole tree.
+- The fleet policy (`pkgs/dsh/config.nix`) is in each folder's own
+  `cordis.patch.yml`, because dshd runs the unwrapped dsh and never gets the
+  wrapper's overlays. The sandbox, permission and approval rows are left out:
+  workers run with full permissions, and the superagent needs the stock
+  `danger-full-access` preset.
+- The `dsh-superagent` row is the same in every folder but for `engine`. A
+  worker mounts the plugin without its orchestrator: no state, lock, Session
+  or environment change, and the fork's Sources never apply.
+- Every Claude process goes through `llm-claude.executablePath`, a wrapper
+  that sets `CLAUDE_CONFIG_DIR` to the cc2 seat. Workers get the same value in
+  their dshd recipe (`dshd.env`), and Gufo workers get the public dummy
+  `GUFO_API_KEY` from their pair row.
+- A pair is a folder: add one to `programs.dsh.master.pairs` and it renders
+  `master-<name>`. `defaultPair` picks the pair of a Ticket whose Trigger
+  names none.
+
+## Commands
+
+Activation runs `dsh-master render --quiet`. It copies the rendered files
+into `~/.dsh/profiles/master*` when they differ, says when a copy was
+changed by hand, and never runs pnpm. The other steps are by hand:
+
+```sh
+dsh-master render            # what activation does, with a line per file
+dsh-master install           # pnpm install per folder, through the dsh dshd runs
+dsh-master check             # --dump-config per folder: every rendered row, no patch warning
+dsh-master status            # rendered current? installed current? node_modules?
+dsh-master settings seed     # once, after the floor's first start
+```
+
+`install` runs `/etc/dshd/releases/default/bin/dsh plugin --profile <p>
+install` under a 600 s timeout and then judges the folder, not the exit:
+`package.json` unchanged, a lockfile, and a built `lib/` for each dependency.
+The fleet wrapper refuses `dsh plugin`. After a pin moves (`superagent`,
+`claude`), render prints `install needed: <p>`.
+
+`settings seed` reads the floor's Store settings through its management API,
+upserts the rules and admission cells of `home/dsh-master/settings.seed.json`
+(the Scheduled and Workflow node rules), raises `eval.mode` to `auto`, and
+saves each changed block with its revision. It never lowers a mode, and an
+`eval.mode` of `off` stays off. It prints `unchanged` or `changed <blocks>`.
+
+Before a switch, `nix build .#dsh-master -o result-dsh-master` gives the same
+bytes activation will render, and `result-dsh-master/bin/dsh-master render`
+installs them early. Keep that out-link until the switch: the rendered files
+name the seat wrapper's store path.
+
+## The floor instance
+
+```sh
+env -i HOME=/home/tom USER=tom LOGNAME=tom LANG=C.UTF-8 \
+  PATH=/run/current-system/sw/bin:/etc/profiles/per-user/tom/bin \
+  DSH_TELEMETRY_DISABLED=1 CLAUDE_CONFIG_DIR=/home/tom/.claude-work \
+  /run/current-system/sw/bin/dshd run --bg --json --name floor --cwd /home/tom \
+    --label superagent.role=floor -- master
+```
+
+No `--patch`: the profile carries the policy. The name stays `floor`,
+which the heartbeat addresses.

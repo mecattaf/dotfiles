@@ -15,6 +15,9 @@ workflow file; the runbook below is for the machine Tom sits at (the NAS)
 and the `scheduled` CLI, the one program every reader and writer of a
 workflow goes through.
 
+The floor's DSH profiles, `master` and one `master-<pair>` per worker
+pair, are rendered from one source; see [dsh-master.md](dsh-master.md).
+
 ## Commissioning order
 
 The order matters; each step assumes the previous one landed. Rollback at
