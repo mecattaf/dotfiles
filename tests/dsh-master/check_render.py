@@ -3,8 +3,8 @@
 Usage: check_render.py <dsh-master package> <expectations.json>
 
 The expectations come from the NAS configuration (tests/dsh-master/default.nix):
-the pairs, the default pair, the seat, the state directory and the fleet
-policy as pkgs/dsh exports it. Each subtest prints its name; any failure
+the pairs and their presets, the default pair, the seat, the state directory
+and the fleet policy as pkgs/dsh exports it. Each subtest prints its name; any failure
 exits 1 after all of them ran.
 """
 
@@ -172,19 +172,29 @@ def main(package, expect_path):
         )
         want.update(permissionSelector="native", sources=None, presetless=None)
         problems += [f"{name}: llm-claude {key} is {config.get(key)!r}" for key, value in want.items() if config.get(key) != value]
-        registry = ids.get("agent-preset-registry", [])
-        preset = ids.get("headless-preset", [])
-        if name == "master" and (registry or preset):
-            problems.append("master inserts preset rows the web bundle does not need")
-        if name != "master":
-            if len(registry) != 1 or not registry[0].get("inserted") or registry[0].get("config") != {"default": "claude"}:
-                problems.append(f"{name}: agent-preset-registry insert is {registry}")
-            if len(preset) != 1 or preset[0].get("name") != "@norman-else/dsh-claude/headless-preset" or preset[0].get("config") != {"preset": "claude"}:
-                problems.append(f"{name}: headless-preset insert is {preset}")
-            order = [row.get("insert", [{}])[0].get("id") for row in folders[name]["patch"] if "insert" in row]
-            if order != ["agent-preset-registry", "headless-preset"]:
-                problems.append(f"{name}: inserts in the order {order}")
     subtest("seat and claude rows", problems)
+
+    problems = []
+    if rows["master"].get("agent-preset-registry") or rows["master"].get("headless-preset"):
+        problems.append("master inserts preset rows the web bundle does not need")
+    for name, pair in workers.items():
+        ids, preset = rows[name], expect["presets"][pair]
+        registry = ids.get("agent-preset-registry", [])
+        binder = ids.get("headless-preset", [])
+        if len(registry) != 1 or not registry[0].get("inserted") or registry[0].get("config") != {"default": "claude"}:
+            problems.append(f"{name}: agent-preset-registry insert is {registry}")
+        if preset is None:
+            if binder:
+                problems.append(f"{name}: inserts headless-preset for a pair without a preset")
+        elif len(binder) != 1 or binder[0].get("name") != "@norman-else/dsh-claude/headless-preset" or binder[0].get("config") != {"preset": preset}:
+            problems.append(f"{name}: headless-preset insert is {binder}")
+        if pairs[pair]["provider"] != "claude" and preset is not None:
+            problems.append(f"{name}: binds preset {preset!r} to a {pairs[pair]['provider']} worker (the claude preset routes to Claude Code)")
+        order = [row.get("insert", [{}])[0].get("id") for row in folders[name]["patch"] if "insert" in row]
+        want = ["agent-preset-registry"] + ([] if preset is None else ["headless-preset"])
+        if order != want:
+            problems.append(f"{name}: inserts in the order {order}, expected {want}")
+    subtest("headless folders insert headless-preset after agent-preset-registry", problems)
 
     problems = []
     policy = {row["id"]: row for row in expect["policyRows"]}

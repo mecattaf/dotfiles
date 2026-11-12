@@ -33,6 +33,7 @@ let
         }
       ) cfg.pairs;
       pairEnv = lib.mapAttrs (_: pair: { inherit (pair) env maxWorkers; }) cfg.pairs;
+      presets = lib.mapAttrs (_: pair: pair.preset) cfg.pairs;
       inherit (cfg) defaultPair stateDir claudeConfigDir;
       inherit (nas.pkgs.dsh) policyIds policyRows;
       inherit (master) dropped;
@@ -47,14 +48,18 @@ assert lib.all (name: !(enabledOn name)) [
   "strix-coordinator"
   "strix-worker"
 ];
-assert !(lib.any (file: lib.hasPrefix ".dsh/" file.target || file.target == ".dsh") (
-  builtins.attrValues hm.home.file
-));
-assert master.profileNames == [
-  "master"
-  "master-gufo"
-  "master-opus"
-];
+assert
+  !(lib.any (file: lib.hasPrefix ".dsh/" file.target || file.target == ".dsh") (
+    builtins.attrValues hm.home.file
+  ));
+assert
+  master.profileNames == [
+    "master"
+    "master-gufo"
+    "master-opus"
+  ];
+# The Claude pair binds dsh-claude's preset; Gufo binds none.
+assert cfg.pairs.opus.preset == "claude" && cfg.pairs.gufo.preset == null;
 pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   set -euo pipefail
   export HOME="$TMPDIR/home" PYTHONDONTWRITEBYTECODE=1

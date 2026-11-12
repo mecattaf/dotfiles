@@ -180,39 +180,42 @@ let
       (off "dsh-superagent-feishu")
     ]
     ++ settings.superagentRows;
-    worker = [
-      # The headless one-shot runner binds no preset; this binds `claude` to
-      # the top-level agent, after the registry row above.
-      {
+    worker =
+      pair:
+      # The headless one-shot runner binds no preset; dsh-claude's binder
+      # selects the pair's preset for the top-level agent, after the registry
+      # row above. A pair with none (Gufo) runs DSH's own agent.
+      lib.optional (settings.pairs.${pair}.preset != null) {
         insert = [
           {
             id = "headless-preset";
             name = "@norman-else/dsh-claude/headless-preset";
-            config.preset = "claude";
+            config.preset = settings.pairs.${pair}.preset;
           }
         ];
       }
-      {
-        id = "llm-claude";
-        config = {
-          executablePath = lib.getExe claudeSeat;
-          idleTimeoutMs = 600000;
-          maxProcesses = 1;
-          permissionSelector = "native";
-          presets = [ "claude" ];
-          forwardedSources = [ "user" ];
-          systemPromptPresets = [ ];
+      ++ [
+        {
+          id = "llm-claude";
+          config = {
+            executablePath = lib.getExe claudeSeat;
+            idleTimeoutMs = 600000;
+            maxProcesses = 1;
+            permissionSelector = "native";
+            presets = [ "claude" ];
+            forwardedSources = [ "user" ];
+            systemPromptPresets = [ ];
+          }
+          // settings.claudeConfig.worker;
         }
-        // settings.claudeConfig.worker;
-      }
-      # Dormant: the plugin mounts but runs no orchestrator, so no state,
-      # lock, Session or environment change. Its Sources inject the missing
-      # `orchestrator` service and never apply.
-      (superagentRow false)
-      (off "dsh-superagent-github")
-      (off "dsh-superagent-feishu")
-    ]
-    ++ settings.superagentRows;
+        # Dormant: the plugin mounts but runs no orchestrator, so no state,
+        # lock, Session or environment change. Its Sources inject the missing
+        # `orchestrator` service and never apply.
+        (superagentRow false)
+        (off "dsh-superagent-github")
+        (off "dsh-superagent-feishu")
+      ]
+      ++ settings.superagentRows;
   };
 
   bundles = app: [
@@ -238,7 +241,7 @@ let
       pair:
       lib.nameValuePair (workerName pair) {
         app = "@deepseek-ai/dsh-headless";
-        rows = firstParty.worker pair ++ extension.worker;
+        rows = firstParty.worker pair ++ extension.worker pair;
         firstPartyRows = firstParty.worker pair;
       }
     ) pairNames

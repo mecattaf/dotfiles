@@ -22,33 +22,46 @@ let
   localModel = import ../lib/local-model.nix;
   inherit (lib) mkOption types;
 
-  pair = types.submodule {
-    options = {
-      provider = mkOption {
-        type = types.str;
-        description = "agent-default-model provider of this pair's workers.";
+  pair = types.submodule (
+    { config, ... }:
+    {
+      options = {
+        provider = mkOption {
+          type = types.str;
+          description = "agent-default-model provider of this pair's workers.";
+        };
+        model = mkOption {
+          type = types.str;
+          description = "agent-default-model model id.";
+        };
+        reasoningEffort = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Reasoning effort; null for a model that declares none.";
+        };
+        env = mkOption {
+          type = types.attrsOf types.str;
+          default = { };
+          description = "Environment of this pair's units. Recorded in each unit's recipe: public values only.";
+        };
+        maxWorkers = mkOption {
+          type = types.nullOr types.ints.positive;
+          default = null;
+          description = "At most this many units of this pair at once.";
+        };
+        # dsh headless binds no agent preset, and dsh-claude serves only a
+        # Session bound to one of its presets. Its `claude` preset also routes
+        # every request to Claude Code, so a pair of another provider binds none
+        # (a Gufo worker under it asks Claude Code for qwen3.8-flash-next).
+        preset = mkOption {
+          type = types.nullOr types.str;
+          default = if config.provider == "claude" then "claude" else null;
+          defaultText = lib.literalExpression ''if provider == "claude" then "claude" else null'';
+          description = "Agent preset dsh-claude's headless-preset binder selects for this pair's workers; null inserts no binder.";
+        };
       };
-      model = mkOption {
-        type = types.str;
-        description = "agent-default-model model id.";
-      };
-      reasoningEffort = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Reasoning effort; null for a model that declares none.";
-      };
-      env = mkOption {
-        type = types.attrsOf types.str;
-        default = { };
-        description = "Environment of this pair's units. Recorded in each unit's recipe: public values only.";
-      };
-      maxWorkers = mkOption {
-        type = types.nullOr types.ints.positive;
-        default = null;
-        description = "At most this many units of this pair at once.";
-      };
-    };
-  };
+    }
+  );
 
   # Profile folders that exist beside Master and are never written.
   otherProfiles = pkgs.dsh.profiles ++ [
@@ -125,7 +138,8 @@ in
           reasoningEffort = "medium";
         };
         # Gufo serves one generation at a time. The bearer is the public dummy
-        # the keyless server takes (pkgs/dsh), never a secret.
+        # the keyless server takes (pkgs/dsh), never a secret. No preset: the
+        # worker runs dsh's own agent on the gufo provider.
         gufo = {
           provider = "gufo";
           model = localModel.modelId;
@@ -198,7 +212,9 @@ in
         message = "programs.dsh.master.defaultPair (${cfg.defaultPair}) is not one of the pairs.";
       }
       {
-        assertion = lib.all (name: builtins.match "[a-z0-9][a-z0-9-]*" name != null) (builtins.attrNames cfg.pairs);
+        assertion = lib.all (name: builtins.match "[a-z0-9][a-z0-9-]*" name != null) (
+          builtins.attrNames cfg.pairs
+        );
         message = "programs.dsh.master.pairs: a name must match ^[a-z0-9][a-z0-9-]*$.";
       }
       {
