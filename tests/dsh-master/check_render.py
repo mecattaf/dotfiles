@@ -34,6 +34,16 @@ PIN = re.compile(r"^github:mecattaf/[a-z-]+#floor-v2\.[0-9]+$")
 ASSESSOR_CLAUSE = "If you are assessing it: "
 WORKER_CLAUSE = "If you are the worker running this ticket, only this sentence applies to you: "
 RULE_CHARS = 1000
+# The fork's assessmentOutcome (src/policy.ts) turns an accept into `ignore
+# directionUnsettled` unless the assessor declares implementation_requested,
+# a target_basis other than undetermined and no requires_design_decision.
+# Upstream's admission prompt lets a matched rule define those facts for its
+# category, so each seed rule states all three before its worker clause.
+DIRECTION_FACTS = {
+    "implementation_requested": "an implementation request by ",
+    "target_basis": "its target is ",
+    "requires_design_decision": "needs no design decision",
+}
 
 
 def load(package):
@@ -235,7 +245,8 @@ def main(package, expect_path):
     # brief, where it "takes precedence". So each rule describes its
     # Triggers, then has one assessor clause, and ends with one worker clause,
     # the same in every rule; the orchestrator tools appear only in the
-    # assessor clause, since a dshd worker has none.
+    # assessor clause, since a dshd worker has none. The description states
+    # the three direction facts, or an accept by the rule never dispatches.
     problems = []
     clauses = set()
     for rule_id, rule in rules.items():
@@ -246,6 +257,9 @@ def main(package, expect_path):
             continue
         worker = text[work:]
         clauses.add(worker)
+        for fact, phrase in DIRECTION_FACTS.items():
+            if phrase not in text[:work]:
+                problems.append(f"rule {rule_id}: settles no {fact} (no {phrase!r} before the worker clause)")
         for phrase in ("in the current folder", "your final message is the result", "you have no orchestrator tools"):
             if phrase not in worker:
                 problems.append(f"rule {rule_id}: the worker clause does not say {phrase!r}")
@@ -256,7 +270,7 @@ def main(package, expect_path):
             problems.append(f"rule {rule_id}: {len(text)} characters, more than {RULE_CHARS}")
     if len(clauses) > 1:
         problems.append(f"the worker clauses differ: {sorted(clauses)}")
-    subtest("each seed rule tells the assessor, then the worker, what to do", problems)
+    subtest("each seed rule settles direction and tells the assessor, then the worker, what to do", problems)
 
     problems = []
     for name, profile in manifest["profiles"].items():

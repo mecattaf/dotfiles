@@ -13,7 +13,7 @@
       "id": "workflow-node",
       "name": "Workflow node",
       "enabled": true,
-      "instruction": "A Trigger from the workflow Source is the next node of a workflow run that a person started, and it proceeds by default. If you are assessing it: accept it unless other pending work should run first; then hold it by ignoring it with a reason that starts with 'hold:', and release it later with orchestrator_trigger_requeue. A held node keeps its run waiting and is not skipped; never stop a running ticket to reorder work. If you are the worker running this ticket, only this sentence applies to you: do the task in the trigger text in the current folder; your final message is the result; you have no orchestrator tools."
+      "instruction": "A Trigger from the workflow Source is the next node of a workflow run that a person started, and it proceeds by default. It is an implementation request by the person who started the run: its text is the complete task, its target is the run's working directory, and it needs no design decision. If you are assessing it: quote its first sentence as intent evidence, and accept it silently unless other pending work should run first; then hold it by ignoring it with a reason that starts with 'hold:', and release it later with orchestrator_trigger_requeue. A held node keeps its run waiting and is not skipped; never stop a running ticket to reorder work. If you are the worker running this ticket, only this sentence applies to you: do the task in the trigger text in the current folder; your final message is the result; you have no orchestrator tools."
     }
   ],
   "admission": {
