@@ -1768,34 +1768,8 @@
               touch "$out"
             '';
 
-        # nightly-record (dotfiles#298): five lanes, five rows, every night,
-        # from the harness transcripts and nothing else. Same shape as
-        # print-paper — the real program, driven against fixtures.
-        nightly-record =
-          pkgs.runCommand "nightly-record"
-            {
-              nativeBuildInputs = [ pkgs.python3 ];
-            }
-            ''
-              set -euo pipefail
-
-              export HOME="$TMPDIR/home"
-              export PYTHONDONTWRITEBYTECODE=1
-              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
-              export NIGHTLY_RECORD_SCRIPT=${./home/dot_local/bin/nightly-record}
-              export NIGHTLY_RECORD_FIXTURES=${./tests/nightly-record/fixtures}
-              mkdir -p "$HOME"
-
-              python3 -m unittest discover \
-                -s ${./tests/nightly-record} \
-                -p 'test_*.py' \
-                -v
-
-              touch "$out"
-            '';
-
         # #313 — raw-dotfiles-guard, the real binary against fixture checkouts:
-        # one missing nightly-record must fail naming it, a complete one must
+        # one missing program must fail naming it, a complete one must
         # pass, and no checkout at all only warns. The eval half pins what
         # each host's guard checks and that it runs before writeBoundary.
         # These lists are pinned ON PURPOSE: adding a user unit that runs
@@ -1840,7 +1814,7 @@
           pkgs.runCommand "raw-dotfiles-guard" { } ''
             # stdenv runs with errexit; the stale fixture must be allowed to fail.
             set +e -u
-            progs="claude-transcript-mirror nightly-record tally-seat-feeder util-row util-sampler"
+            progs="claude-transcript-mirror journal-day seats util-row util-sampler"
             mk() {
               mkdir -p "$1/.git" "$1/home/dot_local/bin"
               for p in $progs; do
@@ -1857,12 +1831,12 @@
             case "$res" in *"ok (5 programs)"*) ;; *) echo "complete fixture: no ok line" >&2; exit 1 ;; esac
 
             mk "$TMPDIR/stale"
-            rm "$TMPDIR/stale/home/dot_local/bin/nightly-record"
+            rm "$TMPDIR/stale/home/dot_local/bin/journal-day"
             res=$(${lib.getExe guard} "$TMPDIR/stale" $progs 2>&1)
             rc=$?
             echo "$res"
             [ "$rc" -ne 0 ] || { echo "stale fixture: guard passed" >&2; exit 1; }
-            case "$res" in *"bin/nightly-record does not exist"*) ;; *) echo "stale fixture: nightly-record not named" >&2; exit 1 ;; esac
+            case "$res" in *"bin/journal-day does not exist"*) ;; *) echo "stale fixture: journal-day not named" >&2; exit 1 ;; esac
             case "$res" in *"bin/util-row does not exist"*) echo "stale fixture: named a present program" >&2; exit 1 ;; esac
 
             res=$(${lib.getExe guard} "$TMPDIR/absent" $progs 2>&1)
