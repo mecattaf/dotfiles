@@ -117,7 +117,7 @@ pkgs.testers.runNixOSTest {
 
 
     def tom(command: str, bus: bool = True) -> str:
-        \"\"\"A root shell command that runs `command` as tom.\"\"\"
+        """A root shell command that runs `command` as tom."""
         env = ('rt="$(loginctl show-user tom --property=RuntimePath --value)"; '
                'export XDG_RUNTIME_DIR="$rt" DBUS_SESSION_BUS_ADDRESS="unix:path=$rt/bus"; ') if bus else ""
         return "su -l tom -c " + shlex.quote("set -eu; " + env + command)
@@ -132,13 +132,13 @@ pkgs.testers.runNixOSTest {
 
 
     def tick() -> str:
-        \"\"\"Starts the heartbeat service once, as the timer would; its result.\"\"\"
+        """Starts the heartbeat service once, as the timer would; its result."""
         run("systemctl --user start scheduled-heartbeat.service || true")
         return show("scheduled-heartbeat.service", "Result")
 
 
     def records() -> list[str]:
-        \"\"\"The heartbeat's records waiting in the inbox (manual runs excluded).\"\"\"
+        """The heartbeat's records waiting in the inbox (manual runs excluded)."""
         out = run(f"ls -1 {INBOX} 2>/dev/null || true")
         return [n for n in out.split() if n.endswith(".json") and not n.startswith(".") and "@run~" not in n]
 
@@ -165,7 +165,7 @@ pkgs.testers.runNixOSTest {
 
 
     def quiet() -> None:
-        \"\"\"Waits until no tick runs or is queued.\"\"\"
+        """Waits until no tick runs or is queued."""
         nas.wait_until_succeeds(tom(
             'test -z "$(systemctl --user list-jobs --no-legend)"'
             ' && test "$(systemctl --user show -p ActiveState --value scheduled-heartbeat.service)" != activating'
@@ -177,7 +177,7 @@ pkgs.testers.runNixOSTest {
 
 
     def diagnose() -> None:
-        \"\"\"What a failed wait for a tick needs: clock, state, ids, timers, the tick journal.\"\"\"
+        """What a failed wait for a tick needs: clock, state, ids, timers, the tick journal."""
         print(nas.execute(tom(f"date -u; cat {STATE}/heartbeat.json; cat /etc/machine-id; systemctl --user list-timers --all --no-legend;"
                               " systemctl --user show -p Result,ConditionResult,ActiveState scheduled-heartbeat.service") + " 2>&1")[1])
         print(nas.execute("journalctl -b --no-pager -o short-monotonic _SYSTEMD_USER_UNIT=scheduled-heartbeat.service | tail -30")[1])
@@ -197,7 +197,7 @@ pkgs.testers.runNixOSTest {
 
 
     def make_floor() -> None:
-        \"\"\"A stub web floor named floor, stopped by intent.\"\"\"
+        """A stub web floor named floor, stopped by intent."""
         run("DSH_STUB_MODE=web dshd run --bg --json --name floor -- web")
         run("dshd stop --json floor")
         assert floor_state() == "stopped"
@@ -329,7 +329,11 @@ pkgs.testers.runNixOSTest {
 
     with subtest("P9.2: a run-now storm of 1000, one requester without a bus; the drain loses none"):
         # One Node process per request: minutes, not seconds. No floor instance, so
-        # the storm tests only the hand-off; the next subtest wakes the floor.
+        # the storm tests only the hand-off; the next subtest wakes the floor. The
+        # timer is held off: a tick that sees these records waiting starts the floor
+        # (the wake rule), which would race the next subtest's stopped floor.
+        run("systemctl --user stop scheduled-heartbeat.timer")
+        quiet()
         run(f"seq 999 | xargs -P 8 -I{{}} {CLI_NO_FLOOR} scheduled run master:hb >/dev/null", timeout=1500)
         run(f"{CLI_NO_FLOOR} scheduled run master:hb >/dev/null", bus=False)
         # A disabled item runs by hand: enabled false cancels only scheduled occurrences.
@@ -349,5 +353,6 @@ pkgs.testers.runNixOSTest {
         run(f"{STUB_FLOOR} {INBOX}")
         rows = json.loads(run(f"{CLI} scheduled history master:off --json"))["rows"]
         assert [r["state"] for r in rows] == ["done"] and rows[0]["kind"] == "manual", rows
+        run("systemctl --user start scheduled-heartbeat.timer")
   '';
 }
