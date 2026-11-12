@@ -10,7 +10,9 @@
 #      idempotent, restores a changed file and says so, owns
 #      pnpm-workspace.yaml: dsh's own text (compared with what the release's
 #      dsh writes for a new profile) plus the build policy, replacing a copy
-#      that differs, one DSH's plugin manager changed included;
+#      that differs, one DSH's plugin manager changed included; install
+#      judges the folder and its lockfile, and refuses a profile a running
+#      dshd instance uses;
 #   4. dsh-master settings seed against a stub of the floor's settings API;
 #   5. dsh-master check with the release's own dsh on the first-party half of
 #      each folder (no network, no plugin): every rendered row is in the
@@ -26,6 +28,14 @@ let
   master = cfg.package;
   releaseDsh = lib.getExe' nas.config.dshd.releases.nas.dsh "dsh";
   python = pkgs.python3.withPackages (ps: [ ps.pyyaml ]);
+  # `dshd ls` and `dshd get` as dshd prints them: floor runs $STUB_PROFILE.
+  dshdStub = pkgs.writeShellScript "dshd-stub" ''
+    case "$1" in
+      ls) echo '{"instances":[{"name":"floor","state":"running"},{"name":"done","state":"stopped"}]}' ;;
+      get) printf '{"name":"%s","activeState":"active","profile":{"name":"%s","dshHome":"%s"}}\n' "$3" "$STUB_PROFILE" "$DSH_HOME" ;;
+      *) exit 2 ;;
+    esac
+  '';
   enabledOn = name: configurations.${name}.config.home-manager.users.tom.programs.dsh.master.enable;
   # Both pins in the form the tag gives them; false once one is set by hand.
   pinsFollowTag =
@@ -167,7 +177,10 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   test "$(ls "$DSH_HOME/profiles" | sort | tr '\n' ' ')" = "master master-gufo master-opus web "
   tree "$DSH_HOME" > "$TMPDIR/tree.first"
   $dm render > "$TMPDIR/second.out" 2> "$TMPDIR/second.err"
-  test ! -s "$TMPDIR/second.out" && test ! -s "$TMPDIR/second.err"
+  # Nothing written, and the install still owed is said again.
+  if grep -v '^install needed: ' "$TMPDIR/second.out"; then exit 1; fi
+  test ! -s "$TMPDIR/second.err"
+  for p in master master-gufo master-opus; do grep -qx "install needed: $p" "$TMPDIR/second.out"; done
   tree "$DSH_HOME" > "$TMPDIR/tree.second"
   cmp "$TMPDIR/tree.first" "$TMPDIR/tree.second"
   keep | cmp - "$TMPDIR/keep.before"
@@ -187,7 +200,7 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   # recordPendingBuilds) is replaced by the rendered policy, and said so.
   printf '  esbuild: set this to true or false\n' >> "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
   status 1
-  grep -qx 'master-gufo: rendered stale, installed no, node_modules absent' "$TMPDIR/status.out"
+  grep -qx 'master-gufo: rendered stale, installed no, node_modules absent, builds pending: esbuild' "$TMPDIR/status.out"
   if $dm install --dsh /nonexistent master-gufo 2> /dev/null; then exit 1; fi
   $dm render --quiet 2> "$TMPDIR/pending.err"
   grep -qx 'dsh-master: master-gufo/pnpm-workspace.yaml was changed outside dsh-master; replacing it' "$TMPDIR/pending.err"
@@ -202,17 +215,40 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
   grep -q '"pnpm-workspace.yaml"' "$DSH_HOME/profiles/master-gufo/.dsh-master.json"
 
-  # install judges the folder, not dsh's exit: a lockfile and a built lib/
-  # for each dependency (.js for the fork, .mjs for dsh-claude).
+  # install judges the folder, not dsh's exit: a lockfile that locks this
+  # package.json and a built lib/ for each dependency (.js for the fork,
+  # .mjs for dsh-claude). A dsh that never ran fails whatever the folder holds.
+  export STUB_PROFILE=master
+  di="install --dshd ${dshdStub}"
   opus="$DSH_HOME/profiles/master-opus"
   mkdir -p "$opus/node_modules/dsh-superagent/lib" "$opus/node_modules/@norman-else/dsh-claude/lib"
   touch "$opus/node_modules/dsh-superagent/lib/index.js"
-  if $dm install --dsh ${pkgs.coreutils}/bin/true master-opus 2> "$TMPDIR/nolock.err"; then exit 1; fi
+  if $dm $di --dsh ${pkgs.coreutils}/bin/true master-opus 2> "$TMPDIR/nolock.err"; then exit 1; fi
   grep -q 'no pnpm-lock.yaml; @norman-else/dsh-claude has no built lib/' "$TMPDIR/nolock.err"
-  touch "$opus/pnpm-lock.yaml" "$opus/node_modules/@norman-else/dsh-claude/lib/index.mjs"
+  touch "$opus/node_modules/@norman-else/dsh-claude/lib/index.mjs"
+  # An earlier install's lockfile and lib/ (the pin moved, the fetch failed).
+  ${python}/bin/python3 -I ${./lockfile.py} "$opus" floor-v0.0
+  if $dm $di --dsh ${pkgs.coreutils}/bin/false master-opus 2> "$TMPDIR/stale.err"; then exit 1; fi
+  grep -q 'install failed (exit 1): pnpm-lock.yaml locks @norman-else/dsh-claude at github:mecattaf/dsh-claude#floor-v0.0, not ' "$TMPDIR/stale.err"
   status 1
   grep -qx 'master-opus: rendered current, installed no, node_modules present' "$TMPDIR/status.out"
-  $dm install --dsh ${pkgs.coreutils}/bin/true master-opus | grep -qx 'installed master-opus'
+  ${python}/bin/python3 -I ${./lockfile.py} "$opus"
+  if $dm $di --dsh /nonexistent/dsh master-opus 2> "$TMPDIR/notrun.err"; then exit 1; fi
+  grep -q 'install failed: /nonexistent/dsh did not run (exit 127)' "$TMPDIR/notrun.err"
+  status 1
+  grep -qx 'master-opus: rendered current, installed no, node_modules present' "$TMPDIR/status.out"
+  # A running instance of the profile refuses the install, unless --force.
+  if STUB_PROFILE=master-opus $dm $di --dsh ${pkgs.coreutils}/bin/true master-opus 2> "$TMPDIR/busy.err"; then exit 1; fi
+  grep -q 'dshd instance floor is running master-opus; stop it first' "$TMPDIR/busy.err"
+  if $dm install --dshd /nonexistent/dshd --dsh ${pkgs.coreutils}/bin/true master-opus 2> "$TMPDIR/nodshd.err"; then exit 1; fi
+  grep -q 'cannot tell which dshd instances run' "$TMPDIR/nodshd.err"
+  status 1
+  grep -qx 'master-opus: rendered current, installed no, node_modules present' "$TMPDIR/status.out"
+  # A complete folder counts even when dsh exits 1 (pnpm's ignored builds).
+  $dm $di --dsh ${pkgs.coreutils}/bin/false master-opus > "$TMPDIR/done.out" 2> "$TMPDIR/done.err"
+  grep -qx 'installed master-opus' "$TMPDIR/done.out"
+  grep -q 'install exited 1, but the folder is complete' "$TMPDIR/done.err"
+  STUB_PROFILE=master-opus $dm install --force --dshd /nonexistent/dshd --dsh ${pkgs.coreutils}/bin/true master-opus | grep >/dev/null -x 'installed master-opus'
   status 1
   grep -qx 'master-opus: rendered current, installed current, node_modules present' "$TMPDIR/status.out"
   # Every folder installed: status exits 0. A master* folder no build
@@ -221,8 +257,8 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
     f="$DSH_HOME/profiles/$p"
     mkdir -p "$f/node_modules/dsh-superagent/lib" "$f/node_modules/@norman-else/dsh-claude/lib"
     touch "$f/node_modules/dsh-superagent/lib/index.js" "$f/node_modules/@norman-else/dsh-claude/lib/index.mjs"
-    touch "$f/pnpm-lock.yaml"
-    $dm install --dsh ${pkgs.coreutils}/bin/true $p | grep -qx "installed $p"
+    ${python}/bin/python3 -I ${./lockfile.py} "$f"
+    STUB_PROFILE=none $dm $di --dsh ${pkgs.coreutils}/bin/true $p | grep >/dev/null -x "installed $p"
   done
   mkdir "$DSH_HOME/profiles/master-retired"
   status 0
@@ -237,7 +273,8 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   # A changed copy is put back, and the change is reported.
   echo '- id: hand-edit' >> "$DSH_HOME/profiles/master-gufo/cordis.patch.yml"
   $dm render --quiet > "$TMPDIR/third.out" 2> "$TMPDIR/third.err"
-  test ! -s "$TMPDIR/third.out"
+  if grep -v '^install needed: ' "$TMPDIR/third.out"; then exit 1; fi
+  if grep -q 'install needed: master-opus' "$TMPDIR/third.out"; then exit 1; fi
   grep -q 'master-gufo/cordis.patch.yml was changed outside dsh-master' "$TMPDIR/third.err"
   cmp ${master}/profiles/master-gufo/cordis.patch.yml "$DSH_HOME/profiles/master-gufo/cordis.patch.yml"
 
