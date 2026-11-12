@@ -16,9 +16,10 @@ tokens the seat has actually burned inside its own current weekly window.
     seats --record groq 1 qwen/qwen3.8-27b ok
                           append one call to the local lane-usage meter
 
-WHY IT EXISTS. Three programs on this box already know a piece of this:
-claude-capacity knows ONE Claude seat's windows, tally-seat-feeder stamps
-kernel meter rows for the rewrite, nightly-record counts yesterday's tokens.
+WHY IT EXISTS. Three programs on this box knew a piece of this:
+claude-capacity knows ONE Claude seat's windows; tally-seat-feeder stamped
+kernel meter rows for the rewrite and nightly-record counted yesterday's
+tokens (both are gone from this repo).
 None of them answers the only question a person actually asks at 15:00Z —
 "what can I run tonight, and on what". This does, and it is deliberately
 standalone: stdlib only, no tally, no daemon, no bar. It reads the same

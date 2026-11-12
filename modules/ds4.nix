@@ -1,3 +1,6 @@
+# Retired: Tom permanently retired local DeepSeek on 2026-11-08 (e832663c).
+# These options are kept for history; modules/strix-compute.nix sets
+# `services.ds4.enable = false` on both Strix and tests/ds4 asserts it.
 {
   config,
   lib,
