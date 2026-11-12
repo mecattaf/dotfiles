@@ -6,7 +6,7 @@
   ...
 }:
 # Domicile is the client's physical desktop. greetd keeps the existing
-# password-free initial login; leaving the desktop returns to a console shell.
+# password-free initial login; leaving the desktop starts it again, guarded.
 # Changes apply at the next greetd start, preserving the current desktop.
 #
 # Do not copy upstream's services.displayManager or gdm lines. greetd runs a
@@ -246,6 +246,13 @@ let
     exec ${pkgs.systemd}/bin/systemd-cat --identifier=domicile-session \
       ${routedDomicile}/bin/domicile "''${configArgs[@]}"
   '';
+  # greetd's default_session: Domicile again after a greetd restart or a
+  # desktop exit, behind a restart-loop guard that falls back to a login shell.
+  greetdGuard = pkgs.writeShellScriptBin "domicile-greetd-guard" (
+    builtins.replaceStrings [ "@coreutils@" ] [ "${pkgs.coreutils}" ] (
+      builtins.readFile ./domicile-session/greetd-guard.sh
+    )
+  );
   # Runs on the currently booted kernel from a real console login. No HOME or
   # XDG_CONFIG_HOME replacement: Chrome retains its ordinary personal profile.
   # The environment survives the login-shell re-exec without shell interpolation.
@@ -359,8 +366,10 @@ in
     '';
 
     # Override each complete freeform TOML block, as in modules/common.nix.
-    # greetd starts the desktop once per boot without authentication. On exit,
-    # its default session is Tom's shell: no login prompt or compositor loop.
+    # greetd starts the desktop once per boot without authentication. After a
+    # greetd restart or a desktop exit it runs default_session, which starts
+    # Domicile again through a loop guard (#734): three starts within 120 s
+    # this boot open Tom's login shell on VT1 instead of another attempt.
     # VT2-6 also retain their existing password-free getty recovery sessions.
     services.greetd.settings = {
       initial_session = lib.mkForce {
@@ -368,7 +377,7 @@ in
         user = "tom";
       };
       default_session = lib.mkForce {
-        command = "${pkgs.bash}/bin/bash -l";
+        command = "${greetdGuard}/bin/domicile-greetd-guard ${session}/bin/domicile-physical-session ${pkgs.bash}/bin/bash -l";
         user = "tom";
       };
     };
