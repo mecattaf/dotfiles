@@ -1,11 +1,11 @@
 # `nix build .#<name>` builds the derivation a host installs, not a lookalike.
 # For every flake package that some host installs (environment.systemPackages,
-# fonts.packages or a Home Manager user's home.packages), the export must be
-# that host's own derivation. The NAS evaluates from nixpkgs-stable (mkHost
-# hostNixpkgs) and the flake-level `pkgs` from nixpkgs, so the same name is two
-# derivations there. Where installing hosts disagree, the export must be one
-# of theirs, and the comment in flake.nix says whose. A package that only a
-# unit's ExecStart names is not seen here.
+# fonts.packages, a Home Manager user's home.packages, or a system or user
+# unit's ExecStart), the export must be that host's own derivation. The NAS
+# evaluates from nixpkgs-stable (mkHost hostNixpkgs) and the flake-level
+# `pkgs` from nixpkgs, so the same name is two derivations there. Where
+# installing hosts disagree, the export must be one of theirs, and the comment
+# in flake.nix says whose. A package only a unit's `script` uses is not seen.
 {
   pkgs,
   lib,
@@ -18,16 +18,27 @@ let
     _: configuration:
     let
       inherit (configuration) config;
+      users = builtins.attrValues (config.home-manager.users or { });
       installed =
         config.environment.systemPackages
         ++ config.fonts.packages
-        ++ lib.concatMap (user: user.home.packages) (
-          builtins.attrValues (config.home-manager.users or { })
+        ++ lib.concatMap (user: user.home.packages) users;
+      execStarts =
+        services: section:
+        lib.concatMap (service: lib.toList (service.${section}.ExecStart or [ ])) (
+          builtins.attrValues services
         );
     in
     {
       inherit (configuration) pkgs;
       drvPaths = lib.catAttrs "drvPath" installed;
+      units = builtins.unsafeDiscardStringContext (
+        toString (
+          execStarts config.systemd.services "serviceConfig"
+          ++ execStarts config.systemd.user.services "serviceConfig"
+          ++ lib.concatMap (user: execStarts user.systemd.user.services "Service") users
+        )
+      );
     }
   ) self.nixosConfigurations;
   # The host's own derivation for an exported name, or null. tryEval: the name
@@ -46,7 +57,11 @@ let
       let
         drvPath = hostDrvPath host name;
       in
-      drvPath != null && builtins.elem drvPath host.drvPaths
+      drvPath != null
+      && (
+        builtins.elem drvPath host.drvPaths
+        || lib.hasInfix (builtins.unsafeDiscardStringContext host.pkgs.${name}.outPath) host.units
+      )
     ) hosts;
   mismatches = lib.concatMap (
     name:
