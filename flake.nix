@@ -1645,8 +1645,6 @@
               export AI_MEMORY_ENGINE=${./home/dot_claude/skills/drain/scripts/ai_memory.py}
               export AI_MEMORY_ENQUEUE_CHECK=${./tools/enqueue-row-check.py}
               export AI_MEMORY_DRAIN_SKILL=${./home/dot_claude/skills/drain/SKILL.md}
-              export AI_MEMORY_HANDOFF_SKILL=${./home/dot_claude/skills/handoff/SKILL.md}
-              export AI_MEMORY_PICKUP_SKILL=${./home/dot_claude/skills/pickup/SKILL.md}
               export AI_MEMORY_UTILITY_OWNER=${./pkgs/utility-model/utility_model.py}
               mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR"
 
