@@ -63,10 +63,10 @@ function readPromptFile(root, relative) {
 /**
  * Validate one scheduled item on disk.
  * @param {string} path - Absolute path of `<root>/.agency/scheduled/<item>.jsonc`
- * @param {{ uid?: number }} [opts]
+ * @param {{ uid?: number, pairs?: string[]|null }} [opts] - `pairs`: the floor's pair names (ctx.pairs)
  * @returns {Promise<{ path, problems, value, bytes, promptBytes, prompt }>} `prompt` is the work text when valid
  */
-export async function validateFile(path, { uid = process.getuid?.() } = {}) {
+export async function validateFile(path, { uid = process.getuid?.(), pairs = null } = {}) {
   const problems = [];
   // Every answer carries the revision of the bytes read, so an invalid revision is still named once.
   const done = (extra = {}) => {
@@ -108,7 +108,7 @@ export async function validateFile(path, { uid = process.getuid?.() } = {}) {
     return done({ bytes });
   }
 
-  const { value, problems: parsed } = parseItem(text);
+  const { value, problems: parsed } = parseItem(text, { pairs });
   problems.push(...parsed);
   if (value === null) return done({ bytes });
 

@@ -18,6 +18,15 @@ export function stateDirOf(env, home) {
 }
 
 /**
+ * The floor's pair names from SCHEDULED_PAIRS (separated by spaces or commas), or null when it names none.
+ * An item may name only one of these as its `pair`.
+ */
+export function pairsOf(value) {
+  const names = (value ?? '').split(/[\s,]+/).filter(Boolean);
+  return names.length ? names : null;
+}
+
+/**
  * Build the ctx object used by every verb. Flags (--inbox, --state-dir, --home, --floor-instance,
  * --now) are parsed by the verbs that take them and win over these defaults.
  *
@@ -34,6 +43,7 @@ export function makeContext(argv) {
     stateDir: stateDirOf(env, home),
     inbox: env.SCHEDULED_INBOX || null,
     floorInstance: env.SCHEDULED_FLOOR_INSTANCE || null,
+    pairs: pairsOf(env.SCHEDULED_PAIRS),
     env,
     now: () => new Date(),
     out: (s) => process.stdout.write(s),

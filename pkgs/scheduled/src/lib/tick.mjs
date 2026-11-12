@@ -151,6 +151,7 @@ function entryOf(f, st, v, prev, { now, lastTick }) {
     enabled,
     promptFile: Boolean(v.value?.job?.['prompt-file']),
     name: v.value?.name ?? null,
+    pair: v.value?.pair ?? null,
     on: v.value?.on ?? {},
     text: v.prompt ?? null,
   };
@@ -169,15 +170,19 @@ const sameStat = (prev, st) => prev && prev.dev === String(st.dev) && prev.ino =
  * @param {string} [opts.inbox] The superagent's inbox (required)
  * @param {string|null} [opts.floorInstance] The floor's dshd instance; null: never call dshd
  * @param {string} [opts.home] Agency discovery root, agency id `master`
+ * @param {string[]|null} [opts.pairs] The floor's pair names (ctx.pairs, from SCHEDULED_PAIRS)
  * @param {(argv: string[]) => Promise<{code: number, stdout: string, stderr: string}>} [opts.run] dshd runner
  * @returns {Promise<{code: number, lines: string[]}>}
  */
-export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inboxOpt, floorInstance: floorOpt, home: homeOpt, run: runOpt } = {}) {
+export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inboxOpt, floorInstance: floorOpt, home: homeOpt, pairs: pairsOpt, run: runOpt } = {}) {
   const passStart = performance.now();
   const stateDir = stateDirOpt || ctx.stateDir;
   const inbox = inboxOpt || ctx.inbox;
   const floorInstance = floorOpt === undefined ? (ctx.floorInstance ?? null) : floorOpt;
   const home = homeOpt || ctx.home;
+  const pairs = pairsOpt === undefined ? (ctx.pairs ?? null) : pairsOpt;
+  // The pair names a cached parse was checked against; a parse checked against other names is not reused.
+  const pairsKey = pairs?.length ? [...new Set(pairs)].sort().join(' ') : null;
   if (!inbox) throw new Error('--inbox is required');
 
   const now = nowOpt
@@ -249,6 +254,7 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
     }
 
     const prevFiles = intake?.files || {};
+    const samePairs = (intake?.pairs ?? null) === pairsKey;
     const currentFiles = {};
     const items = [];
 
@@ -288,8 +294,9 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
         continue;
       }
 
-      // A prompt-file is read at each tick: an item that names one is never served from the cache.
-      if (sameStat(prev, st) && !prev.promptFile && !prev.placeholder) {
+      // A prompt-file is read at each tick: an item that names one is never served from the cache. Nor is any
+      // item when the floor's pairs changed: an item's `pair` is valid only while it is one of them.
+      if (samePairs && sameStat(prev, st) && !prev.promptFile && !prev.placeholder) {
         // The cached parse, without the warnings of a pass that could not read the file.
         const problems = (prev.problems || []).filter((p) => p.code !== 'stat' && p.code !== 'young');
         currentFiles[f.path] = { ...prev, problems, id: f.id };
@@ -297,7 +304,7 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
         continue;
       }
 
-      const v = await validateFile(f.path, { uid: ctx.uid });
+      const v = await validateFile(f.path, { uid: ctx.uid, pairs });
       const entry = entryOf(f, st, v, prev, { now, lastTick });
       if (!entry.valid && entry.revision && entry.revision !== prev?.revision) {
         const first = entry.problems.find((p) => p.severity === 'error') || { line: 0, col: 0 };
@@ -328,7 +335,7 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
       const record = makeRecord({
         kind: 'schedule', namespace: it.file.agency, item: it.file.stem, name: it.name ?? undefined,
         cwd: it.file.root, file: it.file.path, due: instant, missed, revision: it.revision, text: it.text,
-        by: HEARTBEAT, at: now,
+        pair: it.pair ?? undefined, by: HEARTBEAT, at: now,
       });
       const problem = recordProblem(record);
       if (problem) {
@@ -369,7 +376,7 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
     if (!clockWentBack) {
       try {
         await writeAtomic(heartbeatPath, JSON.stringify({ v: 1, machineId: hostMachineId, lastTick: now.toISOString() }, null, 2) + '\n');
-        await writeAtomic(intakePath, JSON.stringify({ v: 1, files: currentFiles, agencies: currentAgencies }, null, 2) + '\n');
+        await writeAtomic(intakePath, JSON.stringify({ v: 1, pairs: pairsKey, files: currentFiles, agencies: currentAgencies }, null, 2) + '\n');
       } catch (err) {
         lines.push(`<3>guard error committing state: ${err.message}`);
         commitFaulted = true;

@@ -86,11 +86,11 @@ test('S4 each removed key (if, window, concurrency, permissions, hold, outcome, 
   }
 });
 
-test('S5 model, profile, priority, pair, env and secrets are unknown-key errors that say work runs on the default pair', () => {
-  for (const key of ['model', 'profile', 'priority', 'pair', 'env', 'secrets']) {
+test('S5 model, profile, priority, env and secrets are unknown-key errors that point at "pair" and the default pair', () => {
+  for (const key of ['model', 'profile', 'priority', 'env', 'secrets']) {
     const errs = errors(base({ [key]: 'x' }));
     assert.deepEqual(errs.map((e) => [e.code, e.message]), [['unknown-key',
-      `"${key}" is not a scheduled-item key: scheduled work runs on the floor's default pair, and priority is the superagent's judgement.`]]);
+      `"${key}" is not a scheduled-item key: name one of the floor's compute pairs with "pair", or leave it out for the floor's default pair; priority is the superagent's judgement.`]]);
   }
   // Any other unknown key gets a did-you-mean.
   assert.match(errors(base({ enable: true }))[0].message, /did you mean "enabled"\?/);
@@ -174,7 +174,7 @@ test('S10 scheduled schema prints a JSON Schema whose required keys are enabled,
   assert.deepEqual(schema.required, ['enabled', 'on', 'job']);
   assert.equal(schema.additionalProperties, false);
   assert.deepEqual(schema.patternProperties, { '^x-': {} });
-  assert.deepEqual(Object.keys(schema.properties).sort(), ['$schema', 'enabled', 'job', 'name', 'on']);
+  assert.deepEqual(Object.keys(schema.properties).sort(), ['$schema', 'enabled', 'job', 'name', 'on', 'pair']);
 });
 
 test('a duplicate key, malformed JSONC and a non-object are errors; comments and trailing commas are JSONC', () => {

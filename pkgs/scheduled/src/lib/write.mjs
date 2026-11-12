@@ -66,7 +66,7 @@ export async function writeItem(ctx, { path, bytes, expect, hooks = {} }) {
   }
   hooks.afterTemp?.(tmp);
   // A temp file sits beside the item, so a prompt-file resolves against the same agency folder.
-  const checked = await validateFile(tmp, { uid: ctx.uid });
+  const checked = await validateFile(tmp, { uid: ctx.uid, pairs: ctx.pairs });
   if (!checked.value) {
     try { unlinkSync(tmp); } catch { /* gone */ }
     throw new WriteError(formatProblems(path, checked.problems).join('\n'), 1);

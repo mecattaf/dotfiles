@@ -2,9 +2,10 @@
  * schema.mjs - JSONC parsing, validation, normalization and revision of scheduled items (schema v1).
  * Exports: parseItem, normalize, revision, formatProblems, jsonSchema, PROMPT_MAX_BYTES
  *
- * A scheduled item is `<agency>/.agency/scheduled/<item>.jsonc`: a clock (`on.schedule`) and the
- * work (`job.prompt` or `job.prompt-file`). Conditions, retries, compute and permissions are not
- * item keys: the superagent judges an occurrence when it arrives, on the floor's default pair.
+ * A scheduled item is `<agency>/.agency/scheduled/<item>.jsonc`: a clock (`on.schedule`), the
+ * work (`job.prompt` or `job.prompt-file`) and, optionally, the compute pair it runs on (`pair`, one
+ * of the floor's pairs; absent, the floor's default pair). Conditions, retries, models, priority and
+ * permissions are not item keys: the superagent judges an occurrence when it arrives.
  */
 
 import { createHash } from 'node:crypto';
@@ -13,9 +14,12 @@ import * as jsonc from 'jsonc-parser';
 /** The largest prompt, in UTF-8 bytes; the occurrence record caps `text` at 32 768 units, so every prompt fits. */
 export const PROMPT_MAX_BYTES = 32 * 1024;
 
+/** A pair name, as the occurrence record's `pair` field takes it. */
+export const PAIR_RE = /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/;
+
 // ─── Known keys at each level ────────────────────────────────────────────────
 
-const TOP_KEYS = new Set(['$schema', 'name', 'enabled', 'on', 'job']);
+const TOP_KEYS = new Set(['$schema', 'name', 'enabled', 'pair', 'on', 'job']);
 const ON_KEYS = new Set(['schedule']);
 const SCHEDULE_ENTRY_KEYS = new Set(['cron', 'timezone']);
 const JOB_KEYS = new Set(['prompt', 'prompt-file']);
@@ -46,9 +50,9 @@ const REMOVED = {
 const REFUSED = {
   workflow: '"workflow" is not a scheduled-item key: a workflow script starts on a request to the superagent that names the script and the agency, never from a scheduled item.',
 };
-const COMPUTE = ['model', 'profile', 'priority', 'pair', 'env', 'secrets'];
+const COMPUTE = ['model', 'profile', 'priority', 'env', 'secrets'];
 for (const key of COMPUTE) {
-  REFUSED[key] = `"${key}" is not a scheduled-item key: scheduled work runs on the floor's default pair, and priority is the superagent's judgement.`;
+  REFUSED[key] = `"${key}" is not a scheduled-item key: name one of the floor's compute pairs with "pair", or leave it out for the floor's default pair; priority is the superagent's judgement.`;
 }
 
 // ─── Did-you-mean ────────────────────────────────────────────────────────────
@@ -109,9 +113,10 @@ const isLines = (v) => typeof v === 'string' || (Array.isArray(v) && v.every((x)
 /**
  * Parse and validate the text of one scheduled item.
  * @param {string} text - File text (JSONC)
+ * @param {{ pairs?: string[]|null }} [opts] - The floor's pair names; an item may name only one of these
  * @returns {{ value: object|null, problems: object[] }} value is null when any error was found
  */
-export function parseItem(text) {
+export function parseItem(text, { pairs = null } = {}) {
   const problems = [];
   const parseErrors = [];
   const tree = jsonc.parseTree(text, parseErrors, { allowTrailingComma: true, allowEmptyContent: false, disallowComments: false });
@@ -127,7 +132,7 @@ export function parseItem(text) {
   }
 
   checkDuplicateKeys(text, tree, problems);
-  const value = validateItem(text, tree, raw, problems);
+  const value = validateItem(text, tree, raw, problems, pairs);
   return problems.some((p) => p.severity === 'error') ? { value: null, problems } : { value, problems };
 }
 
@@ -168,7 +173,7 @@ function checkKeys(text, node, raw, allowed, { removed = {}, prefix = '' }, prob
   }
 }
 
-function validateItem(text, tree, raw, problems) {
+function validateItem(text, tree, raw, problems, pairs) {
   const result = {};
   checkKeys(text, tree, raw, TOP_KEYS, { removed: REMOVED.top }, problems);
 
@@ -187,6 +192,11 @@ function validateItem(text, tree, raw, problems) {
     problems.push(err('type', valuePos(text, tree, 'enabled'), '"enabled" must be a boolean.'));
   } else {
     result.enabled = raw.enabled;
+  }
+
+  if ('pair' in raw) {
+    const pair = validatePair(raw.pair, pairs, valuePos(text, tree, 'pair'), problems);
+    if (pair) result.pair = pair;
   }
 
   if (!('on' in raw)) {
@@ -209,6 +219,31 @@ function validateItem(text, tree, raw, problems) {
     if (key.startsWith('x-')) result[key] = raw[key];
   }
   return result;
+}
+
+/**
+ * The item's pair when it is one of `pairs`, else null with the problem pushed. With no pairs configured
+ * every pair is refused: a record never names a pair the executor would refuse as unknown.
+ */
+function validatePair(pair, pairs, pos, problems) {
+  if (typeof pair !== 'string' || !PAIR_RE.test(pair)) {
+    problems.push(err('type', pos, '"pair" must be a pair name: lowercase letters and digits, inner hyphens, at most 40 characters.'));
+    return null;
+  }
+  const known = [...new Set(pairs ?? [])].sort();
+  if (known.length === 0) {
+    problems.push(err('unknown-pair', pos,
+      `"pair" "${pair}" cannot be checked: no pairs are configured (SCHEDULED_PAIRS); leave "pair" out to run on the floor's default pair.`));
+    return null;
+  }
+  if (!known.includes(pair)) {
+    const suggestion = didYouMean(pair, known);
+    problems.push(err('unknown-pair', pos, `"pair" "${pair}" is not one of the floor's pairs (${known.join(', ')}); ${suggestion
+      ? `did you mean "${suggestion}"?`
+      : 'leave "pair" out to run on the floor\'s default pair.'}`));
+    return null;
+  }
+  return pair;
 }
 
 function validateOn(text, node, raw, problems) {
@@ -295,6 +330,7 @@ export function normalize(value, { file, root, agency, stem, prompt }) {
     spec: {
       name: value.name ?? stem,
       enabled: value.enabled,
+      ...(value.pair ? { pair: value.pair } : {}),
       on: { schedule: value.on?.schedule ?? [] },
       job: {
         ...(value.job?.['prompt-file'] ? { 'prompt-file': value.job['prompt-file'] } : {}),
@@ -355,6 +391,7 @@ export function jsonSchema() {
       $schema: { type: 'string', description: 'Editor support: load this schema.' },
       name: { type: 'string', minLength: 1, maxLength: 80, description: 'Display title (default: the item stem).' },
       enabled: { type: 'boolean', description: 'Required. false: the heartbeat never hands off an occurrence; scheduled run still works.' },
+      pair: { type: 'string', pattern: PAIR_RE.source, description: 'One of the floor\'s compute pairs (SCHEDULED_PAIRS); absent: the floor\'s default pair.' },
       on: {
         type: 'object',
         required: ['schedule'],

@@ -15,7 +15,8 @@ const FIXTURE = JSON.parse(FIXTURE_BYTES.toString('utf8'));
 // The fork's tests/fixtures/scheduled-occurrence-v1.json at floor/scheduled @28635d4. A change on either
 // side changes this digest: copy the fork's bytes again and update it here, never edit the fixture alone.
 const FORK_FIXTURE_SHA256 = '170bb0c7cc2da3b75fc8c369380dd08084372c56798658ee9185825b3b8e8849';
-// `pair` is a record field this side never writes: work runs on the floor's default pair.
+// `pair` is optional on both sides and the fixture has none: an item without `pair` writes none, so the floor's
+// default pair runs it (test/pair.test.mjs covers an item that names one).
 const shape = (record) => Object.fromEntries(Object.entries(record).filter(([k]) => k !== 'pair').map(([k, v]) => [k, typeof v]).sort());
 const fixtureOf = (kind) => FIXTURE.find((r) => r.kind === kind);
 

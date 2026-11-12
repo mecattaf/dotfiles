@@ -41,11 +41,12 @@ async function ensureInbox(inbox) {
  * @param {number} o.missed
  * @param {string} o.revision
  * @param {string} o.text       the prompt as read now
+ * @param {string} [o.pair]     the item's `pair`; absent, the floor's default pair runs the work
  * @param {string} o.by
  * @param {Date} o.at
  * @returns {object}
  */
-export function makeRecord({ kind, namespace, item, name, cwd, file, due, run, missed, revision, text, by, at }) {
+export function makeRecord({ kind, namespace, item, name, cwd, file, due, run, missed, revision, text, pair, by, at }) {
   return {
     v: 1,
     kind,
@@ -59,6 +60,7 @@ export function makeRecord({ kind, namespace, item, name, cwd, file, due, run, m
     missed,
     revision,
     text,
+    ...(pair ? { pair } : {}),
     by,
     at: at.toISOString(),
   };

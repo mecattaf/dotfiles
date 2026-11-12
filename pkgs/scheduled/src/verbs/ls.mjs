@@ -151,7 +151,7 @@ export async function main(args, ctx) {
   const items = [];
 
   for (const f of targetFiles) {
-    const { problems, value, bytes, promptBytes } = await validateFile(f.path, { uid: ctx.uid });
+    const { problems, value, bytes, promptBytes } = await validateFile(f.path, { uid: ctx.uid, pairs: ctx.pairs });
     const hasErrors = !value;
     const state = hasErrors ? 'invalid' : value.enabled ? 'enabled' : 'disabled';
     const rev = bytes ? revision(bytes, promptBytes) : null;

@@ -32,7 +32,7 @@ export async function main(args, ctx, { run: runOpt } = {}) {
   } catch (e) {
     return e.exitCode ?? 1;
   }
-  const checked = await validateFile(found.path, { uid: ctx.uid });
+  const checked = await validateFile(found.path, { uid: ctx.uid, pairs: ctx.pairs });
   if (!checked.value) {
     ctx.err(formatProblems(found.path, checked.problems).join('\n') + '\n');
     return 1;
@@ -41,7 +41,8 @@ export async function main(args, ctx, { run: runOpt } = {}) {
   const now = ctx.now?.() ?? new Date();
   const record = makeRecord({
     kind: 'manual', namespace: found.agency, item: found.stem, name: checked.value.name, cwd: found.root,
-    file: found.path, due: now, run: ulid(now), missed: 0, revision: checked.revision, text: checked.prompt, by: RUN, at: now,
+    file: found.path, due: now, run: ulid(now), missed: 0, revision: checked.revision, text: checked.prompt, pair: checked.value.pair,
+    by: RUN, at: now,
   });
   const problem = recordProblem(record);
   if (problem) {

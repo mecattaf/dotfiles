@@ -54,7 +54,7 @@ export async function main(args, ctx) {
   const root = agencyRootOf(filePath);
   const stem = basename(filePath, '.jsonc');
   const agency = agencyId(root, ctx.home);
-  const { problems, value, bytes, promptBytes, prompt } = await validateFile(filePath, { uid: ctx.uid });
+  const { problems, value, bytes, promptBytes, prompt } = await validateFile(filePath, { uid: ctx.uid, pairs: ctx.pairs });
 
   if (!value) {
     if (jsonOutput) {

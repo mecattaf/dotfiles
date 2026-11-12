@@ -30,9 +30,9 @@ test('P1 an item may name one of the floor\'s pairs; the parsed value keeps it, 
 });
 
 test('P2 a pair the floor does not have is an unknown-pair error that names the floor\'s pairs, with a did-you-mean', () => {
-  const unknown = errorsOf(base({ pair: 'gpu' }), { pairs: PAIRS });
+  const unknown = errorsOf(base({ pair: 'cloud' }), { pairs: PAIRS });
   assert.deepEqual(unknown.map((e) => e.code), ['unknown-pair']);
-  assert.equal(unknown[0].message, '"pair" "gpu" is not one of the floor\'s pairs (gufo, opus); leave "pair" out to run on the floor\'s default pair.');
+  assert.equal(unknown[0].message, '"pair" "cloud" is not one of the floor\'s pairs (gufo, opus); leave "pair" out to run on the floor\'s default pair.');
   assert.ok(unknown[0].line > 0, 'the problem points at the value');
   const near = errorsOf(base({ pair: 'gufu' }), { pairs: PAIRS });
   assert.equal(near[0].message, '"pair" "gufu" is not one of the floor\'s pairs (gufo, opus); did you mean "gufo"?');

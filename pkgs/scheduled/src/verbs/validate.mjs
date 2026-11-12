@@ -96,7 +96,7 @@ export async function main(args, ctx) {
       return 4;
     }
 
-    const { value, problems } = parseItem(text);
+    const { value, problems } = parseItem(text, { pairs: ctx.pairs });
     // Cron check
     if (value?.on?.schedule?.length) {
       const cronProbs = scheduleProblems(value.on.schedule);
@@ -125,7 +125,7 @@ export async function main(args, ctx) {
 
   for (const filePath of paths) {
     const found = discovered.get(filePath);
-    const { problems, value, bytes, promptBytes } = await validateFile(filePath, { uid: ctx.uid });
+    const { problems, value, bytes, promptBytes } = await validateFile(filePath, { uid: ctx.uid, pairs: ctx.pairs });
     const result = buildJsonResult(filePath, problems, value, bytes, promptBytes, found?.id ?? basename(filePath, '.jsonc'));
     results.push({ filePath, problems, result });
 
