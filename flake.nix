@@ -1500,8 +1500,6 @@
               "drm-21536134253248513"
               ''"disable_while_typing": "libinput"''
               ''"scroll_acceleration": false''
-              "[upperPanel]: 3850"
-              "[lowerPanel]: 3350"
             ];
 
           assert
@@ -1722,6 +1720,7 @@
               export PAPER_JOBS_TEST_FILE=${./pkgs/paper-daemon/get-jobs.test}
               export PAPER_PRINTER_TEST_FILE=${./pkgs/paper-daemon/printer-state.test}
               export PAPER_RENDER_BRIDGE=${./pkgs/paper-daemon/render-remote.py}
+              export HOME_PRINTING_SCRIPT=${./hosts/client/home-printing.sh}
               mkdir -p "$HOME"
 
               python3 -m unittest discover \
