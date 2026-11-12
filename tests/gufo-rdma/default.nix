@@ -32,7 +32,7 @@ let
 in
 assert retired c && retired w;
 assert !(catalog.artifacts ? qwen38-flash-next-q8-gguf);
-assert !(c.options.services ? ds4) && !(c.systemd.services ? ds4);
+assert !(self.nixosConfigurations.strix-coordinator.options.services ? ds4) && !(c.systemd.services ? ds4);
 assert !(lib.hasInfix "9911" c.networking.firewall.extraInputRules);
 assert builtins.all (id: !(catalog.artifacts ? ${id})) retiredDeepseek;
 assert builtins.all (host:
