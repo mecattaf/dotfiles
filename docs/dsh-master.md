@@ -82,10 +82,13 @@ name the seat wrapper's store path.
 ```sh
 env -i HOME=/home/tom USER=tom LOGNAME=tom LANG=C.UTF-8 \
   PATH=/run/current-system/sw/bin:/etc/profiles/per-user/tom/bin \
+  XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
   DSH_TELEMETRY_DISABLED=1 CLAUDE_CONFIG_DIR=/home/tom/.claude-work \
   /run/current-system/sw/bin/dshd run --bg --json --name floor --cwd /home/tom \
     --label superagent.role=floor -- master
 ```
 
-No `--patch`: the profile carries the policy. The name stays `floor`,
-which the heartbeat addresses.
+No `--patch`: the profile carries the policy. dshd needs the user bus
+(`XDG_RUNTIME_DIR`, `DBUS_SESSION_BUS_ADDRESS`) to reach systemd and exits 7
+`systemd-unavailable` without it; neither name is recorded in the instance's
+`environmentNames`. The name stays `floor`, which the heartbeat addresses.
