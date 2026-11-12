@@ -112,8 +112,12 @@ dsh-master render            # what activation does, with a line per file
 dsh-master install [P...]    # pnpm install per folder, through the dsh dshd runs
 dsh-master check [P...]      # --dump-config per folder: every rendered row, no patch warning
 dsh-master status            # per folder: rendered current|stale, installed current|no, node_modules present|absent; exit 1 if not all current
-dsh-master settings seed     # once, after the floor's first start
+dsh-master settings seed [FILE] [--url U]   # once, after the floor's first start; U defaults to http://127.0.0.1:<webPort> (3082)
 ```
+
+Every verb takes `--from DIR`, a `nix build .#dsh-master` result, in
+place of the installed build; `install` and `check` take `--dsh PATH` to
+run another dsh than the one dshd runs.
 
 `install` runs `/etc/dshd/releases/default/bin/dsh plugin --profile <p>
 install` under a 600 s timeout, with pnpm and git on PATH, and then judges
@@ -301,7 +305,9 @@ key in a scheduled item.
 ## Starting state
 
 As commissioned, the floor is stopped and not enabled, its settings are
-seeded, and every item under `~/.agency/scheduled/` is `enabled: false`.
+seeded, and every item under `~/.agency/scheduled/` is `enabled: false`
+(the items are placed by step 4 of the commissioning order in
+[scheduled.md](scheduled.md#commissioning-order)).
 Nothing runs until one of these:
 
 ```sh
