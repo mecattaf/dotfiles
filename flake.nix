@@ -235,8 +235,7 @@
     # same reason as `gufo`.
     gufo-embedding.url = "github:gufo-org/gufo/77dff828be02a498e9951694f31b024e7ac87119";
 
-    # The canceled Donnerkeule/TP2 inputs and update mechanism are archived
-    # under ~/notes/references/technical/donnerkeule-retired-2026-11-08 (#698).
+    # The canceled Donnerkeule/TP2 inputs and update mechanism are retired (#698).
 
     # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
     # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
@@ -2463,8 +2462,9 @@
             retiredPlatformPattern = nixpkgs.lib.concatStringsSep "|" [
               ("fed" + "ora")
               ("rpm-o" + "stree")
-              ("d" + "nf")
-              ("c" + "opr")
+              # Short tool names are anchored like the boot image tool below:
+              # bare, they match inside hashed CSS names (#721).
+              ("(^|[^[:alnum:]_])(d" + "nf|c" + "opr)([^[:alnum:]_]|$)")
               ("(^|[^[:alnum:]_])boot" + "c([^[:alnum:]_]|$)")
               ("yum.repos." + "d")
               ("harness" + "RPM")
@@ -2475,6 +2475,16 @@
               ("/usr/share/backgrounds/" + "harness")
               ("osConfig" + "[[:space:]]*\\?[[:space:]]*null")
             ];
+            # Proves the anchoring: commands still match, a hashed CSS custom
+            # property does not. Split like the pattern, since the sweep reads
+            # this file.
+            patternSelfTest = {
+              hit = [
+                ("sudo d" + "nf install x")
+                ("c" + "opr enable y")
+              ];
+              miss = [ ("--d" + "nFVJO: 166") ];
+            };
           in
           pkgs.runCommand "nixos-only"
             {
@@ -2514,6 +2524,16 @@
               # not spell the retired platform's name — the sweep reads its own
               # source tree, which is why the pattern list above is assembled from
               # split string literals.
+              for line in ${nixpkgs.lib.escapeShellArgs patternSelfTest.hit}; do
+                printf '%s\n' "$line" | rg --ignore-case --quiet '${retiredPlatformPattern}' \
+                  || { echo "pattern self-test: no match for: $line" >&2; exit 1; }
+              done
+              for line in ${nixpkgs.lib.escapeShellArgs patternSelfTest.miss}; do
+                if printf '%s\n' "$line" | rg --ignore-case --quiet '${retiredPlatformPattern}'; then
+                  echo "pattern self-test: false match for: $line" >&2
+                  exit 1
+                fi
+              done
               if rg --ignore-case --line-number \
                 --glob '!go.sum' --glob '!**/secrets/*.age' --glob '!**/docs/**/*.md' \
                 '${retiredPlatformPattern}' ${self}; then

@@ -45,7 +45,6 @@ assert builtins.elem "9c:bf:0d:00:f6:73,strix-coordinator,10.42.0.2,infinite"
 assert
   builtins.attrNames s.networking.networkmanager.ensureProfiles.profiles == [
     "lan"
-    "tbv0"
   ];
 assert
   s.networking.networkmanager.ensureProfiles.profiles.lan.connection.interface-name == "enp191s0";
