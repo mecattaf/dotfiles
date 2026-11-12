@@ -135,7 +135,7 @@ name the seat wrapper's store path.
 
 ## The floor instance
 
-Created once (the integrator did it on 12 Nov 2026):
+Created once, by hand, after `dsh-master install` and `check` pass:
 
 ```sh
 env -i HOME=/home/tom USER=tom LOGNAME=tom LANG=C.UTF-8 \
@@ -275,11 +275,11 @@ Not supported: token budgets, a node's `model` or `effort` (the run's
 pair decides), nesting deeper than one `workflow()`, and a `workflow`
 key in a scheduled item.
 
-## Morning state
+## Starting state
 
-After the 12 Nov build the floor is stopped and not enabled, its settings
-are seeded, and every item under `~/.agency/scheduled/` is
-`enabled: false`. Nothing runs until one of these:
+As commissioned, the floor is stopped and not enabled, its settings are
+seeded, and every item under `~/.agency/scheduled/` is `enabled: false`.
+Nothing runs until one of these:
 
 ```sh
 scheduled run master:journal-day            # one item now; the heartbeat path starts the floor

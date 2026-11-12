@@ -29,9 +29,9 @@ on the floor's default pair.
 
 ## Write
 - `scheduled new ID --cron EXPR --tz ZONE --prompt TEXT` (or
-  `--prompt-file .agency/prompts/x.md`, relative to the agency folder).
-  New items are always `"enabled": false`. For a new agency,
-  `mkdir -p <folder>/.agency` first.
+  `--prompt-file .agency/prompts/x.md`, relative to the agency folder;
+  write that file first). New items are always `"enabled": false`. For
+  a new agency, `mkdir -p <folder>/.agency` first.
 - Show Tom the next instants (`scheduled show ID -n 3`, printed in UTC)
   and say them in his local time.
 - Arm only what Tom asked for: `scheduled set ID enabled true`. To

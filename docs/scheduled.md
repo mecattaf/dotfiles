@@ -56,15 +56,16 @@ Another agency is any folder with a `.agency/` directory, up to three
 levels below `~`. Its id is its path relative to `~`:
 
 ```sh
-mkdir -p ~/work/acme/.agency                # the agency must exist first
+mkdir -p ~/work/acme/.agency/prompts        # the agency, and the prompt file, exist first
+$EDITOR ~/work/acme/.agency/prompts/nightly-tests.md
 scheduled new work/acme:nightly-tests --cron '0 3 * * *' --tz Europe/Paris \
   --prompt-file .agency/prompts/nightly-tests.md
 ```
 
 That item runs with `~/work/acme` as its working directory. A
-`prompt-file` is relative to the agency folder, must stay inside it, and
-is read again at every tick, so editing the prompt file changes the next
-occurrence.
+`prompt-file` is relative to the agency folder, must exist and stay
+inside it, and is read again at every tick, so editing the prompt file
+changes the next occurrence.
 
 ## An item
 
@@ -196,7 +197,7 @@ when its prompt says so, which is also how a workflow runs on a schedule:
 ```
 
 `scheduled run work/acme:release-notes` starts it now. This is the start
-path the 12 Nov rehearsal gate P-W0 drives.
+path the 12 Nov 2026 rehearsal exercises (gate P-W0).
 
 ## The pieces
 
