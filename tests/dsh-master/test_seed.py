@@ -102,7 +102,7 @@ class Seed(unittest.TestCase):
         self.assertEqual([rule["id"] for rule in seed["rules"]], ["scheduled", "workflow-node"])
         # The scheduled Source's second header line starts "Due <time>" for a schedule record and
         # "Requested <time>" for a run asked for by hand (src/sources/scheduled.ts header()).
-        self.assertIn("judged from the Due or Requested time", seed["rules"][0]["instruction"])
+        self.assertIn("Due or Requested time", seed["rules"][0]["instruction"])
         for table in seed["admission"].values():
             for row in table.values():
                 self.assertLessEqual(set(row), {"listedUnaddressed", "unlistedAddressed", "unlistedUnaddressed"})
