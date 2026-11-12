@@ -1,4 +1,4 @@
-// lock.test.mjs — the tick lock (C3.1 phase 0): one holder at a time, and a
+// lock.test.mjs — the tick lock (docs/scheduled.md, A tick, step 1): one holder at a time, and a
 // lock left by a power cut or a killed tick never blocks the next boot's tick.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -55,7 +55,7 @@ test('a dead PID is stale; an old PID-only lock still uses the liveness check', 
   assert.equal(await holderAlive('garbage', { boot: 'boot-a' }), false);
 });
 
-test('an empty lock file (a cut between create and write) is stale (second review, Zen #1)', async () => {
+test('an empty lock file (a cut between create and write) is stale', async () => {
   const d = await dir();
   const lock = join(d, '.tick.lock');
   await writeFile(lock, '');

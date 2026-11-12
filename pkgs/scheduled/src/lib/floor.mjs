@@ -1,4 +1,4 @@
-// floor.mjs — read the floor instance's state and wake it when records wait (scheduled-jsonc §4).
+// floor.mjs — read the floor instance's state and wake it when records wait (docs/scheduled.md, A tick, step 6).
 //
 // The heartbeat calls only `dshd get --json NAME` and `dshd start --json NAME`. It never stops, restarts or
 // updates the floor, never reads the instance's `enabled` flag and never calls the floor's HTTP API.

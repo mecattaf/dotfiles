@@ -1,6 +1,6 @@
-// src/verbs/tick.mjs — The `scheduled tick` verb (scheduled-jsonc §4).
+// src/verbs/tick.mjs — The `scheduled tick` verb (docs/scheduled.md, A tick).
 //
-// Usage: scheduled tick --inbox DIR [--state-dir DIR] [--home DIR] [--floor-instance NAME] [--now ISO] [--json]
+// Usage: scheduled tick --inbox DIR [--state-dir DIR] [--home DIR] [--floor-instance NAME] [--now ISO --state-dir DIR] [--json]
 
 import { tick } from '../lib/tick.mjs';
 import { parseLocationFlags } from '../lib/flags.mjs';
@@ -20,6 +20,12 @@ export async function main(args, ctx) {
   }
   if (!parsed.opts.inbox) {
     ctx.err('<3>scheduled: --inbox is required\n');
+    return 2;
+  }
+  // A pass at another time commits lastTick: in the unit's own state dir, a future --now would stall every
+  // real tick after it on "clock went back" until that date (review SCHED-3). So --now names its state dir.
+  if (parsed.opts.now !== undefined && !args.some((a) => a === '--state-dir' || a.startsWith('--state-dir='))) {
+    ctx.err('<3>scheduled tick: --now needs an explicit --state-dir (a scratch one, never the heartbeat\'s own)\n');
     return 2;
   }
   const { code, lines } = await tick(ctx, parsed.opts);

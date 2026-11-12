@@ -1,4 +1,4 @@
-# Scheduled in a NixOS VM (AGENTS.md D52; scheduled-jsonc §8).
+# Scheduled in a NixOS VM (AGENTS.md D52; docs/scheduled.md).
 #
 # One VM `nas`: the dshd module from the dshd input with the upstream stub
 # dsh (checks/stub-dsh.nix, DSH_STUB_MODE), a lingering uid-1000 user tom,
@@ -109,17 +109,22 @@ pkgs.testers.runNixOSTest {
   testScript = ''
     import datetime as dt
     import json
+    import os
     import re
     import shlex
 
     INBOX = "${inbox}"
     STATE = "/home/tom/.local/state/scheduled"
     STUB_FLOOR = "${stubFloor}"
-    # The CLI's defaults, set here as the unit sets them (a login shell may
-    # not read Home Manager's session variables).
-    CLI = f"env SCHEDULED_INBOX={INBOX} SCHEDULED_FLOOR_INSTANCE=floor"
-    CLI_NO_FLOOR = f"env -u SCHEDULED_FLOOR_INSTANCE SCHEDULED_INBOX={INBOX}"
+    # The installed command carries the inbox and floor as defaults
+    # (home/scheduled.nix): a login shell runs it with no environment. The
+    # storm sets the floor empty, which the wrapper keeps (--set-default).
+    CLI = "env -u SCHEDULED_INBOX -u SCHEDULED_FLOOR_INSTANCE"
+    CLI_NO_FLOOR = "env -u SCHEDULED_INBOX SCHEDULED_FLOOR_INSTANCE="
     WAIT = 300
+    # S4 boots the guest with its clock this far past an hour mark, so the
+    # boot tick and the OnStartupSec tick two minutes later share an hour.
+    S4_PAST_HOUR = 300
 
 
     def tom(command: str, bus: bool = True) -> str:
@@ -263,6 +268,7 @@ pkgs.testers.runNixOSTest {
         assert marks in (3, 4) and record["namespace"] == "master" and record["item"] == "hb", (record, marks)
         assert record["missed"] == marks - 1 and record["cwd"] == "/home/tom" and record["text"] == "Say ok.", record
         assert run(f"stat -c %a {INBOX} {INBOX}/{made[0]}").split() == ["700", "600"]
+        assert run(f"stat -c %a {STATE}").strip() == "700"
         # Stopped by intent, and a record waits: the tick starts the floor.
         assert "floor action=start state=stopped waiting=1 result=started" in journal(), journal()
         assert floor_state() == "running"
@@ -281,10 +287,26 @@ pkgs.testers.runNixOSTest {
         run(f"{STUB_FLOOR} {INBOX}")
         before = last_tick()
         nas.crash()
-        # The guest clock comes back at host time, about three hours on.
-        nas.start(allow_reboot=True)
+        # The guest clock would come back at host time, about three hours on, and the
+        # two ticks below would straddle an hour mark whenever the cut fell within
+        # about 150 s before one (the second tick then rightly hands off the new hour).
+        # Pin it instead, from the guest's own last tick: S4_PAST_HOUR past the hour,
+        # three hours on. The VM's run script reads QEMU_OPTS.
+        pin = (hours(before) + 3) * 3600 + S4_PAST_HOUR
+        saved = os.environ.get("QEMU_OPTS")
+        os.environ["QEMU_OPTS"] = f"-rtc base={dt.datetime.fromtimestamp(pin, dt.timezone.utc):%Y-%m-%dT%H:%M:%S}"
+        try:
+            nas.start(allow_reboot=True)
+        finally:
+            if saved is None:
+                del os.environ["QEMU_OPTS"]
+            else:
+                os.environ["QEMU_OPTS"] = saved
         boot()
         wait_tick(before)
+        print(f"S4: pin {pin}, boot tick {last_tick()}, guest {nas.succeed('date -u +%FT%TZ').strip()}")
+        # The pin held: the boot tick ran in the pinned hour.
+        assert hours(last_tick()) == pin // 3600, (last_tick(), pin)
         after_boot = records()
         fresh = [n for n in after_boot if n not in pending]
         assert len(fresh) == 1, (after_boot, pending)

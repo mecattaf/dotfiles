@@ -69,12 +69,12 @@ describe('no verb', () => {
 });
 
 // ---------------------------------------------------------------------------
-// verb not built yet
+// verb table
 // ---------------------------------------------------------------------------
 
 describe('verb table', () => {
-  // Every slice-1 verb is built (11 Nov): each entry of the table has its module, so the CLI's
-  // "not built yet" path (ERR_MODULE_NOT_FOUND) is unreachable for the shipped verbs.
+  // Every verb has its module; a module that fails to load is a packaging fault, an unhandled error
+  // (exit 1), never a "not built yet" exit 2 that would hide a missing dependency such as jsonc-parser.
   it('has a module for every verb', async () => {
     const { readdirSync } = await import('node:fs');
     const built = new Set(readdirSync(new URL('../src/verbs/', import.meta.url)).map((f) => f.replace(/\.mjs$/, '')));

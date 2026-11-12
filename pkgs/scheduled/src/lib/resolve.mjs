@@ -1,6 +1,6 @@
 // resolve.mjs — item ID and bare-stem resolution.
 //
-// Spec ref: §10.1 (ID resolution: <agency>:<stem>, or bare stem when unique)
+// docs/scheduled.md, Everyday commands (ID resolution: <agency>:<stem>, or bare stem when unique)
 
 import { discover } from './discover.mjs';
 

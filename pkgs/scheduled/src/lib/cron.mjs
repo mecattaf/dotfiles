@@ -73,14 +73,55 @@ function collectOccurrences(cron, fromMs, windowMs, maxCount = 500) {
   return result;
 }
 
+// One formatter per zone: building an Intl.DateTimeFormat costs far more than using one.
+const formatters = new Map();
+
+/** The wall-clock minute of `ms` in `timeZone`, as milliseconds of the same fields read in UTC. */
+function wallMs(ms, timeZone) {
+  let format = formatters.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-CA', {
+      timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    });
+    formatters.set(timeZone, format);
+  }
+  const f = {};
+  for (const { type, value } of format.formatToParts(ms)) f[type] = Number(value);
+  return Date.UTC(f.year, f.month - 1, f.day, f.hour, f.minute);
+}
+
+/**
+ * Whether `cron` in `timeZone` skips a wall time the expression names. Between two consecutive occurrences where
+ * the zone's offset grows (a spring-forward gap), any wall time the same expression names in UTC, where there is
+ * no DST, was skipped. A fall-back overlap gives a wall time once (the earlier instant), which is not a skip.
+ */
+function skipsWallTime(expr, timeZone, occurrences) {
+  let utc = null;
+  let prevWall = wallMs(occurrences[0], timeZone);
+  for (let j = 1; j < occurrences.length; j++) {
+    const wall = wallMs(occurrences[j], timeZone);
+    const grew = (wall - occurrences[j]) > (prevWall - occurrences[j - 1]);
+    if (grew) {
+      utc ??= Cron.parse(expr, 'UTC');
+      if (utc.kind !== 'accepted') return false;
+      // Wall times strictly between the two occurrences' wall times are ones the zone did not give.
+      const next = utc.rule.next(prevWall);
+      if (next && new Date(next).getTime() < wall) return true;
+    }
+    prevWall = wall;
+  }
+  return false;
+}
+
 /**
  * Check a list of parsed crons for density and never problems.
  * entries: array of {cron, timezone} objects (already validated for parse errors).
  * Returns problems with entryIndex instead of line/col.
+ * @param {{ now?: Date|number }} [opts] the clock the checks start from (default: the wall clock)
  */
-export function scheduleProblems(entries) {
+export function scheduleProblems(entries, { now: nowOpt } = {}) {
   const problems = [];
-  const now = Date.now();
+  const now = nowOpt === undefined ? Date.now() : new Date(nowOpt).getTime();
 
   // Parse all entries, collect parse-level problems
   const parsedEntries = [];
@@ -108,19 +149,12 @@ export function scheduleProblems(entries) {
       continue;
     }
 
-    // dst-gap: detect skipped occurrences (spring-forward gap) in a 400-day window
-    // If any two consecutive occurrences have a gap > minGap + 1h, a DST gap was skipped.
+    // dst-gap: a wall time the expression names that the zone skips (spring-forward gap) in a 400-day window.
+    // Compared by wall-clock minute, not by gap length: a weekday or irregular schedule has uneven gaps and
+    // no skip (review SCHED-4).
     const dstOccurrences = collectOccurrences(cron, now, DST_GAP_WINDOW_MS, 2000);
     if (dstOccurrences.length >= 3) {
-      // Real-time gaps between consecutive fires move by an hour around each
-      // DST change (23 h / 25 h for a daily cron), which is not a skip. A
-      // skipped fire shows as a gap well above the usual one: more than 1.5
-      // times the median gap (48 h for a daily cron, 14 days for a weekly).
-      const gaps = [];
-      for (let j = 1; j < dstOccurrences.length; j++) gaps.push(dstOccurrences[j] - dstOccurrences[j - 1]);
-      const sorted = [...gaps].sort((a, b) => a - b);
-      const median = sorted[Math.floor(sorted.length / 2)];
-      if (gaps.some(g => g > median * 1.5)) {
+      if (skipsWallTime(entries[i].cron, entries[i].timezone, dstOccurrences)) {
         problems.push({
           severity: 'warning',
           code: 'dst-gap',

@@ -88,8 +88,8 @@ in
         # SWITCH RULING (#354, 2026-09-13). A switch never restarts this server.
         # home-manager's startServices drives sd-switch, and sd-switch restarts
         # a changed, running unit by default. For herdr that would kill every
-        # live PTY, so an unattended update-adopt switch (or Tom's own) that
-        # moved the herdr package or this unit file would take down all panes.
+        # live PTY, so any switch that moved the herdr package or this unit
+        # file would take down all panes.
         # `keep-old` is sd-switch's own key: VERIFIED against the pinned
         # sd-switch 0.6.4 source (src/systemd/ini.rs KEY_X_SWITCHMETHOD,
         # "keep-old" => UnitSwitchMethod::KeepOld; src/lib.rs keeps the old

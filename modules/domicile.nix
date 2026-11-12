@@ -25,7 +25,7 @@ let
     name = "imagine-production";
     src = inputs.imagine;
     filter =
-      path: type:
+      path: _type:
       let
         relative = if path == imagineRoot then "" else lib.removePrefix "${imagineRoot}/" path;
         production = relative == "" || relative == "src" || lib.hasPrefix "src/" relative;
@@ -267,7 +267,7 @@ in
   imports = [
     inputs.domicile.nixosModules.default
     ./domicile-apps.nix
-    ./domicile-chat.nix
+    ./imagine-helpers.nix
   ];
 
   options.programs.domicilePhysical = {

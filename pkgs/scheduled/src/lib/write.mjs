@@ -50,7 +50,7 @@ export async function checkExpect(path, expect, uid) {
 
 /**
  * Validate `bytes` as the file at `path`, then write it atomically. The candidate is validated in place
- * under its temp name, so an invalid text never touches the real file (C2.9, C2.10).
+ * under its temp name, so an invalid text never touches the real file (C2.9, C2.10 in test/write.test.mjs).
  */
 export async function writeItem(ctx, { path, bytes, expect, hooks = {} }) {
   const dir = dirname(path);

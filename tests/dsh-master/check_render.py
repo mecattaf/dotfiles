@@ -90,10 +90,13 @@ def main(package, expect_path):
 
     deps = {name: folder["package"]["dependencies"] for name, folder in folders.items()}
     problems = [f"{name}: {dep}" for name, dep in deps.items() if dep != deps["master"]]
-    problems += [f"{key} pinned as {spec!r}" for key, spec in deps["master"].items() if not PIN.match(spec)]
-    problems += [] if sorted(deps["master"]) == ["@norman-else/dsh-claude", "dsh-superagent"] else [f"dependencies {sorted(deps['master'])}"]
-    problems += [f"{key} names tag {spec.rpartition('#')[2]!r}, not {expect['tag']!r}" for key, spec in deps["master"].items() if spec.rpartition("#")[2] != expect["tag"]]
-    subtest("identical dependencies across profiles, pinned to one tag", problems)
+    configured = {"dsh-superagent": expect["superagent"], "@norman-else/dsh-claude": expect["claude"]}
+    problems += [] if deps["master"] == configured else [f"dependencies {deps['master']}, configured {configured}"]
+    # The release form only while neither pin is set by hand (docs/dsh-master.md: a fork-only re-tag sets one).
+    if expect["pinsFollowTag"]:
+        problems += [f"{key} pinned as {spec!r}" for key, spec in deps["master"].items() if not PIN.match(spec)]
+        problems += [f"{key} names tag {spec.rpartition('#')[2]!r}, not {expect['tag']!r}" for key, spec in deps["master"].items() if spec.rpartition("#")[2] != expect["tag"]]
+    subtest("identical dependencies across profiles, pinned as configured", problems)
 
     bundles = {name: folder["package"]["dsh"]["profile"]["bundles"] for name, folder in folders.items()}
     problems = []
@@ -137,16 +140,27 @@ def main(package, expect_path):
     for row_id in ("dsh-superagent-github", "dsh-superagent-feishu"):
         if sources.get(row_id, {}).get("disabled") is not True:
             problems.append(f"{row_id} is not rendered disabled")
-    workflow = sources.get("dsh-superagent-workflow", {}).get("config")
-    if workflow != {"pollMs": 2000, "concurrency": 16, "maxAttempts": 1, "pair": ""}:
-        problems.append(f"dsh-superagent-workflow config is {workflow}")
+    for row in expect["superagentRows"]:
+        if sources.get(row["id"]) != row:
+            problems.append(f"{row['id']} is rendered as {sources.get(row['id'])}, configured {row}")
     expected = {row["id"]: row["disabled"] for profile in manifest["profiles"].values() for row in profile["expect"] if row["id"] == "dsh-superagent"}
     if expected != {"dsh-superagent": False}:
         problems.append(f"dsh-master check does not assert dsh-superagent enabled: {expected}")
     subtest("engine on only in master", problems)
 
-    problems = [f"{name}: {row_id}" for name, ids in rows.items() for row_id in PERMISSION_ROWS & set(ids)]
-    subtest("full permissions", problems)
+    problems = [f"{name}: {row_id}" for name, ids in rows.items() if name != "master" for row_id in PERMISSION_ROWS & set(ids)]
+    master_rows = rows.get("master", {})
+    if sorted(PERMISSION_ROWS & set(master_rows)) != sorted(PERMISSION_ROWS):
+        problems.append(f"master: permission rows {sorted(PERMISSION_ROWS & set(master_rows))}")
+    else:
+        mode = master_rows["sandbox-policy"][0].get("config", {}).get("mode")
+        policy = master_rows["approval"][0].get("config", {}).get("policy")
+        permission = master_rows["permission"][0].get("config", {})
+        if mode != "workspace-write" or policy != "ask":
+            problems.append(f"master: panel default is {mode}/{policy}")
+        if permission.get("defaultPreset") != "workspace-write" or permission.get("presets", {}).get("danger-full-access") != {"sandbox": "danger-full-access", "approval": "never"}:
+            problems.append(f"master: permission row is {permission}")
+    subtest("full permissions for workers, a pinned panel default in master", problems)
 
     problems = []
     for name, ids in rows.items():
@@ -226,7 +240,7 @@ def main(package, expect_path):
     except (OSError, ValueError) as error:
         seed = {}
         problems.append(f"settings.seed.json: {error}")
-    if seed.get("eval") != {"mode": "auto"}:
+    if seed.get("eval") != {"mode": "auto", "timeoutSeconds": 600}:
         problems.append(f"eval is {seed.get('eval')}")
     rules = {rule.get("id"): rule for rule in seed.get("rules", [])}
     for rule_id, prefix in (("scheduled", "A Trigger of the scheduled Source"), ("workflow-node", "A Trigger from the workflow Source")):
@@ -239,6 +253,19 @@ def main(package, expect_path):
     if seed.get("admission") != want:
         problems.append(f"admission is {seed.get('admission')}")
     subtest("seed file holds both rules and both admission rows", problems)
+
+    # An item can ask the superagent itself to act, for example to start a
+    # workflow, instead of handing a worker a ticket. The scheduled rule's
+    # assessor clause must let it, or the assessor accepts the nudge as a
+    # ticket for a worker, which has no orchestrator tools.
+    problems = []
+    text = rules.get("scheduled", {}).get("instruction", "")
+    assess, work = text.find(ASSESSOR_CLAUSE), text.find(WORKER_CLAUSE)
+    clause = text[assess:work] if 0 <= assess < work else ""
+    for phrase in ("asks you, not a worker, to act", "orchestrator_workflow_start", "then do what it asks"):
+        if phrase not in clause:
+            problems.append(f"rule scheduled: the assessor clause does not say {phrase!r}")
+    subtest("the scheduled rule lets an item ask the superagent itself to act", problems)
 
     # A rule has two readers: the main Session assesses Triggers by it, and
     # the fork's executor copies a matched rule verbatim into the worker's
@@ -272,23 +299,31 @@ def main(package, expect_path):
         problems.append(f"the worker clauses differ: {sorted(clauses)}")
     subtest("each seed rule settles direction and tells the assessor, then the worker, what to do", problems)
 
+    # dsh's own workspace keys plus the build policy, so pnpm 11 has no
+    # undecided build script (ERR_PNPM_IGNORED_BUILDS, exit 1). render owns
+    # the file like the other two, so the manifest lists it under `files`.
     problems = []
+    want = {"packages": ["."], "nodeLinker": "hoisted", "autoInstallPeers": False}
+    if expect["allowBuilds"]:
+        want["allowBuilds"] = expect["allowBuilds"]
+    if expect["allowBuilds"].get("msgpackr-extract") is None:
+        problems.append("allowBuilds decides nothing for msgpackr-extract, which the fork's interpreter pulls in")
     for name, profile in manifest["profiles"].items():
         path = os.path.join(package, "profiles", name, "pnpm-workspace.yaml")
-        if not os.path.isfile(path) or profile.get("once", {}).get("pnpm-workspace.yaml") is None:
-            problems.append(f"{name}: no pnpm-workspace.yaml in the folder or the manifest")
+        if not os.path.isfile(path) or profile["files"].get("pnpm-workspace.yaml") is None or "once" in profile:
+            problems.append(f"{name}: pnpm-workspace.yaml is not a rendered file of the folder and the manifest")
             continue
         with open(path, encoding="utf-8") as stream:
             workspace = yaml.safe_load(stream)
-        if workspace != {"packages": ["."], "nodeLinker": "hoisted", "autoInstallPeers": False}:
+        if workspace != want:
             problems.append(f"{name}: pnpm-workspace.yaml is {workspace}")
-    subtest("every folder carries dsh's pnpm workspace", problems)
+    subtest("every folder carries dsh's pnpm workspace and a build policy", problems)
 
     problems = []
     policy = {row["id"]: row for row in expect["policyRows"]}
     wanted = sorted(set(expect["policyIds"]) - set(expect["dropped"]))
     for name, ids in rows.items():
-        have = sorted(set(ids) & set(expect["policyIds"]) - {"agent-default-model"})
+        have = sorted(set(ids) & set(expect["policyIds"]) - {"agent-default-model"} - (PERMISSION_ROWS if name == "master" else set()))
         if have != wanted:
             problems.append(f"{name}: policy ids {have}")
         problems += [f"{name}: {row_id} differs from the policy" for row_id in wanted if ids.get(row_id, [None])[0] != policy[row_id]]

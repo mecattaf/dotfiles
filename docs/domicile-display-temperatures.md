@@ -1,10 +1,14 @@
 # Per-display warmth on Domicile
 
+Blue-light protection is on for the whole desktop, all the time. Tom,
+2026-11-12: "i still want to have the asus monitor also have gamma applied!
+i want destop-wide blue light protection on by default all the time."
+
 The Zenbook keeps the same fixed warmth heuristic as its former kanshi
-profiles: 3850 K on the upper panel and 3350 K on the lower panel. These
-values are a comfort setting, not a measured physical color match or an ICC
-calibration. Tom dropped physical matching as a completion condition on
-2026-11-08 (#541).
+profiles: 3850 K on the upper panel and 3350 K on the lower panel. The ASUS
+5K gets 4000 K. These values are a comfort setting,
+not a measured physical color match or an ICC calibration. Tom dropped
+physical matching as a completion condition on 2026-11-08 (#541).
 
 ## Previous kanshi behavior
 
@@ -47,10 +51,26 @@ requires both panel IDs and their configured temperatures.
 
 ## External monitor
 
-Unknown displays are left unchanged. The PA27JCV was connected and identified
-on 2026-11-10 as `drm-1886053529622275`, native 5120×2880. Its output profiles
-use scale 2 and place it to the right of the upper Duo panel; both laptop
-panels retain their original scale 2 and vertical stack. Tom confirmed this
-layout live. Its preferred warmth remains unmeasured, so no external color
-temperature is set. A value of 6500 K means unchanged colors in Domicile's
-night-light API; it does not calibrate the display.
+The PA27JCV was connected and identified on 2026-11-10 as
+`drm-1886053529622275`, native 5120×2880. Its output profiles use scale 2 and
+place it to the right of the upper Duo panel; both laptop panels retain their
+original scale 2 and vertical stack. Tom confirmed this layout live.
+
+It gets 4000 K, the warmth the old LG desktop monitors used. A display the
+policy does not name is left unchanged; covering displays plugged in later is
+for Tom's own Imagine shell work. A display without a hardware gamma table
+(DisplayLink/evdi) refuses the request, and the refusal is reported (upstream
+cprussin/domicile#1970 keeps the composited fallback as a known gap).
+
+## Version history
+
+- 2026-11-11: the OOM rollback (`c15c4937`) went to a Domicile SDK older than
+  per-display gamma (upstream #1921). It dropped this policy and fell back to
+  the global sunset-to-sunrise schedule.
+- 2026-11-12: Domicile at `e2b4bc54` restores the per-display API and the
+  redraw-on-ramp fix (#2028). The policy is back, and now includes the ASUS.
+
+Verify on the hardware with
+`ssh client python3 - < ~/notes/journal/2026/11/12/closeout/zenbook-read-gamma.py`:
+each of the three outputs' `GAMMA_LUT` must be non-identity, with a lower blue
+`white_rgb` on the lower panel than on the upper one.

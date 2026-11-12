@@ -1,9 +1,10 @@
-// The three live items copied from ~/.agency/workflows/ (scheduled-jsonc §7). Every one ships with
-// "enabled": false (H60, Tom: "make sure there are no scheduled work in the morning"). The integrator
-// copies these files to ~/.agency/scheduled/ (mode 0600, directory 0700); Nix never writes them.
+// A synthetic master agency: three example items that cover the item schema's paths (a daily and an
+// hourly cron, an inline prompt and a prompt-file, a reader of the header's time, an item with no name).
+// Real items live in an agency's .agency/scheduled/ and never in this repository; every one starts with
+// "enabled": false, as these do, so nothing runs unattended before an item is enabled.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, chmodSync, readdirSync, readFileSync, statSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, chmodSync, readdirSync, readFileSync, statSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +14,7 @@ import { tick } from '../src/lib/tick.mjs';
 import { main as validateVerb } from '../src/verbs/validate.mjs';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/master', import.meta.url));
-const FILES = ['fleet-nightly.jsonc', 'floor-upkeep.jsonc', 'journal-day.jsonc'];
+const FILES = ['example-daily.jsonc', 'example-hourly.jsonc', 'example-inert.jsonc'];
 
 function home() {
   const dir = mkdtempSync(join(tmpdir(), 'scheduled-baseline-'));
@@ -27,7 +28,7 @@ function home() {
   return dir;
 }
 
-test('C6.1: every live item validates with zero problems and reads enabled false', async () => {
+test('C6.1: every fixture item validates with zero problems and reads enabled false', async () => {
   const h = home();
   try {
     for (const f of FILES) {
@@ -39,13 +40,51 @@ test('C6.1: every live item validates with zero problems and reads enabled false
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 
-test('C6.1: the items are master:fleet-nightly, master:floor-upkeep and master:journal-day; floor-upkeep says it is inert', async () => {
+test('C6.1: the items are master:example-daily, master:example-hourly and master:example-inert; example-inert says it is inert', async () => {
   const h = home();
   try {
     const d = await discover({ home: h, uid: process.getuid() });
     assert.deepEqual(d.files.map((f) => f.id), FILES.map((f) => `master:${f.replace('.jsonc', '')}`));
     assert.deepEqual(d.problems, []);
-    assert.match(readFileSync(join(h, '.agency/scheduled/floor-upkeep.jsonc'), 'utf8'), /INERT/);
+    assert.match(readFileSync(join(h, '.agency/scheduled/example-inert.jsonc'), 'utf8'), /INERT/);
+  } finally { rmSync(h, { recursive: true, force: true }); }
+});
+
+// The fork's scheduled Source writes the header's second line as "Due <iso>; …" for an occurrence and as
+// "Requested <iso> by …" for `scheduled run`, so an item that reads a time from the header must name both.
+test('C6.1: an item that reads a time from the header names both second lines, Due and Requested', async () => {
+  const h = home();
+  try {
+    const readers = [];
+    for (const f of FILES) {
+      const { prompt } = await validateFile(join(h, '.agency/scheduled', f));
+      if (!/\bDue\b/.test(prompt)) continue;
+      readers.push(f);
+      assert.match(prompt, /\bDue or Requested time\b/, f);
+    }
+    assert.deepEqual(readers, ['example-daily.jsonc']);
+  } finally { rmSync(h, { recursive: true, force: true }); }
+});
+
+test('C6.1: the fixture items cover a daily and an hourly cron, prompt lines, a prompt string and a prompt-file', async () => {
+  const h = home();
+  try {
+    const at = (f) => join(h, '.agency/scheduled', f);
+    const daily = await validateFile(at('example-daily.jsonc'));
+    const hourly = await validateFile(at('example-hourly.jsonc'));
+    const inert = await validateFile(at('example-inert.jsonc'));
+    assert.deepEqual(daily.value.on.schedule, [{ cron: '0 6 * * *', timezone: 'Europe/Paris' }]);
+    assert.match(readFileSync(at('example-daily.jsonc'), 'utf8'), /"prompt": \[/);
+    assert.equal(daily.value.name, 'Example: daily summary');
+    // Hourly sits on the density bound: instants exactly 60 min apart pass, a half hour more does not.
+    assert.deepEqual(hourly.value.on.schedule, [{ cron: '0 * * * *', timezone: 'UTC' }]);
+    assert.equal(hourly.value.job['prompt-file'], '.agency/prompts/example-hourly.md');
+    assert.equal(hourly.prompt, readFileSync(join(h, '.agency/prompts/example-hourly.md'), 'utf8'));
+    assert.ok(hourly.promptBytes.length > 0);
+    writeFileSync(at('example-hourly.jsonc'), readFileSync(at('example-hourly.jsonc'), 'utf8').replace('"0 * * * *"', '"0,30 * * * *"'));
+    assert.ok((await validateFile(at('example-hourly.jsonc'))).problems.some((p) => p.code === 'density'));
+    assert.match(readFileSync(at('example-inert.jsonc'), 'utf8'), /"prompt": "/);
+    assert.equal(inert.value.name, undefined);
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 

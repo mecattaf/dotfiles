@@ -33,7 +33,10 @@
 # key it keeps. Dropped from the policy: the sandbox, permission and approval
 # rows (workers run with full permissions, and the superagent needs the stock
 # `danger-full-access` preset), and the default model (each folder sets its
-# own).
+# own). The workers' Sessions therefore follow DSH_PERMISSION_MODE, which
+# dshd sets to danger-full-access. The master folder restates the sandbox,
+# sandbox-policy, approval and permission rows for its panel (`panelRows`),
+# so a Session opened there by hand starts at workspace-write.
 #
 # Outputs: $out/profiles/<p>/{package.json,cordis.patch.yml,pnpm-workspace.yaml},
 # $out/manifest.json (profile names, file digests and the rows `dsh-master
@@ -76,7 +79,29 @@ let
   ];
   policyRows = lib.filter (row: !(builtins.elem row.id dropped)) dsh.policyRows;
 
-  # The same row in every folder but for `engine` (contracts: dormancy, executor).
+  # master only: a Session opened by hand in the panel starts at the fleet's
+  # workspace-write and asks, under the pinned dsh-bwrap runner, instead of
+  # following DSH_PERMISSION_MODE (danger-full-access under dshd). The
+  # superagent pins its own Sessions to danger-full-access (the fork's
+  # sessions.ts), so that preset is restated beside the fleet's two.
+  fleetRow = id: lib.findFirst (row: (row.id or null) == id) (throw "fleet policy has no ${id} row") dsh.policyRows;
+  panelRows =
+    let
+      permission = fleetRow "permission";
+    in
+    [
+      (fleetRow "sandbox")
+      (fleetRow "sandbox-policy")
+      (fleetRow "approval")
+      (lib.recursiveUpdate permission {
+        config.presets.danger-full-access = {
+          sandbox = "danger-full-access";
+          approval = "never";
+        };
+      })
+    ];
+
+  # The same row in every folder but for `engine` (docs/dsh-master.md).
   superagentRow = engine: {
     id = "dsh-superagent";
     config =
@@ -116,7 +141,7 @@ let
   # Rows any DSH composition of the app bundle has; the offline check dumps
   # them against the first-party bundles alone.
   firstParty = {
-    master = [
+    master = panelRows ++ [
       {
         id = "agent-default-model";
         config = route settings.pairs.${settings.defaultPair};
@@ -271,18 +296,35 @@ let
       cat ${yaml.generate "${name}-rows.yml" rows} >> "$out"
     '';
 
-  # dsh writes this file beside package.json when it creates a profile
-  # (dsh-app-boot initProfile) and never touches it again. A folder that
-  # render creates has none, and pnpm then resolves the plugins' DSH peers
-  # from the registry. render writes dsh's text only when the file is
-  # missing; checks.dsh-master compares it with what the release's dsh writes.
-  pnpmWorkspace = writeText "pnpm-workspace.yaml" ''
+  # dsh writes this text beside package.json when it creates a profile
+  # (dsh-app-boot initProfile). Without the file pnpm resolves the plugins'
+  # DSH peers from the registry. checks.dsh-master compares it with what the
+  # release's dsh writes.
+  dshWorkspaceText = ''
     packages:
       - .
 
     nodeLinker: hoisted
     autoInstallPeers: false
   '';
+  dshWorkspace = writeText "dsh-pnpm-workspace.yaml" dshWorkspaceText;
+
+  # Each folder's pnpm-workspace.yaml: dsh's text plus the build policy, so
+  # an install exits 0 rather than on an undecided build script. render owns
+  # it like the other two files: it replaces a copy that differs and says so,
+  # including an `allowBuilds` entry DSH's plugin manager recorded. Keys are
+  # JSON-quoted: a scoped name starts with `@`, which YAML reserves.
+  pnpmWorkspace = writeText "pnpm-workspace.yaml" (
+    dshWorkspaceText
+    + lib.optionalString (settings.allowBuilds != { }) (
+      "allowBuilds:\n"
+      + lib.concatStrings (
+        lib.mapAttrsToList (
+          name: allowed: "  ${builtins.toJSON name}: ${lib.boolToString allowed}\n"
+        ) settings.allowBuilds
+      )
+    )
+  );
 
   # package.json content; assemble.py writes it in dsh's own key order.
   packageOf = name: deps: bundleList: {
@@ -321,6 +363,9 @@ let
   spec = writeText "dsh-master-spec.json" (
     builtins.toJSON {
       dsh = settings.dshCommand;
+      dshd = settings.dshdCommand;
+      # The floor's web server, the default of `dsh-master settings seed`.
+      url = "http://127.0.0.1:${toString settings.webPort}";
       profiles = lib.mapAttrs (name: profile: {
         package = packageOf name dependencies (bundles profile.app);
         patch = patchFile name profile.rows;
@@ -359,6 +404,7 @@ runCommand "dsh-master"
     passthru = {
       inherit
         claudeSeat
+        dshWorkspace
         pnpmWorkspace
         policyRows
         probes

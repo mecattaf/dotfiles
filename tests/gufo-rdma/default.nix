@@ -20,11 +20,9 @@ let
     && !(builtins.elem "qwen38-flash-next-q8-gguf" host.services.local-models.artifacts)
     && !(host.environment.etc ? "gufo/tp2-q8-wanted.json");
   catalog = import ../../lib/local-models.nix { inherit lib; };
-  watches = builtins.fromJSON (builtins.readFile ../../lib/update-watch.json);
 in
 assert retired c && retired w;
 assert !(catalog.artifacts ? qwen38-flash-next-q8-gguf);
-assert builtins.all (watch: !(builtins.elem watch.name [ "gufo-rdma" "donnerkeule" ])) watches.inputs;
 assert !c.services.ds4.enable && !(c.systemd.services ? ds4);
 assert !(lib.hasInfix "9911" c.networking.firewall.extraInputRules);
 assert c.services.gufo.enable && c.services.llama-swap.enable;

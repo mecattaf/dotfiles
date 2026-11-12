@@ -61,8 +61,6 @@ and preferences remain mutable. API keys stay separate. The DSH full-agent
 integration uses official `acp`; preserve the Gemini investigation as lineage.
 See `docs/antigravity-cli.md` and `docs/gemini-cli.md`.
 
-**Model catalog (Tom, 2026-10-10).** Model ids for the factory are runtime data, not nix: they live in `~/.config/substrate/models.toml`, seeded by the substrate-puller unit when the file is absent and never rewritten by nix (`services.substrate.puller.modelsFile`, named in runtimes.toml as `models_file`; the runners re-read it on every call, so a model edit needs no rebuild). Tom: "i dnt think it s a g ood idea to have things like that tied to nixos dotfiles". The openrouter-free lane is parked (no entry in the catalog, so substrate refuses that runtime and route policies fall through) until OpenRouter releases a new stealth model; since pi was retired (2026-10-25) no harness routes to the OpenRouter key, and seats reads it only for the credit row. The puller PATH carries Node 24 and pnpm 11.17.0 (`pkgs.pnpm_11_17`, the stack v1 pin) so a spec-task gate runs `node` and `pnpm` bare.
-
 **Scheduled work (Tom, 2026-09-30; amended 2026-11-10).** No scheduled
 agent work is declared in dotfiles. It is written as JSONC scheduled
 items in an agency's `.agency/scheduled/` (the master agency is `~`) and
@@ -104,34 +102,18 @@ NetworkManager dispatcher only when a fallback Wi-Fi rung comes up, and it exits
 as soon as thomas-6ghz is back. Nothing starts it at boot or on a schedule; it
 has no timer and no `OnCalendar` (tests/closet-topology asserts both).
 
-**Nightly update check (#550, Tom 2026-10-14).** Tom: "nightly, i want to be
-chekcing codex and cc and other programs for their latest version and
-ingesting it, potentially also with the new features that they entail". The
-clock is a substrate floor routine (substrate T-7), never a timer here. This
-repo holds the logic: `update-check` (home/dot_local/bin) reads
-`lib/update-watch.json`, and for each input whose upstream moved a program we
-use, rebuilds the rolling branch `update/<input>` from main, runs the gate and
-opens or refreshes one PR. The PR is a draft when the gate fails. The check
-skips the bump when no watched program changed version, and closes the PR
-once main carries the input. Fish and Wrangler ride the existing nixpkgs-fresh
-leaf overlay. Kitty is source-pinned separately; its official stable GitHub
-releases are issue watches, including patch releases. Adoption updates its
-source and Go vendor hashes explicitly; see `docs/kitty-updates.md`. New stable
-kernel major.minor series are also issue watches. The Projects
-floor routine uses `update-check --if-idle --background --json`: soft hourly opportunities,
-load/Nix/Herdr admission checks and one completed attempt per Paris night.
-Every defer and failure is recorded. The detached worker survives the Floor
-turn limit, inherits its lock and writes a durable job result; a launch receipt
-is not a successful check. No local timer is installed. Digests are
-opt-in and comment-only; the routine makes no adoption commits. Earlier
-review commits without `Update-Check: bump` survive refreshes, or a conflict
-aborts before the remote changes. Nothing merges, switches or restarts without
-Tom. Adding a program is an entry in the watch file.
-Imported release notes must stay in collision-safe literal text fences, with
-only their release-page links outside. Contributor mentions and upstream
-issue/PR references must never become active GitHub Markdown in generated PR
-bodies or digest comments (2026-10-22 notification incident). Truncate source
-text before fencing it, never the rendered wrapper.
+**Updates (Tom, 2026-11-10 and 2026-11-12).** Fleet and CLI updates are
+protocols of the master agency under `~/.agency/protocols/`, outside this
+repository. This repository holds only the mechanism: the Scheduled heartbeat
+and CLI, dshd, dsh-master. The nightly `update-check` program, its watch list
+and its rolling `update/<input>` PRs are retired.
+
+In any generated PR body or comment, imported release notes must stay in
+collision-safe literal text fences, with only their release-page links
+outside. Contributor mentions and upstream issue/PR references must never
+become active GitHub Markdown in generated PR bodies or digest comments
+(2026-10-22 notification incident). Truncate source text before fencing it,
+never the rendered wrapper.
 
 **Fleet target (Tom, 2026-10-22/23).** Rename strix to `strix-coordinator`;
 `strix-worker` returns. Both are headless Ethernet compute hosts. The NAS is
@@ -143,11 +125,10 @@ external desktop menus are retired; use the native Domicile APIs. strix-coordina
 keeps its independent Tailscale fallback; use ordinary OpenSSH. Speech defaults to
 client; synthesis stays on compute. These are cutover targets, not a claim
 that the migration is live. Preserve Herdr sessions. Reboot remains a
-deliberate, supervised step. Nightly activation of NAS and strix-coordinator is
-unattended: the Scheduled `fleet-nightly` item launches `fleet-update`
-(#642), which activates only an idle, inspected target and never reboots. Tom,
-2026-11-10, on the earlier rule that overnight runs never switch: "this one can
-be overruled. let's get the scheduler built and configured first."
+deliberate, supervised step. Activation of NAS and strix-coordinator, attended
+or overnight, is decided by the master agency's fleet update protocol (see
+Updates above), never by code in this repository; it activates only an idle,
+inspected target and never reboots.
 
 **Runtime isolation (2026-09-16 incident).** Tests and experiments that source
 shell-script fragments, clean runtime directories, or launch test compositors
@@ -245,7 +226,7 @@ straightforward to select the model that we use with each provider. no need
 for round-robin style usage but it IS a nice to have"; round-robin is
 deferred). The QwenCloud route was deleted with the account. Nothing
 sensitive goes through a free lane; Gufo keeps that work. The stock
-`headless` profile that substrate drives mounts no plugin. The second batch
+`headless` profile mounts no plugin. The second batch
 (issue 687, same day) adds Groq, Mistral, Cohere, NVIDIA NIM, Cloudflare
 Workers AI, Hugging Face, Cerebras and Vercel AI Gateway as `DSH_ROUTE`
 picks on pi-ai's native catalog routes (Cohere hand-declared on its
