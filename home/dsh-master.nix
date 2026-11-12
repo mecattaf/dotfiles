@@ -79,16 +79,25 @@ in
       default = osConfig.myFleet.has "brain";
       description = "Render the Master DSH profile folders.";
     };
+    tag = mkOption {
+      type = types.strMatching "floor-v2\\.[0-9]+";
+      # The one value a release moves: both forks cut floor-v2.<n> tags whose
+      # tarballs hold the built lib/. floor-v2.0 is a placeholder until the
+      # first release exists.
+      default = "floor-v2.0";
+      description = "Release tag both plugin pins name, unless `superagent` or `claude` is set.";
+    };
     superagent = mkOption {
       type = types.str;
-      # Release tag of the fork; the integrator moves it to each new floor-v2.<n>.
-      default = "github:mecattaf/dsh-superagent-prototype#floor-v2.0";
-      description = "package.json spec of the dsh-superagent fork (a tag whose tarball holds the built lib/).";
+      default = "github:mecattaf/dsh-superagent-prototype#${cfg.tag}";
+      defaultText = lib.literalExpression ''"github:mecattaf/dsh-superagent-prototype#''${tag}"'';
+      description = "package.json spec of the dsh-superagent fork.";
     };
     claude = mkOption {
       type = types.str;
-      default = "github:mecattaf/dsh-claude#floor-v2.0";
-      description = "package.json spec of dsh-claude (a tag whose tarball holds the built lib/).";
+      default = "github:mecattaf/dsh-claude#${cfg.tag}";
+      defaultText = lib.literalExpression ''"github:mecattaf/dsh-claude#''${tag}"'';
+      description = "package.json spec of dsh-claude.";
     };
     stateDir = mkOption {
       type = types.str;

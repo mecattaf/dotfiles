@@ -3,8 +3,8 @@
 Usage: check_render.py <dsh-master package> <expectations.json>
 
 The expectations come from the NAS configuration (tests/dsh-master/default.nix):
-the pairs and their presets, the default pair, the seat, the state directory
-and the fleet policy as pkgs/dsh exports it. Each subtest prints its name; any failure
+the pairs and their presets, the default pair, the release tag, the seat, the
+state directory and the fleet policy as pkgs/dsh exports it. Each subtest prints its name; any failure
 exits 1 after all of them ran.
 """
 
@@ -76,7 +76,8 @@ def main(package, expect_path):
     problems = [f"{name}: {dep}" for name, dep in deps.items() if dep != deps["master"]]
     problems += [f"{key} pinned as {spec!r}" for key, spec in deps["master"].items() if not PIN.match(spec)]
     problems += [] if sorted(deps["master"]) == ["@norman-else/dsh-claude", "dsh-superagent"] else [f"dependencies {sorted(deps['master'])}"]
-    subtest("identical dependencies across profiles", problems)
+    problems += [f"{key} names tag {spec.rpartition('#')[2]!r}, not {expect['tag']!r}" for key, spec in deps["master"].items() if spec.rpartition("#")[2] != expect["tag"]]
+    subtest("identical dependencies across profiles, pinned to one tag", problems)
 
     bundles = {name: folder["package"]["dsh"]["profile"]["bundles"] for name, folder in folders.items()}
     problems = []

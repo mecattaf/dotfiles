@@ -34,7 +34,12 @@ let
       ) cfg.pairs;
       pairEnv = lib.mapAttrs (_: pair: { inherit (pair) env maxWorkers; }) cfg.pairs;
       presets = lib.mapAttrs (_: pair: pair.preset) cfg.pairs;
-      inherit (cfg) defaultPair stateDir claudeConfigDir;
+      inherit (cfg)
+        defaultPair
+        stateDir
+        claudeConfigDir
+        tag
+        ;
       inherit (nas.pkgs.dsh) policyIds policyRows;
       inherit (master) dropped;
     }
@@ -60,6 +65,10 @@ assert
   ];
 # The Claude pair binds dsh-claude's preset; Gufo binds none.
 assert cfg.pairs.opus.preset == "claude" && cfg.pairs.gufo.preset == null;
+# One tag value moves both pins.
+assert
+  cfg.superagent == "github:mecattaf/dsh-superagent-prototype#${cfg.tag}"
+  && cfg.claude == "github:mecattaf/dsh-claude#${cfg.tag}";
 pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   set -euo pipefail
   export HOME="$TMPDIR/home" PYTHONDONTWRITEBYTECODE=1
