@@ -21,12 +21,12 @@ let
   # scheduled Source reads.
   inbox = "${hm.programs.dsh.master.stateDir}/inbox/scheduled";
   environment = lib.toList tick.Service.Environment;
-  # The fork's scheduled Source writes a header's second line as "Due <iso>;
-  # …" for an occurrence and as "Requested <iso> by …" for `scheduled run`,
-  # so the seed's scheduled rule names every header time by both words.
-  seedRule = lib.findFirst (r: r.id == "scheduled") { instruction = ""; } (
-    lib.importJSON hm.programs.dsh.master.settingsSeed
-  ).rules;
+  # The fork's scheduled Source writes a header's second line as
+  # "Due <iso>; …" for an occurrence and as "Requested <iso> by …" for
+  # `scheduled run`, so the seed's scheduled rule names every header time
+  # by both words.
+  seed = lib.importJSON hm.programs.dsh.master.settingsSeed;
+  seedRule = lib.findFirst (r: r.id == "scheduled") { instruction = ""; } seed.rules;
   seedDue = lib.drop 1 (lib.splitString "Due" seedRule.instruction);
 in
 assert timer.Timer == {
