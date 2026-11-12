@@ -61,7 +61,7 @@ test('C6.1: an item that reads a time from the header names both second lines, D
       readers.push(f);
       assert.match(prompt, /\bDue or Requested time\b/, f);
     }
-    assert.deepEqual(readers, ['fleet-nightly.jsonc', 'journal-day.jsonc']);
+    assert.deepEqual(readers, ['fleet-nightly.jsonc']);
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 

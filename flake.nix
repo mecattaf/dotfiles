@@ -731,6 +731,27 @@
               python3 ${./tests/strix-reachability/test_sensor.py}
               touch "$out"
             '';
+        # journal-day: seat launches, the unattended rollover (dry run, open-session
+        # refusal against real /proc) and the fish launcher, all in tmpdirs.
+        journal-day =
+          pkgs.runCommand "journal-day-tests"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.fish
+              ];
+              PYTHONTZPATH = "${pkgs.tzdata}/share/zoneinfo";
+            }
+            ''
+              mkdir -p repo/home/dot_local/bin repo/home/dot_config/fish repo/tests/journal-day
+              cp ${./home/dot_local/bin/journal-day} repo/home/dot_local/bin/journal-day
+              cp ${./home/dot_config/fish/config.fish} repo/home/dot_config/fish/config.fish
+              cp ${./tests/journal-day/test_journal_day.py} repo/tests/journal-day/test_journal_day.py
+              chmod u+w,+x repo/home/dot_local/bin/journal-day
+              patchShebangs repo/home/dot_local/bin/journal-day
+              python3 repo/tests/journal-day/test_journal_day.py -v
+              touch "$out"
+            '';
         claude-settings = pkgs.runCommand "claude-settings" { nativeBuildInputs = [ pkgs.python3 ]; } ''
           export CLAUDE_SETTINGS_MODULE=${./home/claude-settings.py}
           python3 ${./tests/claude-settings/test_settings.py}
