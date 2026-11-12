@@ -129,6 +129,20 @@ in
       default = "/run/current-system/sw/bin/dshd";
       description = "The dshd CLI the superagent launches workers with.";
     };
+    allowBuilds = mkOption {
+      type = types.attrsOf types.bool;
+      # The fork's effect -> msgpackr pulls the optional msgpackr-extract,
+      # whose prebuilt binaries cover NAS; pnpm 11 exits 1 on an undecided one.
+      default = {
+        msgpackr-extract = false;
+      };
+      description = ''
+        Build-script decisions (pnpm `allowBuilds`) of every Master folder.
+        `dsh-master render` sets each one in the folder's pnpm-workspace.yaml
+        when the key is absent or dsh left it undecided, and leaves a decision
+        already made there alone.
+      '';
+    };
     dshCommand = mkOption {
       type = types.str;
       # The dsh dshd runs (modules/dshd.nix), not the fleet wrapper.

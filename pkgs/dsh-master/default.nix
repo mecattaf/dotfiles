@@ -321,6 +321,8 @@ let
   spec = writeText "dsh-master-spec.json" (
     builtins.toJSON {
       dsh = settings.dshCommand;
+      dshd = settings.dshdCommand;
+      inherit (settings) allowBuilds;
       profiles = lib.mapAttrs (name: profile: {
         package = packageOf name dependencies (bundles profile.app);
         patch = patchFile name profile.rows;

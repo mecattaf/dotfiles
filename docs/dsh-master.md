@@ -48,6 +48,11 @@ Activation runs `dsh-master render --quiet`. It copies the rendered files
 into `~/.dsh/profiles/master*` when they differ, says when a copy was
 changed by hand, and never runs pnpm. A folder without `pnpm-workspace.yaml`
 also gets the one dsh writes for a new profile; render never replaces it.
+In that file render sets each `programs.dsh.master.allowBuilds` decision
+(default `msgpackr-extract: false`) whose key is absent or that dsh left as
+`set this to true or false` after a failed install. A decision already made
+there, and every other key, stays. Until `install` has recorded the folder's
+current `package.json`, every render prints `install needed: <p>`.
 The other steps are by hand:
 
 ```sh
@@ -60,11 +65,17 @@ dsh-master settings seed     # once, after the floor's first start
 
 `install` runs `/etc/dshd/releases/default/bin/dsh plugin --profile <p>
 install` under a 600 s timeout, with pnpm and git on PATH, and then judges
-the folder, not the exit: `package.json` unchanged, a lockfile, and a built
-`lib/` for each dependency. Without the folder's `pnpm-workspace.yaml` pnpm
-would pull the plugins' DSH peers from the registry, so install refuses it.
-The fleet wrapper refuses `dsh plugin`. After a pin moves (`superagent`,
-`claude`), render prints `install needed: <p>`.
+the folder, not the exit: `package.json` unchanged, a lockfile whose
+specifier for each dependency is the one in `package.json`, and a built
+`lib/` for each dependency. An earlier install's lockfile and `lib/` do not
+count, and a dsh that never ran (exit 125 to 127) fails whatever the folder
+holds. Without the folder's `pnpm-workspace.yaml` pnpm would pull the
+plugins' DSH peers from the registry, so install refuses it. pnpm replaces
+`lib/` and the served `client.js` in place, so install also refuses a
+profile that a running dshd instance of this DSH_HOME uses (it asks
+`dshd ls` and `dshd get`): stop the floor before installing into `master`.
+`--force` skips that check. The fleet wrapper refuses `dsh plugin`.
+`status` adds `builds pending: <names>` for a build dsh left undecided.
 
 `settings seed` reads the floor's Store settings through its management API,
 upserts the rules and admission cells of `home/dsh-master/settings.seed.json`
