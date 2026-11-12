@@ -39,13 +39,13 @@ test('C6.1: every live item validates with zero problems and reads enabled false
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 
-test('C6.1: the items are master:fleet-nightly, master:floor-upkeep and master:journal-day; floor-upkeep says it is inert', async () => {
+test('C6.1: the items are master:fleet-nightly, master:floor-upkeep and master:journal-day; floor-upkeep is report-only, no longer inert', async () => {
   const h = home();
   try {
     const d = await discover({ home: h, uid: process.getuid() });
     assert.deepEqual(d.files.map((f) => f.id), FILES.map((f) => `master:${f.replace('.jsonc', '')}`));
     assert.deepEqual(d.problems, []);
-    assert.match(readFileSync(join(h, '.agency/scheduled/floor-upkeep.jsonc'), 'utf8'), /INERT/);
+    assert.doesNotMatch(readFileSync(join(h, '.agency/scheduled/floor-upkeep.jsonc'), 'utf8'), /INERT/);
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 
