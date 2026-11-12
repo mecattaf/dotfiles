@@ -160,6 +160,46 @@ occurrences. It does not wait for the work. The superagent's own record
 
 Exit codes: 0 ok, 1 refused or a fault, 2 usage, 3 revision conflict.
 
+## A workflow from a request: day prep
+
+A workflow is not an item. It starts when the superagent is asked, in a
+request that names the script and the agency; the main Session calls
+`orchestrator_workflow_start`, and each `agent()` call of the script
+becomes one Ticket (the fork's `docs/009-workflows.md`). An item can
+only ask for that in words.
+
+Day prep (Tom, 10 Nov, `start.md:72`: the "day prep" protocol, "done in
+the early morning to preempt me having to manually do it") is the first
+master workflow. Its files are kept in
+`pkgs/scheduled/test/fixtures/master/.agency/` and placed in `~/.agency/`
+by hand, like the items:
+
+| File | Does |
+|---|---|
+| `workflows/day-prep.workflow.js` | Four read-only readers (yesterday's journal folder, `project overview`, the closed chats in yesterday's `raw-chat-index.jsonl`, `scheduled history` and `dshd ls`), then one writer of `~/notes/journal/YYYY/MM/DD/day-prep.md`, first line `# Assistant draft`. It writes nothing when the day folder is missing (`journal-day` owns the rollover) or the file exists. `args.date` is required |
+| `scheduled/day-prep.jsonc` | The 05:00 Europe/Paris nudge that asks for the same start. `enabled: false` (H60) |
+
+The request Tom sends the superagent, with the date filled in:
+
+```text
+Start the day-prep workflow in the master agency: call orchestrator_workflow_start with
+{"script": ".agency/workflows/day-prep.workflow.js", "cwd": "/home/tom", "args": {"date": "YYYY-MM-DD"}}.
+Accept its nodes as they come; it writes only that day's day-prep.md.
+```
+
+`orchestrator_workflow_status` follows the run. To check the script
+against the interpreter the floor runs (its MockBackend; no model is
+called), point the test at a checkout of the superagent fork with its
+dependencies installed:
+
+```sh
+# on strix-coordinator, after df -h /; the package lays out jsonc-parser and dsh-util-time beside src/
+nix build .#scheduled && cp -r result/share/scheduled "$TMPDIR/sched" && chmod -R u+w "$TMPDIR/sched" && cd "$TMPDIR/sched"
+DSH_SUPERAGENT_SRC=<fork checkout> node --experimental-transform-types --test test/day-prep.test.mjs
+```
+
+The flake check runs the same file and skips the interpreter tests.
+
 ## Journal queries
 
 ```sh

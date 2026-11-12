@@ -1,4 +1,5 @@
-// The three live items copied from ~/.agency/workflows/ (scheduled-jsonc §7). Every one ships with
+// The three live items copied from ~/.agency/workflows/ (scheduled-jsonc §7), and the day-prep nudge (docs/scheduled.md,
+// "A workflow from a request"). Every one ships with
 // "enabled": false (H60, Tom: "make sure there are no scheduled work in the morning"). The integrator
 // copies these files to ~/.agency/scheduled/ (mode 0600, directory 0700); Nix never writes them.
 import test from 'node:test';
