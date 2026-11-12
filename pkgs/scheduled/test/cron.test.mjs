@@ -191,8 +191,23 @@ test('scheduleProblems: entryIndex is correct on errors', () => {
 
 test('C2.5: daily crons outside the gap get no dst-gap warning (supervisor regression)', async () => {
   const { scheduleProblems } = await import('../src/lib/cron.mjs');
-  for (const cron of ['0 3 * * *', '0 1 * * *', '15 9 * * 1', '0 4 1 * *']) {
+  // Weekday and irregular schedules have uneven gaps and no skip (review SCHED-4).
+  for (const cron of ['0 3 * * *', '0 1 * * *', '15 9 * * 1', '0 4 1 * *', '0 9 * * 1-5', '0 9 * * 1,3', '0 18 * * 0,6']) {
     const problems = scheduleProblems([{ cron, timezone: 'Europe/Paris' }], { now: new Date('2026-11-11T00:00:00Z') });
     assert.deepEqual(problems.filter(p => p.code === 'dst-gap'), [], cron);
   }
+});
+
+test('C2.5: dst-gap uses the clock it is given, not the wall clock (review SCHED-4)', () => {
+  // Sao Paulo sprang forward at 00:00 on 4 Nov 2018 and has kept no DST since 2019.
+  const entries = [{ cron: '30 0 * * *', timezone: 'America/Sao_Paulo' }];
+  const at = (iso) => scheduleProblems(entries, { now: new Date(iso) }).filter((p) => p.code === 'dst-gap').length;
+  assert.equal(at('2018-06-01T00:00:00Z'), 1);
+  assert.equal(at('2026-11-11T00:00:00Z'), 0);
+});
+
+test('C2.5: a weekday cron inside the gap still warns; one outside it does not', () => {
+  const now = { now: new Date('2026-11-11T00:00:00Z') };
+  assert.ok(scheduleProblems([{ cron: '30 2 * * 0', timezone: 'Europe/Paris' }], now).some((p) => p.code === 'dst-gap'));
+  assert.ok(!scheduleProblems([{ cron: '0 9 * * 1-5', timezone: 'America/New_York' }], now).some((p) => p.code === 'dst-gap'));
 });

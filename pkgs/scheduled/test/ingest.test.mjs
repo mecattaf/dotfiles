@@ -143,3 +143,74 @@ test('intake.json and heartbeat.json live in the state dir, never in the superag
     env.cleanup();
   }
 });
+
+test('C3.8 an unreadable scheduled/ hides its items, it does not remove them: the record waits, the tick exits 1, and the item fires after recovery (review SCHED-1)', async () => {
+  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'stopped', lastRun: { ending: 'stopped' } } });
+  try {
+    env.item('kept', hourly(), at('2026-11-12T11:00:00.000Z'));
+    assert.equal((await tick(env.ctx, { now: at('2026-11-12T11:30:00.000Z') })).code, 0);
+    env.setStub({ state: 'masked' });
+    assert.equal((await tick(env.ctx, { now: at('2026-11-12T12:00:30.000Z') })).code, 0);
+    assert.deepEqual(env.records(), ['master~kept@20261112T1200Z.json']);
+    fs.chmodSync(env.scheduled, 0o000);
+    let res;
+    try {
+      res = await tick(env.ctx, { now: at('2026-11-12T12:30:30.000Z') });
+    } finally {
+      fs.chmodSync(env.scheduled, 0o700);
+    }
+    assert.equal(res.code, 1, res.lines.join('\n'));
+    assert.ok(res.lines.includes(`<4>discover unreadable path=${env.scheduled} error=EACCES`), res.lines.join('\n'));
+    assert.ok(!res.lines.some((l) => l.includes('withdrawn')), res.lines.join('\n'));
+    assert.deepEqual(env.records(), ['master~kept@20261112T1200Z.json'], 'not withdrawn');
+    assert.equal(env.entry('master:kept').enabled, true, 'still in intake');
+    const after = await tick(env.ctx, { now: at('2026-11-12T13:00:30.000Z') });
+    assert.equal(after.code, 0, after.lines.join('\n'));
+    assert.deepEqual(env.records(), ['master~kept@20261112T1200Z.json', 'master~kept@20261112T1300Z.json'], 'not re-armed as new');
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('C3.8 an unreadable folder in the walk that hid nothing known is no fault', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly());
+    const locked = join(env.home, 'locked');
+    fs.mkdirSync(locked, { mode: 0o700 });
+    fs.chmodSync(locked, 0o000);
+    try {
+      await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+      const res = await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+      assert.equal(res.code, 0, res.lines.join('\n'));
+      assert.ok(!res.lines.some((l) => l.includes('unreadable')), res.lines.join('\n'));
+      assert.deepEqual(env.records(), ['master~hb@20261112T1200Z.json']);
+    } finally {
+      fs.chmodSync(locked, 0o700);
+    }
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('C3.8 a file discovery skips, and an item that fails before it is read, are each logged once; a chmod fix is read at the next pass (review SCHED-2)', async () => {
+  const env = setupEnv();
+  try {
+    env.item('Journal_Day', hourly());
+    const loose = env.item('loose', hourly());
+    fs.chmodSync(loose, 0o664);
+    const first = await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    const second = await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+    const stem = `<4>invalid path=${join(env.scheduled, 'Journal_Day.jsonc')} reason=stem`;
+    const owner = '<4>invalid item=master:loose reason=ownership';
+    assert.ok(first.lines.includes(stem), first.lines.join('\n'));
+    assert.ok(first.lines.includes(owner), first.lines.join('\n'));
+    assert.ok(!second.lines.includes(stem) && !second.lines.includes(owner), second.lines.join('\n'));
+    assert.equal(second.code, 0);
+    fs.chmodSync(loose, 0o600);
+    await tick(env.ctx, { now: at('2026-11-12T12:30:10.000Z') });
+    assert.equal(env.entry('master:loose').valid, true);
+  } finally {
+    env.cleanup();
+  }
+});

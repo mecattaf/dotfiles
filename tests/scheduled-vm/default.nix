@@ -263,6 +263,7 @@ pkgs.testers.runNixOSTest {
         assert marks in (3, 4) and record["namespace"] == "master" and record["item"] == "hb", (record, marks)
         assert record["missed"] == marks - 1 and record["cwd"] == "/home/tom" and record["text"] == "Say ok.", record
         assert run(f"stat -c %a {INBOX} {INBOX}/{made[0]}").split() == ["700", "600"]
+        assert run(f"stat -c %a {STATE}").strip() == "700"
         # Stopped by intent, and a record waits: the tick starts the floor.
         assert "floor action=start state=stopped waiting=1 result=started" in journal(), journal()
         assert floor_state() == "running"

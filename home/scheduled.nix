@@ -23,6 +23,8 @@ let
   inbox = "${config.programs.dsh.master.stateDir}/inbox/scheduled";
   # The floor's dshd instance; the name the Master floor recipe keeps.
   floorInstance = "floor";
+  # The port the Master web profile serves on, which the tunnel forwards.
+  webPort = toString config.programs.dsh.master.webPort;
 in
 lib.mkIf osConfig.dshd.enable {
   # Tom, Claude Code and the dsh-web panel run the same program, and
@@ -60,6 +62,8 @@ lib.mkIf osConfig.dshd.enable {
       # heartbeat.json, intake.json and .tick.lock: ~/.local/state/scheduled
       # ($STATE_DIRECTORY), never the superagent's stateDir.
       StateDirectory = "scheduled";
+      # systemd's default is 0755; the files are 0600, keep their names private too.
+      StateDirectoryMode = "0700";
       NoNewPrivileges = true;
       UMask = "0077";
       # Longer than dshd's startupTimeout (150 s) for a floor start.
@@ -86,13 +90,13 @@ lib.mkIf osConfig.dshd.enable {
     Install.WantedBy = [ "timers.target" ];
   };
 
-  # The Scheduled panel on the Zenbook's loopback (docs/scheduled.md).
+  # The Master floor's dsh-web on the Zenbook's loopback (docs/scheduled.md).
   # NAS-owned, like the live agency-web-client-tunnel; nothing of
   # Scheduled runs on the Zenbook. No store path in this text, so an
   # openssh bump never makes fleet-update hold a switch for it.
   systemd.user.services.scheduled-panel-tunnel = {
     Unit = {
-      Description = "Scheduled panel: NAS loopback 3082 on the Zenbook";
+      Description = "Master floor dsh-web: NAS loopback ${webPort} on the Zenbook";
       After = [ "network-online.target" ];
       StartLimitIntervalSec = 0;
     };
@@ -103,7 +107,7 @@ lib.mkIf osConfig.dshd.enable {
         "-o ForwardAgent=no -o ControlMaster=no -o ControlPath=none"
         "-o ExitOnForwardFailure=yes -o ServerAliveInterval=30"
         "-o ServerAliveCountMax=3"
-        "-R 127.0.0.1:3082:127.0.0.1:3082 client"
+        "-R 127.0.0.1:${webPort}:127.0.0.1:${webPort} client"
       ];
       # The Zenbook sleeps and roams: retry quietly, forever.
       Restart = "always";

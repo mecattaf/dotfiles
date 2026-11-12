@@ -30,7 +30,7 @@ USAGE:
   scheduled run ID [--home DIR] [--inbox DIR] [--floor-instance NAME] [--json]
   scheduled history [ID] [--inbox DIR] [-n N] [--json]
   scheduled tick --inbox DIR [--state-dir DIR] [--home DIR] [--floor-instance NAME]
-                 [--now ISO] [--json]
+                 [--now ISO --state-dir DIR] [--json]
 
 ENVIRONMENT:
   SCHEDULED_INBOX           default --inbox (the superagent's <stateDir>/inbox/scheduled)

@@ -63,10 +63,10 @@ function readPromptFile(root, relative) {
 /**
  * Validate one scheduled item on disk.
  * @param {string} path - Absolute path of `<root>/.agency/scheduled/<item>.jsonc`
- * @param {{ uid?: number }} [opts]
+ * @param {{ uid?: number, now?: Date }} [opts] `now`: the clock schedule checks start from (the tick passes its own)
  * @returns {Promise<{ path, problems, value, bytes, promptBytes, prompt }>} `prompt` is the work text when valid
  */
-export async function validateFile(path, { uid = process.getuid?.() } = {}) {
+export async function validateFile(path, { uid = process.getuid?.(), now } = {}) {
   const problems = [];
   // Every answer carries the revision of the bytes read, so an invalid revision is still named once.
   const done = (extra = {}) => {
@@ -112,7 +112,7 @@ export async function validateFile(path, { uid = process.getuid?.() } = {}) {
   problems.push(...parsed);
   if (value === null) return done({ bytes });
 
-  problems.push(...scheduleProblems(value.on?.schedule ?? []).map((p) => ({
+  problems.push(...scheduleProblems(value.on?.schedule ?? [], { now }).map((p) => ({
     severity: p.severity, code: p.code, line: p.line ?? 0, col: p.col ?? 0, message: p.message,
   })));
 
