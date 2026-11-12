@@ -1,0 +1,8 @@
+// A synthetic item for the tests. INERT: its prompt names a command that does
+// not exist, so it stays off until the prompt is rewritten. No name: the
+// display title is the file stem.
+{
+  "enabled": false,
+  "on": { "schedule": [ { "cron": "0 4 * * 1-5", "timezone": "Europe/Paris" } ] },
+  "job": { "prompt": "Run example-missing-command --report and quote what it prints. Change nothing." }
+}

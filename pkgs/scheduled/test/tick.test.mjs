@@ -32,29 +32,29 @@ test('T1 a first tick writes heartbeat.json and intake.json in the state dir, no
 test('T2 an hourly item and a lastTick 3 hours old link exactly one record: latest instant, missed 2, revision, frozen text, cwd the agency realpath, namespace, by scheduled-heartbeat', async () => {
   const env = setupEnv();
   try {
-    env.item('fleet-nightly', hourly({ name: 'Fleet nightly', job: { prompt: ['Line one.', 'Line two.'] } }));
+    env.item('example-hourly', hourly({ name: 'Example hourly', job: { prompt: ['Line one.', 'Line two.'] } }));
     await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
     const res = await tick(env.ctx, { now: at('2026-11-12T14:00:30.000Z') });
     assert.equal(res.code, 0);
-    assert.deepEqual(env.records(), ['master~fleet-nightly@20261112T1400Z.json']);
-    const rec = env.record('master~fleet-nightly@20261112T1400Z.json');
+    assert.deepEqual(env.records(), ['master~example-hourly@20261112T1400Z.json']);
+    const rec = env.record('master~example-hourly@20261112T1400Z.json');
     assert.deepEqual(rec, {
       v: 1,
       kind: 'schedule',
       namespace: 'master',
-      item: 'fleet-nightly',
-      name: 'Fleet nightly',
+      item: 'example-hourly',
+      name: 'Example hourly',
       cwd: env.home,
-      file: join(env.scheduled, 'fleet-nightly.jsonc'),
+      file: join(env.scheduled, 'example-hourly.jsonc'),
       due: '2026-11-12T14:00:00.000Z',
       missed: 2,
-      revision: env.entry('master:fleet-nightly').revision,
+      revision: env.entry('master:example-hourly').revision,
       text: 'Line one.\nLine two.',
       by: 'scheduled-heartbeat',
       at: '2026-11-12T14:00:30.000Z',
     });
     assert.match(rec.revision, /^[0-9a-f]{12}$/);
-    assert.ok(res.lines.includes('<6>decode item=master:fleet-nightly due=2026-11-12T14:00:00.000Z result=created'), res.lines.join('\n'));
+    assert.ok(res.lines.includes('<6>decode item=master:example-hourly due=2026-11-12T14:00:00.000Z result=created'), res.lines.join('\n'));
   } finally {
     env.cleanup();
   }

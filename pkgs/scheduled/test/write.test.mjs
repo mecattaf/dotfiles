@@ -29,11 +29,11 @@ const IT = (h, f) => join(h, '.agency/scheduled', f);
 test('C2.9: set to an invalid value exits 1, and an --expect that differs from disk exits 3; neither writes', async () => {
   const h = home();
   try {
-    const before = readFileSync(IT(h, 'journal-day.jsonc'));
-    assert.equal(await verb('set', ['master:journal-day', 'enabled', '"yes"'], ctxFor(h)), 1);
-    assert.equal(await verb('set', ['master:journal-day', 'window', '"2h"'], ctxFor(h)), 1);
-    assert.equal(await verb('set', ['master:journal-day', 'enabled', 'true', '--expect', 'deadbeef0000'], ctxFor(h)), 3);
-    assert.deepEqual(readFileSync(IT(h, 'journal-day.jsonc')), before);
+    const before = readFileSync(IT(h, 'example-daily.jsonc'));
+    assert.equal(await verb('set', ['master:example-daily', 'enabled', '"yes"'], ctxFor(h)), 1);
+    assert.equal(await verb('set', ['master:example-daily', 'window', '"2h"'], ctxFor(h)), 1);
+    assert.equal(await verb('set', ['master:example-daily', 'enabled', 'true', '--expect', 'deadbeef0000'], ctxFor(h)), 3);
+    assert.deepEqual(readFileSync(IT(h, 'example-daily.jsonc')), before);
     assert.deepEqual(readdirSync(join(h, '.agency/scheduled')).filter((n) => n.endsWith('.tmp')), []);
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
@@ -55,17 +55,17 @@ test('C2.10: a write goes through .<stem>.jsonc.<pid>.tmp mode 0600 and answers 
 test('C2.11: set ID enabled true on a commented file changes exactly one line and keeps every comment byte-identical', async () => {
   const h = home();
   try {
-    const before = readFileSync(IT(h, 'journal-day.jsonc'), 'utf8').split('\n');
-    assert.equal(await verb('set', ['master:journal-day', 'enabled', 'true'], ctxFor(h)), 0);
-    const after = readFileSync(IT(h, 'journal-day.jsonc'), 'utf8').split('\n');
+    const before = readFileSync(IT(h, 'example-daily.jsonc'), 'utf8').split('\n');
+    assert.equal(await verb('set', ['master:example-daily', 'enabled', 'true'], ctxFor(h)), 0);
+    const after = readFileSync(IT(h, 'example-daily.jsonc'), 'utf8').split('\n');
     const changed = before.map((l, i) => [l, after[i]]).filter(([a, b]) => a !== b);
     assert.deepEqual(changed, [['  "enabled": false,', '  "enabled": true,']]);
-    assert.equal(await verb('set', ['master:journal-day', 'enabled', 'false'], ctxFor(h)), 0);
-    assert.deepEqual(readFileSync(IT(h, 'journal-day.jsonc'), 'utf8').split('\n'), before);
+    assert.equal(await verb('set', ['master:example-daily', 'enabled', 'false'], ctxFor(h)), 0);
+    assert.deepEqual(readFileSync(IT(h, 'example-daily.jsonc'), 'utf8').split('\n'), before);
     // The skill's spelling of a path into an array.
     assert.deepEqual(parsePath('on.schedule[0].cron'), ['on', 'schedule', 0, 'cron']);
-    assert.equal(await verb('set', ['master:journal-day', 'on.schedule[0].cron', '0 1 * * *'], ctxFor(h)), 0);
-    assert.match(readFileSync(IT(h, 'journal-day.jsonc'), 'utf8'), /"cron": "0 1 \* \* \*"/);
+    assert.equal(await verb('set', ['master:example-daily', 'on.schedule[0].cron', '0 1 * * *'], ctxFor(h)), 0);
+    assert.match(readFileSync(IT(h, 'example-daily.jsonc'), 'utf8'), /"cron": "0 1 \* \* \*"/);
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 

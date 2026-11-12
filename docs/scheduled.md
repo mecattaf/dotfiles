@@ -369,7 +369,7 @@ Lines carry an sd-daemon priority prefix, which journald strips into
 tick; `reason=manual` means it ran any other way. A healthy tick:
 
 ```
-<6>decode item=master:journal-day due=2026-11-13T05:00:00.000Z result=created
+<6>decode item=master:weekly-review due=2026-11-16T06:00:00.000Z result=created
 <5>floor action=start state=stopped waiting=1 result=started
 <6>pass reason=timer took_ms=412 discover_ms=48 agencies=1 items=3 waiting=1
 ```
@@ -425,7 +425,9 @@ the floor is stopped.
 
 ## State at install
 
-Every item ships with `"enabled": false`. The heartbeat ticks, writes no
-record and starts nothing, so nothing runs unattended before Tom enables
-an item. `floor-upkeep` is copied but inert: the `upkeep` verb its
-prompt names belonged to a withdrawn fork branch.
+Nix installs no item. `scheduled new` always writes `"enabled": false`,
+and an item placed by hand starts the same way. The heartbeat ticks,
+writes no record and starts nothing, so nothing runs unattended before an
+item is enabled. The items in `pkgs/scheduled/test/fixtures/master/` are
+synthetic examples for the tests, not copies of real ones: real items
+live only in their agency's `.agency/scheduled/`.

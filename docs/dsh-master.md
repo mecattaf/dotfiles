@@ -325,7 +325,7 @@ seeded, and every item under `~/.agency/scheduled/` is `enabled: false`
 Nothing runs until one of these:
 
 ```sh
-scheduled run master:journal-day            # one item now; the heartbeat path starts the floor
+scheduled run master:<item>                 # one item now; the heartbeat path starts the floor
 scheduled set master:<item> enabled true    # arm an item
 dshd start floor && dshd attach floor       # the panel, and the main Session to ask for a workflow
 dshd enable floor                           # keep the floor across reboots
