@@ -15,7 +15,7 @@
       "   On the build host: ssh -o BatchMode=yes strix-coordinator systemctl --failed --no-legend --plain.",
       "   For each failed unit, read systemctl status --no-pager -n 20 <unit> (with --user, or through the same ssh, as it was found) and give its most likely cause in one line.",
       "2. Disk: df -BG --output=target,avail,pcent / here, and ssh -o BatchMode=yes strix-coordinator df -BG --output=target,avail,pcent / on the build host.",
-      "   Flag any / with less than 25G available: nix builds stop below 25 GB free on the build host. Give the figure, not a remedy.",
+      "   Flag any / with less than 25G available: on the build host that stops nix builds; this host builds nothing, so there it is a figure to watch. Give figures, not remedies.",
       "3. If ssh to strix-coordinator fails, quote its error once, do not retry, and report that host as unreachable.",
       "Write one short table: host, failed units with their one-line causes, / available, below 25G (yes or no). End with: Nothing was changed.",
       "Never start, stop, restart, reset, mask or edit a unit; never run garbage collection or delete a file or store path; never restart Herdr or the user manager; never re-authenticate tailscale or anything else."

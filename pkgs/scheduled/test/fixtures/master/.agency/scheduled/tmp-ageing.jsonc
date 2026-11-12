@@ -17,7 +17,7 @@
       "2. Bundles: find /tmp -maxdepth 2 -name '*.bundle' -printf '%TY-%Tm-%Td %p\\n' on both hosts.",
       "3. GC roots: find /nix/var/nix/gcroots/auto -maxdepth 1 -type l -printf '%l\\n' on both hosts, keeping the targets under /tmp, and journalctl -u gc-root-reaper --since -8d --no-pager -o cat | tail -n 20 for what the daily reaper removed. If journald refuses, say so.",
       "Mark at risk a checkout with uncommitted work or commits on no remote whose last commit is 7 or more days old: /tmp entries age out after 10 days.",
-      "Write one table per host: path, branch, uncommitted (yes or no), commits on no remote, last commit, at risk. Then list the bundles and the /tmp GC roots. End with: Nothing was changed.",
+      "List only checkouts with uncommitted work or commits on no remote, and give the count of the others. Write one table per host: path, branch, uncommitted (yes or no), commits on no remote, last commit, at risk. Then list the bundles and the /tmp GC roots. End with: Nothing was changed.",
       "Never push, fetch, commit, bundle, stash or check out; never remove or prune a worktree, delete a branch, a file or a GC root; never write a checkout's index or config."
     ]
   }
