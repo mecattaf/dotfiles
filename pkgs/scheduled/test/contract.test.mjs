@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { MISSED_MAX, makeRecord, recordProblem } from '../src/lib/inbox.mjs';
 import { tick } from '../src/lib/tick.mjs';
 import { main as runMain } from '../src/verbs/run.mjs';
 import { setupEnv, hourly } from './helpers.mjs';
@@ -56,4 +57,15 @@ test('C1 a tick\'s record and a run\'s record have exactly the field set and typ
 test('C2 test/fixtures/occurrence-v1.json is the fork\'s exact bytes: 982 bytes, sha256 170bb0c7…8849', () => {
   assert.equal(FIXTURE_BYTES.length, 982);
   assert.equal(crypto.createHash('sha256').update(FIXTURE_BYTES).digest('hex'), FORK_FIXTURE_SHA256);
+});
+
+test('C1 a record after an outage longer than the Source counts carries missed capped at the Source\'s maximum, and still runs', () => {
+  const record = makeRecord({
+    kind: 'schedule', namespace: 'team/widgets', item: 'every-minute', cwd: '/srv/work/widgets', file: '/srv/work/widgets/every-minute.jsonc',
+    due: new Date('2026-11-12T12:00:00.000Z'), missed: 100_800, revision: 'a1b2c3d4e5f6', text: 'Say ok.', by: 'scheduled-heartbeat', at: new Date('2026-11-12T12:00:04.000Z'),
+  });
+  // An every-minute item after 70 days without a tick: 100 800 instants, more than the fork's schema allows.
+  assert.equal(MISSED_MAX, 100_000);
+  assert.equal(record.missed, 100_000);
+  assert.equal(recordProblem(record), null);
 });
