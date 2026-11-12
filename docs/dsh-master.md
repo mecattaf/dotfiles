@@ -22,7 +22,11 @@ Rules the renderer keeps, each asserted by `checks.dsh-master`:
   `cordis.patch.yml`, because dshd runs the unwrapped dsh and never gets the
   wrapper's overlays. The sandbox, permission and approval rows are left out:
   workers run with full permissions, and the superagent needs the stock
-  `danger-full-access` preset.
+  `danger-full-access` preset. A Session opened by hand in the `master`
+  panel gets the same: the base sandbox and approval rows read
+  `DSH_PERMISSION_MODE`, which dshd sets to `danger-full-access`, so it
+  starts with approval `never` (on Claude, `bypassPermissions`), and a
+  sandboxed preset runs without the fleet's pinned `dsh-bwrap` runner.
 - The `dsh-superagent` row is the same in every folder but for `engine`. A
   worker mounts the plugin without its orchestrator: no state, lock, Session
   or environment change, and the fork's Sources never apply.
@@ -105,3 +109,11 @@ No `--patch`: the profile carries the policy. dshd needs the user bus
 (`XDG_RUNTIME_DIR`, `DBUS_SESSION_BUS_ADDRESS`) to reach systemd and exits 7
 `systemd-unavailable` without it; neither name is recorded in the instance's
 `environmentNames`. The name stays `floor`, which the heartbeat addresses.
+
+The panel's management API (`/orchestrator/api`) takes no token: its only
+checks are the loopback bind, the `Host` header and
+`x-orchestrator-request: 1`. Port 3082 therefore grants control equal to
+tom's shell, to any local uid on NAS and, through `scheduled-panel-tunnel`,
+to any local process on the Zenbook: it can rewrite the superagent's prompts
+and policy and retry or stop Tickets, and the superagent launches
+full-permission workers.
