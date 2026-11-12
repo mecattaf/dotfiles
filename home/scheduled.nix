@@ -21,6 +21,11 @@ let
   # profile renders as dsh-superagent's stateDir; tests/scheduled asserts
   # the two agree.
   inbox = "${config.programs.dsh.master.stateDir}/inbox/scheduled";
+  # The pairs an item may name as its `pair`: the Master profile renders
+  # each one as a key of dshd.pairs, so the executor never meets an
+  # unknown pair the heartbeat handed off. An item without `pair` runs on
+  # programs.dsh.master.defaultPair, which the heartbeat never names.
+  pairs = lib.concatStringsSep " " (builtins.attrNames config.programs.dsh.master.pairs);
   # The floor's dshd instance; the name the Master floor recipe keeps.
   floorInstance = "floor";
 in
@@ -31,6 +36,7 @@ lib.mkIf osConfig.dshd.enable {
   home.sessionVariables = {
     SCHEDULED_INBOX = inbox;
     SCHEDULED_FLOOR_INSTANCE = floorInstance;
+    SCHEDULED_PAIRS = pairs;
   };
 
   systemd.user.services.scheduled-heartbeat = {
@@ -56,6 +62,7 @@ lib.mkIf osConfig.dshd.enable {
         "PATH=/run/current-system/sw/bin"
         "SCHEDULED_INBOX=${inbox}"
         "SCHEDULED_FLOOR_INSTANCE=${floorInstance}"
+        "SCHEDULED_PAIRS=${pairs}"
       ];
       # heartbeat.json, intake.json and .tick.lock: ~/.local/state/scheduled
       # ($STATE_DIRECTORY), never the superagent's stateDir.

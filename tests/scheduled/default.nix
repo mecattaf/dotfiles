@@ -20,6 +20,9 @@ let
   # dsh-superagent stateDir, whose <stateDir>/inbox/scheduled the floor's
   # scheduled Source reads.
   inbox = "${hm.programs.dsh.master.stateDir}/inbox/scheduled";
+  # The pair names an item may name: the Master profile's pairs, which it
+  # renders as dshd.pairs.
+  pairs = lib.concatStringsSep " " (builtins.attrNames hm.programs.dsh.master.pairs);
   environment = lib.toList tick.Service.Environment;
 in
 assert timer.Timer == {
@@ -39,6 +42,10 @@ assert builtins.elem "SCHEDULED_INBOX=${inbox}" environment;
 assert builtins.elem "SCHEDULED_FLOOR_INSTANCE=floor" environment;
 assert hm.home.sessionVariables.SCHEDULED_INBOX == inbox;
 assert hm.home.sessionVariables.SCHEDULED_FLOOR_INSTANCE == "floor";
+# An item's `pair` is checked against the pairs the floor's executor has.
+assert pairs != "" && builtins.elem hm.programs.dsh.master.defaultPair (lib.splitString " " pairs);
+assert builtins.elem "SCHEDULED_PAIRS=${pairs}" environment;
+assert hm.home.sessionVariables.SCHEDULED_PAIRS == pairs;
 # Its own state is systemd's StateDirectory, never inside .agency/state.
 assert tick.Service.StateDirectory == "scheduled";
 assert !(lib.any (e: lib.hasPrefix "SCHEDULED_STATE_DIR=" e) environment);

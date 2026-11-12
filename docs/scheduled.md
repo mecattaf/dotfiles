@@ -31,6 +31,7 @@ dshd itself stays free of clocks ("NO SCHEDULES EVER").
 | Inbox, owned by the floor's Source | `.done/` (received), `.bad/` (refused, with `<name>.error`) |
 | Heartbeat state (`heartbeat.json`, `intake.json`, `.tick.lock`) | `~/.local/state/scheduled` (systemd `StateDirectory`) |
 | The floor | dshd instance `floor` (`SCHEDULED_FLOOR_INSTANCE`) |
+| Pairs an item may name | the Master profile's pair names (`SCHEDULED_PAIRS`) |
 
 `<stateDir>` is the Master profile's dsh-superagent `stateDir`
 (`programs.dsh.master.stateDir`, default `~/.agency/state/master`), and it
@@ -48,6 +49,7 @@ pair, are rendered from one source; see [dsh-master.md](dsh-master.md).
   "$schema": "scheduled-item.v1",
   "name": "Journal day",                      // optional; defaults to the file stem
   "enabled": false,                           // required: false writes no record
+  "pair": "gufo",                             // optional; defaults to the floor's default pair
   "on": { "schedule": [{ "cron": "0 6 * * *", "timezone": "Europe/Paris" }] },
   "job": { "prompt": "Compile yesterday's journal." }   // or "prompt-file": ".agency/prompts/x.md"
 }
@@ -61,7 +63,16 @@ their intent now goes:
 - `on.workflow_dispatch`;
 - `job.cwd`, `job.timeout`.
 
-`model`, `profile`, `priority`, `pair`, `env` and `secrets` are refused.
+`pair` names the compute pair the work runs on: one of the Master
+profile's pairs (`programs.dsh.master.pairs`), which `home/scheduled.nix`
+passes as `SCHEDULED_PAIRS`. Without it the record names none and the
+floor's executor runs `programs.dsh.master.defaultPair`. Any other name is
+an `unknown-pair` error, and so is any name when `SCHEDULED_PAIRS` is
+unset. When the pairs change (a switch), the next tick parses every item
+again, so an item whose pair is gone turns invalid and its waiting record
+is withdrawn. `model`, `profile`, `priority`, `env` and `secrets` are
+refused: a pair is the only compute an item names, and priority is the
+superagent's judgement.
 
 A `prompt-file` path is relative to the agency folder and must stay
 inside it. The prompt is 1 B–32 KiB of UTF-8.

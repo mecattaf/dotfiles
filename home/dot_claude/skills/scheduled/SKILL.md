@@ -33,6 +33,9 @@ item's prompt and decides. So write conditions, checks and context
   disarm: `scheduled set ID enabled false`.
 - Small edits: `scheduled set ID on.schedule[0].cron '"0 6 * * 1"'`.
   Pass `--expect REV` when Tom may be editing too.
+- An item runs on the floor's default pair. Name another only when Tom
+  asks: `scheduled set ID pair NAME`, where NAME is one of
+  `$SCHEDULED_PAIRS`; `scheduled set ID pair --unset` goes back.
 - Every schedule entry needs a `"timezone"`. Prefer `:00` minutes, and
   never use 02:00–02:59 in Europe/Paris.
 - To try out a new item: `scheduled run ID` while it is still
@@ -50,5 +53,6 @@ item's prompt and decides. So write conditions, checks and context
 ## Never
 - Never edit the inbox, `.done/`, `.bad/` or `~/.local/state/scheduled`
   by hand, and never open the floor database.
-- Never put secrets, env, model, profile or priority in an item.
+- Never put secrets, env, model, profile or priority in an item: a pair
+  is the only compute an item names.
 - Never put item files in the dotfiles repo (it is public).
