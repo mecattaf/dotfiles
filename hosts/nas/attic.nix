@@ -117,10 +117,9 @@ in
         # the difference between most of a night and well inside the hour.
         # The defaults are tuned for a
         # shared multi-tenant cache where fine-grained dedup between unrelated
-        # tenants pays for itself; this cache has exactly one producer
-        # (./update-center.nix, same box) and already dedups whole NARs, so
-        # sub-64 KiB dedup buys very little and was charging the entire push
-        # budget for it.
+        # tenants pays for itself; this cache serves one small fleet and
+        # already dedups whole NARs, so sub-64 KiB dedup buys very little and
+        # was charging the entire push budget for it.
         #
         # Costs, stated: dedup gets coarser, so the cache grows somewhat, and
         # existing chunks keep their old boundaries — a re-uploaded NAR will
@@ -153,8 +152,8 @@ in
     # this machine and always were. Per ./disko.nix, `/` is the 57G eMMC
     # (mmcblk0p2); the 256G M.2 is NOT the root — it is /mnt/fast. So ws5 put
     # an accumulating, fleet-wide binary cache on the smallest and slowest
-    # device in the box, beside the nix store that ./update-center.nix fills
-    # nightly with three host closures.
+    # device in the box, beside the nix store that the update center (since
+    # removed) filled nightly with three host closures.
     #
     # Found 2026-08-22 with / at 100% and ZERO bytes free, update-center in
     # failed state ("error: write of 26 bytes: No space left on device", build

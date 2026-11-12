@@ -25,8 +25,8 @@
 #
 # Which is also the endurance argument: eMMC has markedly worse write
 # endurance than an NVMe with a real controller, and the nightly build farm
-# is the most write-heavy thing on this box. It is on the wrong disk twice
-# over.
+# (the update center, since removed) was the most write-heavy thing on this
+# box. It was on the wrong disk twice over.
 #
 # ── WHY THIS LANDS OFF, and must not be flipped remotely ────────────────────
 # /nix must be mounted before stage-2 init — the init IS a store path. So
@@ -43,7 +43,7 @@
 #
 # ── RUNBOOK (#232) ─────────────────────────────────────────────────────────
 #   1. Confirm room:  df -h /nix /mnt/fast     # need ~2x the store, NVMe side
-#   2. Quiesce:       sudo systemctl stop update-center atticd
+#   2. Quiesce:       sudo systemctl stop atticd
 #                     sudo nix-store --gc      # NEVER -d (modules/gc-retention.nix)
 #   3. Copy, preserving hardlinks — auto-optimise-store means the store is
 #      full of them and -H is the difference between 30G and far more:

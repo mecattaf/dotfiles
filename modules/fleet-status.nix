@@ -75,10 +75,9 @@ let
     profile = profileNames.${name};
     target = "root@${builtins.head registry.${name}.aliases}";
     # Every node, the strix included, is collected as root over ssh.
-    # A local run as tom cannot read root-only state: #354's update-adopt
-    # keeps /var/lib/update-adopt at 0700, so the strix's own update
-    # facts would stay unknown forever. It would also grade the strix
-    # through a different code path (no runuser) than the other three.
+    # A local run as tom cannot read root-only state, and it would grade
+    # the strix through a different code path (no runuser) than the other
+    # three.
     # tom → root@strix is authorized by the mesh (MEASURED 2026-09-13:
     # `ssh -o BatchMode=yes root@strix id -u` → 0). If the strix's
     # sshd is broken, the view reads it UNREACHABLE, which is the truth.

@@ -419,8 +419,7 @@
             # rollingInputOverrides/fleetDeploySshOpts left this set 2026-08-21
             # with hosts/strix/fleet-deploy.nix, their only consumer;
             # both still exist at flake level (deploy nodes use the SSH opts,
-            # and the NAS update-center will inherit the rolling-override
-            # mechanic).
+            # and lib.rollingInputOverrides publishes the reviewed list).
             inherit inputs;
           };
           modules = [
@@ -483,11 +482,11 @@
       # without a flake.lock review, and hosts/nas/default.nix cites it by name
       # as the reason a single leaf TUI (amdtop) moves nightly while the
       # appliance's stable base does not. Deleting it to satisfy deadnix would
-      # have orphaned that prose and thrown away the reviewed URLs the NAS
-      # update-center is expected to inherit; leaving it as a bare `let` binding
-      # failed the deadnix check, which had been red at build time since that
-      # deletion. Publishing it resolves both — the list stays reviewed, stays
-      # cited, and is now inspectable by whatever wires the rolling resolution.
+      # have orphaned that prose and thrown away the reviewed URLs; leaving it
+      # as a bare `let` binding failed the deadnix check, which had been red
+      # at build time since that deletion. Publishing it resolves both — the
+      # list stays reviewed, stays cited, and is now inspectable by whatever
+      # wires the rolling resolution.
       lib.rollingInputOverrides = rollingInputOverrides;
 
       overlays.default = import ./overlays {
@@ -517,8 +516,8 @@
       # deploy-rs owns HOW a selected generation reaches and activates on a node.
       # Since 2026-08-21 this graph is MANUAL-ONLY (`deploy .#<host>`): the
       # nightly Tally-owned fleet transaction (fleet-deploy.service) is dead,
-      # superseded by the NAS update-center where devices pull instead of
-      # being pushed. Manual pushes remain the operator's escape hatch.
+      # and so is the NAS update-center that followed it: NixOS builds happen
+      # on strix-coordinator. Manual pushes remain the operator's escape hatch.
       deploy = {
         sshUser = "root";
         user = "root";
@@ -1526,7 +1525,7 @@
             service = strixHome.systemd.user.services.herdr;
           in
           assert service.Service.OOMPolicy == "continue";
-          # #354: a switch (update-adopt's or Tom's) never restarts Herdr.
+          # #354: a switch never restarts Herdr.
           # sd-switch 0.6.4 reads X-SwitchMethod=keep-old (home/herdr.nix);
           # the rendered unit text is checked too, so a renamed option cannot
           # silently drop the line.
@@ -1539,33 +1538,22 @@
             touch "$out"
           '';
 
-        # #354 producer half and the 2026-09-13 seed preflight: per-host signed
-        # candidate publication only after a successful push, a failed host
-        # keeping its previous pointer byte-identical, release pruning,
-        # --publish-only refusals, and seed-missing naming a private input.
+        # The NAS update center is gone (NixOS builds happen on
+        # strix-coordinator): no build unit, no publisher, no candidates vhost
+        # and no firewall door on its port. Removals are locked in, not just
+        # deleted, so a silent re-add fails here.
         update-center =
           let
             nas = self.nixosConfigurations.nas.config;
           in
-          assert nas.myNas.updateCenter.enable;
-          assert nas.myNas.updateCenter.candidates.port == 8734;
-          assert nas.services.nginx.virtualHosts ? fleet-candidates;
-          pkgs.runCommand "update-center"
-            {
-              nativeBuildInputs = [
-                pkgs.python3
-                pkgs.openssh
-                pkgs.jq
-                pkgs.findutils
-              ];
-            }
-            ''
-              mkdir -p hosts/nas tests/update-center
-              cp ${./hosts/nas/update-center.sh} hosts/nas/update-center.sh
-              cp ${./tests/update-center/test_update_center.py} tests/update-center/test_update_center.py
-              python -m unittest discover -v -s tests/update-center
-              touch "$out"
-            '';
+          assert !(nas.myNas ? updateCenter);
+          assert !(nas.systemd.services ? update-center);
+          assert !(nas.services.nginx.virtualHosts ? fleet-candidates);
+          assert !(nixpkgs.lib.hasInfix "8734" nas.networking.firewall.extraInputRules);
+          assert !(builtins.any (p: nixpkgs.lib.getName p == "update-center-publish") nas.environment.systemPackages);
+          pkgs.runCommand "update-center" { } ''
+            touch "$out"
+          '';
 
         # Exercise the request-scoped utility seam without qmd or live models.
         utility-model = pkgs.runCommand "utility-model" { nativeBuildInputs = [ pkgs.python3 ]; } ''
@@ -1974,8 +1962,8 @@
           assert (profile "client").name == "thin-client";
           assert (profile "client").user_manager;
 
-          # Root over ssh for every node, the strix too: update-adopt's
-          # state is root-only, so a local run as tom could never read it.
+          # Root over ssh for every node, the strix too: root-only state
+          # stays readable, and every node is graded through one code path.
           assert builtins.all (h: h.transport == "ssh") hostsJson;
           pkgs.runCommand "fleet-status" { nativeBuildInputs = [ pkgs.python3 ]; } ''
             set -euo pipefail
@@ -2761,9 +2749,9 @@
           assert strix.systemd.sockets ? immich-ml-access;
 
           # Distributed builds stay OFF. The worker being back does NOT make it a
-          # build farm: the fleet's build story is the NAS update-center (build
-          # nightly on the appliance, pull everywhere), which is why
-          # hosts/worker/cache-push.nix was dropped rather than restored.
+          # build farm: the fleet builds on strix-coordinator itself (the NAS
+          # update-center is gone), which is why hosts/worker/cache-push.nix
+          # was dropped rather than restored.
           assert !strix.nix.distributedBuilds;
           assert strix.nix.buildMachines == [ ];
 
@@ -2789,7 +2777,7 @@
           # pre-start CHECKS the bundle and refuses; it never fetches.
 
           # NAS downloads remain a separate timer/operator action, never an
-          # update-center or activation dependency.
+          # activation dependency.
           assert (nas.systemd.services.library-fetch.wantedBy or [ ]) == [ ];
           # Tally is gone (sunset 2026-09-30), so there is no executor or pool
           # table left to hold a row for the worker.

@@ -48,7 +48,6 @@
     # same device." The protection stack is snapshots + RAID 1 + LaCie.
     ./models.nix # the model Library: weights forever-collection + static cache
     ./attic.nix # ws5  fleet binary cache, served directly (executed 2026-08-21)
-    ./update-center.nix # nightly fleet builds -> attic (the App Store model)
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
@@ -122,19 +121,11 @@
   # from the strix with atticd stopped, signing key verified intact,
   # env file placed on the root NVMe.
   myNas.attic.enable = true;
-  # The App Store's build half — nightly 01:30, capped to the bottom of every
-  # scheduler, publishes to the local attic. Devices pull; nothing is pushed.
-  #
-  # Back ON 2026-08-22 in the same commit that flips myNas.nixOnNvme below —
-  # the pairing is the point. It was briefly turned off that morning when the
-  # 57G eMMC could not hold three closures; disabling the build farm made the
-  # symptom stop without fixing the siting, which was the wrong answer. The
-  # store now lives on the 1TB pool (@fast/nix), so the farm has room to do its job.
-  myNas.updateCenter.enable = true;
-  # Nightly build parked (Tom, 2026-09-28): it peaked at 15.5G + 1.4G swap on
-  # this 24G router, and builds belong on the desktops, run by hand. The
-  # service stays hand-startable and the candidates keep being served, so
-  # update-adopt on the devices sees the last good closure, not an error.
+  # No update center: the NAS builds nothing for the fleet. Its nightly build
+  # was parked on 2026-09-28 (it peaked at 15.5G + 1.4G swap on this 24G
+  # router), update-adopt left the devices on 2026-09-30, and NixOS builds
+  # happen on strix-coordinator. The candidates vhost and its firewall rule
+  # on 10.42.0.1:8734 went with it; atticd stays.
 
   # ── /nix on the NVMe pool (#232) ────────────────────────────────────────
   # Flipped after the runbook in ./nix-on-nvme.nix was walked on the real
