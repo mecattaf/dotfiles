@@ -9,6 +9,7 @@ import json
 import shutil
 import signal
 import subprocess
+import sys
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -116,7 +117,7 @@ class JournalDay(unittest.TestCase):
         tools.mkdir()
         (tools / 'journal-day').symlink_to(SOURCE)
         runner = tools / 'claude'
-        runner.write_text('#!/usr/bin/env python3\nimport os,json,sys\n'
+        runner.write_text('#!' + sys.executable + '\nimport os,json,sys\n'
                           'open(os.environ["SEAT_RESULT"],"w").write(json.dumps('
                           '{"cwd":os.getcwd(),"config":os.environ.get("CLAUDE_CONFIG_DIR"),'
                           '"args":sys.argv[1:]}))\n')
