@@ -178,7 +178,7 @@ bucket from the NAS (inferred, not measured).
 | Route overlays | `pkgs/dsh/config.nix` `routes`, wrapper `DSH_ROUTE` | `gemini`, `gemini-pro`, `gemini-lite`, `gufo`, `zen-deepseek`, `zen-glm`: one-row `agent-default-model` overlays after the profile's layers; headless, sdk, acp and zen only; any other name is refused (exit 2) |
 | Key slots | `pkgs/dsh/default.nix` `keyFiles`, `home/dsh.nix` | `DSH_KEY_SLOT=<n>` (default 1) reads the n-th agenix file of each list into `GEMINI_API_KEY` (3) and `OPENCODE_ZEN_FREE_API_KEY` (4) for the exec'd dsh only; never on a config dump, never traced, never printed; the wrapper first unsets those two and `OPENCODE_API_KEY`; a slot past a list says so once on stderr and exports nothing (`DSH_KEY_SLOT=4` is Zen-only, `5` is anonymous Zen); `0`, blank or non-numeric is refused |
 | Secrets | `secrets.nix`, `modules/secrets.nix`, `REKEY.md` | seven brain-only ciphertexts, owner tom, mode 400, like openrouter-token |
-| Checks | `tests/dsh-zen` (new), `tests/dsh-config`, `tests/dsh-plugins`, `lib/update-watch.json` | dsh-zen boots the zen profile from a seeded catalog cache (proves the pi-ai 1.3.0 import, `createProvider` and `registerAdapter`), dumps zen/headless/route overlays, refusals, the slot reader with sandbox-only dummy files; dsh-config checks the google provider and the gemini-pro overlay; dsh-zen is built on every llm-agents bump |
+| Checks | `tests/dsh-zen` (new), `tests/dsh-config`, `tests/dsh-plugins` | dsh-zen boots the zen profile from a seeded catalog cache (proves the pi-ai 1.3.0 import, `createProvider` and `registerAdapter`), dumps zen/headless/route overlays, refusals, the slot reader with sandbox-only dummy files; dsh-config checks the google provider and the gemini-pro overlay |
 | Batch-2 routes (issue 687) | `pkgs/dsh/config.nix` | native catalog routes `groq` (GROQ_API_KEY), `mistral` (MISTRAL_API_KEY), `nvidia` (NVIDIA_API_KEY), `cloudflare-workers-ai` (CLOUDFLARE_WORKERS_AI_TOKEN, plus CLOUDFLARE_ACCOUNT_ID read by pi-ai), `huggingface` (HF_TOKEN), `cerebras` (CEREBRAS_API_KEY), `vercel-ai-gateway` (AI_GATEWAY_API_KEY), each narrowed to the measured ids; `cohere` hand-declared (api openai-completions, baseURL `https://api.cohere.com/compatibility/v1`, no `store`, reasoning `high` on the two reasoning ids, sizes declared not measured); Gemini stays the default of every profile |
 | Batch-2 overlays and slots | `pkgs/dsh/config.nix` `routes`, `pkgs/dsh/default.nix`, `home/dsh.nix` | `DSH_ROUTE=<groq\|groq-oss\|mistral\|codestral\|cohere\|nvidia\|nvidia-deepseek\|cloudflare\|cloudflare-deepseek\|huggingface\|cerebras\|cerebras-oss\|vercel>`; `DSH_KEY_SLOT=<n>` now also picks groq (3), mistral (3), cohere (5), nvidia (1), the Cloudflare token and account id (1), huggingface (1), cerebras (1), the Vercel gateway key (1); the wrapper first unsets all of them and the login shell's full-scope `CLOUDFLARE_API_TOKEN` and pi-ai's ambient `CLOUDFLARE_API_KEY` |
 | Batch-2 secrets | `secrets.nix`, `modules/secrets.nix`, `REKEY.md` | 18 brain-only ciphertexts, owner tom, mode 400 (`grok-api-key-1` stored only, no reader) |
@@ -406,8 +406,6 @@ section adds the client beside them.
 - `zen` (`home/dot_local/bin/zen`, bash, shellcheck-clean): the only place a
   Zen key is read. `OPENCODE_API_KEY` is exported for the exec'd `opencode`
   only, after `set +o xtrace`, and never printed.
-- `opencode` in `lib/update-watch.json` (releases at anomalyco/opencode,
-  tag prefix `v`; upstream is on 2.2.x while the lock holds 1.19.3).
 
 ### `zen` usage
 

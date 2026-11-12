@@ -1872,13 +1872,6 @@
               touch "$out"
             '';
 
-        # update-check (#550): the nightly update check's contract, hermetically.
-        # A fake nix and gh stand in for upstream and GitHub around a real git
-        # origin: one PR per moved input, a draft on a failed gate, nothing on a
-        # quiet night, review commits carried across a rebuilt bump, the PR
-        # closed when main catches up; and lib/update-watch.json is read
-        # against this flake.lock, so a watched input that stops being bumpable
-        # turns the check red.
         downloads-mirror =
           let
             fixtureSsh = pkgs.writeShellScriptBin "ssh" ''
@@ -1907,34 +1900,6 @@
                 self.nixosConfigurations.client.config.home-manager.users.tom.xdg.configFile."systemd/user/downloads-mirror-notify.service".source
               }
               python3 -m unittest discover -s ${./tests/downloads-mirror} -p 'test_*.py' -v
-              touch "$out"
-            '';
-
-        update-check =
-          pkgs.runCommand "update-check"
-            {
-              nativeBuildInputs = [
-                pkgs.python3
-                pkgs.git
-              ];
-              PYTHONTZPATH = "${pkgs.tzdata}/share/zoneinfo";
-            }
-            ''
-              set -euo pipefail
-
-              export HOME="$TMPDIR/home"
-              export PYTHONDONTWRITEBYTECODE=1
-              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
-              export UPDATE_CHECK_SCRIPT=${./home/dot_local/bin/update-check}
-              export UPDATE_WATCH=${./lib/update-watch.json}
-              export UPDATE_FLAKE_LOCK=${./flake.lock}
-              mkdir -p "$HOME"
-
-              python3 -m unittest discover \
-                -s ${./tests/update-check} \
-                -p 'test_*.py' \
-                -v
-
               touch "$out"
             '';
 
@@ -2013,8 +1978,7 @@
         # HOME and DSH_HOME under $TMPDIR, no key path in the wrapper. Each dump
         # must leave stderr empty (a patch that matches no row warns there)
         # and carry the policy rows; tests/dsh-config/check_dump.py reads its
-        # expectations from pkgs.dsh's passthru. lib/update-watch.json builds
-        # this on every llm-agents bump.
+        # expectations from pkgs.dsh's passthru.
         dshd-nas = import ./tests/dshd-nas {
           inherit pkgs;
           configurations = self.nixosConfigurations;

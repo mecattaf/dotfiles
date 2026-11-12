@@ -102,34 +102,18 @@ NetworkManager dispatcher only when a fallback Wi-Fi rung comes up, and it exits
 as soon as thomas-6ghz is back. Nothing starts it at boot or on a schedule; it
 has no timer and no `OnCalendar` (tests/closet-topology asserts both).
 
-**Nightly update check (#550, Tom 2026-10-14).** Tom: "nightly, i want to be
-chekcing codex and cc and other programs for their latest version and
-ingesting it, potentially also with the new features that they entail". The
-clock is a substrate floor routine (substrate T-7), never a timer here. This
-repo holds the logic: `update-check` (home/dot_local/bin) reads
-`lib/update-watch.json`, and for each input whose upstream moved a program we
-use, rebuilds the rolling branch `update/<input>` from main, runs the gate and
-opens or refreshes one PR. The PR is a draft when the gate fails. The check
-skips the bump when no watched program changed version, and closes the PR
-once main carries the input. Fish and Wrangler ride the existing nixpkgs-fresh
-leaf overlay. Kitty is source-pinned separately; its official stable GitHub
-releases are issue watches, including patch releases. Adoption updates its
-source and Go vendor hashes explicitly; see `docs/kitty-updates.md`. New stable
-kernel major.minor series are also issue watches. The Projects
-floor routine uses `update-check --if-idle --background --json`: soft hourly opportunities,
-load/Nix/Herdr admission checks and one completed attempt per Paris night.
-Every defer and failure is recorded. The detached worker survives the Floor
-turn limit, inherits its lock and writes a durable job result; a launch receipt
-is not a successful check. No local timer is installed. Digests are
-opt-in and comment-only; the routine makes no adoption commits. Earlier
-review commits without `Update-Check: bump` survive refreshes, or a conflict
-aborts before the remote changes. Nothing merges, switches or restarts without
-Tom. Adding a program is an entry in the watch file.
-Imported release notes must stay in collision-safe literal text fences, with
-only their release-page links outside. Contributor mentions and upstream
-issue/PR references must never become active GitHub Markdown in generated PR
-bodies or digest comments (2026-10-22 notification incident). Truncate source
-text before fencing it, never the rendered wrapper.
+**Updates (Tom, 2026-11-10 and 2026-11-12).** Fleet and CLI updates are
+protocols of the master agency under `~/.agency/protocols/`, outside this
+repository. This repository holds only the mechanism: the Scheduled heartbeat
+and CLI, dshd, dsh-master. The nightly `update-check` program, its watch list
+and its rolling `update/<input>` PRs are retired.
+
+In any generated PR body or comment, imported release notes must stay in
+collision-safe literal text fences, with only their release-page links
+outside. Contributor mentions and upstream issue/PR references must never
+become active GitHub Markdown in generated PR bodies or digest comments
+(2026-10-22 notification incident). Truncate source text before fencing it,
+never the rendered wrapper.
 
 **Fleet target (Tom, 2026-10-22/23).** Rename strix to `strix-coordinator`;
 `strix-worker` returns. Both are headless Ethernet compute hosts. The NAS is
