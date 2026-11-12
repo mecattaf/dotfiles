@@ -202,8 +202,9 @@ in
     };
     settingsSeed = mkOption {
       type = types.path;
-      # Rules and admission cells of the Scheduled and Workflow Sources, and
-      # accept mode auto. `dsh-master settings seed` applies it once after the
+      # Rules and admission cells of the Scheduled and Workflow Sources,
+      # accept mode auto and a 600 s eval time limit (an Opus assessment, not
+      # the fork's 120 s router default). `dsh-master settings seed` applies it once after the
       # floor's first start; it is not a timer.
       default = ./dsh-master/settings.seed.json;
       description = "Default seed file of `dsh-master settings seed`.";

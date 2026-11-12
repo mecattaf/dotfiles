@@ -226,7 +226,7 @@ def main(package, expect_path):
     except (OSError, ValueError) as error:
         seed = {}
         problems.append(f"settings.seed.json: {error}")
-    if seed.get("eval") != {"mode": "auto"}:
+    if seed.get("eval") != {"mode": "auto", "timeoutSeconds": 600}:
         problems.append(f"eval is {seed.get('eval')}")
     rules = {rule.get("id"): rule for rule in seed.get("rules", [])}
     for rule_id, prefix in (("scheduled", "A Trigger of the scheduled Source"), ("workflow-node", "A Trigger from the workflow Source")):

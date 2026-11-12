@@ -16,7 +16,8 @@ cordis.yml, pnpm-lock.yaml or node_modules, which belong to dsh. install and che
 manifest's `dsh`): the fleet wrapper refuses `dsh plugin`, and its policy
 overlays would hide what a dshd instance really composes. settings seed is
 a client of the floor's management API: it upserts rules and admission cells
-and raises the accept mode, and never touches anything else.
+and raises the accept mode and the eval time limit, and never touches
+anything else.
 """
 
 import argparse
