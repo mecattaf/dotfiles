@@ -34,12 +34,6 @@ SKILL_ROOT = REPO_ROOT / "home/dot_claude/skills"
 DRAIN_SKILL = Path(
     os.environ.get("AI_MEMORY_DRAIN_SKILL", SKILL_ROOT / "drain/SKILL.md")
 )
-HANDOFF_SKILL = Path(
-    os.environ.get("AI_MEMORY_HANDOFF_SKILL", SKILL_ROOT / "handoff/SKILL.md")
-)
-PICKUP_SKILL = Path(
-    os.environ.get("AI_MEMORY_PICKUP_SKILL", SKILL_ROOT / "pickup/SKILL.md")
-)
 
 ENQUEUE_CHECK = Path(
     os.environ.get(
@@ -222,19 +216,10 @@ class AdapterTests(unittest.TestCase):
 
 
 class SkillBoundaryTests(unittest.TestCase):
-    def test_shared_skills_keep_the_three_user_actions_separate(self) -> None:
+    def test_drain_skill_invokes_the_drain_action(self) -> None:
         drain = DRAIN_SKILL.read_text()
-        handoff = HANDOFF_SKILL.read_text()
-        pickup = PICKUP_SKILL.read_text()
 
         self.assertIn('ai_memory.py" drain', drain)
-        self.assertIn('ai_memory.py" identity', handoff)
-        self.assertIn("<!-- ai-memory:handoff", handoff)
-        self.assertNotIn('ai_memory.py" drain', handoff)
-        self.assertNotIn("utility-model --", handoff)
-        self.assertIn('ai_memory.py" pickup', pickup)
-        self.assertNotIn('ai_memory.py" drain', pickup)
-        self.assertIn("ai-memory:parent", pickup)
 
     def test_the_written_rule_keeps_drain_manual_and_names_the_harvest_store(
         self,
