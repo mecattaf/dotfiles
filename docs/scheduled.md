@@ -35,8 +35,12 @@ dshd itself stays free of clocks ("NO SCHEDULES EVER").
 `<stateDir>` is the Master profile's dsh-superagent `stateDir`
 (`programs.dsh.master.stateDir`, default `~/.agency/state/master`), and it
 is the one value the two sides share. `home/scheduled.nix` passes
-`SCHEDULED_INBOX=<stateDir>/inbox/scheduled` to the service and to login
-shells. `tests/scheduled` asserts that the two agree.
+`SCHEDULED_INBOX=<stateDir>/inbox/scheduled` to the service, and the
+installed `scheduled` command carries it and the floor instance as defaults
+(a wrapper), because Home Manager's session variables reach no NAS shell,
+Herdr or Claude Code. A variable set by hand still wins. `tests/scheduled`
+asserts that the two agree, and `checks.scheduled-vm` runs `scheduled run`
+with no environment.
 
 The floor's DSH profiles, `master` and one `master-<pair>` per worker
 pair, are rendered from one source; see [dsh-master.md](dsh-master.md).
@@ -157,6 +161,14 @@ take effect at the next hourly pass, never sooner.
 `run` works on a disabled item: `enabled: false` cancels only scheduled
 occurrences. It does not wait for the work. The superagent's own record
 (its Thread and Run) is where the work is followed.
+
+`run` and `history` take the inbox from `SCHEDULED_INBOX`, and `run` takes
+the floor from `SCHEDULED_FLOOR_INSTANCE`. The installed command defaults
+both; set them, or pass `--inbox DIR --floor-instance NAME` to `run`, to
+override. Without an inbox, `run` exits 2 and names both ways to give one.
+Without a floor instance (say `SCHEDULED_FLOOR_INSTANCE=` set empty), it
+writes the record, prints `floor: none` and says on stderr that it woke no
+floor; the next tick wakes the floor.
 
 Exit codes: 0 ok, 1 refused or a fault, 2 usage, 3 revision conflict.
 
