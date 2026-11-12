@@ -7,6 +7,8 @@
   makeWrapper,
   python3,
   coreutils,
+  git,
+  pnpm,
   dsh,
   llm-agents,
   # programs.dsh.master (home/dsh-master.nix): one Master configuration.
@@ -33,11 +35,12 @@
 # `danger-full-access` preset), and the default model (each folder sets its
 # own).
 #
-# Outputs: $out/profiles/<p>/{package.json,cordis.patch.yml}, $out/manifest.json
-# (profile names, file digests and the rows `dsh-master check` asserts in a
-# config dump) and $out/bin/dsh-master. Home Manager never links into ~/.dsh:
-# dsh replaces its profile files by atomic rename on a settings save, so
-# `dsh-master render` installs copies instead (home/dsh-master.nix).
+# Outputs: $out/profiles/<p>/{package.json,cordis.patch.yml,pnpm-workspace.yaml},
+# $out/manifest.json (profile names, file digests and the rows `dsh-master
+# check` asserts in a config dump) and $out/bin/dsh-master. Home Manager never
+# links into ~/.dsh: dsh replaces its profile files by atomic rename on a
+# settings save, so `dsh-master render` installs copies instead
+# (home/dsh-master.nix).
 let
   yaml = formats.yaml { };
 
@@ -268,6 +271,19 @@ let
       cat ${yaml.generate "${name}-rows.yml" rows} >> "$out"
     '';
 
+  # dsh writes this file beside package.json when it creates a profile
+  # (dsh-app-boot initProfile) and never touches it again. A folder that
+  # render creates has none, and pnpm then resolves the plugins' DSH peers
+  # from the registry. render writes dsh's text only when the file is
+  # missing; checks.dsh-master compares it with what the release's dsh writes.
+  pnpmWorkspace = writeText "pnpm-workspace.yaml" ''
+    packages:
+      - .
+
+    nodeLinker: hoisted
+    autoInstallPeers: false
+  '';
+
   # package.json content; assemble.py writes it in dsh's own key order.
   packageOf = name: deps: bundleList: {
     name = "dsh-profile-${name}";
@@ -306,6 +322,7 @@ let
       profiles = lib.mapAttrs (name: profile: {
         package = packageOf name dependencies (bundles profile.app);
         patch = patchFile name profile.rows;
+        workspace = pnpmWorkspace;
         expect = expectRows (policyRows ++ profile.rows);
       }) profiles;
     }
@@ -322,6 +339,7 @@ let
           profile.app
         ];
         patch = patchFile name profile.firstPartyRows;
+        workspace = pnpmWorkspace;
         expect = expectRows (policyRows ++ profile.firstPartyRows);
       }) profiles;
     }
@@ -339,6 +357,7 @@ runCommand "dsh-master"
     passthru = {
       inherit
         claudeSeat
+        pnpmWorkspace
         policyRows
         probes
         profiles
@@ -357,5 +376,12 @@ runCommand "dsh-master"
     install -Dm0644 ${settings.settingsSeed} "$out/share/dsh-master/settings.seed.json"
     makeWrapper ${python3.withPackages (ps: [ ps.pyyaml ])}/bin/python3 "$out/bin/dsh-master" \
       --add-flags "$out/share/dsh-master/dsh-master.py" \
-      --prefix PATH : ${lib.makeBinPath [ coreutils ]}
+      --prefix PATH : ${
+        lib.makeBinPath [
+          coreutils
+          # dsh plugin runs pnpm from PATH, and pnpm asks git for a github: tag.
+          pnpm
+          git
+        ]
+      }
   ''

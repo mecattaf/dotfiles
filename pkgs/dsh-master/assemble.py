@@ -3,10 +3,11 @@
 Usage: assemble.py <spec.json> <out>
 
 The spec comes from default.nix: per profile, the package.json content, the
-store path of its cordis.patch.yml and the rows a config dump must show. This
-writes <out>/profiles/<p>/{package.json,cordis.patch.yml} and
-<out>/manifest.json with each file's sha256, so `dsh-master` compares digests
-and never re-renders.
+store paths of its cordis.patch.yml and pnpm-workspace.yaml, and the rows a
+config dump must show. This writes <out>/profiles/<p>/{package.json,
+cordis.patch.yml,pnpm-workspace.yaml} and <out>/manifest.json with each file's
+sha256, so `dsh-master` compares digests and never re-renders. The manifest
+lists pnpm-workspace.yaml under `once`: dsh owns it after it exists.
 """
 
 import hashlib
@@ -46,8 +47,11 @@ def main(spec_path, out):
             stream.write(package_text(profile["package"]))
         patch = os.path.join(folder, "cordis.patch.yml")
         shutil.copyfile(profile["patch"], patch)
+        workspace = os.path.join(folder, "pnpm-workspace.yaml")
+        shutil.copyfile(profile["workspace"], workspace)
         manifest["profiles"][name] = {
             "files": {"package.json": digest(package), "cordis.patch.yml": digest(patch)},
+            "once": {"pnpm-workspace.yaml": digest(workspace)},
             "expect": profile["expect"],
         }
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as stream:

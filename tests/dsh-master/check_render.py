@@ -198,6 +198,18 @@ def main(package, expect_path):
     subtest("headless folders insert headless-preset after agent-preset-registry", problems)
 
     problems = []
+    for name, profile in manifest["profiles"].items():
+        path = os.path.join(package, "profiles", name, "pnpm-workspace.yaml")
+        if not os.path.isfile(path) or profile.get("once", {}).get("pnpm-workspace.yaml") is None:
+            problems.append(f"{name}: no pnpm-workspace.yaml in the folder or the manifest")
+            continue
+        with open(path, encoding="utf-8") as stream:
+            workspace = yaml.safe_load(stream)
+        if workspace != {"packages": ["."], "nodeLinker": "hoisted", "autoInstallPeers": False}:
+            problems.append(f"{name}: pnpm-workspace.yaml is {workspace}")
+    subtest("every folder carries dsh's pnpm workspace", problems)
+
+    problems = []
     policy = {row["id"]: row for row in expect["policyRows"]}
     wanted = sorted(set(expect["policyIds"]) - set(expect["dropped"]))
     for name, ids in rows.items():

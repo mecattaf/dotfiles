@@ -7,7 +7,9 @@
 #      bundle the only bundle difference, engine on only in master, no
 #      permission rows, the pair rows, the seat, the policy;
 #   3. dsh-master render in a scratch DSH_HOME: confined to profiles/master*,
-#      idempotent, restores a changed file and says so;
+#      idempotent, restores a changed file and says so, writes dsh's own
+#      pnpm-workspace.yaml (compared with what the release's dsh writes for a
+#      new profile) only where none exists;
 #   4. dsh-master settings seed against a stub of the floor's settings API;
 #   5. dsh-master check with the release's own dsh on the first-party half of
 #      each folder (no network, no plugin): every rendered row is in the
@@ -88,11 +90,21 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   echo '[]' > "$DSH_HOME/profiles/web/cordis.patch.yml"
   echo '[]' > "$DSH_HOME/profiles/master/cordis.yml"
   echo 'lock' > "$DSH_HOME/profiles/master/pnpm-lock.yaml"
+  echo 'packages: [.]' > "$DSH_HOME/profiles/master/pnpm-workspace.yaml"
   echo '- id: home' > "$DSH_HOME/cordis.patch.yml"
-  keep() { (cd "$DSH_HOME" && sha256sum cordis.patch.yml profiles/web/* profiles/master/cordis.yml profiles/master/pnpm-lock.yaml); }
+  keep() { (cd "$DSH_HOME" && sha256sum cordis.patch.yml profiles/web/* profiles/master/cordis.yml profiles/master/pnpm-lock.yaml profiles/master/pnpm-workspace.yaml); }
   keep > "$TMPDIR/keep.before"
 
   $dm render > "$TMPDIR/first.out"
+  # The workspace file a new folder gets is the one dsh itself writes.
+  DSH_HOME="$TMPDIR/init-home" ${releaseDsh} plugin --profile master-init version-exemptions > /dev/null
+  cmp "$TMPDIR/init-home/profiles/master-init/pnpm-workspace.yaml" ${master.pnpmWorkspace}
+  for p in master-gufo master-opus; do
+    cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/$p/pnpm-workspace.yaml"
+    test "$(stat -c %a "$DSH_HOME/profiles/$p/pnpm-workspace.yaml")" = 644
+    grep -qx "created $p/pnpm-workspace.yaml" "$TMPDIR/first.out"
+  done
+  if grep -q 'created master/' "$TMPDIR/first.out"; then exit 1; fi
   for p in master master-gufo master-opus; do
     grep -qx "install needed: $p" "$TMPDIR/first.out"
     cmp ${master}/profiles/$p/cordis.patch.yml "$DSH_HOME/profiles/$p/cordis.patch.yml"
@@ -108,6 +120,17 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   cmp "$TMPDIR/tree.first" "$TMPDIR/tree.second"
   keep | cmp - "$TMPDIR/keep.before"
   $dm status | grep -qx 'master: rendered current, installed no, node_modules present'
+
+  # install refuses a folder without the workspace file, before running dsh.
+  rm "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
+  if $dm install --dsh /nonexistent master-gufo 2> "$TMPDIR/noworkspace.err"; then exit 1; fi
+  grep -q 'master-gufo has no pnpm-workspace.yaml' "$TMPDIR/noworkspace.err"
+  $dm render --quiet
+  cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
+
+  # install runs dsh with pnpm and git on PATH (dsh plugin spawns pnpm).
+  grep -q '${lib.getBin nas.pkgs.pnpm}/bin' ${lib.getExe master}
+  grep -q '${lib.getBin nas.pkgs.git}/bin' ${lib.getExe master}
 
   # A changed copy is put back, and the change is reported.
   echo '- id: hand-edit' >> "$DSH_HOME/profiles/master-gufo/cordis.patch.yml"
