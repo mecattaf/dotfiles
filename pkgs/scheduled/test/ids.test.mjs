@@ -116,7 +116,7 @@ describe('occurrenceName', () => {
   });
   it('replaces / in a namespace with +', () => {
     const due = new Date('2026-11-12T00:00:00.000Z');
-    assert.equal(occurrenceName({ namespace: 'projects/crm', item: 'sync', due }), 'projects+crm~sync@20261112T0000Z.json');
+    assert.equal(occurrenceName({ namespace: 'team/widgets', item: 'sync', due }), 'team+widgets~sync@20261112T0000Z.json');
   });
 });
 
@@ -125,7 +125,7 @@ describe('runName', () => {
     assert.equal(runName({ namespace: 'master', item: 'fleet-nightly', run: '01JABCD1234567890ABCDEFGHJ' }), 'master~fleet-nightly@run~01JABCD1234567890ABCDEFGHJ.json');
   });
   it('replaces / in a namespace with +', () => {
-    assert.equal(runName({ namespace: 'projects/crm', item: 'sync', run: 'X' }), 'projects+crm~sync@run~X.json');
+    assert.equal(runName({ namespace: 'team/widgets', item: 'sync', run: 'X' }), 'team+widgets~sync@run~X.json');
   });
 });
 

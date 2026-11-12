@@ -31,7 +31,7 @@ async function ensureInbox(inbox) {
  *
  * @param {object} o
  * @param {'schedule'|'manual'} o.kind
- * @param {string} o.namespace  agency id (`master`, `mecattaf/crm`)
+ * @param {string} o.namespace  agency id (`master`, `team/widgets`)
  * @param {string} o.item       item stem
  * @param {string} [o.name]     the item's `name`, when it has one
  * @param {string} o.cwd        agency folder (real path)

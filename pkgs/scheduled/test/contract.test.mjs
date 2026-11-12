@@ -29,6 +29,10 @@ test('C1 a tick\'s record and a run\'s record have exactly the field set and typ
     const manual = records.find((r) => r.kind === 'manual');
     assert.deepEqual(shape(schedule), shape(fixtureOf('schedule')));
     assert.deepEqual(shape(manual), shape(fixtureOf('manual')));
+    // And in the fixture's field order, so a record reads the same in both repositories.
+    const order = (r) => Object.keys(r).filter((k) => k !== 'pair');
+    assert.deepEqual(order(schedule), order(fixtureOf('schedule')));
+    assert.deepEqual(order(manual), order(fixtureOf('manual')));
     for (const r of [schedule, manual]) {
       assert.equal(r.v, 1);
       assert.match(r.item, /^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/);
