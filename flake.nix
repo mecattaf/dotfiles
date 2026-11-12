@@ -561,21 +561,20 @@
           substrateApps = pkgs.callPackage ./pkgs/substrate-apps { };
         in
         {
+          # Flake-level builds: the same derivations the hosts on the main
+          # nixpkgs pin install. `utility-model` is the strix hosts' build;
+          # the NAS installs one of its own as well.
           inherit (pkgs)
             qwentts
             qwen-speech
             speech-session
             academic-ocr
-            brother-print-text
-            paper-daemon
             paper-render
             utility-model
             call-diarize
-            fleet-status
             # `nix build .#dsh -o .demo/dsh` is how a PR worktree runs dsh; its
             # passthru carries `.runner`, `.smoke` and `.unwrapped` for the gate.
             dsh
-            mnemon
             # `nix run .#fontbuilder -- <capture-dir> <out-dir>` — the press for
             # the Anthropic suite. Exported because that IS the invocation. The
             # three anthropic-* font packages stay UNEXPORTED (matching sf-pro):
@@ -585,7 +584,6 @@
             #   nix build --impure --expr '(builtins.getFlake "'"$DOT"'").nixosConfigurations.strix.pkgs.anthropic-mono-nerd'
             fontbuilder
             land
-            local-ai-monthly
             # `nix build .#local-models-prune` — the ONLY verb on this fleet
             # that deletes a working copy. Exposed so the guard suite can be
             # pointed at a built path (LOCAL_MODELS_PRUNE_BIN) instead of
@@ -594,9 +592,20 @@
             mactahoe-gtk-theme
             mactahoe-claude-gtk-theme
             mactahoe-icon-theme
-            music-acquire
-            scheduled
             sfmono-liga
+            ;
+          # What the NAS installs comes from the NAS's package set: it
+          # evaluates from nixpkgs-stable (mkHost hostNixpkgs), so the
+          # flake-level `pkgs` builds a different derivation under the same
+          # name. checks.packages-host-drv holds every export to this.
+          inherit (self.nixosConfigurations.nas.pkgs)
+            brother-print-text
+            fleet-status
+            local-ai-monthly
+            mnemon
+            music-acquire
+            paper-daemon
+            scheduled
             ;
 
           # Explicit accelerator escape hatches. The host module installs the
@@ -679,6 +688,11 @@
           inherit (nixpkgs) lib;
         };
         nas-agent-host = import ./tests/nas-agent-host {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+        # `nix build .#<name>` is the derivation the installing host ships.
+        packages-host-drv = import ./tests/packages-host-drv {
           inherit pkgs self;
           inherit (nixpkgs) lib;
         };
