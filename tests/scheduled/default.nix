@@ -45,7 +45,7 @@ assert tick.Service.StateDirectoryMode == "0700";
 # The tunnel forwards the Master web profile's port, from its one option.
 assert lib.hasInfix
   "-R 127.0.0.1:${toString hm.programs.dsh.master.webPort}:127.0.0.1:${toString hm.programs.dsh.master.webPort} "
-  tunnel.Service.ExecStart;
+  (toString tunnel.Service.ExecStart);
 assert !(lib.any (e: lib.hasPrefix "SCHEDULED_STATE_DIR=" e) environment);
 assert !(lib.hasInfix "--state-dir" (toString tick.Service.ExecStart));
 assert !(tick ? Install);

@@ -214,3 +214,19 @@ test('C3.8 a file discovery skips, and an item that fails before it is read, are
     env.cleanup();
   }
 });
+
+test('C3.8 a valid item made group-writable by a chmod alone is read again and refused (review SCHED-2)', async () => {
+  const env = setupEnv();
+  try {
+    const p = env.item('hb', hourly());
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    assert.equal(env.entry('master:hb').valid, true);
+    fs.chmodSync(p, 0o664);
+    const res = await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+    assert.ok(res.lines.includes('<4>invalid item=master:hb reason=ownership'), res.lines.join('\n'));
+    assert.equal(env.entry('master:hb').valid, false);
+    assert.deepEqual(env.records(), []);
+  } finally {
+    env.cleanup();
+  }
+});

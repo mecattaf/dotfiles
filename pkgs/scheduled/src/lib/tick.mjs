@@ -174,6 +174,8 @@ function entryOf(f, st, v, prev, { now, lastTick }) {
     ino: String(st.ino),
     size: Number(st.size),
     mtimeNs: String(st.mtimeNs),
+    mode: String(st.mode),
+    uid: String(st.uid),
     revision: v.revision ?? null,
     invalidKey: !valid && !v.revision
       ? (() => { const e = (v.problems || []).find((p) => p.severity === 'error'); return `${e?.code ?? 'error'}:${e?.message ?? ''}:${statKey(st)}`; })()
@@ -190,8 +192,11 @@ function entryOf(f, st, v, prev, { now, lastTick }) {
   };
 }
 
+// Mode and owner too: a chmod or chown changes neither content nor mtime, and an item must stay ours and not
+// group- or world-writable (validate.mjs). An entry written before these fields existed is parsed once more.
 const sameStat = (prev, st) => prev && prev.dev === String(st.dev) && prev.ino === String(st.ino)
-  && prev.size === Number(st.size) && prev.mtimeNs === String(st.mtimeNs);
+  && prev.size === Number(st.size) && prev.mtimeNs === String(st.mtimeNs)
+  && prev.mode === String(st.mode) && prev.uid === String(st.uid);
 
 /**
  * Execute one tick pass.
