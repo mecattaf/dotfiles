@@ -62,6 +62,8 @@ test('cli-update: 01:30 and 04:30 Paris; the brief launches update-check once an
     // The builder's free space is checked before update-check's gate builds on it.
     assert.match(r.prompt, /df -BG --output=avail \//);
     assert.match(r.prompt, /less than 25G/);
+    // NixOS sets builders to @/etc/nix/machines: the brief reads that file, never ends on the indirection.
+    assert.match(r.prompt, /nix config show builders; when that starts with @, read the file it names/);
     assert.match(r.prompt, /^1\. Run exactly: update-check --if-idle --background --json\./m);
     assert.match(r.prompt, /Never name or use strix-worker/);
     // The check proposes; Tom merges and switches.
