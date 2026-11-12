@@ -266,8 +266,8 @@ the fork's `tests/fixtures/scheduled-occurrence-v1.json`.
 ## Commissioning order
 
 The order matters; each step assumes the previous one landed. Rollback at
-any step is the previous NixOS generation, which removes the units and
-the program and leaves `~/.agency` as it was.
+any step is the previous NixOS generation; [Rollback](#rollback) says what
+that generation still runs.
 
 1. Branch, gates, merge:
    - `nix eval` on the NAS;
@@ -400,9 +400,18 @@ so a refused tick surfaces. The tick never runs `reset-failed`.
 
 ## Rollback
 
-Any step back is the previous NixOS generation: it removes the units and
-the program and leaves `~/.agency` untouched. To quiet things without a
-generation switch, use one of these:
+Any step back is the previous NixOS generation, and it does not leave
+`~/.agency` alone. A generation from before scheduled 0.2.0 runs heartbeat
+0.1.0, which reads `.agency/workflows/` and keeps its state under
+`~/.agency/state/master`, beside the floor's own files; items under
+`.agency/scheduled/` are ignored until you roll forward.
+
+A generation without `dsh-master` cannot re-render the Master profiles:
+they keep naming the seat wrapper of the generation that rendered them.
+Do not run `nix-collect-garbage -d` while rolled back: it strands the
+floor's pinned Claude wrapper, and the floor can no longer start Claude.
+
+To quiet things without a generation switch, use one of these:
 - `scheduled set ID enabled false` for an item;
 - stop the timer through Home Manager;
 - `dshd stop floor`, which holds only until a tick finds a waiting
