@@ -96,8 +96,14 @@ every folder and may not set `engine` (an assertion says so).
 
 Activation runs `dsh-master render --quiet`. It copies the rendered files
 into `~/.dsh/profiles/master*` when they differ, says when a copy was
-changed by hand, and never runs pnpm. A folder without `pnpm-workspace.yaml`
-also gets the one dsh writes for a new profile; render never replaces it.
+changed by hand, and never runs pnpm. The three files are `package.json`,
+`cordis.patch.yml` and `pnpm-workspace.yaml`. The last is the text dsh
+writes for a new profile plus `allowBuilds` from
+`programs.dsh.master.allowBuilds` (default `msgpackr-extract: false`). pnpm 11
+otherwise ends every install with `ERR_PNPM_IGNORED_BUILDS` and exit 1, because
+the fork's interpreter pulls in msgpackr's optional native build. A build
+approval made in DSH's plugin manager is replaced at the next render, with the
+"changed outside dsh-master" line: a build decision belongs in that option.
 A failed render does not fail the switch, so check `dsh-master status`
 after one. The other steps are by hand:
 
@@ -113,7 +119,8 @@ dsh-master settings seed     # once, after the floor's first start
 install` under a 600 s timeout, with pnpm and git on PATH, and then judges
 the folder, not the exit: `package.json` unchanged, a lockfile, and a built
 `lib/` for each dependency. Without the folder's `pnpm-workspace.yaml` pnpm
-would pull the plugins' DSH peers from the registry, so install refuses it.
+would pull the plugins' DSH peers from the registry, so install refuses a
+folder whose three files are not the rendered ones.
 The fleet wrapper refuses `dsh plugin`. After a pin moves (`tag`,
 `superagent`, `claude`), render prints `install needed: <p>`. Stop the
 floor before installing into `master` (`dshd stop floor`, install, `dshd
