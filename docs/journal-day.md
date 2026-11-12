@@ -41,7 +41,13 @@ its cwd); the refusal keeps one session's writes through the link from being
 split across two days. Status 75 is not a failure: nothing changed, and the next
 fresh seat launch or the next scheduled run rotates. An already-correct link is a
 no-op whether or not a session is open. Seat launches always rotate.
-An empty `session_commands` list turns the refusal off.
+
+Whether the unattended rotation refuses at all is a per-host choice, made in
+the host-local `~/.config/journal-day.json` and never in this repository:
+leave `session_commands` out for the default list, list the commands that
+count, or set it to `[]` so the rotation goes ahead whatever is open. With an
+empty list an open session keeps its physical cwd and goes on writing into the
+day it started in, while the link moves to the new day.
 
 `--dry-run` prints the directory a run would select and returns the status a run
 would return, but creates, locks, writes and rotates nothing: no day folder, no
@@ -50,9 +56,9 @@ state directory, no link.
 A scheduled item's brief is one call and three outcomes: run `journal-day` once
 with no arguments; on 0 report the printed path; on 75 quote the stderr line and
 end without retrying; on anything else quote stderr and stop. It changes nothing
-else. No timer,
-cron entry or scheduler migration is part of this change. The one-time historical
-landing and its private receipts are separate from future semantic composition.
+else. No timer, cron entry or scheduler migration is part of this change. The
+one-time historical landing and its private receipts are separate from future
+semantic composition.
 
 ## Unknowns and proposed defaults
 
