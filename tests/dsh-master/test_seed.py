@@ -134,6 +134,13 @@ class Seed(unittest.TestCase):
         self.assertIn("eval.mode is off", err)
         self.assertEqual(floor.blocks["eval"]["value"]["mode"], "off")
 
+    def test_leaves_an_unknown_mode_alone(self):
+        floor = Floor(mode="paused")
+        code, out, err = self.run_seed(floor)
+        self.assertEqual((code, out), (0, "changed policy\n"))
+        self.assertIn("eval.mode is 'paused'", err)
+        self.assertEqual(floor.blocks["eval"]["value"]["mode"], "paused")
+
     def test_rereads_once_on_a_conflict_and_fails_on_a_second(self):
         floor = Floor()
         floor.conflicts = 1

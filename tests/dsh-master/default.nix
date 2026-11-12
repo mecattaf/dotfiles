@@ -128,6 +128,17 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   $dm render --quiet
   cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
 
+  # install judges the folder, not dsh's exit: a lockfile and a built lib/
+  # for each dependency (.js for the fork, .mjs for dsh-claude).
+  opus="$DSH_HOME/profiles/master-opus"
+  mkdir -p "$opus/node_modules/dsh-superagent/lib" "$opus/node_modules/@norman-else/dsh-claude/lib"
+  touch "$opus/node_modules/dsh-superagent/lib/index.js"
+  if $dm install --dsh ${pkgs.coreutils}/bin/true master-opus 2> "$TMPDIR/nolock.err"; then exit 1; fi
+  grep -q 'no pnpm-lock.yaml; @norman-else/dsh-claude has no built lib/' "$TMPDIR/nolock.err"
+  touch "$opus/pnpm-lock.yaml" "$opus/node_modules/@norman-else/dsh-claude/lib/index.mjs"
+  $dm install --dsh ${pkgs.coreutils}/bin/true master-opus | grep -qx 'installed master-opus'
+  $dm status | grep -qx 'master-opus: rendered current, installed current, node_modules present'
+
   # install runs dsh with pnpm and git on PATH (dsh plugin spawns pnpm).
   grep -q '${lib.getBin nas.pkgs.pnpm}/bin' ${lib.getExe master}
   grep -q '${lib.getBin nas.pkgs.git}/bin' ${lib.getExe master}

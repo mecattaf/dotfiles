@@ -188,8 +188,9 @@ def render(args):
 
 
 def lib_present(folder, dependency):
+    # The fork builds lib/*.js; dsh-claude's tsdown entries are lib/*.mjs.
     lib = os.path.join(folder, "node_modules", dependency, "lib")
-    return os.path.isdir(lib) and any(entry.endswith(".js") for entry in os.listdir(lib))
+    return os.path.isdir(lib) and any(entry.endswith((".js", ".mjs")) for entry in os.listdir(lib))
 
 
 def install(args):
@@ -359,6 +360,8 @@ def seeded(blocks, seed):
         have, want = current.get("mode"), seed["eval"]["mode"]
         if have == "off" and want != "off":
             print("dsh-master: eval.mode is off in the Store (a person switched it off); left alone", file=sys.stderr)
+        elif have not in MODES:
+            print(f"dsh-master: eval.mode is {have!r} in the Store, not one of {', '.join(MODES)}; left alone", file=sys.stderr)
         elif MODES.index(want) > MODES.index(have):
             changes["eval"] = (dict(current, mode=want), blocks["eval"]["revision"])
     return changes
