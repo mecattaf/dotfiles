@@ -50,6 +50,9 @@ def discover(config):
 
 def request(value):
     validate(value, ["zenbook"])
+    # Chat viewers opened a NAS chat page that is retired. Refuse before any
+    # Imagine placement is reserved; terminals are unaffected.
+    if value["kind"] == "chat": return failure(value, "unavailable")
     config = load(Path.home()/".config/dsh-domicile/client.json")
     if config["desktopId"] != value["desktop"]: return failure(value, "not-ready")
     root = Path.home()/ROOT; root.mkdir(parents=True, mode=0o700, exist_ok=True); private(root, True)
@@ -93,13 +96,7 @@ def request(value):
 def launch(value):
     original = {k:v for k,v in value.items() if k != "tag"}; validate(original, ["zenbook"])
     if value.get("tag") != tag(original): raise ValueError("invalid-arguments")
-    if value["kind"] == "chat":
-        viewer = str(uuid.UUID(hex=value["tag"][len("agencychat"):]))
-        result = subprocess.run([str(Path.home()/".local/bin/agency-chat-window"), "--session"],
-            input=json.dumps(dict(sessionId=value["sessionId"], viewerId=viewer)),
-            text=True, capture_output=True, timeout=100)
-        if result.returncode or len(result.stdout) > 16384: raise ValueError("unavailable")
-        return json.loads(result.stdout)
+    if value["kind"] == "chat": raise ValueError("unavailable")
     directory = Path.home()/ROOT/value["requestId"].replace("-", "")
     logfd = os.open(directory/"terminal.log", os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
     shell = str(Path.home()/".local/bin/domicile-terminal")

@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /etc/profiles/per-user/tom/bin/python3 /home/tom/.local/lib/agency-chat-window/client/layout_identity.py "$@"
+exec /etc/profiles/per-user/tom/bin/python3 /home/tom/.local/lib/imagine-layout/layout_identity.py "$@"

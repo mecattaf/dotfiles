@@ -267,7 +267,7 @@ in
   imports = [
     inputs.domicile.nixosModules.default
     ./domicile-apps.nix
-    ./domicile-chat.nix
+    ./imagine-helpers.nix
   ];
 
   options.programs.domicilePhysical = {
