@@ -215,3 +215,12 @@ Every item ships with `"enabled": false`. The heartbeat ticks, writes no
 record and starts nothing, so nothing runs unattended before Tom enables
 an item. `floor-upkeep` is copied but inert: the `upkeep` verb its
 prompt names belonged to a withdrawn fork branch.
+
+`fleet-health` and `tmp-ageing` are readings, weekly on Sunday morning.
+The plain box-upkeep timers keep doing the work (tripwires, failure
+markers, gc-root-reaper, tmpfiles); these items only report what they
+and the hosts show, and their briefs name every forbidden action on one
+`Never` line. `fleet-health` covers failed units and `/` against the
+25 GB build floor. `tmp-ageing` lists `/tmp` checkouts with work that
+ageing would lose, `/tmp` bundles, and `/tmp` GC roots. It is not a sync
+tool or a sweep: it never pushes, fetches, bundles or prunes.
