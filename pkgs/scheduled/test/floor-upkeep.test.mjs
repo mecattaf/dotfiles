@@ -62,7 +62,10 @@ test('FU2 the brief covers ended tickets, .done growth and failed records, from 
   assert.match(prompt, /superagent\.ticket/);
   assert.ok(commands(prompt).includes('dshd get --json <name>'));
   assert.ok(commands(prompt).some((c) => /^dshd read -n \d+ <name>$/.test(c)));
-  assert.match(prompt, /still running whose run began before the last day, as possibly stuck/);
+  assert.match(prompt, /still running whose lastRun\.startedAt is before the last day, as possibly stuck/);
+  // dshd ls --json carries no labels (measured, dshd at dotfiles a917a735): the labels and lastRun are in get.
+  assert.match(prompt, /`dshd get --json <name>` for every instance it lists/);
+  assert.match(prompt, /lastRun\.ending and lastRun\.endedAt/);
   // .done growth and records the floor has not read.
   assert.match(prompt, /<inbox>\/\.done/);
   assert.match(prompt, /<inbox>\/\.bad/);
