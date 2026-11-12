@@ -8,6 +8,9 @@ let
   tick = units.services.scheduled-heartbeat;
   tunnel = units.services.scheduled-panel-tunnel;
   scheduled = configurations.nas.pkgs.scheduled;
+  # The installed command: the package wrapped with the inbox and floor as
+  # defaults (home/scheduled.nix), since no NAS shell reads session variables.
+  cli = lib.findFirst (p: p ? floorInstance && p ? unwrapped) null hm.home.packages;
   timersOf =
     name:
     let
@@ -37,14 +40,17 @@ assert lib.toList tick.Service.ExecStart == [ "${lib.getExe scheduled} tick" ];
 # instance the Master floor recipe names.
 assert builtins.elem "SCHEDULED_INBOX=${inbox}" environment;
 assert builtins.elem "SCHEDULED_FLOOR_INSTANCE=floor" environment;
-assert hm.home.sessionVariables.SCHEDULED_INBOX == inbox;
-assert hm.home.sessionVariables.SCHEDULED_FLOOR_INSTANCE == "floor";
+assert cli != null && cli.unwrapped == scheduled;
+assert cli.inbox == inbox && cli.floorInstance == "floor";
+assert !(hm.home.sessionVariables ? SCHEDULED_INBOX);
+assert !(hm.home.sessionVariables ? SCHEDULED_FLOOR_INSTANCE);
+assert tick.Service.Nice == 10;
 # Its own state is systemd's StateDirectory, never inside .agency/state.
 assert tick.Service.StateDirectory == "scheduled";
 assert !(lib.any (e: lib.hasPrefix "SCHEDULED_STATE_DIR=" e) environment);
 assert !(lib.hasInfix "--state-dir" (toString tick.Service.ExecStart));
 assert !(tick ? Install);
-assert builtins.elem scheduled hm.home.packages;
+assert !(builtins.elem scheduled hm.home.packages);
 assert !(lib.any (t: lib.hasPrefix ".agency" t) targets);
 assert timersOf "nas" == [
   "paper-daemon-flush"
@@ -69,5 +75,10 @@ pkgs.runCommand "scheduled" { nativeBuildInputs = [ scheduled.node ]; } ''
   patchShebangs test
   node --test 'test/*.test.mjs'
   ${lib.getExe scheduled} --version
+  # The installed command carries the defaults, and a variable set by hand
+  # still wins (makeWrapper --set-default).
+  grep -qxF "export SCHEDULED_INBOX=\''${SCHEDULED_INBOX-'${inbox}'}" ${lib.getExe cli}
+  grep -qxF "export SCHEDULED_FLOOR_INSTANCE=\''${SCHEDULED_FLOOR_INSTANCE-'floor'}" ${lib.getExe cli}
+  ${lib.getExe cli} --version
   touch $out
 ''

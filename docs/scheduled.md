@@ -35,8 +35,12 @@ dshd itself stays free of clocks ("NO SCHEDULES EVER").
 `<stateDir>` is the Master profile's dsh-superagent `stateDir`
 (`programs.dsh.master.stateDir`, default `~/.agency/state/master`), and it
 is the one value the two sides share. `home/scheduled.nix` passes
-`SCHEDULED_INBOX=<stateDir>/inbox/scheduled` to the service and to login
-shells. `tests/scheduled` asserts that the two agree.
+`SCHEDULED_INBOX=<stateDir>/inbox/scheduled` to the service, and the
+installed `scheduled` command carries it and the floor instance as defaults
+(a wrapper), because Home Manager's session variables reach no NAS shell,
+Herdr or Claude Code. A variable set by hand still wins. `tests/scheduled`
+asserts that the two agree, and `checks.scheduled-vm` runs `scheduled run`
+with no environment.
 
 The floor's DSH profiles, `master` and one `master-<pair>` per worker
 pair, are rendered from one source; see [dsh-master.md](dsh-master.md).
