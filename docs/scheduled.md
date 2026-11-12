@@ -452,3 +452,43 @@ Every item ships with `"enabled": false`. The heartbeat ticks, writes no
 record and starts nothing, so nothing runs unattended before Tom enables
 an item. `floor-upkeep` is copied but inert: the `upkeep` verb its
 prompt names belonged to a withdrawn fork branch.
+
+## The midnight sequence
+
+Tom, 2026-09-20: "a midnight sequence full archival followed by a
+dedicated dotfiles operation: check if open gh issues that were filed
+today are closed otherwise cc opus works on them (culminating in a clean
+tree); then does the atomic fleet update so that the morning is fresh".
+
+The order between those halves is a workflow's job, so the sequence is a
+workflow script, and the item only starts it:
+
+| File (staged master agency) | Role |
+|---|---|
+| `.agency/scheduled/fleet-nightly.jsonc` | Start nudge, 01:00 Paris, `enabled: false`. Its prompt asks the superagent to call `orchestrator_workflow_start` with the script, the agency folder, `{"night": <night key>}` and its own trigger id, then to ignore the card. There is no `workflow` key. |
+| `.agency/workflows/fleet-nightly.js` | The workflow. One Ticket per `agent()` call, in this order: `archival`, `issues-open`, one `issue-<n>` for each issue filed on the night key and still open (at most `args.maxIssues`, default 3), `clean-tree`, `fleet-update`. |
+
+Both are staged under `pkgs/scheduled/test/fixtures/master/` with the
+other items, and the integrator copies them; Nix never writes them.
+`pkgs/scheduled/test/fleet-nightly.test.mjs` runs the script body the
+way the workflow interpreter wraps it, against a stub `agent()`.
+
+What each node may do:
+- `archival` runs `journal-day`. It runs a closed-chat capture only when
+  `args.capture` names the command; by default there is none.
+- `issue-<n>` works in its own clone under `/tmp`. It pushes
+  `nightly/<night>-issue-<n>` and opens one draft PR. It never merges,
+  never force-pushes and never pushes `main`. Builds go to the
+  strix-coordinator builder after `df -h /` shows at least 25 GB.
+- `clean-tree` fast-forwards the checkout only when it is on `main` with
+  no modified or staged tracked files. It never stashes, resets or
+  cleans. Untracked files are reported but do not block.
+- `fleet-update` runs only after a clean tree. It checks `df -h /` on
+  strix-coordinator first. It does not launch while
+  `lib/fleet-update.json` lists `nas` as an activation target: no
+  scheduled job switches the NAS. This is narrower than the AGENTS.md
+  sentence on unattended NAS activation, and Tom decides which one holds.
+
+A failed node is `null` and the run goes on. The one exception: a
+failed or unclean `clean-tree` skips `fleet-update`, and the run's
+result says why.
