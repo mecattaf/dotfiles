@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Private deterministic machinery for the drain, handoff, and pickup skills."""
+"""Private deterministic machinery for the drain skill and its harvest verb."""
 
 from __future__ import annotations
 
@@ -34,8 +34,6 @@ UTILITY_TIMEOUT_SECONDS = 1200.0
 # A byte ceiling well inside the server's prompt budget while still
 # accommodating real root turns with many compact tool-evidence records.
 TURN_CHUNK_BYTES = 24_000
-MAX_HANDOFF_BYTES = 8_000
-MAX_HANDOFF_WORDS = 1_200
 MAX_NOTE_BYTES = 64_000
 MAX_MODEL_JSON_BYTES = 8_000
 MAX_MODEL_ITEMS = 12
@@ -44,20 +42,9 @@ MAX_THREAD_CHARACTERS = 4_000
 IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{7,127}$")
 GROUP_RE = re.compile(r"^[^\W_]+(?:[-'][^\W_]+)* [^\W_]+(?:[-'][^\W_]+)*$", re.UNICODE)
 
-HANDOFF_RE = re.compile(
-    r"<!-- ai-memory:handoff (?P<meta>\{[^\n]*\}) -->"
-    r"\s*\n## Handoff\s*\n+"
-    r"(?P<body>.*?)"
-    r"\n<!-- /ai-memory:handoff -->",
-    re.DOTALL,
-)
-NOTE_HANDOFF_RE = re.compile(
-    r"<!-- ai-memory:handoff (?P<meta>\{[^\n]*\}) -->"
-    r"\s*\n(?P<body>.*?)"
-    r"\n<!-- /ai-memory:handoff -->",
-    re.DOTALL,
-)
-PARENT_RE = re.compile(r"<!-- ai-memory:parent (?P<meta>\{[^\n]*\}) -->")
+# The retired handoff and pickup skills wrote these markers into transcripts.
+# Old traces still carry them, and model output that echoes one is refused,
+# so drain keeps stripping them from the evidence it sends.
 MACHINE_MARKER_RE = re.compile(
     r"<!-- /?ai-memory:(?:handoff|parent)(?: [^\n]*)? -->"
 )
@@ -69,12 +56,11 @@ SECTION_NAMES = (
     "Constraints",
     "Artifacts",
     "Open questions",
-    "Handoff",
 )
 # A harvest note carries the journal contract plus the model's own resolution
 # statement; the journal's own section tuple is unchanged (R-c21).
 HARVEST_SECTION_NAMES = (
-    SECTION_NAMES[:-1] + ("Unresolved units", "Handoff")
+    SECTION_NAMES + ("Unresolved units",)
 )
 RESULT_KEYS = {
     "title",
@@ -112,14 +98,14 @@ Required JSON keys:
 }
 
 Set "resolved" to true only when the work the session set out to do is finished
-and nothing is left to hand on; otherwise set it to false. Every item of
+and nothing is left unfinished; otherwise set it to false. Every item of
 "unresolved_units" is one bounded unit of work stated in one sentence that names
 the deliverable. When "resolved" is true, "unresolved_units" is the empty array.
 
 Preserve outcomes and current state rather than narrating the transcript.
 Distinguish user-settled decisions from assistant proposals. Preserve rejected
 directions, negative constraints, paths, issue numbers, commits, implementation
-state, and unresolved gates. Never invent a handoff. Never include hidden
+state, and unresolved gates. Never include hidden
 reasoning, chain-of-thought, raw tool results, hook noise, system reminders, or
 protocol metadata. Use JSON strings, not Markdown or frontmatter.
 """
@@ -480,7 +466,7 @@ def validate_trace_provenance(
         )
 
 
-def strip_injected_text(text: str, preserve_markers: bool = False) -> str:
+def strip_injected_text(text: str) -> str:
     if not text:
         return ""
 
@@ -499,8 +485,7 @@ def strip_injected_text(text: str, preserve_markers: bool = False) -> str:
     )
     for pattern in patterns:
         text = re.sub(pattern, "", text, flags=re.DOTALL | re.IGNORECASE)
-    if not preserve_markers:
-        text = MACHINE_MARKER_RE.sub("", text)
+    text = MACHINE_MARKER_RE.sub("", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -577,12 +562,11 @@ def summarize_tool(name: str, value: object) -> str:
 def claude_text_blocks(
     content: object,
     include_tools: bool,
-    preserve_markers: bool = False,
 ) -> tuple[list[str], list[str]]:
     texts: list[str] = []
     tools: list[str] = []
     if isinstance(content, str):
-        cleaned = strip_injected_text(content, preserve_markers)
+        cleaned = strip_injected_text(content)
         if cleaned:
             texts.append(cleaned)
         return texts, tools
@@ -593,10 +577,7 @@ def claude_text_blocks(
             continue
         block_type = block.get("type")
         if block_type == "text":
-            cleaned = strip_injected_text(
-                str(block.get("text") or ""),
-                preserve_markers,
-            )
+            cleaned = strip_injected_text(str(block.get("text") or ""))
             if cleaned:
                 texts.append(cleaned)
         elif block_type == "tool_use" and include_tools:
@@ -643,9 +624,8 @@ def codex_tool_outcome(payload: Mapping[str, object]) -> str:
 
 def normalize_claude(
     records: Sequence[dict[str, object]],
-) -> tuple[list[Turn], list[str]]:
+) -> list[Turn]:
     turns: list[Turn] = []
-    assistant_visible: list[str] = []
     for record in records:
         if record.get("isMeta") is True:
             continue
@@ -662,25 +642,16 @@ def normalize_claude(
             if texts:
                 turns.append(Turn("user", "\n\n".join(texts), timestamp))
         elif record_type == "assistant":
-            visible_texts, _ = claude_text_blocks(
-                message.get("content"),
-                include_tools=False,
-                preserve_markers=True,
-            )
             raw_texts, tools = claude_text_blocks(
                 message.get("content"), include_tools=True
             )
-            assistant_visible.extend(visible_texts)
             content = "\n\n".join(raw_texts + tools)
             if content:
                 turns.append(Turn("assistant", content, timestamp))
-    return turns, assistant_visible
+    return turns
 
 
-def codex_message_text(
-    content: object,
-    preserve_markers: bool = False,
-) -> list[str]:
+def codex_message_text(content: object) -> list[str]:
     if not isinstance(content, list):
         return []
     texts: list[str] = []
@@ -689,10 +660,7 @@ def codex_message_text(
             continue
         if block.get("type") not in ("input_text", "output_text", "text"):
             continue
-        cleaned = strip_injected_text(
-            str(block.get("text") or ""),
-            preserve_markers,
-        )
+        cleaned = strip_injected_text(str(block.get("text") or ""))
         if cleaned:
             texts.append(cleaned)
     return texts
@@ -700,9 +668,8 @@ def codex_message_text(
 
 def normalize_codex(
     records: Sequence[dict[str, object]],
-) -> tuple[list[Turn], list[str]]:
+) -> list[Turn]:
     turns: list[Turn] = []
-    assistant_visible: list[str] = []
     for record in records:
         if record.get("type") != "response_item":
             continue
@@ -716,13 +683,6 @@ def normalize_codex(
             if role not in ("user", "assistant"):
                 continue
             texts = codex_message_text(payload.get("content"))
-            if role == "assistant":
-                assistant_visible.extend(
-                    codex_message_text(
-                        payload.get("content"),
-                        preserve_markers=True,
-                    )
-                )
             if texts:
                 turns.append(Turn(str(role), "\n\n".join(texts), timestamp))
         elif payload_type in (
@@ -744,87 +704,22 @@ def normalize_codex(
         ):
             turns.append(Turn("assistant", codex_tool_outcome(payload), timestamp))
         # Reasoning and tool-result payload content are intentionally omitted.
-    return turns, assistant_visible
+    return turns
 
 
 def normalize_trace(
     source: str,
     records: Sequence[dict[str, object]],
-) -> tuple[list[Turn], list[str]]:
+) -> list[Turn]:
     if source == "claude-code":
-        turns, assistant_visible = normalize_claude(records)
+        turns = normalize_claude(records)
     elif source == "codex":
-        turns, assistant_visible = normalize_codex(records)
+        turns = normalize_codex(records)
     else:
         raise MemoryError(f"unsupported session source: {source}")
     if not turns:
         raise MemoryError("the exact session trace has no usable user/assistant turns")
-    return turns, assistant_visible
-
-
-def parse_marker_metadata(raw: str, marker_name: str) -> dict[str, object]:
-    try:
-        metadata = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise MemoryError(f"malformed {marker_name} marker JSON: {exc}") from exc
-    if (
-        not isinstance(metadata, dict)
-        or set(metadata) != {"version", "source", "session_id"}
-        or metadata.get("version") != 1
-        or not isinstance(metadata.get("source"), str)
-        or not isinstance(metadata.get("session_id"), str)
-    ):
-        raise MemoryError(f"unsupported {marker_name} marker")
-    return metadata
-
-
-def latest_handoff(
-    assistant_texts: Sequence[str],
-    identity: Identity,
-) -> tuple[dict[str, object], str] | None:
-    matches: list[tuple[dict[str, object], str]] = []
-    for text in assistant_texts:
-        for match in HANDOFF_RE.finditer(text):
-            try:
-                metadata = parse_marker_metadata(match.group("meta"), "handoff")
-            except MemoryError:
-                continue
-            body = match.group("body").strip()
-            if (
-                metadata.get("source") != identity.source
-                or metadata.get("session_id") != identity.session_id
-            ):
-                continue
-            if not body:
-                continue
-            if len(body.encode("utf-8")) > MAX_HANDOFF_BYTES:
-                continue
-            if len(body.split()) > MAX_HANDOFF_WORDS:
-                continue
-            matches.append((metadata, body))
-    return matches[-1] if matches else None
-
-
-def latest_parent(
-    assistant_texts: Sequence[str],
-    current: Identity,
-) -> Identity | None:
-    parents: list[Identity] = []
-    for text in assistant_texts:
-        for match in PARENT_RE.finditer(text):
-            try:
-                metadata = parse_marker_metadata(match.group("meta"), "parent")
-            except MemoryError:
-                continue
-            source = metadata.get("source")
-            session_id = metadata.get("session_id")
-            if not isinstance(source, str) or not isinstance(session_id, str):
-                continue
-            parent = validate_identity(Identity(source, session_id))
-            if parent == current:
-                raise MemoryError("a session cannot pick itself up as its parent")
-            parents.append(parent)
-    return parents[-1] if parents else None
+    return turns
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -934,41 +829,6 @@ def validate_group(group: str) -> str:
     ):
         raise ModelOutputError("group must contain exactly two plain words")
     return normalized
-
-
-def extract_note_handoff(note: JournalNote) -> str:
-    group = note.frontmatter.get("group", "")
-    validate_group(group)
-    heading = re.search(r"(?m)^## Handoff\s*$", note.body)
-    if heading is None:
-        raise MemoryError(f"drained note has no Handoff section: {note.path}")
-    section = note.body[heading.end() :].strip()
-    match = NOTE_HANDOFF_RE.search(section)
-    if match is None:
-        raise MemoryError(
-            f"drained note has no usable reviewed handoff: {note.path}"
-        )
-    metadata = parse_marker_metadata(match.group("meta"), "handoff")
-    if (
-        metadata.get("source") != note.frontmatter.get("source")
-        or metadata.get("session_id") != note.frontmatter.get("session_id")
-    ):
-        raise MemoryError(f"drained note handoff provenance does not match: {note.path}")
-    body = match.group("body").strip()
-    if (
-        not body
-        or len(body.encode("utf-8")) > MAX_HANDOFF_BYTES
-        or len(body.split()) > MAX_HANDOFF_WORDS
-    ):
-        raise MemoryError(f"drained note handoff is empty or oversized: {note.path}")
-    return body
-
-
-def parse_reference(value: str) -> Identity:
-    source, separator, session_id = value.partition(":")
-    if not separator:
-        raise MemoryError("pickup requires source:session-id")
-    return validate_identity(Identity(source, session_id))
 
 
 def normalize_title(value: str) -> str:
@@ -1244,15 +1104,10 @@ def pack_turns(
 def prompt_for_evidence(
     mode: str,
     evidence: str,
-    inherited_group: str | None,
     frozen_title: str | None,
     frozen_group: str | None,
 ) -> str:
     constraints: list[str] = []
-    if inherited_group:
-        constraints.append(
-            f'The lineage group is fixed as "{inherited_group}"; return that exact group.'
-        )
     if frozen_title:
         constraints.append(
             f'The existing title is frozen as "{frozen_title}"; return that exact title.'
@@ -1282,7 +1137,6 @@ def pack_results(results: Sequence[ModelResult]) -> list[str]:
 def compact_turns(
     turns: Sequence[Turn],
     invoker: ModelInvoker,
-    inherited_group: str | None = None,
     frozen_title: str | None = None,
     frozen_group: str | None = None,
 ) -> ModelResult:
@@ -1292,7 +1146,6 @@ def compact_turns(
             prompt_for_evidence(
                 "final",
                 chunks[0],
-                inherited_group,
                 frozen_title,
                 frozen_group,
             ),
@@ -1304,7 +1157,6 @@ def compact_turns(
             prompt_for_evidence(
                 f"map chunk {index + 1} of {len(chunks)}",
                 chunk,
-                inherited_group,
                 frozen_title,
                 frozen_group,
             ),
@@ -1324,7 +1176,6 @@ def compact_turns(
                 prompt_for_evidence(
                     f"reduce batch {index + 1} of {len(packed)}",
                     batch,
-                    inherited_group,
                     frozen_title,
                     frozen_group,
                 ),
@@ -1355,14 +1206,12 @@ def render_note(
     drained_at: str,
     source_digest: str,
     result: ModelResult,
-    handoff: tuple[dict[str, object], str] | None,
     harvest: bool = False,
 ) -> str:
     """Render one note. `harvest` selects the harvest store's variant.
 
     A harvest note is a journal note's front matter plus `resolved:`, and its
-    sections are the journal's plus `## Unresolved units`. The journal note is
-    byte-identical to what it was before harvest existed: the drain never
+    sections are the journal's plus `## Unresolved units`. The drain never
     renders the two resolution fields (R-c21).
     """
     frontmatter: list[tuple[str, str]] = [
@@ -1429,24 +1278,6 @@ def render_note(
                 "",
                 render_list(result.unresolved_units),
                 "",
-            ]
-        )
-    lines.extend(
-        [
-            "## Handoff",
-            "",
-        ]
-    )
-    if handoff is None:
-        lines.append("_No reviewed handoff was authored._")
-    else:
-        metadata, body = handoff
-        marker = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
-        lines.extend(
-            [
-                f"<!-- ai-memory:handoff {marker} -->",
-                body,
-                "<!-- /ai-memory:handoff -->",
             ]
         )
     return "\n".join(lines) + "\n"
@@ -1653,55 +1484,32 @@ def drain_session(
         ):
             return "unchanged", existing.path
 
-        turns, assistant_visible = normalize_trace(identity.source, snapshot.records)
-        handoff = latest_handoff(assistant_visible, identity)
-        parent = latest_parent(assistant_visible, identity)
-
-        inherited_group: str | None = None
-        if parent is not None:
-            parent_note = find_one_note(journal_dir, parent, required=True)
-            assert parent_note is not None
-            extract_note_handoff(parent_note)
-            inherited_group = validate_group(
-                parent_note.frontmatter.get("group", "")
-            )
+        turns = normalize_trace(identity.source, snapshot.records)
 
         frozen_title = None
         frozen_group = None
+        # Notes drained before handoff and pickup were retired may name a
+        # parent session; a re-drain keeps that lineage in the front matter.
+        parent: Identity | None = None
         if existing is not None:
             frozen_title = normalize_title(existing.frontmatter.get("title", ""))
             frozen_group = validate_group(existing.frontmatter.get("group", ""))
             old_parent_source = existing.frontmatter.get("parent_source")
             old_parent_id = existing.frontmatter.get("parent_session_id")
             if old_parent_source or old_parent_id:
-                old_parent = validate_identity(
+                parent = validate_identity(
                     Identity(old_parent_source or "", old_parent_id or "")
                 )
-                if parent is None:
-                    parent = old_parent
-                    parent_note = find_one_note(journal_dir, parent, required=True)
-                    assert parent_note is not None
-                    extract_note_handoff(parent_note)
-                    inherited_group = validate_group(
-                        parent_note.frontmatter.get("group", "")
-                    )
-                elif parent != old_parent:
-                    raise MemoryError(
-                        "session parent marker conflicts with the existing journal lineage"
-                    )
 
         result = compact_turns(
             turns,
             invoker,
-            inherited_group=inherited_group,
             frozen_title=frozen_title,
             frozen_group=frozen_group,
         )
 
         title = frozen_title or result.title
-        group = frozen_group or inherited_group or result.group
-        if inherited_group is not None and group != inherited_group:
-            raise MemoryError("picked-up session did not preserve its inherited group")
+        group = frozen_group or result.group
 
         if existing is not None:
             target = existing.path
@@ -1721,7 +1529,6 @@ def drain_session(
             drained_at=now.isoformat(timespec="seconds"),
             source_digest=snapshot.digest,
             result=result,
-            handoff=handoff,
         )
         validate_rendered_note(
             rendered,
@@ -1987,7 +1794,7 @@ def harvest_session(
 
     Drain's identity resolution, trace capture, provenance validation and
     utility-model path, writing to the harvest store alone. It reads no journal
-    and writes no journal: no lineage inheritance, no title freeze, no
+    and writes no journal: no lineage, no title freeze, no
     deterministic-slug collision dance — those belong to the notes Tom chose to
     keep. It never prompts, and it never runs the drain.
 
@@ -2020,8 +1827,7 @@ def harvest_session(
         ):
             return "unchanged", target
 
-        turns, assistant_visible = normalize_trace(identity.source, snapshot.records)
-        handoff = latest_handoff(assistant_visible, identity)
+        turns = normalize_trace(identity.source, snapshot.records)
         result = compact_turns(turns, invoker)
 
         rendered = render_note(
@@ -2033,7 +1839,6 @@ def harvest_session(
             drained_at=now.isoformat(timespec="seconds"),
             source_digest=snapshot.digest,
             result=result,
-            handoff=handoff,
             harvest=True,
         )
         validate_rendered_note(
@@ -2086,30 +1891,9 @@ def load_config(path: Path | None = None) -> Path:
     return Path(config["journal_dir"]).expanduser()
 
 
-def pickup_output(journal_dir: Path, reference: str) -> str:
-    predecessor = parse_reference(reference)
-    note = find_one_note(journal_dir, predecessor, required=True)
-    assert note is not None
-    handoff = extract_note_handoff(note)
-    metadata = json.dumps(
-        {
-            "version": 1,
-            "source": predecessor.source,
-            "session_id": predecessor.session_id,
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-    return (
-        f"<!-- ai-memory:parent {metadata} -->\n"
-        f"## Handoff from {predecessor.source}:{predecessor.session_id}\n\n"
-        f"{handoff}\n"
-    )
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Private actions for the shared AI-memory skills"
+        description="Private actions for the drain skill"
     )
     subparsers = parser.add_subparsers(dest="action", required=True)
 
@@ -2145,8 +1929,6 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    pickup_parser = subparsers.add_parser("pickup")
-    pickup_parser.add_argument("reference")
     return parser
 
 
@@ -2166,11 +1948,6 @@ def main(argv: list[str] | None = None) -> int:
                     separators=(",", ":"),
                 )
             )
-            return 0
-
-        if args.action == "pickup":
-            journal_dir = load_config()
-            sys.stdout.write(pickup_output(journal_dir, args.reference))
             return 0
 
         if args.action == "harvest":
