@@ -8,7 +8,8 @@
 #      permission rows, the pair rows, the seat, the policy;
 #   3. dsh-master render in a scratch DSH_HOME: confined to profiles/master*,
 #      idempotent, restores a changed file and says so;
-#   4. dsh-master check with the release's own dsh on the first-party half of
+#   4. dsh-master settings seed against a stub of the floor's settings API;
+#   5. dsh-master check with the release's own dsh on the first-party half of
 #      each folder (no network, no plugin): every rendered row is in the
 #      composed tree, and no patch warning. A row aimed at a missing id fails.
 #
@@ -59,6 +60,8 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   export HOME="$TMPDIR/home" PYTHONDONTWRITEBYTECODE=1
   mkdir -p "$HOME"
   python3 -I ${./check_render.py} ${master} ${expect}
+  DSH_MASTER=${master}/share/dsh-master/dsh-master.py SEED=${master}/share/dsh-master/settings.seed.json \
+    python3 -I ${./test_seed.py} -v
 
   dm=${lib.getExe master}
   tree() { (cd "$1" && find . -printf '%p %m %y\n' | sort && find . -type f -print0 | sort -z | xargs -0 sha256sum); }
@@ -107,7 +110,7 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   if DSH_HOME="$TMPDIR/linked" $dm render --quiet 2> "$TMPDIR/linked.err"; then exit 1; fi
   grep -q 'symbolic link' "$TMPDIR/linked.err" && test -z "$(ls -A "$TMPDIR/elsewhere")"
 
-  # 4. The release's dsh composes the first-party half of each folder with
+  # 5. The release's dsh composes the first-party half of each folder with
   # every row in place and no warning.
   export DSH_HOME="$TMPDIR/probe-home"
   mkdir -p "$DSH_HOME" "$TMPDIR/cwd"

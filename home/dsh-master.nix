@@ -174,6 +174,14 @@ in
       ];
       description = "Rows of the fork bundle's other plugins, the same in every folder (a worker never applies them: they inject the orchestrator service).";
     };
+    settingsSeed = mkOption {
+      type = types.path;
+      # Rules and admission cells of the Scheduled and Workflow Sources, and
+      # accept mode auto. `dsh-master settings seed` applies it once after the
+      # floor's first start; it is not a timer.
+      default = ./dsh-master/settings.seed.json;
+      description = "Default seed file of `dsh-master settings seed`.";
+    };
     package = mkOption {
       type = types.package;
       readOnly = true;

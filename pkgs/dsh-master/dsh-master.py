@@ -4,6 +4,7 @@
     dsh-master install [PROFILE...]           install each profile's plugins
     dsh-master check [PROFILE...]             assert the rows in each config dump
     dsh-master status                         rendered, installed, current
+    dsh-master settings seed [FILE] [--url U] seed the floor's Store settings
 
 The rendered folders come from the package (pkgs/dsh-master/default.nix) or
 from --from DIR, a `nix build .#dsh-master` result. render writes only
@@ -12,10 +13,13 @@ each by temporary file and rename, and only when the content differs. It
 never runs pnpm and never touches cordis.yml, pnpm-lock.yaml or node_modules,
 which belong to dsh. install and check run the dsh that dshd runs (the
 manifest's `dsh`): the fleet wrapper refuses `dsh plugin`, and its policy
-overlays would hide what a dshd instance really composes.
+overlays would hide what a dshd instance really composes. settings seed is
+a client of the floor's management API: it upserts rules and admission cells
+and raises the accept mode, and never touches anything else.
 """
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -23,6 +27,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 
 import yaml
 
@@ -286,6 +292,87 @@ def status(args):
     return 0
 
 
+MODES = ("off", "observe", "auto")
+
+
+class Conflict(Exception):
+    pass
+
+
+def api(url, method="GET", body=None):
+    # The floor answers only same-origin management requests (fork src/app/http.ts sameOrigin).
+    request = urllib.request.Request(
+        url,
+        method=method,
+        data=None if body is None else json.dumps(body).encode("utf-8"),
+        headers={"x-orchestrator-request": "1", "content-type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", "replace").strip()
+        if error.code == 409:
+            raise Conflict(detail) from error
+        raise Failure(f"{method} {url}: HTTP {error.code}: {detail}") from error
+    except urllib.error.URLError as error:
+        raise Failure(f"{method} {url}: {error.reason}") from error
+
+
+def seeded(blocks, seed):
+    """The blocks the seed changes, as {block: (value, revision)}; warnings go to stderr."""
+    changes = {}
+    if "rules" in seed or "admission" in seed:
+        current = blocks["policy"]["value"]
+        policy = copy.deepcopy(current)
+        rules = policy.setdefault("rules", [])
+        for rule in seed.get("rules", []):
+            index = next((i for i, have in enumerate(rules) if have.get("id") == rule["id"]), None)
+            if index is None:
+                rules.append(rule)
+            else:
+                rules[index] = rule
+        for source, table in seed.get("admission", {}).items():
+            entry = policy.setdefault("sources", {}).setdefault(source, {"allowed": [], "admission": {}})
+            for row, cells in table.items():
+                entry.setdefault("admission", {}).setdefault(row, {}).update(cells)
+        if policy != current:
+            changes["policy"] = (policy, blocks["policy"]["revision"])
+    if "eval" in seed:
+        current = blocks["eval"]["value"]
+        have, want = current.get("mode"), seed["eval"]["mode"]
+        if have == "off" and want != "off":
+            print("dsh-master: eval.mode is off in the Store (a person switched it off); left alone", file=sys.stderr)
+        elif MODES.index(want) > MODES.index(have):
+            changes["eval"] = (dict(current, mode=want), blocks["eval"]["revision"])
+    return changes
+
+
+def settings_seed(args):
+    with open(args.file or os.path.join(args.source, "share", "dsh-master", "settings.seed.json"), encoding="utf-8") as stream:
+        seed = json.load(stream)
+    base = args.url.rstrip("/") + "/orchestrator/api/settings"
+    for attempt in (1, 2):
+        changes = seeded(api(base)["blocks"], seed)
+        if not changes:
+            print("unchanged")
+            return 0
+        try:
+            # Rules and admission before the mode, so `auto` never runs on the old rules.
+            for block in ("policy", "eval"):
+                if block in changes:
+                    value, revision = changes[block]
+                    api(f"{base}/{block}", "PUT", {"value": value, "revision": revision})
+        except Conflict as error:
+            if attempt == 2:
+                print(f"dsh-master: settings changed twice while seeding: {error}", file=sys.stderr)
+                return 1
+            continue
+        print(f"changed {' '.join(block for block in ('policy', 'eval') if block in changes)}")
+        return 0
+    return 1
+
+
 def main(argv):
     parser = argparse.ArgumentParser(prog="dsh-master", description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -298,6 +385,12 @@ def main(argv):
         if name in ("install", "check"):
             command.add_argument("--dsh", help="the dsh to run (default: the manifest's, the one dshd runs)")
             command.add_argument("profiles", nargs="*", metavar="PROFILE")
+    settings = commands.add_parser("settings").add_subparsers(dest="settings", required=True)
+    seed = settings.add_parser("seed", help="upsert the seed's rules and admission cells, raise eval.mode")
+    seed.add_argument("file", nargs="?", help="seed file (default: this build's settings.seed.json)")
+    seed.add_argument("--url", default="http://127.0.0.1:3082", help="the floor's web server")
+    seed.add_argument("--from", dest="source", default=default_source(), help="a dsh-master build (default: this one)")
+    seed.set_defaults(handler=settings_seed)
     args = parser.parse_args(argv)
     try:
         return args.handler(args)
