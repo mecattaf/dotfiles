@@ -16,6 +16,11 @@ let
     builtins.attrNames (users.tom.systemd.user.timers or { });
   storeFree = unit: !(lib.hasInfix "/nix/store/" (builtins.toJSON unit));
   targets = map (f: f.target) (builtins.attrValues hm.home.file);
+  # The one shared value (docs/scheduled.md): the Master profile's
+  # dsh-superagent stateDir, whose <stateDir>/inbox/scheduled the floor's
+  # scheduled Source reads.
+  inbox = "${hm.programs.dsh.master.stateDir}/inbox/scheduled";
+  environment = lib.toList tick.Service.Environment;
 in
 assert timer.Timer == {
   OnCalendar = "hourly";
@@ -28,6 +33,16 @@ assert tick.Service.Type == "oneshot";
 assert tick.Unit.X-RestartIfChanged == false;
 assert tick.Unit.StartLimitIntervalSec == 0;
 assert lib.toList tick.Service.ExecStart == [ "${lib.getExe scheduled} tick" ];
+# The heartbeat links records into the Master profile's inbox and wakes the
+# instance the Master floor recipe names.
+assert builtins.elem "SCHEDULED_INBOX=${inbox}" environment;
+assert builtins.elem "SCHEDULED_FLOOR_INSTANCE=floor" environment;
+assert hm.home.sessionVariables.SCHEDULED_INBOX == inbox;
+assert hm.home.sessionVariables.SCHEDULED_FLOOR_INSTANCE == "floor";
+# Its own state is systemd's StateDirectory, never inside .agency/state.
+assert tick.Service.StateDirectory == "scheduled";
+assert !(lib.any (e: lib.hasPrefix "SCHEDULED_STATE_DIR=" e) environment);
+assert !(lib.hasInfix "--state-dir" (toString tick.Service.ExecStart));
 assert !(tick ? Install);
 assert builtins.elem scheduled hm.home.packages;
 assert !(lib.any (t: lib.hasPrefix ".agency" t) targets);
@@ -45,12 +60,9 @@ assert builtins.elem "CLAUDECODE" nas.dshd.releases.nas.unsetEnvironment;
 assert !(builtins.elem "CLAUDE_CONFIG_DIR"
   nas.dshd.releases.nas.unsetEnvironment);
 # The tests run on a writable copy: the stub dshd's `#!/usr/bin/env node` needs patchShebangs (the build sandbox has no
-# /usr/bin/env), and the if.idle gate spawns python3.
-pkgs.runCommand "scheduled" { nativeBuildInputs = [ scheduled.node pkgs.python3 ]; } ''
+# /usr/bin/env). Node 24 refuses `node --test test/`, so the glob names the files.
+pkgs.runCommand "scheduled" { nativeBuildInputs = [ scheduled.node ]; } ''
   export HOME=$TMPDIR
-  export SCHEDULED_PYTHON=${lib.getExe pkgs.python3}
-  # Commands get the host's exact PATH (DESIGN 5.2), which the sandbox lacks.
-  export SCHEDULED_PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.bash pkgs.python3 ]}
   cp -r ${scheduled}/share/scheduled $TMPDIR/scheduled
   chmod -R u+w $TMPDIR/scheduled
   cd $TMPDIR/scheduled

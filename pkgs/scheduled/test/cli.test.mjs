@@ -20,10 +20,10 @@ function run(...args) {
 // ---------------------------------------------------------------------------
 
 describe('--version', () => {
-  it('prints "scheduled 0.1.0" and exits 0', () => {
+  it('prints "scheduled 0.2.0" and exits 0', () => {
     const r = run('--version');
     assert.equal(r.status, 0);
-    assert.match(r.stdout, /^scheduled 0\.1\.0\n?$/);
+    assert.match(r.stdout, /^scheduled 0\.2\.0\n?$/);
     assert.equal(r.stderr, '');
   });
 });
@@ -78,8 +78,17 @@ describe('verb table', () => {
   it('has a module for every verb', async () => {
     const { readdirSync } = await import('node:fs');
     const built = new Set(readdirSync(new URL('../src/verbs/', import.meta.url)).map((f) => f.replace(/\.mjs$/, '')));
-    for (const verb of ['ls', 'show', 'validate', 'new', 'put', 'set', 'rm', 'run', 'history', 'accept', 'dismiss', 'schema', 'env', 'gate', 'check', 'tick']) {
-      assert.ok(built.has(verb), verb);
+    const verbs = ['ls', 'show', 'validate', 'schema', 'new', 'set', 'rm', 'run', 'history', 'tick'];
+    for (const verb of verbs) assert.ok(built.has(verb), verb);
+    // The withdrawn verbs (proposals, host gates, outcome checks, SCHED_* environment) are gone.
+    assert.deepEqual([...built].sort(), [...verbs].sort());
+  });
+
+  it('refuses a withdrawn verb as unknown, exit 2', () => {
+    for (const verb of ['put', 'accept', 'dismiss', 'gate', 'check', 'env']) {
+      const r = run(verb);
+      assert.equal(r.status, 2, verb);
+      assert.match(r.stderr, /unknown verb/i);
     }
   });
 });

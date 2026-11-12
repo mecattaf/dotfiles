@@ -1,0 +1,256 @@
+{
+  config,
+  lib,
+  osConfig,
+  pkgs,
+  ...
+}:
+# The Master configuration (docs/scheduled.md): one source for the DSH profile
+# folders of the master agency's superagent, rendered by pkgs/dsh-master as
+#
+#   master          web app, superagent engine on: the floor instance
+#   master-<pair>   headless, engine off: the workers of one provider-harness pair
+#
+# Activation copies the rendered files into ~/.dsh/profiles/master* with
+# `dsh-master render --quiet`, which needs no network and never runs pnpm.
+# Installing the plugins is a hand step (`dsh-master install`, then
+# `dsh-master check`). No other profile folder and no ~/.dsh/cordis.patch.yml
+# is written: that home layer would change every profile of the home.
+let
+  cfg = config.programs.dsh.master;
+  home = config.home.homeDirectory;
+  localModel = import ../lib/local-model.nix;
+  inherit (lib) mkOption types;
+
+  pair = types.submodule (
+    { config, ... }:
+    {
+      options = {
+        provider = mkOption {
+          type = types.str;
+          description = "agent-default-model provider of this pair's workers.";
+        };
+        model = mkOption {
+          type = types.str;
+          description = "agent-default-model model id.";
+        };
+        reasoningEffort = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Reasoning effort; null for a model that declares none.";
+        };
+        env = mkOption {
+          type = types.attrsOf types.str;
+          default = { };
+          description = "Environment of this pair's units. Recorded in each unit's recipe: public values only.";
+        };
+        maxWorkers = mkOption {
+          type = types.nullOr types.ints.positive;
+          default = null;
+          description = "At most this many units of this pair at once.";
+        };
+        # dsh headless binds no agent preset, and dsh-claude serves only a
+        # Session bound to one of its presets. Its `claude` preset also routes
+        # every request to Claude Code, so a pair of another provider binds none
+        # (a Gufo worker under it asks Claude Code for qwen3.8-flash-next).
+        preset = mkOption {
+          type = types.nullOr types.str;
+          default = if config.provider == "claude" then "claude" else null;
+          defaultText = lib.literalExpression ''if provider == "claude" then "claude" else null'';
+          description = "Agent preset dsh-claude's headless-preset binder selects for this pair's workers; null inserts no binder.";
+        };
+      };
+    }
+  );
+
+  # Profile folders that exist beside Master and are never written.
+  otherProfiles = pkgs.dsh.profiles ++ [
+    "web"
+    "floor"
+    "floor-worker"
+  ];
+  workerNames = map (name: "master-${name}") (builtins.attrNames cfg.pairs);
+in
+{
+  options.programs.dsh.master = {
+    enable = mkOption {
+      type = types.bool;
+      # The superagent runs where dsh and dshd run.
+      default = osConfig.myFleet.has "brain";
+      description = "Render the Master DSH profile folders.";
+    };
+    tag = mkOption {
+      type = types.strMatching "floor-v2\\.[0-9]+";
+      # The one value a release moves: both forks cut floor-v2.<n> tags whose
+      # tarballs hold the built lib/. floor-v2.1 was the first release;
+      # floor-v2.2 adds the executor's long-run Session read; floor-v2.3
+      # registers the superagent's tool parameters as plain JSON, which the
+      # Claude bridge needs; floor-v2.4 has dsh-claude's bridge call DSH 0.2's
+      # batch tool executor. Move this with each new tag.
+      default = "floor-v2.4";
+      description = "Release tag both plugin pins name, unless `superagent` or `claude` is set.";
+    };
+    superagent = mkOption {
+      type = types.str;
+      default = "github:mecattaf/dsh-superagent-prototype#${cfg.tag}";
+      defaultText = lib.literalExpression ''"github:mecattaf/dsh-superagent-prototype#''${tag}"'';
+      description = "package.json spec of the dsh-superagent fork.";
+    };
+    claude = mkOption {
+      type = types.str;
+      default = "github:mecattaf/dsh-claude#${cfg.tag}";
+      defaultText = lib.literalExpression ''"github:mecattaf/dsh-claude#''${tag}"'';
+      description = "package.json spec of dsh-claude.";
+    };
+    stateDir = mkOption {
+      type = types.str;
+      default = "${home}/.agency/state/master";
+      description = "The superagent's stateDir: orchestrator.sqlite and its lock.";
+    };
+    claudeConfigDir = mkOption {
+      type = types.str;
+      # cc2, the seat of the superagent and its Claude workers.
+      default = "${home}/.claude-work";
+      description = "CLAUDE_CONFIG_DIR of every Claude process the Master profiles start.";
+    };
+    workerCwd = mkOption {
+      type = types.str;
+      default = home;
+      description = "Directory of a worker whose Trigger names none (dshd.cwd).";
+    };
+    webPort = mkOption {
+      type = types.port;
+      # scheduled-panel-tunnel forwards this port (home/scheduled.nix).
+      default = 3082;
+      description = "Loopback port of the master web profile.";
+    };
+    dshdCommand = mkOption {
+      type = types.str;
+      default = "/run/current-system/sw/bin/dshd";
+      description = "The dshd CLI the superagent launches workers with.";
+    };
+    dshCommand = mkOption {
+      type = types.str;
+      # The dsh dshd runs (modules/dshd.nix), not the fleet wrapper.
+      default = "/etc/dshd/releases/default/bin/dsh";
+      description = "The dsh that dsh-master install and check run.";
+    };
+    defaultPair = mkOption {
+      type = types.str;
+      default = "opus";
+      description = "The pair a Ticket runs on when its Trigger names none.";
+    };
+    pairs = mkOption {
+      type = types.attrsOf pair;
+      default = {
+        # "opus" is a seed id of dsh-claude's catalog, so it is never rewritten.
+        opus = {
+          provider = "claude";
+          model = "opus";
+          reasoningEffort = "medium";
+        };
+        # Gufo serves one generation at a time. The bearer is the public dummy
+        # the keyless server takes (pkgs/dsh), never a secret. No preset: the
+        # worker runs dsh's own agent on the gufo provider.
+        gufo = {
+          provider = "gufo";
+          model = localModel.modelId;
+          env.GUFO_API_KEY = "local-no-auth";
+          maxWorkers = 1;
+        };
+      };
+      description = "Provider-harness pairs; each renders one headless folder master-<name>.";
+    };
+    claudeConfig = {
+      master = mkOption {
+        type = types.attrs;
+        default = { };
+        description = "Keys merged last into the llm-claude row of master.";
+      };
+      worker = mkOption {
+        type = types.attrs;
+        default = { };
+        description = "Keys merged last into the llm-claude row of every master-<pair>.";
+      };
+    };
+    superagentConfig = mkOption {
+      type = types.attrs;
+      default = { };
+      description = "Further dsh-superagent Schema keys, merged into the row of every folder (`engine` stays per folder).";
+    };
+    superagentRows = mkOption {
+      type = types.listOf types.attrs;
+      # The fork's Scheduled and Workflow Sources. The heartbeat writes the
+      # Scheduled inbox, <stateDir>/inbox/scheduled, the plugin's default.
+      default = [
+        {
+          id = "dsh-superagent-scheduled";
+          disabled = false;
+        }
+        {
+          id = "dsh-superagent-workflow";
+          disabled = false;
+          config = {
+            pollMs = 2000;
+            concurrency = 16;
+            maxAttempts = 1;
+            pair = "";
+          };
+        }
+      ];
+      description = "Rows of the fork bundle's other plugins, the same in every folder (a worker never applies them: they inject the orchestrator service).";
+    };
+    settingsSeed = mkOption {
+      type = types.path;
+      # Rules and admission cells of the Scheduled and Workflow Sources, and
+      # accept mode auto. `dsh-master settings seed` applies it once after the
+      # floor's first start; it is not a timer.
+      default = ./dsh-master/settings.seed.json;
+      description = "Default seed file of `dsh-master settings seed`.";
+    };
+    package = mkOption {
+      type = types.package;
+      readOnly = true;
+      description = "The rendered profiles and the dsh-master CLI.";
+    };
+  };
+
+  config = lib.mkIf cfg.enable {
+    programs.dsh.master.package = pkgs.callPackage ../pkgs/dsh-master { settings = cfg; };
+
+    assertions = [
+      {
+        assertion = cfg.pairs ? ${cfg.defaultPair};
+        message = "programs.dsh.master.defaultPair (${cfg.defaultPair}) is not one of the pairs.";
+      }
+      {
+        assertion = lib.all (name: builtins.match "[a-z0-9][a-z0-9-]*" name != null) (
+          builtins.attrNames cfg.pairs
+        );
+        message = "programs.dsh.master.pairs: a name must match ^[a-z0-9][a-z0-9-]*$.";
+      }
+      {
+        assertion = !(cfg.pairs ? web || cfg.pairs ? master);
+        message = "programs.dsh.master.pairs: `web` and `master` are not pair names.";
+      }
+      {
+        assertion = !(lib.any (name: builtins.elem name otherProfiles) ([ "master" ] ++ workerNames));
+        message = "programs.dsh.master: a Master profile name collides with an existing profile.";
+      }
+      {
+        assertion = !(cfg.superagentConfig ? engine);
+        message = "programs.dsh.master.superagentConfig: `engine` is set per folder by the renderer.";
+      }
+    ];
+
+    home.packages = [ cfg.package ];
+
+    # After writeBoundary: the profile folders are dsh's state, never Home
+    # Manager links. A failed render must not fail the generation; it says
+    # so and `dsh-master render` repeats it by hand.
+    home.activation.dshMasterProfiles = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      run ${lib.getExe cfg.package} render --quiet \
+        || echo "dsh-master: render failed; run dsh-master render" >&2
+    '';
+  };
+}

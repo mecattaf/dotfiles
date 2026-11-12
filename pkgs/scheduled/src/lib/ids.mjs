@@ -1,7 +1,7 @@
-// ids.mjs — agency/workflow identity and spool-name utilities.
+// ids.mjs — agency/item identity and inbox record names.
 //
-// Spec ref: §5.1 (agency ids, workflow ids, occurrence keys, dshd names)
-//           §5.3 (spool file names)
+// Spec ref: agency ids, item ids
+//           scheduled-jsonc §3 (record file names)
 
 import { randomBytes } from 'node:crypto';
 import { relative } from 'node:path';
@@ -11,7 +11,7 @@ import { relative } from 'node:path';
 // ---------------------------------------------------------------------------
 
 /**
- * Regular expression that a workflow stem must match.
+ * Regular expression that an item stem must match.
  * Pattern: ^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$
  * (single character stems are also valid: just [a-z0-9])
  */
@@ -42,7 +42,7 @@ export function agencyId(root, home) {
 // ---------------------------------------------------------------------------
 
 /**
- * Parse a workflow id of the form `<agency>:<stem>`.
+ * Parse an item id of the form `<agency>:<stem>`.
  *
  * @param {string} id
  * @returns {{ agency: string, stem: string }}
@@ -50,7 +50,7 @@ export function agencyId(root, home) {
  */
 export function parseId(id) {
   const colon = id.indexOf(':');
-  if (colon < 0) throw new Error(`Invalid workflow id (no colon): ${id}`);
+  if (colon < 0) throw new Error(`Invalid item id (no colon): ${id}`);
   const agency = id.slice(0, colon);
   const stem = id.slice(colon + 1);
   return { agency, stem };
@@ -61,8 +61,7 @@ export function parseId(id) {
 // ---------------------------------------------------------------------------
 
 /**
- * Format a Date as the spool-file occurrence stamp: `yyyymmddThhmmZ`.
- * Used in scheduled occurrence spool file names.
+ * Format a Date as the occurrence stamp of a record name: `yyyymmddThhmmZ`.
  *
  * @param {Date} date
  * @returns {string}  e.g. `'20261112T0000Z'`
@@ -76,54 +75,31 @@ export function spoolStamp(date) {
   return `${y}${mo}${d}T${h}${mi}Z`;
 }
 
-/**
- * Format a Date as the census spool stamp: `yyyymmddThhmmssZ`.
- * Used in census spool file names.
- *
- * @param {Date} date
- * @returns {string}  e.g. `'20261112T000041Z'`
- */
-export function censusStamp(date) {
-  const y = date.getUTCFullYear().toString().padStart(4, '0');
-  const mo = (date.getUTCMonth() + 1).toString().padStart(2, '0');
-  const d = date.getUTCDate().toString().padStart(2, '0');
-  const h = date.getUTCHours().toString().padStart(2, '0');
-  const mi = date.getUTCMinutes().toString().padStart(2, '0');
-  const s = date.getUTCSeconds().toString().padStart(2, '0');
-  return `${y}${mo}${d}T${h}${mi}${s}Z`;
-}
-
 // ---------------------------------------------------------------------------
-// Spool file names
+// Occurrence record file names (the producer's convention; the Source reads any *.json)
 // ---------------------------------------------------------------------------
 
-// Spool names use `~` as separator between agency and stem (§5.3).
-// `/` in an agency id becomes `-` in spool names.
+// `~` separates namespace and item; `/` in a namespace (a nested agency) becomes `+`.
+const nsSlug = (namespace) => namespace.replaceAll('/', '+');
 
-function agencySlug(agency) {
-  return agency.replaceAll('/', '-');
+/**
+ * The inbox file name of a scheduled occurrence: `<ns>~<item>@<yyyymmddThhmmZ>.json`.
+ *
+ * @param {{ namespace: string, item: string, due: Date }} opts
+ * @returns {string}
+ */
+export function occurrenceName({ namespace, item, due }) {
+  return `${nsSlug(namespace)}~${item}@${spoolStamp(due)}.json`;
 }
 
 /**
- * Build the spool file name for a scheduled occurrence.
- * Format: `<agency>~<stem>@<yyyymmddThhmmZ>.json`
+ * The inbox file name of a manual run: `<ns>~<item>@run~<ULID>.json`.
  *
- * @param {{ agency: string, stem: string, instant: Date }} opts
+ * @param {{ namespace: string, item: string, run: string }} opts
  * @returns {string}
  */
-export function spoolName({ agency, stem, instant }) {
-  return `${agencySlug(agency)}~${stem}@${spoolStamp(instant)}.json`;
-}
-
-/**
- * Build the spool file name for a manual (`run now`) occurrence.
- * Format: `<agency>~<stem>@manual~<ULID>.json`
- *
- * @param {{ agency: string, stem: string, ulid: string }} opts
- * @returns {string}
- */
-export function manualSpoolName({ agency, stem, ulid: ulidStr }) {
-  return `${agencySlug(agency)}~${stem}@manual~${ulidStr}.json`;
+export function runName({ namespace, item, run }) {
+  return `${nsSlug(namespace)}~${item}@run~${run}.json`;
 }
 
 // ---------------------------------------------------------------------------

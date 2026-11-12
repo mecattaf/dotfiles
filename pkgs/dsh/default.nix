@@ -303,6 +303,7 @@ writeShellApplication {
       zenProvider
       smoke
       policyIds
+      policyRows
       disabledIds
       ;
   };

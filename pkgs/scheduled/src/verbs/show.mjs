@@ -1,208 +1,100 @@
 /**
  * src/verbs/show.mjs - The `scheduled show` verb.
- * Usage: show (ID | PATH) [--json] [-n N] [--from ISO]
+ * Usage: show (ID | PATH) [--json] [-n N] [--from ISO] [--inbox DIR]
+ * The parsed item, its next N instants and the last N records the floor handled for it.
  */
 
-import { readFileSync, lstatSync } from 'node:fs';
-import { resolve, basename, dirname } from 'node:path';
-import { parseWorkflow, normalize, revision, formatProblems } from '../lib/schema.mjs';
-import { scheduleProblems, nextInstants, instantsBetween } from '../lib/cron.mjs';
-import { validateFile } from '../lib/validate.mjs';
+import { lstatSync } from 'node:fs';
+import { resolve, basename } from 'node:path';
+import { normalize, revision, formatProblems } from '../lib/schema.mjs';
+import { nextInstants } from '../lib/cron.mjs';
+import { validateFile, agencyRootOf } from '../lib/validate.mjs';
 import { resolveId } from '../lib/resolve.mjs';
-import { discover } from '../lib/discover.mjs';
+import { agencyId } from '../lib/ids.mjs';
+import { handled, ofItem } from './history.mjs';
 
 function usage(ctx) {
-  ctx.err('Usage: scheduled show (PATH) [--json] [-n N] [--from ISO]\n');
+  ctx.err('Usage: scheduled show (ID | PATH) [--json] [-n N] [--from ISO] [--inbox DIR]\n');
 }
 
+const jsonProblem = (p) => ({ level: p.severity, code: p.code, path: [], line: p.line ?? 0, col: p.col ?? 0, message: p.message });
+
 export async function main(args, ctx) {
-  let filePath = null;
-  let rawArg = null;
+  let target = null;
   let jsonOutput = false;
   let n = 3;
   let fromIso = null;
+  let inbox = ctx.inbox;
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === '--json') {
-      jsonOutput = true;
-    } else if (a === '-n') {
+    if (a === '--json') jsonOutput = true;
+    else if (a === '-n') {
       n = parseInt(args[++i], 10);
-      if (isNaN(n) || n < 1) {
-        ctx.err('"--n" must be a positive integer\n');
-        return 2;
-      }
-    } else if (a === '--from') {
-      fromIso = args[++i];
-    } else if (a.startsWith('-')) {
-      usage(ctx);
-      return 2;
-    } else {
-      if (filePath !== null) {
-        usage(ctx);
-        return 2;
-      }
-      rawArg = a;
-      filePath = resolve(a);
-    }
+      if (isNaN(n) || n < 1) { ctx.err('"-n" must be a positive integer\n'); return 2; }
+    } else if (a === '--from') fromIso = args[++i];
+    else if (a === '--inbox') inbox = args[++i];
+    else if (a.startsWith('-') || target !== null) { usage(ctx); return 2; }
+    else target = a;
   }
+  if (!target) { usage(ctx); return 2; }
 
-  if (!filePath) {
-    usage(ctx);
-    return 2;
-  }
-
-  // Check if the argument is a file path (exists) or an ID
+  // A path that exists is shown as the file; anything else is an item id.
+  let filePath = resolve(target);
   let isFile = false;
-  try {
-    lstatSync(filePath);
-    isFile = true;
-  } catch {
-    // Not a path
-  }
-
-  let resolvedId = null;
-  let isProposal = false;
+  try { lstatSync(filePath); isFile = true; } catch { /* an id */ }
   if (!isFile) {
     try {
-      const target = await resolveId(ctx, rawArg);
-      filePath = target.path;
-      resolvedId = target.id;
+      filePath = (await resolveId(ctx, target)).path;
     } catch (err) {
       return err.exitCode ?? 1;
     }
-  } else {
-    // A path: name it by the discovered id when it lies inside an agency.
-    isProposal = basename(dirname(filePath)) === 'proposed';
-    try {
-      const { files } = await discover({ home: ctx.home, uid: ctx.uid });
-      const hit = files.find(f => resolve(f.path) === filePath);
-      if (hit) { resolvedId = hit.id; isProposal = hit.proposal; }
-    } catch { /* not inside an agency */ }
   }
 
-  // Validate the file
-  const { problems, value, bytes, promptBytes } = await validateFile(filePath, {
-    uid: ctx.uid,
-    proposal: isProposal,
-  });
+  const root = agencyRootOf(filePath);
+  const stem = basename(filePath, '.jsonc');
+  const agency = agencyId(root, ctx.home);
+  const { problems, value, bytes, promptBytes, prompt } = await validateFile(filePath, { uid: ctx.uid });
 
-  const errors = problems.filter(p => p.severity === 'error');
-  if (errors.length > 0) {
+  if (!value) {
     if (jsonOutput) {
-      const workflowId = resolvedId ?? basename(filePath, '.jsonc');
-      ctx.out(JSON.stringify({
-        v: 1,
-        results: [{
-          workflow: workflowId,
-          path: filePath,
-          revision: bytes ? revision(bytes, promptBytes) : null,
-          valid: false,
-          problems: problems.map(p => ({
-            level: p.severity,
-            code: p.code,
-            path: [],
-            line: p.line ?? 0,
-            col: p.col ?? 0,
-            message: p.message,
-          })),
-        }],
-      }) + '\n');
+      ctx.out(JSON.stringify({ v: 1, results: [{ item: `${agency}:${stem}`, path: filePath,
+        revision: bytes ? revision(bytes, promptBytes) : null, valid: false, problems: problems.map(jsonProblem) }] }) + '\n');
     } else {
-      const lines = formatProblems(filePath, problems);
-      ctx.err(lines.join('\n') + '\n');
+      ctx.err(formatProblems(filePath, problems).join('\n') + '\n');
     }
     return 1;
   }
 
-  // Compute stem and agency info from path
-  const stem = basename(filePath, '.jsonc');
-  const workflowsDir = dirname(filePath);
-  const agencyDir = dirname(workflowsDir);
-  const agencyRoot = dirname(agencyDir); // .agency/ parent
-  const home = ctx.home ?? agencyRoot;
+  const norm = normalize(value, { file: filePath, root, agency, stem, prompt });
+  norm.revision = revision(bytes, promptBytes);
+  norm.problems = problems.filter((p) => p.severity === 'warning').map(jsonProblem);
 
-  // For now: simple agencyId derivation
-  // master = home directory, else relative path
-  let agencyId = 'master';
-  if (agencyRoot !== home) {
-    // Relative from home
-    if (agencyRoot.startsWith(home + '/')) {
-      agencyId = agencyRoot.slice(home.length + 1);
-    } else {
-      agencyId = agencyRoot;
-    }
-  }
-
-  // Get prompt text from prompt-file if applicable
-  let promptText = value.job?.prompt ?? '';
-  if (promptBytes) {
-    promptText = new TextDecoder('utf-8').decode(promptBytes);
-  }
-
-  // Normalize
-  const norm = normalize(value, {
-    file: filePath,
-    agencyRoot,
-    agencyId,
-    stem,
-    promptText,
-    home,
-  });
-
-  // Set revision
-  norm.revision = bytes ? revision(bytes, promptBytes) : null;
-
-  // Set state
-  if (!value.enabled) norm.state = 'disabled';
-
-  // Add warnings to problems
-  norm.problems = problems.filter(p => p.severity === 'warning').map(p => ({
-    level: p.severity,
-    code: p.code,
-    path: [],
-    line: p.line ?? 0,
-    col: p.col ?? 0,
-    message: p.message,
-  }));
-
-  // Compute next occurrences
-  const schedEntries = value.on?.schedule ?? [];
-  let fromDate;
-  if (fromIso) {
-    fromDate = new Date(fromIso);
-    if (isNaN(fromDate.getTime())) {
-      ctx.err(`Invalid --from value: "${fromIso}"\n`);
-      return 2;
-    }
-  } else {
-    fromDate = ctx.now ? ctx.now() : new Date();
-  }
-
-  const nextDates = schedEntries.length > 0
-    ? nextInstants(schedEntries, fromDate, n)
-    : [];
-
-  norm.next = nextDates.map(d => d.toISOString());
+  const fromDate = fromIso ? new Date(fromIso) : (ctx.now ? ctx.now() : new Date());
+  if (isNaN(fromDate.getTime())) { ctx.err(`Invalid --from value: "${fromIso}"\n`); return 2; }
+  norm.next = nextInstants(value.on?.schedule ?? [], fromDate, n).map((d) => d.toISOString());
+  norm.records = inbox ? ofItem(handled(inbox), norm.id).slice(0, n) : null;
 
   if (jsonOutput) {
     ctx.out(JSON.stringify(norm) + '\n');
-  } else {
-    // Human-readable output
-    ctx.out(`id: ${norm.id}\n`);
-    ctx.out(`path: ${norm.path}\n`);
-    ctx.out(`revision: ${norm.revision}\n`);
-    ctx.out(`state: ${norm.state}\n`);
-    ctx.out(`name: ${norm.spec.name}\n`);
-    ctx.out(`enabled: ${norm.spec.enabled}\n`);
-    if (norm.next.length > 0) {
-      ctx.out(`next occurrences:\n`);
-      for (const d of norm.next) ctx.out(`  ${d}\n`);
-    }
-    if (problems.length > 0) {
-      ctx.out(formatProblems(filePath, problems).join('\n') + '\n');
-    }
+    return 0;
   }
-
+  ctx.out(`id: ${norm.id}\n`);
+  ctx.out(`path: ${norm.path}\n`);
+  ctx.out(`revision: ${norm.revision}\n`);
+  ctx.out(`state: ${norm.state}\n`);
+  ctx.out(`name: ${norm.spec.name}\n`);
+  ctx.out(`enabled: ${norm.spec.enabled}\n`);
+  if (norm.next.length > 0) {
+    ctx.out(norm.spec.enabled ? 'next occurrences:\n' : 'next occurrences (once enabled):\n');
+    for (const d of norm.next) ctx.out(`  ${d}\n`);
+  }
+  if (norm.records === null) ctx.out('records: no inbox (set SCHEDULED_INBOX or pass --inbox)\n');
+  else if (norm.records.length === 0) ctx.out('records: none handled yet\n');
+  else {
+    ctx.out('records:\n');
+    for (const r of norm.records) ctx.out(`  ${r.due ?? '-'}  ${r.state}  ${r.kind ?? '-'}  ${r.occurrence}${r.error ? `  error: ${r.error}` : ''}\n`);
+  }
+  if (problems.length > 0) ctx.out(formatProblems(filePath, problems).join('\n') + '\n');
   return 0;
 }

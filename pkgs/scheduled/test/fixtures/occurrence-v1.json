@@ -1,0 +1,32 @@
+[
+  {
+    "v": 1,
+    "kind": "schedule",
+    "namespace": "team/widgets",
+    "item": "nightly-digest",
+    "name": "Nightly digest",
+    "cwd": "/srv/work/widgets",
+    "file": "/srv/work/widgets/schedule/nightly-digest.json",
+    "due": "2026-11-12T02:00:00.000Z",
+    "missed": 2,
+    "revision": "3f9d2b7c1a0e",
+    "text": "Summarize the pull requests merged yesterday into notes/digest.md, then commit it.",
+    "by": "scheduled-heartbeat",
+    "at": "2026-11-12T02:00:04.512Z"
+  },
+  {
+    "v": 1,
+    "kind": "manual",
+    "namespace": "team/widgets",
+    "item": "nightly-digest",
+    "cwd": "/srv/work/widgets",
+    "file": "/srv/work/widgets/schedule/nightly-digest.json",
+    "due": "2026-11-12T09:15:30.000Z",
+    "run": "01KA0Z8Q6V3M4N5P7R8S9T0W1X",
+    "missed": 0,
+    "revision": "3f9d2b7c1a0e",
+    "text": "Summarize the pull requests merged yesterday into notes/digest.md, then commit it.",
+    "by": "scheduled-run",
+    "at": "2026-11-12T09:15:30.000Z"
+  }
+]

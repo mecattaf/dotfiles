@@ -1,4 +1,5 @@
 {
+  config,
   lib,
   osConfig,
   pkgs,
@@ -7,20 +8,34 @@
 # Scheduled (AGENTS.md D52): the heartbeat, the one Nix-pure workflow.
 # Tom, 2026-11-10: "the only nix pure workflow is the heartbeat. it gets
 # a systemd timer unit." Each tick runs `scheduled tick`: it decodes the
-# cron times of every agency's .agency/workflows/*.jsonc, hands the due
-# occurrences to the factory floor and wakes the floor. The work is
-# impure and lives on the floor (the superagent fork in the dsh
-# config), never here. Runbook: docs/scheduled.md.
+# cron times of every agency's .agency/scheduled/*.jsonc, links one
+# occurrence record per due item into the superagent's inbox and starts
+# the floor when records wait. It holds no superagent logic: the floor's
+# scheduled Source turns records into Triggers and the main Session
+# judges them. Runbook: docs/scheduled.md.
 let
   scheduled = lib.getExe pkgs.scheduled;
+  # The one shared value: the floor's scheduled Source reads
+  # <stateDir>/inbox/scheduled by default, beside orchestrator.sqlite.
+  # programs.dsh.master.stateDir (home/dsh-master.nix) is what the Master
+  # profile renders as dsh-superagent's stateDir; tests/scheduled asserts
+  # the two agree.
+  inbox = "${config.programs.dsh.master.stateDir}/inbox/scheduled";
+  # The floor's dshd instance; the name the Master floor recipe keeps.
+  floorInstance = "floor";
 in
 lib.mkIf osConfig.dshd.enable {
-  # Tom, Claude Code and the dsh-web panel run the same program.
+  # Tom, Claude Code and the dsh-web panel run the same program, and
+  # `scheduled run` and `history` find the same inbox and floor.
   home.packages = [ pkgs.scheduled ];
+  home.sessionVariables = {
+    SCHEDULED_INBOX = inbox;
+    SCHEDULED_FLOOR_INSTANCE = floorInstance;
+  };
 
   systemd.user.services.scheduled-heartbeat = {
     Unit = {
-      Description = "Scheduled heartbeat: decode due work, wake the floor";
+      Description = "Scheduled heartbeat: hand due occurrences to the floor";
       # A switch never kills a tick in flight; the next tick runs the
       # new generation (the paper-daemon-flush contract).
       X-RestartIfChanged = false;
@@ -37,7 +52,14 @@ lib.mkIf osConfig.dshd.enable {
       ExecStart = "${scheduled} tick";
       # dshd and what it calls (nix-store, systemctl, journalctl)
       # follow the running system, never a login shell.
-      Environment = [ "PATH=/run/current-system/sw/bin" ];
+      Environment = [
+        "PATH=/run/current-system/sw/bin"
+        "SCHEDULED_INBOX=${inbox}"
+        "SCHEDULED_FLOOR_INSTANCE=${floorInstance}"
+      ];
+      # heartbeat.json, intake.json and .tick.lock: ~/.local/state/scheduled
+      # ($STATE_DIRECTORY), never the superagent's stateDir.
+      StateDirectory = "scheduled";
       NoNewPrivileges = true;
       UMask = "0077";
       # Longer than dshd's startupTimeout (150 s) for a floor start.
@@ -58,7 +80,7 @@ lib.mkIf osConfig.dshd.enable {
       OnStartupSec = "2min";
       # A missed hour runs once at boot, never a backlog. Safe here,
       # unlike update-center's Persistent=false: a tick only decodes,
-      # hands off and wakes.
+      # links records and wakes.
       Persistent = true;
     };
     Install.WantedBy = [ "timers.target" ];

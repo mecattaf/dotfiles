@@ -1,6 +1,6 @@
 // ls.mjs — the `scheduled ls` verb.
 //
-// Spec ref: §10.1 (ls [--agency A] [--json])
+// Every item with its state (enabled, disabled or invalid), next instant and revision.
 
 import { execFile } from 'node:child_process';
 import { discover } from '../lib/discover.mjs';
@@ -132,7 +132,7 @@ export async function main(args, ctx) {
     };
   }
 
-  // 2. Discover agencies and workflows
+  // 2. Discover agencies and items
   const { agencies: allAgencies, files: allFiles, problems: discoverProblems = [] } = await discover({
     home: ctx.home,
     uid: ctx.uid,
@@ -146,45 +146,31 @@ export async function main(args, ctx) {
     ? allFiles.filter((f) => f.agency === agencyFilter)
     : allFiles;
 
-  // 3. Evaluate each workflow
+  // 3. Evaluate each item: invalid, disabled or enabled; only an enabled item has a next instant.
   const now = ctx.now ? ctx.now() : new Date();
-  const workflows = [];
+  const items = [];
 
   for (const f of targetFiles) {
-    const { problems, value, bytes, promptBytes } = await validateFile(f.path, {
-      uid: ctx.uid,
-      proposal: f.proposal,
-    });
-
-    const hasErrors = problems.some((p) => p.severity === 'error');
-
-    let state;
-    if (hasErrors) {
-      state = 'invalid';
-    } else if (f.proposal) {
-      state = 'proposal';
-    } else if (value && value.enabled === false) {
-      state = 'paused';
-    } else {
-      state = 'valid';
-    }
-
+    const { problems, value, bytes, promptBytes } = await validateFile(f.path, { uid: ctx.uid });
+    const hasErrors = !value;
+    const state = hasErrors ? 'invalid' : value.enabled ? 'enabled' : 'disabled';
     const rev = bytes ? revision(bytes, promptBytes) : null;
 
     let next = null;
-    if (!hasErrors && state === 'valid' && value?.on?.schedule?.length > 0) {
+    if (state === 'enabled' && value.on?.schedule?.length > 0) {
       const dates = nextInstants(value.on.schedule, now, 1);
       if (dates.length > 0) {
         next = dates[0].toISOString();
       }
     }
 
-    workflows.push({
+    items.push({
       id: f.id,
       agency: f.agency,
       stem: f.stem,
       path: f.path,
-      proposal: f.proposal,
+      enabled: hasErrors ? null : value.enabled,
+      valid: !hasErrors,
       state,
       next,
       revision: rev,
@@ -193,7 +179,7 @@ export async function main(args, ctx) {
   }
 
   // Sort: invalid first, then alphabetically by id
-  workflows.sort((a, b) => {
+  items.sort((a, b) => {
     if (a.state === 'invalid' && b.state !== 'invalid') return -1;
     if (a.state !== 'invalid' && b.state === 'invalid') return 1;
     return a.id.localeCompare(b.id);
@@ -201,7 +187,7 @@ export async function main(args, ctx) {
 
   if (jsonOutput) {
     // Discovery's own problems (an agency-name error, a bad stem) are part of the listing (C2.8).
-    ctx.out(JSON.stringify({ heartbeat, agencies, workflows, problems: discoverProblems }) + '\n');
+    ctx.out(JSON.stringify({ heartbeat, agencies, items, problems: discoverProblems }) + '\n');
   } else {
     // Text output:
     // Header line
@@ -211,8 +197,8 @@ export async function main(args, ctx) {
       ctx.out('heartbeat: unknown\n');
     }
 
-    // Workflow lines
-    for (const w of workflows) {
+    // Item lines
+    for (const w of items) {
       const nextStr = w.next ?? '-';
       const revStr = w.revision ?? '-';
       ctx.out(`${w.id}  ${w.state}  ${nextStr}  ${revStr}\n`);

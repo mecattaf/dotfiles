@@ -1,15 +1,19 @@
-// The baseline workflows of DESIGN 11 (claim C6.1, fixture half). Every one
-// ships with "enabled": false tonight (D-11): nothing may fire in the morning.
+// The three live items copied from ~/.agency/workflows/ (scheduled-jsonc §7). Every one ships with
+// "enabled": false (H60, Tom: "make sure there are no scheduled work in the morning"). The integrator
+// copies these files to ~/.agency/scheduled/ (mode 0600, directory 0700); Nix never writes them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, chmodSync, readdirSync, statSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, chmodSync, readdirSync, readFileSync, statSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { validateFile } from '../src/lib/validate.mjs';
 import { discover } from '../src/lib/discover.mjs';
+import { tick } from '../src/lib/tick.mjs';
+import { main as validateVerb } from '../src/verbs/validate.mjs';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/master', import.meta.url));
+const FILES = ['fleet-nightly.jsonc', 'floor-upkeep.jsonc', 'journal-day.jsonc'];
 
 function home() {
   const dir = mkdtempSync(join(tmpdir(), 'scheduled-baseline-'));
@@ -23,48 +27,51 @@ function home() {
   return dir;
 }
 
-const FILES = ['fleet-nightly.jsonc', 'journal-day.jsonc', 'floor-upkeep.jsonc', 'proposed/next-day-prep.jsonc'];
-
-test('C6.1: every baseline file validates with zero problems', async () => {
+test('C6.1: every live item validates with zero problems and reads enabled false', async () => {
   const h = home();
   try {
     for (const f of FILES) {
-      const r = await validateFile(join(h, '.agency/workflows', f), { proposal: f.startsWith('proposed/') });
+      const r = await validateFile(join(h, '.agency/scheduled', f));
       assert.deepEqual(r.problems, [], f);
-      assert.ok(r.value, f);
-    }
-  } finally { rmSync(h, { recursive: true, force: true }); }
-});
-
-test('D-11: every baseline file reads enabled false', async () => {
-  const h = home();
-  try {
-    for (const f of FILES) {
-      const r = await validateFile(join(h, '.agency/workflows', f), { proposal: f.startsWith('proposed/') });
       assert.equal(r.value.enabled, false, f);
+      assert.ok(r.prompt.length > 0, f);
     }
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 
-test('C6.1: next-day-prep is listed as a proposal, the others as workflows of master', async () => {
+test('C6.1: the items are master:fleet-nightly, master:floor-upkeep and master:journal-day; floor-upkeep says it is inert', async () => {
   const h = home();
   try {
     const d = await discover({ home: h, uid: process.getuid() });
-    const ids = d.files.map(f => `${f.id}${f.proposal ? ' (proposal)' : ''}`).sort();
-    assert.deepEqual(ids, ['master:fleet-nightly', 'master:floor-upkeep', 'master:journal-day', 'master:next-day-prep (proposal)']);
+    assert.deepEqual(d.files.map((f) => f.id), FILES.map((f) => `master:${f.replace('.jsonc', '')}`));
+    assert.deepEqual(d.problems, []);
+    assert.match(readFileSync(join(h, '.agency/scheduled/floor-upkeep.jsonc'), 'utf8'), /INERT/);
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 
-test('validate --all validates every discovered workflow and proposal (DESIGN 10.1)', async () => {
+test('R-S5: with every item enabled false, ticks hand off nothing and call no dshd', async () => {
   const h = home();
   try {
-    const { main } = await import('../src/verbs/validate.mjs');
+    const inbox = join(h, '.agency/state/master/inbox/scheduled');
+    const calls = [];
+    const ctx = { home: h, stateDir: join(h, 'state'), inbox, floorInstance: 'floor', env: {}, uid: process.getuid(),
+      machineIdFile: '/nonexistent', dshd: '/nonexistent', now: () => new Date() };
+    const run = async (argv) => { calls.push(argv); return { code: 0, stdout: '{"state":"stopped"}', stderr: '' }; };
+    for (const now of ['2026-11-12T20:00:00Z', '2026-11-13T06:00:00Z', '2026-11-14T06:00:00Z']) {
+      const res = await tick(ctx, { now: new Date(now), run });
+      assert.equal(res.code, 0, res.lines.join('\n'));
+    }
+    assert.throws(() => readdirSync(inbox), { code: 'ENOENT' });
+    assert.deepEqual(calls, []);
+  } finally { rmSync(h, { recursive: true, force: true }); }
+});
+
+test('validate --all validates every discovered item', async () => {
+  const h = home();
+  try {
     const out = [];
-    const ctx = { home: h, uid: process.getuid(), env: {}, out: s => out.push(s), err: s => out.push(s) };
-    const code = await main(['--all', '--json'], ctx);
-    assert.equal(code, 0);
-    const { results } = JSON.parse(out.join(''));
-    assert.deepEqual(results.map(r => [r.id ?? r.workflow, r.valid]).sort(),
-      [['master:fleet-nightly', true], ['master:floor-upkeep', true], ['master:journal-day', true], ['master:next-day-prep', true]]);
+    const ctx = { home: h, uid: process.getuid(), out: (s) => out.push(s), err: () => {} };
+    assert.equal(await validateVerb(['--all', '--json'], ctx), 0);
+    assert.deepEqual(JSON.parse(out.join('')).results.map((r) => [r.item, r.valid]), FILES.map((f) => [`master:${f.replace('.jsonc', '')}`, true]));
   } finally { rmSync(h, { recursive: true, force: true }); }
 });

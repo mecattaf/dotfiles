@@ -6,7 +6,7 @@
 
 import { makeContext } from './lib/context.mjs';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 // ---------------------------------------------------------------------------
 // Usage text (spec §10.1)
@@ -15,33 +15,35 @@ const VERSION = '0.1.0';
 const USAGE = `\
 scheduled ${VERSION}
 
+Scheduled items are <agency>/.agency/scheduled/<item>.jsonc. The heartbeat tick
+links one occurrence record per due item into the superagent's inbox and wakes
+the floor; the superagent decides what runs.
+
 USAGE:
   scheduled ls [--agency A] [--json]
-  scheduled show (ID | PATH) [--proposal] [--revision R] [--raw]
-                 [-n N] [--from ISO] [--json]
+  scheduled show (ID | PATH) [-n N] [--from ISO] [--inbox DIR] [--json]
   scheduled validate PATH... | --all | --stdin --as PATH  [--json]
-  scheduled new ID --cron EXPR --tz ZONE --prompt TEXT [--paused]
-  scheduled put ID [--expect REV|none] [--proposal] [--by WHO] < TEXT
-  scheduled set ID PATH (VALUE | --unset) [--expect REV] [--by WHO]
-  scheduled rm ID [--expect REV] [--by WHO]
-  scheduled run ID [--input K=V]... [--by WHO] [--wait] [--follow] [--json]
-  scheduled history (ID | --all) [-n N] [--since DUR] [--json]
-  scheduled history ID --occurrence KEY [--log] [--json]
-  scheduled history ID --edits [--diff] [--json]
-  scheduled accept ID [--expect REV]
-  scheduled dismiss ID
   scheduled schema
-  scheduled env   ID --occurrence KEY --attempt N [--json]
-  scheduled gate  ID --occurrence KEY --attempt N --json
-  scheduled check ID --occurrence KEY --attempt N --json
-  scheduled tick [--json] [--state-dir DIR --now ISO]
+  scheduled new ID --cron EXPR --tz ZONE (--prompt TEXT | --prompt-file PATH) [--name N]
+  scheduled set ID PATH (VALUE | --unset) [--expect REV]
+  scheduled rm ID [--expect REV]
+  scheduled run ID [--home DIR] [--inbox DIR] [--floor-instance NAME] [--json]
+  scheduled history [ID] [--inbox DIR] [-n N] [--json]
+  scheduled tick --inbox DIR [--state-dir DIR] [--home DIR] [--floor-instance NAME]
+                 [--now ISO] [--json]
+
+ENVIRONMENT:
+  SCHEDULED_INBOX           default --inbox (the superagent's <stateDir>/inbox/scheduled)
+  SCHEDULED_FLOOR_INSTANCE  default --floor-instance (the floor's dshd instance)
+  SCHEDULED_STATE_DIR       default --state-dir, then STATE_DIRECTORY, then
+                            $XDG_STATE_HOME/scheduled
+  SCHEDULED_DSHD            dshd binary (default /run/current-system/sw/bin/dshd)
 
 EXIT CODES:
   0  done
-  1  refused (invalid, not found, proposal limit)
+  1  refused (invalid, not found) or a fault the journal names
   2  usage error
   3  conflict (--expect mismatch)
-  4  environment error (state dir or floor DB unreadable)
 `;
 
 // ---------------------------------------------------------------------------
@@ -52,18 +54,12 @@ const VERB_MODULES = {
   ls:       './verbs/ls.mjs',
   show:     './verbs/show.mjs',
   validate: './verbs/validate.mjs',
+  schema:   './verbs/schema.mjs',
   new:      './verbs/new.mjs',
-  put:      './verbs/put.mjs',
   set:      './verbs/set.mjs',
   rm:       './verbs/rm.mjs',
   run:      './verbs/run.mjs',
   history:  './verbs/history.mjs',
-  accept:   './verbs/accept.mjs',
-  dismiss:  './verbs/dismiss.mjs',
-  schema:   './verbs/schema.mjs',
-  env:      './verbs/env.mjs',
-  gate:     './verbs/gate.mjs',
-  check:    './verbs/check.mjs',
   tick:     './verbs/tick.mjs',
 };
 

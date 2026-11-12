@@ -1,142 +1,98 @@
-// scheduled run (DESIGN 10.1 run, 5.3 manual spool file; claims C2.9, C9.1).
+// run.test.mjs — scheduled run (scheduled-jsonc §5, §8 R1-R4).
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-import { main as runVerb } from '../src/verbs/run.mjs';
+import { join } from 'node:path';
+import { main as runMain } from '../src/verbs/run.mjs';
+import { setupEnv, hourly } from './helpers.mjs';
 
-function setup({ floorState = 'stopped' } = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'scheduled-run-'));
-  fs.chmodSync(root, 0o700);
-  const wf = path.join(root, '.agency', 'workflows');
-  fs.mkdirSync(wf, { recursive: true, mode: 0o700 });
-  fs.chmodSync(path.join(root, '.agency'), 0o700);
-  fs.chmodSync(wf, 0o700);
-  const file = path.join(wf, 'nightly.jsonc');
-  fs.writeFileSync(file, '{\n  "name": "Nightly",\n  "enabled": false,\n  "on": {"schedule": [{"cron": "0 3 * * *", "timezone": "Europe/Paris"}], "workflow_dispatch": {"inputs": {"target": {"type": "string"}}}},\n  "job": {"prompt": "hi"}\n}\n');
-  fs.chmodSync(file, 0o600);
-  const bin = path.join(root, 'bin');
-  fs.mkdirSync(bin);
-  const log = path.join(root, 'calls.log');
-  const dshd = path.join(bin, 'dshd');
-  fs.writeFileSync(dshd, `#!/bin/sh\necho "dshd $*" >> ${log}\necho '{"state":"${floorState}"}'\n`, { mode: 0o755 });
-  const systemctl = path.join(bin, 'systemctl');
-  fs.writeFileSync(systemctl, `#!/bin/sh\necho "systemctl $*" >> ${log}\n`, { mode: 0o755 });
-  const out = [], err = [];
-  const stateDir = path.join(root, '.agency', 'state', 'master');
-  const ctx = { home: root, stateDir, env: { USER: 'tom' }, now: () => new Date('2026-11-11T09:00:00Z'), out: s => out.push(s), err: s => err.push(s),
-    uid: process.getuid(), dshd, systemctl, floorUrl: 'http://127.0.0.1:1', machineIdFile: path.join(root, 'machine-id') };
-  const calls = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '');
-  return { root, stateDir, ctx, out, err, calls, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
-}
-
-test('C2.9: run on a missing workflow exits 1 and writes no spool file', async () => {
-  const s = setup();
+test('R1 run on a missing item exits 1 and writes no record', async () => {
+  const env = setupEnv({ floorInstance: 'floor' });
   try {
-    const code = await runVerb(['master:nope'], s.ctx);
+    assert.equal(await runMain(['master:nope'], env.ctx), 1);
+    assert.equal(fs.existsSync(env.inbox), false);
+    assert.deepEqual(env.dshdCalls(), []);
+    // An invalid item is refused too.
+    env.item('broken', '{ "on": {} }');
+    assert.equal(await runMain(['master:broken'], env.ctx), 1);
+    assert.deepEqual(env.records(), []);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('R2 run on a disabled item writes one manual record with a ULID and wakes a stopped floor once', async () => {
+  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'stopped', enabled: false, lastRun: { ending: 'stopped' } } });
+  try {
+    env.item('probe-ready', { name: 'Probe', enabled: false, on: { schedule: [{ cron: '0 4 * * *', timezone: 'Europe/Paris' }] }, job: { prompt: 'Reply READY and end.' } });
+    const code = await runMain(['master:probe-ready', '--json'], env.ctx);
+    assert.equal(code, 0, env.err.join(''));
+    const [name] = env.records();
+    assert.match(name, /^master~probe-ready@run~[0-9A-HJKMNP-TV-Z]{26}\.json$/);
+    const rec = env.record(name);
+    assert.equal(rec.kind, 'manual');
+    assert.equal(rec.run, name.slice('master~probe-ready@run~'.length, -'.json'.length));
+    assert.equal(rec.missed, 0);
+    assert.equal(rec.by, 'scheduled-run');
+    assert.equal(rec.name, 'Probe');
+    assert.equal(rec.cwd, env.home);
+    assert.equal(rec.text, 'Reply READY and end.');
+    assert.equal(rec.due, '2026-11-12T14:00:00.000Z');
+    const out = JSON.parse(env.out.join(''));
+    assert.equal(out.occurrence, name.slice(0, -'.json'.length));
+    assert.equal(out.file, join(env.inbox, name));
+    assert.equal(out.floor, 'floor action=start state=stopped waiting=1 result=started');
+    assert.deepEqual(env.dshdCalls(), [['get', '--json', 'floor'], ['start', '--json', 'floor']]);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('R3 run against a running floor writes the record and starts nothing', async () => {
+  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'running' } });
+  try {
+    env.item('hb', hourly());
+    assert.equal(await runMain(['hb'], env.ctx), 0);
+    assert.equal(env.records().length, 1);
+    assert.deepEqual(env.dshdCalls(), [['get', '--json', 'floor']]);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('R4 two runs of one item write two records with different run ids', async () => {
+  const env = setupEnv();
+  try {
+    env.item('hb', hourly());
+    assert.equal(await runMain(['master:hb'], env.ctx), 0);
+    assert.equal(await runMain(['master:hb'], env.ctx), 0);
+    const runs = env.records().map((n) => env.record(n).run);
+    assert.equal(runs.length, 2);
+    assert.notEqual(runs[0], runs[1]);
+    // No floor instance: no dshd at all.
+    assert.deepEqual(env.dshdCalls(), []);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('run takes --home, --inbox and --floor-instance; --inbox missing exits 2; a not-found floor exits 1 with the record written', async () => {
+  const env = setupEnv({ stubState: null });
+  try {
+    const other = join(env.tmpDir, 'rehearsal');
+    fs.mkdirSync(join(other, '.agency', 'scheduled'), { recursive: true, mode: 0o700 });
+    fs.chmodSync(join(other, '.agency'), 0o700);
+    fs.writeFileSync(join(other, '.agency', 'scheduled', 'probe-ready.jsonc'), JSON.stringify(hourly({ enabled: false })), { mode: 0o600 });
+    const inbox = join(env.tmpDir, 'inbox');
+    assert.equal(await runMain(['master:probe-ready', '--home', other], { ...env.ctx, inbox: null }), 2);
+    const code = await runMain(['master:probe-ready', '--home', other, '--inbox', inbox, '--floor-instance', 'rehearsal'], env.ctx);
     assert.equal(code, 1);
-    const incoming = path.join(s.stateDir, 'spool', 'incoming');
-    assert.ok(!fs.existsSync(incoming) || fs.readdirSync(incoming).length === 0);
-  } finally { s.cleanup(); }
-});
-
-test('C9.1: run writes one manual spool file and prints requested; a stopped floor gets one heartbeat start', async () => {
-  const s = setup({ floorState: 'stopped' });
-  try {
-    const code = await runVerb(['master:nightly', '--input', 'target=nas', '--by', 'tom'], s.ctx);
-    assert.equal(code, 0, s.err.join(''));
-    const printed = JSON.parse(s.out.join('').trim());
-    assert.equal(printed.v, 1);
-    assert.equal(printed.state, 'requested');
-    assert.match(printed.occurrence, /^master:nightly@manual:[0-9A-Z]{26}$/);
-    const files = fs.readdirSync(path.join(s.stateDir, 'spool', 'incoming'));
-    assert.equal(files.length, 1);
-    assert.match(files[0], /^master~nightly@manual~[0-9A-Z]{26}\.json$/);
-    const record = JSON.parse(fs.readFileSync(path.join(s.stateDir, 'spool', 'incoming', files[0]), 'utf8'));
-    assert.equal(record.v, 1);
-    assert.equal(record.kind, 'manual');
-    assert.equal(record.workflow, 'master:nightly');
-    assert.equal(record.by, 'tom');
-    assert.deepEqual(record.inputs, { target: 'nas' });
-    assert.equal(fs.readdirSync(path.join(s.stateDir, 'spool', 'tmp')).length, 0);
-    assert.match(s.calls(), /dshd get --json floor/);
-    assert.match(s.calls(), /systemctl --user start --no-block scheduled-heartbeat\.service/);
-  } finally { s.cleanup(); }
-});
-
-test('C9.1: a running floor is not nudged through the heartbeat', async () => {
-  const s = setup({ floorState: 'running' });
-  try {
-    assert.equal(await runVerb(['master:nightly'], s.ctx), 0, s.err.join(''));
-    assert.doesNotMatch(s.calls(), /systemctl/);
-  } finally { s.cleanup(); }
-});
-
-test('run refuses an unknown input with exit 1', async () => {
-  const s = setup();
-  try {
-    assert.equal(await runVerb(['master:nightly', '--input', 'bogus=1'], s.ctx), 1);
-  } finally { s.cleanup(); }
-});
-
-// C9.4: --wait polls sched_history_v1 until the occurrence leaves queued, running, deferred and awaiting;
-// --follow runs `dshd read -f <instance>` once the attempt starts.
-function historyDb(stateDir) {
-  fs.mkdirSync(stateDir, { recursive: true });
-  const db = new DatabaseSync(path.join(stateDir, 'orchestrator.sqlite'));
-  db.exec('PRAGMA journal_mode=WAL; CREATE TABLE sched_history_v1 (occurrence TEXT PRIMARY KEY, workflow TEXT, kind TEXT, state TEXT, reason TEXT, attempt INTEGER, instance TEXT, started_at TEXT, ended_at TEXT)');
-  return db;
-}
-
-/** Drive the floor's side of the table from the spool file the run wrote. */
-function floorSteps(s, db, steps) {
-  let i = 0;
-  const timer = setInterval(() => {
-    const incoming = path.join(s.stateDir, 'spool', 'incoming');
-    const files = fs.existsSync(incoming) ? fs.readdirSync(incoming) : [];
-    if (!files.length || i >= steps.length) return;
-    const occ = JSON.parse(fs.readFileSync(path.join(incoming, files[0]), 'utf8')).occurrence;
-    const [state, instance] = steps[i++];
-    db.prepare('INSERT INTO sched_history_v1 (occurrence, workflow, kind, state, attempt, instance) VALUES (?, ?, ?, ?, 1, ?) ON CONFLICT(occurrence) DO UPDATE SET state = excluded.state, instance = excluded.instance')
-      .run(occ, 'master:nightly', 'manual', state, instance);
-  }, 15);
-  return () => clearInterval(timer);
-}
-
-test('C9.4: --wait returns when the occurrence leaves the active states; stdout is the final row alone', async () => {
-  const s = setup({ floorState: 'running' });
-  const db = historyDb(s.stateDir);
-  const stop = floorSteps(s, db, [['queued', null], ['running', 'sch-master-nightly-0900z'], ['awaiting', 'sch-master-nightly-0900z'], ['done', 'sch-master-nightly-0900z']]);
-  try {
-    const code = await runVerb(['master:nightly', '--by', 'probe', '--wait', '--json'], { ...s.ctx, waitPollMs: 10 });
-    assert.equal(code, 0, s.err.join(''));
-    const final = JSON.parse(s.out.join('').trim());
-    assert.equal(final.state, 'done');
-    assert.equal(final.instance, 'sch-master-nightly-0900z');
-    assert.match(final.occurrence, /^master:nightly@manual:/);
-    assert.match(s.err.join(''), /"state":"requested"/);
-  } finally { stop(); db.close(); s.cleanup(); }
-});
-
-test('C9.4: --wait exits 1 when the occurrence ends anything but done', async () => {
-  const s = setup({ floorState: 'running' });
-  const db = historyDb(s.stateDir);
-  const stop = floorSteps(s, db, [['queued', null], ['failed', 'sch-master-nightly-0900z']]);
-  try {
-    assert.equal(await runVerb(['master:nightly', '--wait'], { ...s.ctx, waitPollMs: 10 }), 1);
-    assert.equal(JSON.parse(s.out.join('').trim()).state, 'failed');
-  } finally { stop(); db.close(); s.cleanup(); }
-});
-
-test('C9.4: --follow runs dshd read -f on the instance once the attempt starts', async () => {
-  const s = setup({ floorState: 'running' });
-  const db = historyDb(s.stateDir);
-  const stop = floorSteps(s, db, [['queued', null], ['running', 'sch-master-nightly-0900z']]);
-  try {
-    assert.equal(await runVerb(['master:nightly', '--follow'], { ...s.ctx, waitPollMs: 10 }), 0, s.err.join(''));
-    assert.match(s.calls(), /dshd read -f sch-master-nightly-0900z/);
-    assert.match(s.out.join(''), /"state":"requested"/);
-  } finally { stop(); db.close(); s.cleanup(); }
+    const names = fs.readdirSync(inbox).filter((n) => n.endsWith('.json'));
+    assert.equal(names.length, 1);
+    assert.equal(JSON.parse(fs.readFileSync(join(inbox, names[0]), 'utf8')).cwd, other);
+    assert.deepEqual(env.dshdCalls(), [['get', '--json', 'rehearsal']]);
+  } finally {
+    env.cleanup();
+  }
 });

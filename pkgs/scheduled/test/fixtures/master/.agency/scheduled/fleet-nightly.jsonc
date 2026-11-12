@@ -1,0 +1,20 @@
+// Copied 12 Nov 2026 from ~/.agency/workflows/fleet-nightly.jsonc (kept there).
+// Rewritten: window, if, outcome, attempts and context removed; their intent is in the prompt.
+// No retries exist any more: one occurrence is one run.
+{
+  "name": "Dotfiles nightly update and fleet flash",
+  "enabled": false,
+  "on": { "schedule": [ { "cron": "0 1 * * *", "timezone": "Europe/Paris" } ] },
+  "job": {
+    "prompt": [
+      "If /run/current-system/sw/bin/fleet-update-start is not an executable file, say so and end: the launcher is not installed yet.",
+      "Tonight's night key is the date of the Due time in the header minus 12 hours.",
+      "If ~/.local/state/fleet-update/completions/<night key>.json exists and has ok: true, quote it and end.",
+      "1. Run: fleet-update-start --json. Quote the receipt. A launch receipt has ok: false and proves launch only.",
+      "2. Run: fleet-update --status --json. Say which stage the job is in and which targets are pending, and why.",
+      "3. If ~/.local/state/fleet-update/completions/ holds a receipt for the previous night, list what it installed and what stayed pending.",
+      "Do not run nixos-rebuild, switch, reboot, start, stop or restart a unit, merge a PR, or edit ~/mecattaf/dotfiles: fleet-update owns those steps.",
+      "End with one line: launched, already running, or the error, quoted."
+    ]
+  }
+}

@@ -64,8 +64,8 @@ See `docs/antigravity-cli.md` and `docs/gemini-cli.md`.
 **Model catalog (Tom, 2026-10-10).** Model ids for the factory are runtime data, not nix: they live in `~/.config/substrate/models.toml`, seeded by the substrate-puller unit when the file is absent and never rewritten by nix (`services.substrate.puller.modelsFile`, named in runtimes.toml as `models_file`; the runners re-read it on every call, so a model edit needs no rebuild). Tom: "i dnt think it s a g ood idea to have things like that tied to nixos dotfiles". The openrouter-free lane is parked (no entry in the catalog, so substrate refuses that runtime and route policies fall through) until OpenRouter releases a new stealth model; since pi was retired (2026-10-25) no harness routes to the OpenRouter key, and seats reads it only for the credit row. The puller PATH carries Node 24 and pnpm 11.17.0 (`pkgs.pnpm_11_17`, the stack v1 pin) so a spec-task gate runs `node` and `pnpm` bare.
 
 **Scheduled work (Tom, 2026-09-30; amended 2026-11-10).** No scheduled
-agent work is declared in dotfiles. It is written as JSONC workflow
-files in an agency's `.agency/workflows/` (the master agency is `~`) and
+agent work is declared in dotfiles. It is written as JSONC scheduled
+items in an agency's `.agency/scheduled/` (the master agency is `~`) and
 runs on the factory floor, the superagent fork in the dsh config
 (`docs/scheduled.md`). The one exception is the Scheduled heartbeat
 (D52). Tom, 2026-11-10: "one systemd timer cnfigured in the dotfiels,
@@ -144,7 +144,7 @@ keeps its independent Tailscale fallback; use ordinary OpenSSH. Speech defaults 
 client; synthesis stays on compute. These are cutover targets, not a claim
 that the migration is live. Preserve Herdr sessions. Reboot remains a
 deliberate, supervised step. Nightly activation of NAS and strix-coordinator is
-unattended: the Scheduled `fleet-nightly` workflow launches `fleet-update`
+unattended: the Scheduled `fleet-nightly` item launches `fleet-update`
 (#642), which activates only an idle, inspected target and never reboots. Tom,
 2026-11-10, on the earlier rule that overnight runs never switch: "this one can
 be overruled. let's get the scheduler built and configured first."
