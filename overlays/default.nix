@@ -81,10 +81,6 @@ final: _prev: {
   artifact-deck = final.callPackage ../pkgs/artifact-deck { };
   keyring-unlock = final.callPackage ../pkgs/keyring-unlock { };
 
-  # Monthly local-AI update bot: deterministic Git/HF preparation, one Pi
-  # judgment, deterministic verification/publication. Tally leases only Pi.
-  local-ai-monthly = final.callPackage ../pkgs/local-ai-monthly { };
-
   # fleet-status (#356): the graded per-host collector and the coordinator's
   # bounded fan-out view. Stdlib Python; modules/fleet-status.nix installs it.
   fleet-status = final.callPackage ../pkgs/fleet-status { };

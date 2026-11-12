@@ -597,7 +597,6 @@
           inherit (self.nixosConfigurations.nas.pkgs)
             brother-print-text
             fleet-status
-            local-ai-monthly
             mnemon
             music-acquire
             paper-daemon
@@ -2518,7 +2517,7 @@
               #              in prose about other people's systems protects
               #              nothing and costs the ability to write down why we
               #              don't do what they do. Everything that actually runs
-              #              — flake, modules, hosts, home, pkgs, overlays, flows,
+              #              — flake, modules, hosts, home, pkgs, overlays,
               #              scripts — stays swept.
               #
               # NB the failure was invisible to `nix flake check --no-build`,
@@ -2551,56 +2550,8 @@
             # `worker` is spelled by concatenation throughout this check for one
             # narrow reason that SURVIVES its reinstatement: the ripgrep sweep at
             # the bottom greps the flake's own source tree, and a literal here
-            # would match itself. It is no longer a "retired host" — see below.
+            # would match itself. It is no longer a retired host.
             retiredWorker = "work" + "er";
-            # HALF of Tom's old ruling survives, and the halves are now split
-            # (dotfiles#310, dotfiles#291). It used to read: the worker is a
-            # HOST again, never a Tally executor AND never a Tally pool.
-            #
-            #   STILL TRUE, and asserted structurally below: never an EXECUTOR.
-            #   All jobs execute locally on the strix, home/tally.nix
-            #   declares `executors = { }`, and the worker runs no daemon
-            #   (CONSOLIDATED §3 Q2). The GPU cooldown tripwire that used to
-            #   reach across for a lease is dead and deleted.
-            #
-            #   SUPERSEDED by CONSOLIDATED §3 Q1 at the sheet's default
-            #   (RULINGS.md R-2026-09-06-03, 2026-09-06): "capacity one per
-            #   device until jobs carry a VRAM request the engine reads". There
-            #   is now a per-GPU row for each of the two devices, and the second
-            #   one is named after the box that holds it. It is a ROW IN THE
-            #   COORDINATOR'S POOL TABLE, not an executor and not a daemon —
-            #   nothing leases it yet. It exists so the first job that runs over
-            #   there has a lane to name instead of borrowing the strix's
-            #   and lying about which device it sat on.
-            #
-            # A pool row and an executor are different objects; the old guard
-            # conflated them because, while the host was retired, no row could
-            # be anything but the first step back toward an executor.
-            # The sweep below is now TWO sweeps, because the relaxation Q1 needs
-            # is narrower than the file it lands in.
-            #
-            #   retiredExecutionPattern — the two RETIRED EXECUTOR attribute
-            #   names, still banned from home/tally.nix AND flows/. Nothing in
-            #   this branch wants either back.
-            #
-            #   retiredFlowHostPattern — the bare host name, banned from the
-            #   CODE under flows/ except in two spellings: the local inference endpoint
-            #   `http://<host>:8731` and the `<host>-gpu` pool. A flow is a
-            #   script that ENQUEUES work; a flow naming the other box as a
-            #   place to run is the executor half that stayed retired (Q2: one
-            #   daemon, on the strix). Dialling the box's inference
-            #   server over HTTP, or leasing the pool row that describes its
-            #   device (home/tally.nix declares it), is neither — every model
-            #   call on this fleet lands on the worker now. Prose (README.md)
-            #   is not checked. The pool row keeps its own structural
-            #   assertion below, which is stronger than a grep over prose.
-            retiredExecutionPattern = nixpkgs.lib.concatStringsSep "|" [
-              (retiredWorker + "Flake")
-              (retiredWorker + "Models")
-            ];
-            # The bare name subsumes the "<host>-gpu" pool name: a flow may name
-            # neither.
-            retiredFlowHostPattern = retiredWorker;
             activeHostSets = [
               (builtins.attrNames self.nixosConfigurations)
               (builtins.attrNames self.deploy.nodes)
@@ -2619,7 +2570,6 @@
               ("strix-" + "tb")
             ];
             removedModel = "qwo" + "pus";
-            monthlySources = import ./lib/local-ai-monthly-sources.nix;
           in
 
           assert nixpkgs.lib.all (hosts: hosts == expectedHosts) activeHostSets;
@@ -2942,10 +2892,6 @@
           assert strix.systemd.timers ? tripwire-coredump;
           assert strix.systemd.timers ? tripwire-user-unit-failure;
           assert strix.systemd.timers ? failure-marker-reconcile;
-          assert monthlySources.inference.provider == "gufo";
-          assert monthlySources.inference.url == "http://strix-coordinator:8731";
-          assert monthlySources.inference.compute_host == "strix-coordinator";
-          assert !(monthlySources.inference ? tally_pool);
           # ── NPU decommission, 2026-08-29 (fleet-7.2) ──────────────────────
           # These used to assert the NPU stack was PRESENT. The house style for
           # a removal is to flip them negative rather than delete them, so the
@@ -2985,17 +2931,6 @@
             fi
             if ${pkgs.ripgrep}/bin/rg --ignore-case --line-number '${removedModel}' ${self}; then
               echo "removed local-model identity found" >&2
-              exit 1
-            fi
-            if ${pkgs.ripgrep}/bin/rg --line-number '${retiredExecutionPattern}' \
-              ${./flows}; then
-              echo "retired Tally executor attribute found" >&2
-              exit 1
-            fi
-            if ${pkgs.ripgrep}/bin/rg --line-number --glob '!README.md' '${retiredFlowHostPattern}' \
-              ${./flows} \
-              | ${pkgs.ripgrep}/bin/rg --invert-match 'strix-${retiredWorker}|http://${retiredWorker}:8731|${retiredWorker}-gpu'; then
-              echo "a flow names the retired execution host outside its inference endpoint or GPU pool" >&2
               exit 1
             fi
             touch "$out"
