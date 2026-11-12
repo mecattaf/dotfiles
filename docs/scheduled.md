@@ -334,7 +334,10 @@ occurrences. It does not wait for the work. The superagent's own record
 `run` and `history` take the inbox from `SCHEDULED_INBOX`, and `run` takes
 the floor from `SCHEDULED_FLOOR_INSTANCE`. The installed command defaults
 both; set them, or pass `--inbox DIR --floor-instance NAME` to `run`, to
-override.
+override. Without an inbox, `run` exits 2 and names both ways to give one.
+Without a floor instance (say `SCHEDULED_FLOOR_INSTANCE=` set empty), it
+writes the record, prints `floor: none` and says on stderr that it woke no
+floor; the next tick wakes the floor.
 
 Exit codes: 0 ok, 1 refused or a fault, 2 usage, 3 revision conflict.
 
