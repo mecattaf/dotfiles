@@ -349,6 +349,45 @@ one entry, `scheduled`, by the same file. Elsewhere the seats link the
 whole skill tree (`home/agent-tools.nix`). `tests/nas-agent-host`
 asserts both NAS links.
 
+## A workflow from a request: day prep
+
+A workflow is not an item. It starts when the superagent is asked, in a
+request that names the script and the agency; the main Session calls
+`orchestrator_workflow_start`, and each `agent()` call of the script
+becomes one Ticket (the fork's `docs/009-workflows.md`). An item can
+only ask for that in words.
+
+Day prep, a note prepared in the early morning so the day does not start
+with it by hand, is the first master workflow. Its files are kept in
+`pkgs/scheduled/test/fixtures/master/.agency/` and placed in `~/.agency/`
+by hand, like the items:
+
+| File | Does |
+|---|---|
+| `workflows/day-prep.workflow.js` | Four read-only readers (yesterday's journal folder, `project overview`, the closed chats in yesterday's `raw-chat-index.jsonl`, `scheduled history` and `dshd ls`), then one writer of `~/notes/journal/YYYY/MM/DD/day-prep.md`, first line `# Assistant draft`. It writes nothing when the day folder is missing (`journal-day` owns the rollover) or the file exists. `args.date` is required |
+| `scheduled/day-prep.jsonc` | The 05:00 Europe/Paris nudge that asks for the same start. `enabled: false` |
+
+The request to send the superagent, with the date filled in:
+
+```text
+Start the day-prep workflow in the master agency: call orchestrator_workflow_start with
+{"script": ".agency/workflows/day-prep.workflow.js", "cwd": "/home/tom", "args": {"date": "YYYY-MM-DD"}}.
+Accept its nodes as they come; it writes only that day's day-prep.md.
+```
+
+`orchestrator_workflow_status` follows the run. To check the script
+against the interpreter the floor runs (its MockBackend; no model is
+called), point the test at a checkout of the superagent fork with its
+dependencies installed:
+
+```sh
+# on strix-coordinator, after df -h /; the package lays out jsonc-parser and dsh-util-time beside src/
+nix build .#scheduled && cp -r result/share/scheduled "$TMPDIR/sched" && chmod -R u+w "$TMPDIR/sched" && cd "$TMPDIR/sched"
+DSH_SUPERAGENT_SRC=<fork checkout> node --experimental-transform-types --test test/day-prep.test.mjs
+```
+
+The flake check runs the same file and skips the interpreter tests.
+
 ## Journal queries
 
 ```sh

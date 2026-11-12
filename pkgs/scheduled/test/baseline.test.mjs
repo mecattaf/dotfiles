@@ -1,7 +1,8 @@
 // The master items: the three live items copied from ~/.agency/workflows/ (docs/scheduled.md, State at
-// install) and cli-update, the nightly check-and-ingest half of the CLI tools update. Every one ships with
-// "enabled": false, so nothing runs unattended before an item is enabled. They are copied by hand to
-// ~/.agency/scheduled/ (mode 0600, directory 0700); Nix never writes them.
+// install), cli-update, the nightly check-and-ingest half of the CLI tools update, and the day-prep nudge
+// (docs/scheduled.md, "A workflow from a request"). Every one ships with "enabled": false, so nothing runs
+// unattended before an item is enabled. They are copied by hand to ~/.agency/scheduled/ (mode 0600,
+// directory 0700); Nix never writes them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, chmodSync, readdirSync, readFileSync, statSync, rmSync } from 'node:fs';
@@ -14,7 +15,7 @@ import { tick } from '../src/lib/tick.mjs';
 import { main as validateVerb } from '../src/verbs/validate.mjs';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/master', import.meta.url));
-const FILES = ['cli-update.jsonc', 'fleet-nightly.jsonc', 'floor-upkeep.jsonc', 'journal-day.jsonc'];
+const FILES = ['cli-update.jsonc', 'day-prep.jsonc', 'fleet-nightly.jsonc', 'floor-upkeep.jsonc', 'journal-day.jsonc'];
 
 function home() {
   const dir = mkdtempSync(join(tmpdir(), 'scheduled-baseline-'));
@@ -40,7 +41,7 @@ test('C6.1: every live item validates with zero problems and reads enabled false
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 
-test('C6.1: the items are master:cli-update, master:fleet-nightly, master:floor-upkeep and master:journal-day; floor-upkeep says it is inert', async () => {
+test('C6.1: the items are master:cli-update, master:day-prep, master:fleet-nightly, master:floor-upkeep and master:journal-day; floor-upkeep says it is inert', async () => {
   const h = home();
   try {
     const d = await discover({ home: h, uid: process.getuid() });
@@ -62,7 +63,7 @@ test('C6.1: an item that reads a time from the header names both second lines, D
       readers.push(f);
       assert.match(prompt, /\bDue or Requested time\b/, f);
     }
-    assert.deepEqual(readers, ['cli-update.jsonc', 'fleet-nightly.jsonc', 'journal-day.jsonc']);
+    assert.deepEqual(readers, ['cli-update.jsonc', 'day-prep.jsonc', 'fleet-nightly.jsonc', 'journal-day.jsonc']);
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 

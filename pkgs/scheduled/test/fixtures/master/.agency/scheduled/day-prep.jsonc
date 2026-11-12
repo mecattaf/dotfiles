@@ -1,0 +1,23 @@
+// ~/.agency/scheduled/day-prep.jsonc (copy; the integrator copies it there). A timed nudge that asks the main
+// Session to start the day-prep workflow; the workflow itself is .agency/workflows/day-prep.workflow.js.
+// Rewritten from the 10 Nov draft ~/.agency/workflows/proposed/next-day-prep.jsonc (kept there): its outcome
+// check and window are words in the prompt now, and the job is a workflow run, not one worker.
+// Tom, 10 Nov 21:16Z (T23 item 8): "next day prep" is "to be seen later".
+{
+  "name": "Day prep: start the day-prep workflow",
+  // Off (Tom, 10 Nov 22:51Z, H60: "make sure there are no scheduled work in the morning").
+  // Arm by hand only: scheduled set master:day-prep enabled true
+  "enabled": false,
+  "on": { "schedule": [ { "cron": "0 5 * * *", "timezone": "Europe/Paris" } ] },
+  "job": {
+    "prompt": [
+      "Start the master agency's day-prep workflow for the local date (Europe/Paris) of the Due or Requested time in the header above.",
+      "If that time is more than 3 hours ago, Tom's day has started and a prep note is noise: start nothing and say so.",
+      "Otherwise call orchestrator_workflow_start once with",
+      "{\"script\": \".agency/workflows/day-prep.workflow.js\", \"cwd\": \"/home/tom\", \"args\": {\"date\": \"YYYY-MM-DD\"}, \"trigger_id\": \"<this Trigger's id>\"},",
+      "with the date filled in. The same trigger_id never starts a second run.",
+      "Accept every node the run raises unless other work should go first; the workflow writes only the day folder's day-prep.md.",
+      "Make no other Ticket for this nudge."
+    ]
+  }
+}
