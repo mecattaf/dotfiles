@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import re
-import runpy
 import subprocess
 import sys
 
@@ -69,12 +68,57 @@ def snapshot(agency_units):
     }
 
 
-def idle(source, deploying_pane):
-    # Execute the existing Python module under a non-__main__ name. It defines
-    # busy_reasons() without invoking update-check's mutating main(). No shell
-    # fragment extraction, copied admission policy, or persistent module cache.
-    module = runpy.run_path(str(source), run_name="dshd_deploy_admission")
-    reasons = module["busy_reasons"]()
+def busy_reasons():
+    """Read-only, conservative admission check. Never stop an existing job.
+
+    Formerly update-check's busy_reasons(), inlined unchanged in policy when
+    that program left the repository: the five-minute load against half the
+    CPUs, any Nix builder, build or activation command, and every Herdr pane
+    whose agent is neither idle, done nor blocked.
+    """
+    reasons = []
+    load = os.getloadavg()[1]
+    limit = max(1.0, (os.cpu_count() or 1) * 0.5)
+    if load >= limit:
+        reasons.append(f"five-minute load {load:.1f} >= {limit:.1f}")
+    for proc in Path("/proc").glob("[0-9]*/cmdline"):
+        try:
+            args = proc.read_bytes().decode(errors="replace").strip("\0").split("\0")
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
+            continue
+        try:
+            uid_line = next(line for line in (proc.parent / "status").read_text().splitlines() if line.startswith("Uid:"))
+            if 30000 <= int(uid_line.split()[1]) < 31000:
+                reasons.append(f"Nix builder running (pid {proc.parent.name})")
+        except (FileNotFoundError, ProcessLookupError, PermissionError, StopIteration):
+            pass
+        words = [Path(arg).name for arg in args[:3]]
+        if any(word in {"nixos-rebuild", "nixos-rebuild-ng", "home-manager", "deploy-rs", "nh"} for word in words):
+            reasons.append(f"build or activation command running (pid {proc.parent.name})")
+        name = Path(args[0]).name if args else ""
+        if (name in {"nix", "nix-build", "nix-store", "nixos-rebuild", "nixos-rebuild-ng"}
+                and (name.startswith("nixos-rebuild") or name == "nix-build"
+                     or args[1:3] == ["flake", "check"]
+                     or any(a in {"build", "develop", "shell", "-r", "--realise"} for a in args[1:]))):
+            reasons.append(f"Nix work running (pid {proc.parent.name})")
+    # Calling pane list is read-only and cannot start or attach a session.
+    try:
+        listing = subprocess.run(["herdr", "pane", "list"], capture_output=True, text=True, timeout=15)
+        if listing.returncode != 0:
+            raise ValueError(f"herdr pane list exited {listing.returncode}: {(listing.stderr or listing.stdout).strip()[-800:]}")
+        panes = json.loads(listing.stdout)["result"]["panes"]
+        if not isinstance(panes, list):
+            raise ValueError("panes is not a list")
+        for pane in panes:
+            if pane.get("agent") and pane.get("agent_status") not in {"idle", "done", "blocked"}:
+                reasons.append(f"Herdr pane {pane.get('pane_id', '?')} is {pane.get('agent_status', 'unknown')}")
+    except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError) as e:
+        raise ValueError(f"cannot establish Herdr idleness: {e}") from e
+    return reasons
+
+
+def idle(deploying_pane):
+    reasons = busy_reasons()
     pattern = re.compile(r"Herdr pane " + re.escape(deploying_pane) + r" is .+")
     ignored = [reason for reason in reasons if pattern.fullmatch(reason)]
     remaining = [reason for reason in reasons if not pattern.fullmatch(reason)]
@@ -155,10 +199,8 @@ def eval_user_tree(baseline, candidate):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="verb", required=True)
-    admission = sub.add_parser("idle", help="existing update-check busy_reasons, except one deploying pane")
+    admission = sub.add_parser("idle", help="load, Nix and Herdr busy reasons, except one deploying pane")
     admission.add_argument("--deploying-pane", required=True)
-    admission.add_argument("--update-check", type=Path,
-                           default=Path(__file__).resolve().parents[2] / "home/dot_local/bin/update-check")
     snap = sub.add_parser("snapshot", help="emit protected unit and every native dsh process identity")
     snap.add_argument("--agency-unit", action="append", default=None,
                       help="user unit or scope; repeat for every Agency Web owner (default agency-web.service)")
@@ -175,7 +217,7 @@ def main():
     evaluated.add_argument("candidate", type=Path)
     args = parser.parse_args()
     if args.verb == "idle":
-        return idle(args.update_check, args.deploying_pane)
+        return idle(args.deploying_pane)
     if args.verb == "snapshot":
         print(json.dumps(snapshot(args.agency_unit or ["agency-web.service"]), indent=2, sort_keys=True))
         return 0

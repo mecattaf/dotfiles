@@ -163,8 +163,10 @@
     };
 
     # The daily desktop and its SDK use one pinned official upstream release.
-    # Keep upstream's nixpkgs and prebuilt engine together.
-    domicile.url = "github:cprussin/domicile/68d579cdfc139060bddd708b6e87ef31cf290598";
+    # Keep the SDK and prebuilt engine together. Upstream main with the #2047
+    # dmabuf OOM fix (issue #2036); the 75708d76 rollback hit the OOM again on
+    # 12 Nov at 02:12Z, so it is no longer a known-good to protect.
+    domicile.url = "github:cprussin/domicile/e2b4bc54df6c377596dec3c8228aba64b3144a97";
     imagine = {
       url = "path:./pkgs/client-desktop/imagine";
       flake = false;
@@ -222,9 +224,9 @@
     # Its model collection is declared in lib/local-models.nix (#525).
     # One native binary,
     # no container (modules/gufo.nix). Pinned to the release the catalog matches
-    # (v0.20.0). No nixpkgs.follows: upstream qualifies its build against its own
-    # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
-    gufo.url = "github:gufo-org/gufo/0c03748a271eab895befc0d2343aa50ca4b6d836";
+    # and strix-coordinator runs (v0.22.0). No nixpkgs.follows: upstream
+    # qualifies its build against its own nixpkgs pin (GCC 15.3, ROCm 7.2.3).
+    gufo.url = "github:gufo-org/gufo/7b1bf049a0a3600345676fdf0a544152ac7ce6a1";
 
     # gufo-embedding: Gufo v0.33.0 for the one on-demand embedding route
     # (modules/gufo-embedding.nix), built with the vendored Qwen3-Embedding-8B
@@ -234,8 +236,7 @@
     # same reason as `gufo`.
     gufo-embedding.url = "github:gufo-org/gufo/77dff828be02a498e9951694f31b024e7ac87119";
 
-    # The canceled Donnerkeule/TP2 inputs and update mechanism are archived
-    # under ~/notes/references/technical/donnerkeule-retired-2026-11-08 (#698).
+    # The canceled Donnerkeule/TP2 inputs and update mechanism are retired (#698).
 
     # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
     # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
@@ -418,8 +419,7 @@
             # rollingInputOverrides/fleetDeploySshOpts left this set 2026-08-21
             # with hosts/strix/fleet-deploy.nix, their only consumer;
             # both still exist at flake level (deploy nodes use the SSH opts,
-            # and the NAS update-center will inherit the rolling-override
-            # mechanic).
+            # and lib.rollingInputOverrides publishes the reviewed list).
             inherit inputs;
           };
           modules = [
@@ -482,11 +482,11 @@
       # without a flake.lock review, and hosts/nas/default.nix cites it by name
       # as the reason a single leaf TUI (amdtop) moves nightly while the
       # appliance's stable base does not. Deleting it to satisfy deadnix would
-      # have orphaned that prose and thrown away the reviewed URLs the NAS
-      # update-center is expected to inherit; leaving it as a bare `let` binding
-      # failed the deadnix check, which had been red at build time since that
-      # deletion. Publishing it resolves both — the list stays reviewed, stays
-      # cited, and is now inspectable by whatever wires the rolling resolution.
+      # have orphaned that prose and thrown away the reviewed URLs; leaving it
+      # as a bare `let` binding failed the deadnix check, which had been red
+      # at build time since that deletion. Publishing it resolves both — the
+      # list stays reviewed, stays cited, and is now inspectable by whatever
+      # wires the rolling resolution.
       lib.rollingInputOverrides = rollingInputOverrides;
 
       overlays.default = import ./overlays {
@@ -516,8 +516,8 @@
       # deploy-rs owns HOW a selected generation reaches and activates on a node.
       # Since 2026-08-21 this graph is MANUAL-ONLY (`deploy .#<host>`): the
       # nightly Tally-owned fleet transaction (fleet-deploy.service) is dead,
-      # superseded by the NAS update-center where devices pull instead of
-      # being pushed. Manual pushes remain the operator's escape hatch.
+      # and so is the NAS update-center that followed it: NixOS builds happen
+      # on strix-coordinator. Manual pushes remain the operator's escape hatch.
       deploy = {
         sshUser = "root";
         user = "root";
@@ -555,26 +555,21 @@
         let
           amdAi = inputs.nix-amd-ai.packages.${system};
           strixAi = inputs.nix-strix-halo.packages.${system};
-          # The Cloudflare Substrate's box-side programs, vendored from
-          # agency-agency/substrate at the sha in pkgs/substrate-apps/SYNC.md.
-          substrateApps = pkgs.callPackage ./pkgs/substrate-apps { };
         in
         {
+          # Flake-level builds: the same derivations the hosts on the main
+          # nixpkgs pin install. `utility-model` is the strix hosts' build;
+          # the NAS installs one of its own as well.
           inherit (pkgs)
             qwentts
             qwen-speech
             speech-session
-            academic-ocr
-            brother-print-text
-            paper-daemon
             paper-render
             utility-model
             call-diarize
-            fleet-status
             # `nix build .#dsh -o .demo/dsh` is how a PR worktree runs dsh; its
             # passthru carries `.runner`, `.smoke` and `.unwrapped` for the gate.
             dsh
-            mnemon
             # `nix run .#fontbuilder -- <capture-dir> <out-dir>` — the press for
             # the Anthropic suite. Exported because that IS the invocation. The
             # three anthropic-* font packages stay UNEXPORTED (matching sf-pro):
@@ -584,7 +579,6 @@
             #   nix build --impure --expr '(builtins.getFlake "'"$DOT"'").nixosConfigurations.strix.pkgs.anthropic-mono-nerd'
             fontbuilder
             land
-            local-ai-monthly
             # `nix build .#local-models-prune` — the ONLY verb on this fleet
             # that deletes a working copy. Exposed so the guard suite can be
             # pointed at a built path (LOCAL_MODELS_PRUNE_BIN) instead of
@@ -593,8 +587,19 @@
             mactahoe-gtk-theme
             mactahoe-claude-gtk-theme
             mactahoe-icon-theme
-            music-acquire
             sfmono-liga
+            ;
+          # What the NAS installs comes from the NAS's package set: it
+          # evaluates from nixpkgs-stable (mkHost hostNixpkgs), so the
+          # flake-level `pkgs` builds a different derivation under the same
+          # name. checks.packages-host-drv holds every export to this.
+          inherit (self.nixosConfigurations.nas.pkgs)
+            brother-print-text
+            fleet-status
+            mnemon
+            music-acquire
+            paper-daemon
+            scheduled
             ;
 
           # Explicit accelerator escape hatches. The host module installs the
@@ -626,12 +631,9 @@
               modules = [ { disko.rootMountPoint = "/mnt/strix-worker-install"; } ];
             }).config.system.build.diskoScript;
           nas-home-migrate = self.nixosConfigurations.nas.config.system.build.nas-home-migrate;
-          # `nix build .#substrate-pusher`, `.#substrate-puller`: the strix's
-          # gentle capacity pusher and its interpreter-host puller from the
-          # pinned substrate sha (pkgs/substrate-apps), installed by
-          # modules/substrate.nix.
-          substrate-pusher = substrateApps.pusher;
-          substrate-puller = substrateApps.puller;
+          # `nix build .#dsh-master`: NAS's rendered Master profiles and the
+          # dsh-master CLI, byte-identical to what switch activation renders.
+          dsh-master = self.nixosConfigurations.nas.config.home-manager.users.tom.programs.dsh.master.package;
         };
 
       # `nix build .#models.<id>` retired with the 2026-08-21 "weights leave
@@ -674,6 +676,11 @@
           inherit (nixpkgs) lib;
         };
         nas-agent-host = import ./tests/nas-agent-host {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+        # `nix build .#<name>` is the derivation the installing host ships.
+        packages-host-drv = import ./tests/packages-host-drv {
           inherit pkgs self;
           inherit (nixpkgs) lib;
         };
@@ -726,18 +733,56 @@
               python3 ${./tests/strix-reachability/test_sensor.py}
               touch "$out"
             '';
+        # journal-day: seat launches, the unattended rollover (dry run, open-session
+        # refusal against real /proc) and the fish launcher, all in tmpdirs.
+        journal-day =
+          pkgs.runCommand "journal-day-tests"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.fish
+              ];
+              PYTHONTZPATH = "${pkgs.tzdata}/share/zoneinfo";
+            }
+            ''
+              mkdir -p repo/home/dot_local/bin repo/home/dot_config/fish repo/tests/journal-day
+              cp ${./home/dot_local/bin/journal-day} repo/home/dot_local/bin/journal-day
+              cp ${./home/dot_config/fish/config.fish} repo/home/dot_config/fish/config.fish
+              cp ${./tests/journal-day/test_journal_day.py} repo/tests/journal-day/test_journal_day.py
+              chmod u+w,+x repo/home/dot_local/bin/journal-day
+              patchShebangs repo/home/dot_local/bin/journal-day
+              python3 repo/tests/journal-day/test_journal_day.py -v
+              touch "$out"
+            '';
         claude-settings = pkgs.runCommand "claude-settings" { nativeBuildInputs = [ pkgs.python3 ]; } ''
           export CLAUDE_SETTINGS_MODULE=${./home/claude-settings.py}
           python3 ${./tests/claude-settings/test_settings.py}
           touch "$out"
         '';
-
-        # modules/substrate.nix rendered OFF on the strix and armed with
-        # fixtures (tests/substrate-modules); every assertion is eval-time.
-        substrate-modules = import ./tests/substrate-modules {
-          inherit pkgs self;
-          inherit (nixpkgs) lib;
-        };
+        antigravity-accounts =
+          let
+            home = self.nixosConfigurations.nas.config.home-manager.users.tom;
+            selected = builtins.head (
+              builtins.filter (p: pkgs.lib.getName p == "antigravity-cli-accounts") home.home.packages
+            );
+          in
+          pkgs.runCommand "antigravity-accounts"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+              ];
+            }
+            ''
+                export AGY_ACCOUNTS_SCRIPT=${./home/antigravity-accounts.sh}
+                python3 ${./tests/antigravity-accounts/test_launchers.py}
+                test -x ${selected}/bin/agy
+                test -x ${selected}/bin/agy2
+                test -x ${selected}/bin/agy3
+              export AGY_ACCOUNTS_BIN=${selected}/bin
+              python3 ${./tests/antigravity-accounts/check_native.py}
+                touch "$out"
+            '';
 
         # DF-5: the vendored Cargo.lock must equal upstream's at the pinned rev.
         # A build-time comparison, not an evaluation-time read, so evaluation
@@ -895,7 +940,6 @@
           assert strix.services.gufo.enable;
           assert strix.services.gufo.llm.sessions == 1;
           assert strix.services.gufo.llm.context == 102400;
-          assert !(strix.systemd.user.services ? substrate-puller);
           pkgs.runCommand "gufo-unit-policy" { } ''
             touch "$out"
           '';
@@ -1201,8 +1245,8 @@
           # Production compute has no Herdr server; its protection is tested on
           # the brain role fixture in herdr-oom-isolation.
           assert !(strixHome.systemd.user.services ? herdr);
-          # The seats oracle's peer cache and substrate's metersDir outlive the
-          # seat feeder that used to write it (home/harness-records.nix).
+          # The seats oracle's peer cache outlives the seat feeder that used to
+          # write it (home/harness-records.nix).
           assert
             !(builtins.elem "d %h/.local/state/tally-rewrite/meters 0700 - - -" strixHome.systemd.user.tmpfiles.rules);
           # herdr WITHOUT the kitten (#385, 2026-09-13). herdr-kitten is gone
@@ -1227,8 +1271,8 @@
               nixpkgs.lib.hasPrefix "map " l
               && (nixpkgs.lib.hasInfix " hk " l || nixpkgs.lib.hasPrefix "map ctrl+b " l)
             ) (nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/kitty/kitty.conf)));
-          # Without `--remote-keybindings server` a projector strips the tally
-          # [[keys.command]] popups (herdr src/client/shell/config.rs:158-162).
+          # Without `--remote-keybindings server` a projector strips the server's
+          # [[keys.command]] bindings (herdr src/client/shell/config.rs:158-162).
           assert nixpkgs.lib.hasInfix "--remote-keybindings server" (
             builtins.readFile ./home/dot_local/bin/herdr-projector
           );
@@ -1472,8 +1516,6 @@
               "drm-21536134253248513"
               ''"disable_while_typing": "libinput"''
               ''"scroll_acceleration": false''
-              "[upperPanel]: 3850"
-              "[lowerPanel]: 3350"
             ];
 
           assert
@@ -1497,7 +1539,7 @@
             service = strixHome.systemd.user.services.herdr;
           in
           assert service.Service.OOMPolicy == "continue";
-          # #354: a switch (update-adopt's or Tom's) never restarts Herdr.
+          # #354: a switch never restarts Herdr.
           # sd-switch 0.6.4 reads X-SwitchMethod=keep-old (home/herdr.nix);
           # the rendered unit text is checked too, so a renamed option cannot
           # silently drop the line.
@@ -1510,33 +1552,22 @@
             touch "$out"
           '';
 
-        # #354 producer half and the 2026-09-13 seed preflight: per-host signed
-        # candidate publication only after a successful push, a failed host
-        # keeping its previous pointer byte-identical, release pruning,
-        # --publish-only refusals, and seed-missing naming a private input.
+        # The NAS update center is gone (NixOS builds happen on
+        # strix-coordinator): no build unit, no publisher, no candidates vhost
+        # and no firewall door on its port. Removals are locked in, not just
+        # deleted, so a silent re-add fails here.
         update-center =
           let
             nas = self.nixosConfigurations.nas.config;
           in
-          assert nas.myNas.updateCenter.enable;
-          assert nas.myNas.updateCenter.candidates.port == 8734;
-          assert nas.services.nginx.virtualHosts ? fleet-candidates;
-          pkgs.runCommand "update-center"
-            {
-              nativeBuildInputs = [
-                pkgs.python3
-                pkgs.openssh
-                pkgs.jq
-                pkgs.findutils
-              ];
-            }
-            ''
-              mkdir -p hosts/nas tests/update-center
-              cp ${./hosts/nas/update-center.sh} hosts/nas/update-center.sh
-              cp ${./tests/update-center/test_update_center.py} tests/update-center/test_update_center.py
-              python -m unittest discover -v -s tests/update-center
-              touch "$out"
-            '';
+          assert !(nas.myNas ? updateCenter);
+          assert !(nas.systemd.services ? update-center);
+          assert !(nas.services.nginx.virtualHosts ? fleet-candidates);
+          assert !(nixpkgs.lib.hasInfix "8734" nas.networking.firewall.extraInputRules);
+          assert !(builtins.any (p: nixpkgs.lib.getName p == "update-center-publish") nas.environment.systemPackages);
+          pkgs.runCommand "update-center" { } ''
+            touch "$out"
+          '';
 
         # Exercise the request-scoped utility seam without qmd or live models.
         utility-model = pkgs.runCommand "utility-model" { nativeBuildInputs = [ pkgs.python3 ]; } ''
@@ -1694,6 +1725,7 @@
               export PAPER_JOBS_TEST_FILE=${./pkgs/paper-daemon/get-jobs.test}
               export PAPER_PRINTER_TEST_FILE=${./pkgs/paper-daemon/printer-state.test}
               export PAPER_RENDER_BRIDGE=${./pkgs/paper-daemon/render-remote.py}
+              export HOME_PRINTING_SCRIPT=${./hosts/client/home-printing.sh}
               mkdir -p "$HOME"
 
               python3 -m unittest discover \
@@ -1723,34 +1755,8 @@
               touch "$out"
             '';
 
-        # nightly-record (dotfiles#298): five lanes, five rows, every night,
-        # from the harness transcripts and nothing else. Same shape as
-        # print-paper — the real program, driven against fixtures.
-        nightly-record =
-          pkgs.runCommand "nightly-record"
-            {
-              nativeBuildInputs = [ pkgs.python3 ];
-            }
-            ''
-              set -euo pipefail
-
-              export HOME="$TMPDIR/home"
-              export PYTHONDONTWRITEBYTECODE=1
-              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
-              export NIGHTLY_RECORD_SCRIPT=${./home/dot_local/bin/nightly-record}
-              export NIGHTLY_RECORD_FIXTURES=${./tests/nightly-record/fixtures}
-              mkdir -p "$HOME"
-
-              python3 -m unittest discover \
-                -s ${./tests/nightly-record} \
-                -p 'test_*.py' \
-                -v
-
-              touch "$out"
-            '';
-
         # #313 — raw-dotfiles-guard, the real binary against fixture checkouts:
-        # one missing nightly-record must fail naming it, a complete one must
+        # one missing program must fail naming it, a complete one must
         # pass, and no checkout at all only warns. The eval half pins what
         # each host's guard checks and that it runs before writeBoundary.
         # These lists are pinned ON PURPOSE: adding a user unit that runs
@@ -1795,7 +1801,7 @@
           pkgs.runCommand "raw-dotfiles-guard" { } ''
             # stdenv runs with errexit; the stale fixture must be allowed to fail.
             set +e -u
-            progs="claude-transcript-mirror nightly-record tally-seat-feeder util-row util-sampler"
+            progs="claude-transcript-mirror journal-day seats util-row util-sampler"
             mk() {
               mkdir -p "$1/.git" "$1/home/dot_local/bin"
               for p in $progs; do
@@ -1812,12 +1818,12 @@
             case "$res" in *"ok (5 programs)"*) ;; *) echo "complete fixture: no ok line" >&2; exit 1 ;; esac
 
             mk "$TMPDIR/stale"
-            rm "$TMPDIR/stale/home/dot_local/bin/nightly-record"
+            rm "$TMPDIR/stale/home/dot_local/bin/journal-day"
             res=$(${lib.getExe guard} "$TMPDIR/stale" $progs 2>&1)
             rc=$?
             echo "$res"
             [ "$rc" -ne 0 ] || { echo "stale fixture: guard passed" >&2; exit 1; }
-            case "$res" in *"bin/nightly-record does not exist"*) ;; *) echo "stale fixture: nightly-record not named" >&2; exit 1 ;; esac
+            case "$res" in *"bin/journal-day does not exist"*) ;; *) echo "stale fixture: journal-day not named" >&2; exit 1 ;; esac
             case "$res" in *"bin/util-row does not exist"*) echo "stale fixture: named a present program" >&2; exit 1 ;; esac
 
             res=$(${lib.getExe guard} "$TMPDIR/absent" $progs 2>&1)
@@ -1853,13 +1859,6 @@
               touch "$out"
             '';
 
-        # update-check (#550): the nightly update check's contract, hermetically.
-        # A fake nix and gh stand in for upstream and GitHub around a real git
-        # origin: one PR per moved input, a draft on a failed gate, nothing on a
-        # quiet night, review commits carried across a rebuilt bump, the PR
-        # closed when main catches up; and lib/update-watch.json is read
-        # against this flake.lock, so a watched input that stops being bumpable
-        # turns the check red.
         downloads-mirror =
           let
             fixtureSsh = pkgs.writeShellScriptBin "ssh" ''
@@ -1891,34 +1890,6 @@
               touch "$out"
             '';
 
-        update-check =
-          pkgs.runCommand "update-check"
-            {
-              nativeBuildInputs = [
-                pkgs.python3
-                pkgs.git
-              ];
-              PYTHONTZPATH = "${pkgs.tzdata}/share/zoneinfo";
-            }
-            ''
-              set -euo pipefail
-
-              export HOME="$TMPDIR/home"
-              export PYTHONDONTWRITEBYTECODE=1
-              export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
-              export UPDATE_CHECK_SCRIPT=${./home/dot_local/bin/update-check}
-              export UPDATE_WATCH=${./lib/update-watch.json}
-              export UPDATE_FLAKE_LOCK=${./flake.lock}
-              mkdir -p "$HOME"
-
-              python3 -m unittest discover \
-                -s ${./tests/update-check} \
-                -p 'test_*.py' \
-                -v
-
-              touch "$out"
-            '';
-
         # fleet-status (#356): the snapshot's contract, hermetically. The suite
         # drives the fan-out through a fake ssh playing four nodes (healthy,
         # 30 s slow, ssh exit 255, garbage) and asserts bounded wall time,
@@ -1945,8 +1916,8 @@
           assert (profile "client").name == "thin-client";
           assert (profile "client").user_manager;
 
-          # Root over ssh for every node, the strix too: update-adopt's
-          # state is root-only, so a local run as tom could never read it.
+          # Root over ssh for every node, the strix too: root-only state
+          # stays readable, and every node is graded through one code path.
           assert builtins.all (h: h.transport == "ssh") hostsJson;
           pkgs.runCommand "fleet-status" { nativeBuildInputs = [ pkgs.python3 ]; } ''
             set -euo pipefail
@@ -1994,10 +1965,33 @@
         # HOME and DSH_HOME under $TMPDIR, no key path in the wrapper. Each dump
         # must leave stderr empty (a patch that matches no row warns there)
         # and carry the policy rows; tests/dsh-config/check_dump.py reads its
-        # expectations from pkgs.dsh's passthru. lib/update-watch.json builds
-        # this on every llm-agents bump.
+        # expectations from pkgs.dsh's passthru.
         dshd-nas = import ./tests/dshd-nas {
           inherit pkgs;
+          configurations = self.nixosConfigurations;
+        };
+
+        # The Master profile folders (home/dsh-master.nix): rendered shape,
+        # confined idempotent render, and a config dump of each folder's
+        # first-party half by the dsh dshd runs (tests/dsh-master).
+        dsh-master = import ./tests/dsh-master {
+          inherit pkgs;
+          configurations = self.nixosConfigurations;
+        };
+
+        # Scheduled (AGENTS.md D52): eval asserts on the real NAS
+        # config, then the package's own tests under its own Node.
+        scheduled = import ./tests/scheduled {
+          inherit pkgs;
+          configurations = self.nixosConfigurations;
+        };
+
+        # Scheduled in a NixOS VM: the NAS's own heartbeat units with the
+        # dshd module and the stub dsh; hand-off, clock back, power cut,
+        # switch, surfacing and the run-now storm (KVM; the builders
+        # advertise nixos-test and kvm).
+        scheduled-vm = import ./tests/scheduled-vm {
+          inherit inputs;
           configurations = self.nixosConfigurations;
         };
 
@@ -2148,7 +2142,7 @@
         # ids, writes without HERDR_ENV=1) and the stderr-log unit test. Here:
         # jevcore's $out has the pinned build and no network path, the wrapper
         # composes `herdr` with every plugin row mounted and none skipped, the
-        # stock headless profile (substrate's) mounts none of them, and a boot
+        # stock headless profile mounts none of them, and a boot
         # of `herdr` with a blank task (it stops before any model call) prints
         # the ready lines of herdr-guard, dsh-herdr and jevcore on stderr.
         # Same sandbox as dsh-config: no network, a private DSH_HOME, no herdr,
@@ -2410,8 +2404,9 @@
             retiredPlatformPattern = nixpkgs.lib.concatStringsSep "|" [
               ("fed" + "ora")
               ("rpm-o" + "stree")
-              ("d" + "nf")
-              ("c" + "opr")
+              # Short tool names are anchored like the boot image tool below:
+              # bare, they match inside hashed CSS names (#721).
+              ("(^|[^[:alnum:]_])(d" + "nf|c" + "opr)([^[:alnum:]_]|$)")
               ("(^|[^[:alnum:]_])boot" + "c([^[:alnum:]_]|$)")
               ("yum.repos." + "d")
               ("harness" + "RPM")
@@ -2422,6 +2417,16 @@
               ("/usr/share/backgrounds/" + "harness")
               ("osConfig" + "[[:space:]]*\\?[[:space:]]*null")
             ];
+            # Proves the anchoring: commands still match, a hashed CSS custom
+            # property does not. Split like the pattern, since the sweep reads
+            # this file.
+            patternSelfTest = {
+              hit = [
+                ("sudo d" + "nf install x")
+                ("c" + "opr enable y")
+              ];
+              miss = [ ("--d" + "nFVJO: 166") ];
+            };
           in
           pkgs.runCommand "nixos-only"
             {
@@ -2448,7 +2453,7 @@
               #              in prose about other people's systems protects
               #              nothing and costs the ability to write down why we
               #              don't do what they do. Everything that actually runs
-              #              — flake, modules, hosts, home, pkgs, overlays, flows,
+              #              — flake, modules, hosts, home, pkgs, overlays,
               #              scripts — stays swept.
               #
               # NB the failure was invisible to `nix flake check --no-build`,
@@ -2461,6 +2466,16 @@
               # not spell the retired platform's name — the sweep reads its own
               # source tree, which is why the pattern list above is assembled from
               # split string literals.
+              for line in ${nixpkgs.lib.escapeShellArgs patternSelfTest.hit}; do
+                printf '%s\n' "$line" | rg --ignore-case --quiet '${retiredPlatformPattern}' \
+                  || { echo "pattern self-test: no match for: $line" >&2; exit 1; }
+              done
+              for line in ${nixpkgs.lib.escapeShellArgs patternSelfTest.miss}; do
+                if printf '%s\n' "$line" | rg --ignore-case --quiet '${retiredPlatformPattern}'; then
+                  echo "pattern self-test: false match for: $line" >&2
+                  exit 1
+                fi
+              done
               if rg --ignore-case --line-number \
                 --glob '!go.sum' --glob '!**/secrets/*.age' --glob '!**/docs/**/*.md' \
                 '${retiredPlatformPattern}' ${self}; then
@@ -2481,56 +2496,8 @@
             # `worker` is spelled by concatenation throughout this check for one
             # narrow reason that SURVIVES its reinstatement: the ripgrep sweep at
             # the bottom greps the flake's own source tree, and a literal here
-            # would match itself. It is no longer a "retired host" — see below.
+            # would match itself. It is no longer a retired host.
             retiredWorker = "work" + "er";
-            # HALF of Tom's old ruling survives, and the halves are now split
-            # (dotfiles#310, dotfiles#291). It used to read: the worker is a
-            # HOST again, never a Tally executor AND never a Tally pool.
-            #
-            #   STILL TRUE, and asserted structurally below: never an EXECUTOR.
-            #   All jobs execute locally on the strix, home/tally.nix
-            #   declares `executors = { }`, and the worker runs no daemon
-            #   (CONSOLIDATED §3 Q2). The GPU cooldown tripwire that used to
-            #   reach across for a lease is dead and deleted.
-            #
-            #   SUPERSEDED by CONSOLIDATED §3 Q1 at the sheet's default
-            #   (RULINGS.md R-2026-09-06-03, 2026-09-06): "capacity one per
-            #   device until jobs carry a VRAM request the engine reads". There
-            #   is now a per-GPU row for each of the two devices, and the second
-            #   one is named after the box that holds it. It is a ROW IN THE
-            #   COORDINATOR'S POOL TABLE, not an executor and not a daemon —
-            #   nothing leases it yet. It exists so the first job that runs over
-            #   there has a lane to name instead of borrowing the strix's
-            #   and lying about which device it sat on.
-            #
-            # A pool row and an executor are different objects; the old guard
-            # conflated them because, while the host was retired, no row could
-            # be anything but the first step back toward an executor.
-            # The sweep below is now TWO sweeps, because the relaxation Q1 needs
-            # is narrower than the file it lands in.
-            #
-            #   retiredExecutionPattern — the two RETIRED EXECUTOR attribute
-            #   names, still banned from home/tally.nix AND flows/. Nothing in
-            #   this branch wants either back.
-            #
-            #   retiredFlowHostPattern — the bare host name, banned from the
-            #   CODE under flows/ except in two spellings: the local inference endpoint
-            #   `http://<host>:8731` and the `<host>-gpu` pool. A flow is a
-            #   script that ENQUEUES work; a flow naming the other box as a
-            #   place to run is the executor half that stayed retired (Q2: one
-            #   daemon, on the strix). Dialling the box's inference
-            #   server over HTTP, or leasing the pool row that describes its
-            #   device (home/tally.nix declares it), is neither — every model
-            #   call on this fleet lands on the worker now. Prose (README.md)
-            #   is not checked. The pool row keeps its own structural
-            #   assertion below, which is stronger than a grep over prose.
-            retiredExecutionPattern = nixpkgs.lib.concatStringsSep "|" [
-              (retiredWorker + "Flake")
-              (retiredWorker + "Models")
-            ];
-            # The bare name subsumes the "<host>-gpu" pool name: a flow may name
-            # neither.
-            retiredFlowHostPattern = retiredWorker;
             activeHostSets = [
               (builtins.attrNames self.nixosConfigurations)
               (builtins.attrNames self.deploy.nodes)
@@ -2549,7 +2516,6 @@
               ("strix-" + "tb")
             ];
             removedModel = "qwo" + "pus";
-            monthlySources = import ./lib/local-ai-monthly-sources.nix;
           in
 
           assert nixpkgs.lib.all (hosts: hosts == expectedHosts) activeHostSets;
@@ -2708,9 +2674,9 @@
           assert strix.systemd.sockets ? immich-ml-access;
 
           # Distributed builds stay OFF. The worker being back does NOT make it a
-          # build farm: the fleet's build story is the NAS update-center (build
-          # nightly on the appliance, pull everywhere), which is why
-          # hosts/worker/cache-push.nix was dropped rather than restored.
+          # build farm: the fleet builds on strix-coordinator itself (the NAS
+          # update-center is gone), which is why hosts/worker/cache-push.nix
+          # was dropped rather than restored.
           assert !strix.nix.distributedBuilds;
           assert strix.nix.buildMachines == [ ];
 
@@ -2736,7 +2702,7 @@
           # pre-start CHECKS the bundle and refuses; it never fetches.
 
           # NAS downloads remain a separate timer/operator action, never an
-          # update-center or activation dependency.
+          # activation dependency.
           assert (nas.systemd.services.library-fetch.wantedBy or [ ]) == [ ];
           # Tally is gone (sunset 2026-09-30), so there is no executor or pool
           # table left to hold a row for the worker.
@@ -2872,10 +2838,6 @@
           assert strix.systemd.timers ? tripwire-coredump;
           assert strix.systemd.timers ? tripwire-user-unit-failure;
           assert strix.systemd.timers ? failure-marker-reconcile;
-          assert monthlySources.inference.provider == "gufo";
-          assert monthlySources.inference.url == "http://strix-coordinator:8731";
-          assert monthlySources.inference.compute_host == "strix-coordinator";
-          assert !(monthlySources.inference ? tally_pool);
           # ── NPU decommission, 2026-08-29 (fleet-7.2) ──────────────────────
           # These used to assert the NPU stack was PRESENT. The house style for
           # a removal is to flip them negative rather than delete them, so the
@@ -2917,17 +2879,6 @@
               echo "removed local-model identity found" >&2
               exit 1
             fi
-            if ${pkgs.ripgrep}/bin/rg --line-number '${retiredExecutionPattern}' \
-              ${./flows}; then
-              echo "retired Tally executor attribute found" >&2
-              exit 1
-            fi
-            if ${pkgs.ripgrep}/bin/rg --line-number --glob '!README.md' '${retiredFlowHostPattern}' \
-              ${./flows} \
-              | ${pkgs.ripgrep}/bin/rg --invert-match 'strix-${retiredWorker}|http://${retiredWorker}:8731|${retiredWorker}-gpu'; then
-              echo "a flow names the retired execution host outside its inference endpoint or GPU pool" >&2
-              exit 1
-            fi
             touch "$out"
           '';
 
@@ -2965,6 +2916,27 @@
                 ${./home/dot_local/bin/theme} \
                 ${./home/dot_local/bin/runtime-test}
               python3 ${./tests/herdr/test_launchers.py}
+              touch "$out"
+            '';
+
+        # A login bash and every fish read Home Manager's session variables
+        # from the per-user profile (useUserPackages), with ~/.nix-profile as
+        # the fallback; fish skips PATH. Fixtures only.
+        hm-session-vars =
+          pkgs.runCommand "hm-session-vars"
+            {
+              nativeBuildInputs = [
+                pkgs.bashInteractive
+                pkgs.fish
+                pkgs.coreutils
+                pkgs.gnused
+                pkgs.gnugrep
+              ];
+              BASH_PROFILE = ./home/dot_bash_profile;
+              FISH_READER = ./home/dot_config/fish/conf.d/hm-session-vars.fish;
+            }
+            ''
+              bash ${./tests/hm-session-vars/test.sh}
               touch "$out"
             '';
 

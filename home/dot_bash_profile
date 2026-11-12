@@ -10,8 +10,17 @@ fi
 
 # Source Home Manager session vars before the compositor starts so it, kitty, and
 # `kitty @ launch` children inherit Nix-provided tools on the session PATH.
-if [ -f "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
-    . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
-fi
+# With useUserPackages the file lives in the per-user profile; ~/.nix-profile has
+# no etc/profile.d and stays only as a fallback. The file guards itself
+# (__HM_SESS_VARS_SOURCED), so a second read is a no-op.
+for hm_session_vars in \
+    "/etc/profiles/per-user/${USER:-$(id -un)}/etc/profile.d/hm-session-vars.sh" \
+    "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"; do
+    if [ -r "$hm_session_vars" ]; then
+        . "$hm_session_vars"
+        break
+    fi
+done
+unset hm_session_vars
 
 # User specific environment and startup programs

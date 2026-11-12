@@ -35,7 +35,6 @@ const kept = Object.fromEntries(
 const keybindings = {
   ...kept,
   "Meta+Return": exec("domicile-apps", "terminal"),
-  "Alt+space": agency("ambient-chat", "toggle"),
   "Meta+Shift+Return": exec("domicile-apps", "rescue"),
   "Control+n": exec("domicile-apps", "chrome"),
   "Control+Shift+n": exec("domicile-apps", "chrome", "--incognito"),
@@ -80,12 +79,12 @@ const keybindings = {
 ownedChords({ keybindings });
 
 const imagineShell = runImagine({
-  // Duo / DuoDocked panel temperatures, through Domicile's display API.
-  displayTemperatures: { [upperPanel]: 3850, [lowerPanel]: 3350 },
-  ambientChat: { launcher: "agency-chat-ambient-bootstrap" },
-  chatWindow: { launcher: "agency-chat-window", bindAltEnter: true },
-  sessionCatalogue: { relay: "agency-chat-catalogue", server: "agency-web", terminalLauncher: "agency-chat-terminal" },
-  layoutPersistence: { identity: "agency-layout-identity", restartRecovery: true },
+  // Blue-light protection on every display, all the time, through
+  // Domicile's per-display API (docs/domicile-display-temperatures.md):
+  // the Duo panels keep their kanshi-era warmth, the ASUS 5K gets 4000 K,
+  // the warmth the old external monitors used.
+  displayTemperatures: { [upperPanel]: 3850, [lowerPanel]: 3350, [external5k]: 4000 },
+  layoutPersistence: { identity: "agency-layout-identity" },
   webBrowser: { command: ["domicile-apps", "chrome"] },
   policy: {
     upperDisplay: upperPanel,

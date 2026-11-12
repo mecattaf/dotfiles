@@ -51,9 +51,30 @@ there is no third seat (Tom, 2026-09-22: "no more cc3"). Logins are hand
 this day). `seats` reads its peer cache from `~/.local/state/tally-rewrite/meters`
 (the directory name outlives Tally, which was removed on 2026-09-30).
 
-**Model catalog (Tom, 2026-10-10).** Model ids for the factory are runtime data, not nix: they live in `~/.config/substrate/models.toml`, seeded by the substrate-puller unit when the file is absent and never rewritten by nix (`services.substrate.puller.modelsFile`, named in runtimes.toml as `models_file`; the runners re-read it on every call, so a model edit needs no rebuild). Tom: "i dnt think it s a g ood idea to have things like that tied to nixos dotfiles". The openrouter-free lane is parked (no entry in the catalog, so substrate refuses that runtime and route policies fall through) until OpenRouter releases a new stealth model; since pi was retired (2026-10-25) no harness routes to the OpenRouter key, and seats reads it only for the credit row. The puller PATH carries Node 24 and pnpm 11.17.0 (`pkgs.pnpm_11_17`, the stack v1 pin) so a spec-task gate runs `node` and `pnpm` bare.
+**Google CLI accounts (Tom, 2026-11-10).** Antigravity replaces Gemini CLI
+on NAS: Google retired consumer sign-in on Gemini CLI. `agy`, `agy2` and
+`agy3` are Nix-delivered account launchers over llm-agents.antigravity-cli.
+Each has a private data/token root, preserves HOME/cwd, uses the official
+file-store fallback instead of one shared keyring entry, and applies the
+NAS-only RDRAND mask. Tom authenticates with `agy[2|3] acp --login`. Models
+and preferences remain mutable. API keys stay separate. The DSH full-agent
+integration uses official `acp`; preserve the Gemini investigation as lineage.
+See `docs/antigravity-cli.md` and `docs/gemini-cli.md`.
 
-**Scheduled work (Tom, 2026-09-30).** No scheduled agent work is declared in dotfiles. Silent-hours releases (paper 06:05, speech 06:05) stay. Reactive triggers (a Huion scan drops → process when there is bandwidth) are fine. A midnight script that moves jsonl files to the NAS is out. Everything scheduled comes from the factory (substrate).
+**Scheduled work (Tom, 2026-09-30; amended 2026-11-10).** No scheduled
+agent work is declared in dotfiles. It is written as JSONC scheduled
+items in an agency's `.agency/scheduled/` (the master agency is `~`) and
+runs on the factory floor, the superagent fork in the dsh config
+(`docs/scheduled.md`). The one exception is the Scheduled heartbeat
+(D52). Tom, 2026-11-10: "one systemd timer cnfigured in the dotfiels,
+the rest are not timers at all." The heartbeat holds no schedule of its
+own: each hourly tick decodes the cron times in those files, hands due
+work to the floor and wakes it. dshd stays free of clocks (Tom: "NO
+SCHEDULES EVER"). Substrate does not decide what is due (Tom,
+2026-11-10: `re: "substrate decides what's due" NO.`). Silent-hours
+releases (paper 06:05, speech 06:05) stay. Reactive triggers (a Huion
+scan drops → process when there is bandwidth) are fine. A midnight
+script that moves jsonl files to the NAS is out.
 
 The one named exception is box upkeep, which is not agent work. These are the
 only clocks dotfiles may declare (sweep 2026-09-30, D40–D51); anything else is a
@@ -68,10 +89,12 @@ hand-run service, a path/udev/session trigger, or a factory schedule:
 | D45 | btrfs-scrub-mnt-nas (monthly); btrbk-nas off since 2026-10-28 | NAS | `hosts/nas/storage.nix`, `hosts/nas/snapshots.nix` (gate off) |
 | D49 | fstrim, logrotate, fwupd-refresh, systemd-tmpfiles-clean (system and user) | all | NixOS defaults |
 | D50 | smartd (`-n standby,q`; a daemon, not a timer) | NAS | `hosts/nas/storage.nix` |
+| D52 | scheduled-heartbeat (hourly, OnStartupSec 2min, Persistent; Tom 2026-11-10) | NAS | `home/scheduled.nix` |
 
 Besides these, the silent-hours releases are `paper-daemon-flush.timer` and the
 06:05 entry of `speech-queue.timer` on NAS. Adding any other timer or
-`OnCalendar` to this repository needs Tom.
+`OnCalendar` to this repository needs Tom. `tests/scheduled` fails on any NAS
+user timer that is not in this list.
 
 One reactive loop is not a clock: `wifi-ladder-return` on the client
 (`hosts/client/wifi-ladder.nix`, Tom 2026-10-25) is started by the
@@ -79,34 +102,18 @@ NetworkManager dispatcher only when a fallback Wi-Fi rung comes up, and it exits
 as soon as thomas-6ghz is back. Nothing starts it at boot or on a schedule; it
 has no timer and no `OnCalendar` (tests/closet-topology asserts both).
 
-**Nightly update check (#550, Tom 2026-10-14).** Tom: "nightly, i want to be
-chekcing codex and cc and other programs for their latest version and
-ingesting it, potentially also with the new features that they entail". The
-clock is a substrate floor routine (substrate T-7), never a timer here. This
-repo holds the logic: `update-check` (home/dot_local/bin) reads
-`lib/update-watch.json`, and for each input whose upstream moved a program we
-use, rebuilds the rolling branch `update/<input>` from main, runs the gate and
-opens or refreshes one PR. The PR is a draft when the gate fails. The check
-skips the bump when no watched program changed version, and closes the PR
-once main carries the input. Fish and Wrangler ride the existing nixpkgs-fresh
-leaf overlay. Kitty is source-pinned separately; its official stable GitHub
-releases are issue watches, including patch releases. Adoption updates its
-source and Go vendor hashes explicitly; see `docs/kitty-updates.md`. New stable
-kernel major.minor series are also issue watches. The Projects
-floor routine uses `update-check --if-idle --background --json`: soft hourly opportunities,
-load/Nix/Herdr admission checks and one completed attempt per Paris night.
-Every defer and failure is recorded. The detached worker survives the Floor
-turn limit, inherits its lock and writes a durable job result; a launch receipt
-is not a successful check. No local timer is installed. Digests are
-opt-in and comment-only; the routine makes no adoption commits. Earlier
-review commits without `Update-Check: bump` survive refreshes, or a conflict
-aborts before the remote changes. Nothing merges, switches or restarts without
-Tom. Adding a program is an entry in the watch file.
-Imported release notes must stay in collision-safe literal text fences, with
-only their release-page links outside. Contributor mentions and upstream
-issue/PR references must never become active GitHub Markdown in generated PR
-bodies or digest comments (2026-10-22 notification incident). Truncate source
-text before fencing it, never the rendered wrapper.
+**Updates (Tom, 2026-11-10 and 2026-11-12).** Fleet and CLI updates are
+protocols of the master agency under `~/.agency/protocols/`, outside this
+repository. This repository holds only the mechanism: the Scheduled heartbeat
+and CLI, dshd, dsh-master. The nightly `update-check` program, its watch list
+and its rolling `update/<input>` PRs are retired.
+
+In any generated PR body or comment, imported release notes must stay in
+collision-safe literal text fences, with only their release-page links
+outside. Contributor mentions and upstream issue/PR references must never
+become active GitHub Markdown in generated PR bodies or digest comments
+(2026-10-22 notification incident). Truncate source text before fencing it,
+never the rendered wrapper.
 
 **Fleet target (Tom, 2026-10-22/23).** Rename strix to `strix-coordinator`;
 `strix-worker` returns. Both are headless Ethernet compute hosts. The NAS is
@@ -117,8 +124,11 @@ and Magic Trackpad; Domicile is the sole daily compositor. Sway, Niri, Vicinae, 
 external desktop menus are retired; use the native Domicile APIs. strix-coordinator
 keeps its independent Tailscale fallback; use ordinary OpenSSH. Speech defaults to
 client; synthesis stays on compute. These are cutover targets, not a claim
-that the migration is live. Preserve Herdr sessions; activation and reboot
-remain deliberate, supervised steps.
+that the migration is live. Preserve Herdr sessions. Reboot remains a
+deliberate, supervised step. Activation of NAS and strix-coordinator, attended
+or overnight, is decided by the master agency's fleet update protocol (see
+Updates above), never by code in this repository; it activates only an idle,
+inspected target and never reboots.
 
 **Runtime isolation (2026-09-16 incident).** Tests and experiments that source
 shell-script fragments, clean runtime directories, or launch test compositors
@@ -201,8 +211,8 @@ Claude/Codex gain no hooks. Mnemon setup/update commands are not the install
 path. QMD was unused and is removed, with no ingestion or migration step.
 See `docs/dsh-mnemon.md`.
 
-**Free lanes in dsh (Tom, 2026-11-03).** The only harnesses are dsh, Claude
-Code and Codex; API providers go through dsh. Gemini's free tier is the
+**Free lanes in dsh (Tom, 2026-11-03).** API providers go through dsh; the
+November 10 official Google CLI experiment is the separate exception above. Gemini's free tier is the
 native pi-ai `google` route and the default (`google/gemini-3.8-flash`; three
 AI Studio keys). OpenCode Zen's free models come through the known workaround
 plugin jiesou/dsh-opencode-zen-free-provider, pinned in `pkgs/dsh-plugins`
@@ -216,7 +226,7 @@ straightforward to select the model that we use with each provider. no need
 for round-robin style usage but it IS a nice to have"; round-robin is
 deferred). The QwenCloud route was deleted with the account. Nothing
 sensitive goes through a free lane; Gufo keeps that work. The stock
-`headless` profile that substrate drives mounts no plugin. The second batch
+`headless` profile mounts no plugin. The second batch
 (issue 687, same day) adds Groq, Mistral, Cohere, NVIDIA NIM, Cloudflare
 Workers AI, Hugging Face, Cerebras and Vercel AI Gateway as `DSH_ROUTE`
 picks on pi-ai's native catalog routes (Cohere hand-declared on its

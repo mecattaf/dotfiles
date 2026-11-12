@@ -25,7 +25,7 @@ let
     name = "imagine-production";
     src = inputs.imagine;
     filter =
-      path: type:
+      path: _type:
       let
         relative = if path == imagineRoot then "" else lib.removePrefix "${imagineRoot}/" path;
         production = relative == "" || relative == "src" || lib.hasPrefix "src/" relative;
@@ -236,8 +236,6 @@ let
     done
     ${pkgs.dbus}/bin/dbus-update-activation-environment --systemd "''${present[@]}"
 
-    echo "Domicile login: validated config; starting the upstream launcher on VT $XDG_VTNR."
-    echo "Recovery: Ctrl+Alt+F2, then domicile-recover status. Logs: journalctl -t domicile-session -b"
     phase="starting the upstream launcher"
     # `exec` keeps the launcher in the session scope. No shell argument: the
     # config names it. No EXIT trap competes with upstream's session cleanup.
@@ -269,7 +267,7 @@ in
   imports = [
     inputs.domicile.nixosModules.default
     ./domicile-apps.nix
-    ./domicile-chat.nix
+    ./imagine-helpers.nix
   ];
 
   options.programs.domicilePhysical = {

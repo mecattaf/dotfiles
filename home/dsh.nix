@@ -22,8 +22,9 @@
 # wrapper links each hand-run profile's selected plugins into
 # $DSH_HOME/profiles/<name> when it boots (pkgs/dsh, pkgs/dsh-plugins).
 #
-# No units, no timers: dsh runs by hand, and unattended runs belong to
-# substrate.
+# No units, no timers here: this is the hand-run wrapper. Unattended
+# runs are dshd instances that the Scheduled floor starts
+# (home/scheduled.nix, docs/scheduled.md).
 let
   cfg = config.programs.dsh;
   link = config.lib.rawDotfiles.link;

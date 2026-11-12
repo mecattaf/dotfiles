@@ -88,13 +88,10 @@
     ../../modules/zenbook-duo-daemon.nix
     ../../modules/keyring-autounlock.nix # TPM-sealed keyring unlock; greetd autologin types no password
     ../../modules/domicile.nix
-    ../../modules/agency-web-client.nix
   ];
 
   networking.hostName = "client";
   myFleet.roles = [ "seat" ];
-  programs.agencyWebClient.enable = true;
-  programs.agencyWebClient.ambient.enable = true;
 
   # No dotfiles checkout on the thin client (Tom, 2026-10-11, about ~/dotfiles
   # and ~/mecattaf here: "i dnt need here"). Every raw dotfile (Domicile, kitty,

@@ -13,7 +13,25 @@ assert builtins.attrNames nas.dshd.releases == [ "nas" ];
 assert nas.dshd.defaultRelease == null;
 assert release.dsh.drvPath == nativeDsh.drvPath;
 assert release.environment == { };
-assert release.unsetEnvironment == [ "CLOUDFLARE_API_TOKEN" ];
+assert release.unsetEnvironment == [
+  "CLOUDFLARE_API_TOKEN"
+  "CLAUDECODE"
+  "CLAUDE_CODE_ENTRYPOINT"
+  "CLAUDE_CODE_CHILD_SESSION"
+  "CLAUDE_CODE_SESSION_ID"
+  "CLAUDE_CODE_SESSION_ATTENDED"
+  "CLAUDE_CODE_MESSAGING_SOCKET"
+  "CLAUDE_CODE_MESSAGING_TOKEN"
+  "CLAUDE_CODE_EXECPATH"
+  "CLAUDE_PID"
+  "CLAUDE_EFFORT"
+  "CLAUDE_ENVELOPE"
+  "CODEX_THREAD_ID"
+  "DSH_SESSION_ID"
+  "DSH_SHELL"
+  "DSH_PROFILE_DIR"
+  "DSH_WEB_URL"
+];
 assert !(builtins.elem nativeDsh handRun);
 assert builtins.any (package: lib.getName package == "dsh") handRun;
 assert nas.users.users.tom.linger;

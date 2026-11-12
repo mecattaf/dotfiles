@@ -89,16 +89,19 @@ in
   imports = [
     ./browser-trust.nix
     ./agent-tools.nix
+    ./antigravity-accounts.nix
     ./agent-helpers.nix
     ./agency-kitty.nix
     ./agency-editor.nix
     ./ai-memory.nix
     ./dsh.nix
+    ./dsh-master.nix
     ./downloads-mirror.nix
     ./harness-records.nix
     ./herdr.nix
     ./nvim.nix
     ./paper.nix
+    ./scheduled.nix
     ./utility-storage.nix
     ./raw-dotfiles-guard.nix
     ./ssh.nix

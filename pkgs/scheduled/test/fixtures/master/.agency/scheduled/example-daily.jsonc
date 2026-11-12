@@ -1,0 +1,16 @@
+// A synthetic item for the tests, never a copy of a real one: real items live
+// in an agency's .agency/scheduled/, not in this repository.
+// Daily, an inline prompt as lines, and a prompt that reads the header's time.
+{
+  "name": "Example: daily summary",
+  // Off, like every item at install.
+  "enabled": false,
+  "on": { "schedule": [ { "cron": "0 6 * * *", "timezone": "Europe/Paris" } ] },
+  "job": {
+    "prompt": [
+      "The day to summarise is the date of the Due or Requested time on the header's second line.",
+      "List the files under ~/work/example that changed on that day, one line each.",
+      "Change nothing. End with one line: the count, or none."
+    ]
+  }
+}

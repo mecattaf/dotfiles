@@ -1,0 +1,8 @@
+// A synthetic item for the tests: the densest schedule the validator accepts
+// (instants exactly 60 minutes apart), and a prompt kept in a file.
+{
+  "name": "Example: hourly check",
+  "enabled": false,
+  "on": { "schedule": [ { "cron": "0 * * * *", "timezone": "UTC" } ] },
+  "job": { "prompt-file": ".agency/prompts/example-hourly.md" }
+}
