@@ -1,6 +1,13 @@
-{ pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   registry = import ../../modules/mesh-registry.nix;
+  handOverToNetworkManager =
+    config.networking.networkmanager.enable && !config.systemd.network.enable;
 in
 # Remote access in stage 1 (2026-10-27). The NAS boots headless, and the 1TB
 # swap left it dark with no way to see where it stopped. With this, a stage-1
@@ -41,7 +48,19 @@ in
   # configured NIC and marks it "connected (externally)" instead of activating
   # coordinator-fast-lane (seen in a VM test, 2026-10-27). Runs only on the way
   # to stage 2, after networkd has stopped; an emergency stop keeps the network.
-  boot.initrd.systemd.initrdBin = [ pkgs.iproute2 ];
+  boot.initrd.systemd.initrdBin = [
+    pkgs.iproute2
+  ]
+  ++ lib.optional handOverToNetworkManager pkgs.coreutils;
+
+  # networkd's initrd status otherwise survives in /run after NetworkManager
+  # takes over. A stale ONLINE_STATE=offline leaves timesyncd waiting forever
+  # (NAS, 14 Nov 2026: zero NTP packets and a 17-second clock error). Retire
+  # only that global status after its writer stops; never sweep netif links,
+  # leases or sockets. Keep it when stage 2 still uses networkd.
+  boot.initrd.systemd.services.systemd-networkd.serviceConfig.ExecStopPost = lib.mkAfter (
+    lib.optional handOverToNetworkManager "${pkgs.coreutils}/bin/rm -f -- /run/systemd/netif/state"
+  );
   boot.initrd.systemd.services.lan-handover = {
     description = "Unconfigure the LAN NIC before stage 2";
     wantedBy = [ "initrd-switch-root.target" ];
