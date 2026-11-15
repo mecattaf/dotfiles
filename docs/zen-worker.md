@@ -41,10 +41,32 @@ with this module configuration (JSON shown to preserve exact names):
 ```
 
 Select provider `zen-cli-1` and an exact native model, for example
-`opencode/deepseek-v4.1-flash-free`. These five selectors were the authenticated
-slot-1 catalogue on 15 November; refresh and update the admission list as the
-provider changes it. An earlier unauthenticated catalogue showed more choices.
-Neither list is a quota or throughput measurement.
+`opencode/deepseek-v4.1-flash-free`. The example deliberately allows a subset.
+The earlier apparent five-model limit came from truncated native stdout, not
+provider removal or account entitlement. The corrected launcher refreshed and
+listed these twelve zero-price metadata selectors on all four fixed slots on
+15 November 2026 at 22:02–22:03 UTC:
+
+```text
+beam-free
+big-pickle
+deepseek-v4.1-flash-free
+flint-40b-free
+glm-5.3-flash-free
+iceman-free
+inkling-2-small-free
+longcat-2.5-free
+mimo-v2.6-flash-free
+minimax-m3.1-flash-free
+nemotron-3.5-lightning-free
+nemotron-3.5-super-vl-free
+```
+
+These come from the official client's model metadata, not a per-account
+allowance endpoint. Inkling's documented EU restriction excludes it from the
+eleven region-eligible choices here. Four matching lists do not establish four
+independent quota pools. Refresh before admission; model names do not prove
+remaining capacity. [Official free-model rules](https://opencode.ai/docs/console/models/#free-models).
 
 For a workspace-editing account, use explicit launch arguments
 `["--acp", "--edit", "--cwd", ".", "--timeout", "3600"]`. The supervisor's
@@ -85,6 +107,14 @@ invocation refreshes the official verbose catalogue and requires the selected
 exact model to have explicit zero input/output and zero other reported prices.
 The selected model is also the native small model. ACP additionally filters its
 advertised models to the refreshed zero-price list. There is no paid fallback.
+Catalogue stdout is captured through an anonymous regular file, then redacted
+into its receipt. OpenCode 1.19.5 can exit before pending pipe writes drain;
+line-by-line capture previously retained only an arbitrary prefix of its JSON
+metadata. Incomplete model JSON now fails visibly. The launcher also verifies
+that refresh replaced the actual private native cache, records its SHA-256,
+and lists that cache in a second native process. The native refresh command
+can otherwise return zero after a fetch failure. Ambient model-source
+overrides are cleared rather than accepted as authoritative price metadata.
 `--burndown` now refuses with an explanation instead of automatically rotating
 accounts after a limit. Existing `-k`, `-m`, prompt arguments,
 `-- --pure --format json`, and explicit `ZEN_STDIN=1` piping remain supported.
@@ -123,7 +153,7 @@ remains `/run/agenix`.
 
 ## Qualification, 15 November 2026
 
-Twelve offline checks cover paid/absent admission, vendor exit-zero
+Eighteen offline checks cover paid/absent admission, vendor exit-zero
 error events, incomplete output, timeout including descendant pipe holders,
 SIGTERM cleanup, fixed slots/no rotation, concurrent immutable records, and
 explicit edit scope, and ACP protocol passthrough/persistent native state. Run:
@@ -154,3 +184,14 @@ reused ACP adapter, provider `zen-cli-1`, model
 private DSH profile and the public source packet, preserving live profiles.
 The adapter's turn journal recorded the native session/model binding and
 completion. This proof is separate from the standalone command tests.
+
+After fixing catalogue capture, a further DSH native ACP turn used fixed
+slot 2 and `opencode/minimax-m3.1-flash-free`. It read and edited a public
+permission helper through native tools, completed, and its patch passed all
+sixteen boolean input combinations independently on compute. To expose this
+model in another profile, set the account id to `2`, explicitly include
+`--slot 2` in its CLI arguments, allow that exact native model and select
+provider `zen-cli-2`. Existing DeepSeek/GLM pairs need only the corrected
+launcher; no experimental flag or different OpenCode package is required.
+The added tests cover large native output lost on a pipe, incomplete JSON,
+silent refresh failure, a changed price and the shared absolute deadline.
