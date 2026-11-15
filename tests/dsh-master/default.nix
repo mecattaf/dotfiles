@@ -146,6 +146,8 @@ assert
     "master-opus"
     "master-zen-deepseek"
     "master-zen-glm"
+    "master-zen-mimo"
+    "master-zen-minimax"
   ];
 # The Claude pair binds dsh-claude's preset; Gufo binds none.
 assert cfg.pairs.opus.preset == "claude" && cfg.pairs.gufo.preset == null;
