@@ -60,6 +60,7 @@ let
     };
 
   pairNames = builtins.attrNames settings.pairs;
+  pairEffort = pair: if pair.nativeEffort != null then pair.nativeEffort else pair.reasoningEffort;
   workerName = pair: "master-${pair}";
 
   # Every Claude process dsh-claude starts (turns, titles, the model probe)
@@ -131,7 +132,7 @@ let
               profile = workerName name;
               inherit (pair) provider model;
             }
-            // lib.optionalAttrs (pair.reasoningEffort != null) { effort = pair.reasoningEffort; }
+            // lib.optionalAttrs (pairEffort pair != null) { effort = pairEffort pair; }
             // lib.optionalAttrs (pair.env != { }) { inherit (pair) env; }
             // lib.optionalAttrs (pair.maxWorkers != null) { inherit (pair) maxWorkers; }
           ) settings.pairs;
@@ -290,12 +291,37 @@ let
     # profile's own rows.
   '';
 
+  # realpathSync checks existence before credentials-local mounts. Its normal
+  # missing-file behavior is an empty store plus ambient/.env fallback; that
+  # would silently change the declared cloud account when sync was omitted.
+  # This reads no credential content. The native service validates modes and
+  # the versioned document before a provider request can start.
+  credentialPathExpression =
+    name:
+    "process.getBuiltinModule('node:fs').realpathSync(dshHomePath('master-credentials/${name}.yaml'))";
+
+  profilePolicyRows =
+    name:
+    map (
+      row:
+      if row.id == "llm-pi-ai" && (profiles.${name}.credentialFiles or { }) != { } then
+        row
+        // {
+          inject = [
+            "llm"
+            "credentials"
+          ];
+        }
+      else
+        row
+    ) policyRows;
+
   # The dsh-config policy file and sessions row are plain block sequences, so
   # the parts concatenate into one YAML list.
   patchFile =
     name: rows:
     runCommand "${name}-cordis.patch.yml" { } ''
-      cat ${header} ${yaml.generate "policy.yml" policyRows} > "$out"
+      cat ${header} ${yaml.generate "policy.yml" (profilePolicyRows name)} > "$out"
       echo >> "$out"
       cat ${dsh.sessions} >> "$out"
       echo >> "$out"
@@ -306,7 +332,7 @@ let
         - id: credentials
           disabled: false
           config:
-            path: !!js dshHomePath('master-credentials/${name}.yaml')
+            path: !!js ${credentialPathExpression name}
             watch: false
         CREDENTIALS
       ''}
@@ -368,11 +394,14 @@ let
         }) row.insert
       else
         [
-          {
-            inherit (row) id;
-            config = row.config or null;
-            disabled = row.disabled or (if row.id == "dsh-superagent" then false else null);
-          }
+          (
+            {
+              inherit (row) id;
+              config = row.config or null;
+              disabled = row.disabled or (if row.id == "dsh-superagent" then false else null);
+            }
+            // lib.optionalAttrs (row ? inject) { inherit (row) inject; }
+          )
         ]
     ) rows;
 
@@ -385,7 +414,7 @@ let
       id = "credentials";
       disabled = false;
       config = {
-        path.__js = "dshHomePath('master-credentials/${name}.yaml')";
+        path.__js = credentialPathExpression name;
         watch = false;
       };
     };
@@ -401,7 +430,7 @@ let
         patch = patchFile name profile.rows;
         workspace = pnpmWorkspace;
         credentialFiles = profile.credentialFiles or { };
-        expect = expectRows (policyRows ++ profile.rows) ++ credentialExpect name profile;
+        expect = expectRows (profilePolicyRows name ++ profile.rows) ++ credentialExpect name profile;
       }) profiles;
     }
   );
@@ -419,7 +448,8 @@ let
         patch = patchFile name profile.firstPartyRows;
         workspace = pnpmWorkspace;
         credentialFiles = profile.credentialFiles or { };
-        expect = expectRows (policyRows ++ profile.firstPartyRows) ++ credentialExpect name profile;
+        expect =
+          expectRows (profilePolicyRows name ++ profile.firstPartyRows) ++ credentialExpect name profile;
       }) profiles;
     }
   );

@@ -194,8 +194,9 @@ let
     };
 
   # NVIDIA NIM (https://integrate.api.nvidia.com/v1): one key, about 40
-  # requests/minute (docs, unconfirmed). glm-5.3-flash answered with
-  # reasoning; the other catalog ids were listed. nemotron-3-super and
+  # requests/minute (docs, unconfirmed). The exact Lightning route returned
+  # checked code with thinking explicitly off on 2026-11-15; GLM/OSS timeouts
+  # remain route observations, not a provider outage. nemotron-3-super and
   # minimax-m3.1-flash are listed for this account but absent from the
   # catalog, so they are declared by hand (sizes assumed, no reasoning
   # offered). moonshotai/kimi-k2.6 is in the catalog but 404 for this
@@ -203,7 +204,20 @@ let
   nvidia =
     retryPolicy:
     keyed "NVIDIA NIM" "NVIDIA_API_KEY" retryPolicy {
+      timeoutMs = 120000;
+      streamIdleTimeoutMs = 120000;
       models = [
+        {
+          id = "nvidia/nemotron-3.5-lightning-30b-a3b";
+          maxTokens = 4096;
+          # Native pi-ai chat-template support, not an arbitrary extra body.
+          # Default thinking spent a short output allowance without a final;
+          # explicit off returned the checked public-code answer immediately.
+          compat = {
+            thinkingFormat = "chat-template";
+            chatTemplateKwargs.enable_thinking = false;
+          };
+        }
         { id = "z-ai/glm-5.3-flash"; } # default; answered with reasoning
         { id = "deepseek-ai/deepseek-v4.1-flash"; }
         { id = "nvidia/nemotron-3.5-super-vl-120b-a12b"; }
@@ -404,6 +418,11 @@ let
       model = "command-a-plus-05-2026";
     };
     nvidia = {
+      provider = "nvidia";
+      model = "nvidia/nemotron-3.5-lightning-30b-a3b";
+      reasoningEffort = null;
+    };
+    nvidia-glm = {
       provider = "nvidia";
       model = "z-ai/glm-5.3-flash";
     };

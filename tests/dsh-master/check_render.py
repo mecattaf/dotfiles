@@ -183,7 +183,8 @@ def main(package, expect_path):
         if got.get("env", {}) != settings["env"] or got.get("maxWorkers") != settings["maxWorkers"]:
             problems.append(f"dshd.pairs.{pair} is {got}")
         route = pairs[pair]
-        if got.get("provider") != route["provider"] or got.get("model") != route["model"] or got.get("effort") != route.get("reasoningEffort"):
+        effort = expect["nativeEfforts"][pair] or route.get("reasoningEffort")
+        if got.get("provider") != route["provider"] or got.get("model") != route["model"] or got.get("effort") != effort:
             problems.append(f"dshd.pairs.{pair} lacks the exact provider/model/effort selection")
     if sorted(dshd.get("pairs", {})) != sorted(pairs):
         problems.append(f"dshd.pairs are {sorted(dshd.get('pairs', {}))}")
@@ -249,7 +250,7 @@ def main(package, expect_path):
             problems.append(f"{name}: runtime credential source metadata differs")
         credentials = rows[name].get("credentials", [])
         if files:
-            wanted = {"path": {"__js": f"dshHomePath('master-credentials/{name}.yaml')"}, "watch": False}
+            wanted = {"path": {"__js": f"process.getBuiltinModule('node:fs').realpathSync(dshHomePath('master-credentials/{name}.yaml'))"}, "watch": False}
             if len(credentials) != 1 or credentials[0].get("disabled") is not False or credentials[0].get("config") != wanted:
                 problems.append(f"{name}: native credential store selection is {credentials}")
         elif credentials:
@@ -349,7 +350,10 @@ def main(package, expect_path):
         have = sorted(set(ids) & set(expect["policyIds"]) - {"agent-default-model"} - (PERMISSION_ROWS if name == "master" else set()))
         if have != wanted:
             problems.append(f"{name}: policy ids {have}")
-        problems += [f"{name}: {row_id} differs from the policy" for row_id in wanted if ids.get(row_id, [None])[0] != policy[row_id]]
+        expected_policy = copy.deepcopy(policy)
+        if name in workers and expect["pairCredentials"][workers[name]]:
+            expected_policy["llm-pi-ai"]["inject"] = ["llm", "credentials"]
+        problems += [f"{name}: {row_id} differs from the policy" for row_id in wanted if ids.get(row_id, [None])[0] != expected_policy[row_id]]
         sessions = ids.get("session-persistence-jsonl", [])
         if len(sessions) != 1 or sessions[0].get("config", {}).get("compression") != "none" or "__js" not in sessions[0].get("config", {}).get("root", {}):
             problems.append(f"{name}: sessions row is {sessions}")

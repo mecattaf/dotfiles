@@ -3,6 +3,9 @@
     "mode": "auto",
     "timeoutSeconds": 600
   },
+  "executor": {
+    "maxWorkers": 8
+  },
   "rules": [
     {
       "id": "scheduled",

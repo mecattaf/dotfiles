@@ -20,8 +20,47 @@ let
   cfg = config.programs.dsh.master;
   home = config.home.homeDirectory;
   localModel = import ../lib/local-model.nix;
+  openrouterFree = pkgs.callPackage ../pkgs/dsh-plugins/openrouter-free { };
   inherit (lib) mkOption types;
-  nativeClientPin = "github:mecattaf/dsh-gemini-cli#f2d30301180b0d8633b30b9f706dfbba63d4be0d";
+  nativeClientPin = "github:mecattaf/dsh-gemini-cli#8aa44aa007a471aa1486ec0c84571656053518b0";
+  antigravityPair = slot: {
+    provider = "antigravity-cli-${slot}";
+    model = "gemini-3.8-flash";
+    nativeEffort = "low";
+    maxWorkers = 1;
+    dependencies."@mecattaf/dsh-gemini-cli" = nativeClientPin;
+    workerRows = [
+      {
+        insert = [
+          {
+            id = "llm-antigravity-cli";
+            name = "@mecattaf/dsh-gemini-cli";
+            config = {
+              allowDirectProvider = true;
+              registerCommands = false;
+              terminalPrompts = false;
+              defaultMode = "accept-edits";
+              nativeThoughtLevel = "low";
+              allowedModels = [ "gemini-3.8-flash" ];
+              turnTimeoutMs = 600000;
+              accounts = [
+                {
+                  id = slot;
+                  name = "Google account ${slot}";
+                  executablePath = "/etc/profiles/per-user/tom/bin/agy${if slot == "1" then "" else slot}";
+                  cliArgs = [
+                    "--settings"
+                    ''{"useG1Credits":false}''
+                    "acp"
+                  ];
+                }
+              ];
+            };
+          }
+        ];
+      }
+    ];
+  };
   zenPair = model: {
     provider = "zen-cli-1";
     inherit model;
@@ -79,6 +118,11 @@ let
           type = types.nullOr types.str;
           default = null;
           description = "Reasoning effort; null for a model that declares none.";
+        };
+        nativeEffort = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Effort fixed by a native client's worker configuration, advertised for pair selection only. It is not sent as the outer DSH model's reasoningEffort; native capabilities are discovered after ACP initialization.";
         };
         env = mkOption {
           type = types.attrsOf types.str;
@@ -143,8 +187,10 @@ in
       # registers the superagent's tool parameters as plain JSON, which the
       # Claude bridge needs; floor-v2.4 has dsh-claude's bridge call DSH 0.2's
       # batch tool executor; floor-v2.5 bounds the executor's resume and retry
-      # paths and reports workflow usage per node. Move this with each new tag.
-      default = "floor-v2.5";
+      # paths and reports workflow usage per node; floor-v2.7 adds explicit
+      # per-node pair/model/effort selection with no default fallback for an
+      # unresolved route. Move this with each new tag (v2.6 was withdrawn).
+      default = "floor-v2.7";
       description = "Release tag both plugin pins name, unless `superagent` or `claude` is set.";
     };
     superagent = mkOption {
@@ -205,6 +251,7 @@ in
           provider = "claude";
           model = "opus";
           reasoningEffort = "medium";
+          maxWorkers = 3;
         };
         # Gufo serves one generation at a time. The bearer is the public dummy
         # the keyless server takes (pkgs/dsh), never a secret: a pair's env
@@ -237,43 +284,32 @@ in
           credentialFiles.COHERE_API_KEY = osConfig.age.secrets.cohere-api-key-1.path;
           maxWorkers = 1;
         };
-        antigravity = {
-          provider = "antigravity-cli-1";
-          model = "gemini-3.8-flash";
+        openrouter-free = {
+          provider = "openrouter-free";
+          model = "nvidia/nemotron-3.5-lightning:free";
           reasoningEffort = "low";
+          credentialFiles.OPENROUTER_API_KEY = osConfig.age.secrets.openrouter-token.path;
           maxWorkers = 1;
-          dependencies."@mecattaf/dsh-gemini-cli" = nativeClientPin;
           workerRows = [
             {
               insert = [
                 {
-                  id = "llm-antigravity-cli";
-                  name = "@mecattaf/dsh-gemini-cli";
-                  config = {
-                    allowDirectProvider = true;
-                    registerCommands = false;
-                    terminalPrompts = false;
-                    defaultMode = "accept-edits";
-                    allowedModels = [ "gemini-3.8-flash" ];
-                    turnTimeoutMs = 600000;
-                    accounts = [
-                      {
-                        id = "1";
-                        name = "Google account 1";
-                        executablePath = "/etc/profiles/per-user/tom/bin/agy";
-                        cliArgs = [
-                          "--settings"
-                          ''{"useG1Credits":false}''
-                          "acp"
-                        ];
-                      }
-                    ];
-                  };
+                  id = "openrouter-free";
+                  name = "${openrouterFree}/index.mjs";
                 }
               ];
             }
           ];
         };
+        nvidia = {
+          provider = "nvidia";
+          model = "nvidia/nemotron-3.5-lightning-30b-a3b";
+          credentialFiles.NVIDIA_API_KEY = osConfig.age.secrets.nvidia-api-key-1.path;
+          maxWorkers = 1;
+        };
+        antigravity = antigravityPair "1";
+        antigravity-2 = antigravityPair "2";
+        antigravity-3 = antigravityPair "3";
         zen-deepseek = zenPair "opencode/deepseek-v4.1-flash-free";
         zen-glm = zenPair "opencode/glm-5.3-flash-free";
       };
@@ -371,6 +407,12 @@ in
       {
         assertion = !(cfg.superagentConfig ? engine);
         message = "programs.dsh.master.superagentConfig: `engine` is set per folder by the renderer.";
+      }
+      {
+        assertion = lib.all (p: p.nativeEffort == null || p.reasoningEffort == null) (
+          builtins.attrValues cfg.pairs
+        );
+        message = "programs.dsh.master: a pair selects either nativeEffort or outer reasoningEffort, not both.";
       }
     ];
 
