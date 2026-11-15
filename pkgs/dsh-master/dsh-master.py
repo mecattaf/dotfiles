@@ -248,6 +248,9 @@ def render(args):
     changed = set()
     for name in names:
         folder = os.path.join(home, "profiles", name)
+        for path in (os.path.join(home, "profiles"), folder):
+            if os.path.islink(path):
+                raise Failure(f"{path} is a symbolic link; dsh-master writes only real folders")
         profile = manifest["profiles"][name]
         state = read_state(folder)
         wanted_state = {"rendered": dict(profile["files"]), "installed": state.get("installed")}
