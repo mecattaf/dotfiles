@@ -5,6 +5,7 @@
     dsh-master check [PROFILE...]             assert the rows in each config dump
     dsh-master status                         rendered, installed, current (exit 1 if not)
     dsh-master credentials sync [PROFILE...] private native stores from runtime secret files
+    dsh-master runtime snapshot --installed-profile DIR --from BUILD freeze a checked graph and floor overlay
     dsh-master settings seed [FILE] [--url U] seed the floor's Store settings
 
 The rendered folders come from the package (pkgs/dsh-master/default.nix) or
@@ -30,6 +31,7 @@ row follows DSH_HOME, so an isolated worker cannot silently read the live store.
 import argparse
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -598,6 +600,19 @@ def settings_seed(args):
     return 1
 
 
+def runtime_snapshot(args):
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "runtime.py")
+    spec = importlib.util.spec_from_file_location("dsh_master_runtime", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        result = module.snapshot(args.source, args.installed_profile, dsh_home(), args.nix_store)
+    except module.SnapshotError as error:
+        raise Failure(str(error)) from None
+    print(json.dumps(result, sort_keys=True))
+    return 0
+
+
 def main(argv):
     parser = argparse.ArgumentParser(prog="dsh-master", description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -626,6 +641,12 @@ def main(argv):
     sync.add_argument("--from", dest="source", default=default_source(), help="a dsh-master build (default: this one)")
     sync.add_argument("profiles", nargs="*", metavar="PROFILE")
     sync.set_defaults(handler=credentials_sync)
+    runtime = commands.add_parser("runtime").add_subparsers(dest="runtime", required=True)
+    snapshot = runtime.add_parser("snapshot", help="freeze an installed graph and emit a floor-only overlay; never control instances")
+    snapshot.add_argument("--installed-profile", required=True, help="an installed profile folder matching the new build's package pins and lock")
+    snapshot.add_argument("--from", dest="source", default=default_source(), help="the new dsh-master build")
+    snapshot.add_argument("--nix-store", default="nix-store", help="nix-store used only to retain already-valid peer paths")
+    snapshot.set_defaults(handler=runtime_snapshot)
     args = parser.parse_args(argv)
     try:
         return args.handler(args)
