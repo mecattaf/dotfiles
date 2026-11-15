@@ -11,6 +11,33 @@ The schema and explicit public field/string contract ship beside the program
 under `share/fleet-status/schema/` and `public-contract.json`. Missing adapters
 are listed in coverage; their absent values remain unknown.
 
+## Backend access
+
+The collector, retained observation contract and CLI are the backend. A webpage
+is a separate consumer; neither collection nor local inspection depends on a
+web server or cloud publication.
+
+```
+fleet-status --json
+fleet-status observations
+fleet-status observations --json
+fleet-status observations --snapshot /path/to/status.json --json
+```
+
+The first command retains the existing bounded fleet-health collection. The
+`observations` command reads the observer's committed `public/status.json` and
+exposes every subject, observation, event and source-coverage record. JSON uses
+the existing `fleet-observations/1` contract, including units, measurement scope,
+acquisition timestamps, errors and last-good values. Expired observations become
+unknown on read without changing their original timestamps or the stored file.
+`--state-dir` selects an existing observer directory. A missing snapshot returns
+`snapshot-missing` and exit 1, rather than collecting implicitly or showing zeros.
+
+The CLI starts no observer, network request, model or publisher. The optional
+HTTPS publisher and any future webpage consume this same versioned contract.
+This adds no hardware-history recorder and makes no claim of coverage before
+the existing observer enrolled each source.
+
 | Owner | Acquisition | Normal cadence |
 |---|---|---|
 | Existing fleet collector | One bounded fleet fanout; selected public reachability/load/memory fields | 300 seconds |
