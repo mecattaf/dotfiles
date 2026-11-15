@@ -1,0 +1,21 @@
+{
+  "name": "fleet-status-reader",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "schema": "node scripts/compile-schema.mjs",
+    "types": "wrangler types --config wrangler.jsonc --env-interface ReaderEnv .generated/reader-env.d.ts && wrangler types --config wrangler.publisher.jsonc --env-interface PublisherEnv .generated/publisher-env.d.ts",
+    "check": "npm run schema && npm run types && tsc --noEmit && node --check public/app.js",
+    "test": "npm run schema && node --test test/*.test.mjs",
+    "dry-run": "npm run schema && wrangler deploy --dry-run --outdir dist/reader --config wrangler.jsonc && wrangler deploy --dry-run --outdir dist/publisher --config wrangler.publisher.jsonc"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "wrangler": "4.162.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "typescript": "5.9.3",
+    "miniflare": "5.20261113.0-beta"
+  }
+}

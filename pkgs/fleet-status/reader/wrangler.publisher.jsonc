@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "fleet-status-publisher",
+  "main": "src/publisher.ts",
+  "compatibility_date": "2026-11-15",
+  "workers_dev": true,
+  "r2_buckets": [{ "binding": "PUBLIC_STATUS", "bucket_name": "fleet-status-public" }],
+  "secrets": { "required": ["PUBLISH_TOKEN"] },
+  "observability": { "enabled": true, "logs": { "enabled": true }, "traces": { "enabled": true, "head_sampling_rate": 0.01 } }
+}

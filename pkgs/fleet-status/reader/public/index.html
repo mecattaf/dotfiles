@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fleet status</title><link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script>
+</head>
+<body>
+<main>
+<header><h1>Fleet status</h1><nav><a href="/api/v1/status.json">Status JSON</a><a href="/api/v1/catalog.json">Catalogue</a></nav></header>
+<p id="connection" role="status">Loading observations…</p>
+<p id="received"></p>
+<div class="toolbar"><label>Show <select id="filter"><option value="all">All observations</option><option value="compute">Compute</option><option value="host">Hosts</option><option value="agent">Agents</option></select></label><button id="refresh" type="button">Refresh</button><span id="checked"></span></div>
+<p id="notice"></p>
+<div class="table-wrap"><table><thead><tr><th>Subject</th><th>Observation</th><th>Value</th><th>Grade</th><th>Observed</th><th>Freshness</th></tr></thead><tbody id="observations"></tbody></table></div>
+<details><summary>Source coverage</summary><ul id="coverage"></ul></details>
+<p class="note">Connection shows receipt of observer reports. Each source keeps its own observation time and freshness.</p>
+</main>
+</body>
+</html>
