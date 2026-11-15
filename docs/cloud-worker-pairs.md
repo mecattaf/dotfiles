@@ -17,9 +17,12 @@ as the existing Opus and Gufo pairs. There is no second scheduler or router.
 | `antigravity-3` | `antigravity-cli-3` / `gemini-3.8-flash` | low | 1 |
 | `zen-deepseek` | `zen-cli-1` / `opencode/deepseek-v4.1-flash-free` | omitted | 1 |
 | `zen-glm` | `zen-cli-1` / `opencode/glm-5.3-flash-free` | omitted | 1 |
+| `zen-mimo` | `zen-cli-1` / `opencode/mimo-v2.6-flash-free` | omitted | 1 |
+| `zen-minimax` | `zen-cli-2` / `opencode/minimax-m3.1-flash-free` | omitted | 1 |
 
-The Zen rows share the same fixed slot and quota pool. Model selectors and
-key counts never multiply an account's allowance. These conservative worker
+The DeepSeek, GLM and MiMo Zen rows share fixed slot 1; MiniMax uses explicit slot 2.
+Whether those slots have independent quota remains unknown. Model selectors
+and key counts never multiply an account's allowance. These conservative worker
 caps are initial allocations, not measured provider concurrency ceilings.
 The existing executor settings seed sets eight total workers for this floor; the Opus pair
 retains a cap of three and Gufo a cap of one. This permits cloud work alongside
@@ -119,6 +122,15 @@ Zen invokes the official OpenCode ACP client through the fixed-slot `zen`
 launcher. The code worker explicitly enables editing in its actual workspace;
 the same native account stays selected. An API client gate is not a quota
 reading and is never worked around by forging a fingerprint.
+Each pair passes its fixed `--slot` explicitly, so an inherited `ZEN_SLOT`
+cannot change its declared account. The corrected launcher captures complete
+native catalogue output, verifies a real cache refresh and admits exact
+zero-price models. An earlier five-model list was truncated stdout, not a
+provider withdrawal. All four configured slots exposed the same twelve
+metadata-free selectors; Inkling's EU restriction leaves eleven eligible here.
+The MiniMax and MiMo pairs each passed a native DSH source-edit task and all
+sixteen independent boolean acceptance cases. These are route checks, not measured
+remaining quota or model-quality rankings.
 
 ## Coverage and admission are different facts
 
