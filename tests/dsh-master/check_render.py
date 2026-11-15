@@ -218,15 +218,17 @@ def main(package, expect_path):
     subtest("Gufo headless foreground and compaction budgets only", problems)
 
     problems = []
-    for pair, extra_rows in expect["workerRows"].items():
-        target = f"master-{pair}"
-        for source in extra_rows:
-            listed = source.get("insert", [source])
-            for row in listed:
-                for name, ids in rows.items():
-                    got = [{k: v for k, v in item.items() if k != "inserted"} for item in ids.get(row["id"], [])]
-                    if got != ([row] if name == target else []):
-                        problems.append(f"{name}: pair-only {row['id']} is {got}")
+    extra_by_profile = {
+        f"master-{pair}": [row for source in extra_rows for row in source.get("insert", [source])]
+        for pair, extra_rows in expect["workerRows"].items()
+    }
+    extra_ids = {row["id"] for extra_rows in extra_by_profile.values() for row in extra_rows}
+    for name, ids in rows.items():
+        for row_id in extra_ids:
+            wanted = [row for row in extra_by_profile.get(name, []) if row["id"] == row_id]
+            got = [{k: v for k, v in item.items() if k != "inserted"} for item in ids.get(row_id, [])]
+            if got != wanted:
+                problems.append(f"{name}: pair-only {row_id} is {got}, expected {wanted}")
     subtest("additional worker rows stay with their pair and are manifest-checked", problems)
 
     problems = []
