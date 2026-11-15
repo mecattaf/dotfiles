@@ -39,6 +39,9 @@ class ObserverTests(unittest.TestCase):
         self.assertEqual(result["errorCode"], "stale")
         self.assertEqual(result["lastGood"], {"value": 2.0, "observedAt": "2000-01-01T00:00:00Z"})
         self.assertEqual(result["observedAt"], "2000-01-01T00:00:00Z")
+        row = observer.public_observation("quota-cloudflare-1-neurons", "compute.quota-headers", "quota.remaining", 100, at="2026-11-15T23:59:00Z", unit="neurons", ttl=7200)
+        observer.expire_at_reset([row], "2026-11-16T00:00:00Z")
+        self.assertEqual(row["expiresAt"], "2026-11-16T00:00:00Z")
 
     def test_complete_line_cursor_survives_partial_append_and_restart(self):
         path = self.root / "input.jsonl"
@@ -132,6 +135,80 @@ class ObserverTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.value.publish()
         self.assertFalse((self.root / "state/public/status.json").exists())
+
+    def test_an_oversized_record_cannot_wedge_the_cursor_or_be_publicly_copied(self):
+        path = self.root / "large.jsonl"
+        path.write_text(json.dumps({"private": "x" * 4096}) + "\n")
+        cursors = {}
+        rows, gap, more = tail_jsonl(path, cursors, byte_budget=1024)
+        self.assertEqual(rows, [])
+        self.assertTrue(gap)
+        self.assertFalse(more)
+        self.assertEqual(cursors[str(path)]["offset"], path.stat().st_size)
+
+    def test_retry_after_does_not_block_heartbeat_or_get_shortened_by_local_backoff(self):
+        future = observer.time.time() + 7200
+        self.value.accept("metrics", {"rows": None, "error": "source-failed", "retryAfterAt": future})
+        self.assertGreaterEqual(self.value.cache["metrics"]["nextAt"], future)
+        self.assertEqual(self.value.publish()["snapshotId"], "snapshot-1")
+
+    def test_unknown_token_fields_stay_unknown_while_explicit_zero_is_preserved(self):
+        self.value.new_process = False
+        path = self.root / "sessions" / "workspace" / "one" / "session.v4.jsonl"
+        path.parent.mkdir(parents=True)
+        records = [{"type": "request/context", "seq": 1, "data": {"provider": "groq"}},
+                   {"type": "assistant/message", "seq": 2, "data": {"turn": 1, "step": 1, "usage": {"inputTokens": 0, "outputTokens": 2}}},
+                   {"type": "step/end", "seq": 3, "data": {"turn": 1, "step": 1}}]
+        path.write_text("".join(json.dumps(row) + "\n" for row in records))
+        rows = self.value.tails()
+        actual = {row["key"]: row["value"] for row in rows if row["subjectId"] == "provider-groq"}
+        self.assertEqual(actual["usage.inputTokens"], 0)
+        self.assertIsNone(actual["usage.reasoningTokens"])
+
+    def test_failed_or_cancelled_steps_never_claim_a_successful_artifact(self):
+        self.value.new_process = False
+        for index, reason in enumerate(["error", "aborted", "aborted"]):
+            path = self.root / "sessions" / "workspace" / str(index) / "session.v4.jsonl"
+            path.parent.mkdir(parents=True)
+            records = [{"type": "request/context", "seq": 1, "data": {"provider": "groq"}},
+                       {"type": "assistant/attempt", "seq": 2, "data": {"turn": 1, "step": 1, "stream": {}}},
+                       {"type": "step/end", "seq": 3, "data": {"turn": 1, "step": 1}},
+                       {"type": "turn/end", "seq": 4, "data": {"reason": {"kind": reason, "error": {"code": "QUOTA", "message": "PRIVATE ERROR"}}}}]
+            if index == 2:
+                records[1] = {"type": "assistant/message", "seq": 2, "data": {"turn": 1, "step": 1, "interrupted": True, "usage": {"inputTokens": 3, "outputTokens": 2}}}
+            path.write_text("".join(json.dumps(row) + "\n" for row in records))
+        self.value.tails()
+        self.assertEqual(self.value.state["usage"]["groq"]["calls"], 3)
+        self.assertEqual(self.value.state["usage"]["groq"]["successes"], 0)
+        self.assertEqual(self.value.state["usage"]["groq"]["inputTokens"], 3)
+        self.assertEqual({row["state"] for row in self.value.state["sessions"].values()}, {"failed", "cancelled"})
+
+    def test_session_metadata_eviction_retains_dedup_cursor(self):
+        self.value.new_process = False
+        path = self.root / "sessions" / "workspace" / "original" / "session.v4.jsonl"
+        path.parent.mkdir(parents=True)
+        records = [{"type": "request/context", "seq": 1, "data": {"provider": "groq"}},
+                   {"type": "assistant/message", "seq": 2, "data": {"turn": 1, "step": 1, "usage": {"inputTokens": 12}}},
+                   {"type": "step/end", "seq": 3, "data": {"turn": 1, "step": 1}}]
+        path.write_text("".join(json.dumps(row) + "\n" for row in records))
+        self.value.tails()
+        # Exercise the actual 513-entry pruning branch: 256 newer owner files
+        # plus 256 retained recent metadata rows push this old owner out of the
+        # bounded presentation set, while its primary offset must survive.
+        os.utime(path, (1, 1))
+        self.value.state["sessions"][str(path)]["seenAt"] = 0
+        for index in range(256):
+            fresh = self.root / "sessions" / "new" / str(index) / "session.v4.jsonl"
+            fresh.parent.mkdir(parents=True)
+            fresh.write_text("")
+            key = "retained-" + str(index)
+            self.value.state["sessions"][key] = {"id": self.value.public_id("session", key), "state": "unknown", "seq": -1, "seenAt": observer.time.time() - 1}
+        self.value.tails()
+        self.assertNotIn(str(path), self.value.state["sessions"])
+        path.touch()
+        self.value.tails()
+        self.assertEqual(self.value.state["usage"]["groq"]["inputTokens"], 12)
+        self.assertIn(str(path), self.value.state["cursors"])
 
 
 if __name__ == "__main__":

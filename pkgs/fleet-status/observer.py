@@ -23,6 +23,8 @@ import subprocess
 import threading
 import time
 import urllib.request
+import urllib.error
+import email.utils
 from functools import wraps
 
 from incremental import tail_jsonl
@@ -33,6 +35,35 @@ SOURCES = CONTRACT["sources"]
 PROVIDERS = CONTRACT["providers"]
 UTC = dt.timezone.utc
 STOP = threading.Event()
+
+
+class SourceError(RuntimeError):
+    def __init__(self, code, retry_after=None):
+        super().__init__(code)
+        self.retry_after = retry_after
+
+
+def metadata_json(request, timeout, cap):
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read(cap + 1)
+            if len(raw) > cap:
+                raise SourceError("budget-truncated")
+            return json.loads(raw)
+    except urllib.error.HTTPError as exc:
+        retry_after = None
+        value = exc.headers.get("Retry-After")
+        if value:
+            try:
+                seconds = float(value)
+                if math.isfinite(seconds) and seconds >= 0:
+                    retry_after = time.time() + seconds
+            except ValueError:
+                try:
+                    retry_after = email.utils.parsedate_to_datetime(value).timestamp()
+                except (TypeError, ValueError, OverflowError):
+                    pass
+        raise SourceError("source-failed", retry_after) from None
 
 
 def synchronized(function):
@@ -140,6 +171,16 @@ def refresh_rows(rows, attempted, error=None):
             row["grade"] = "cached"
         result.append(row)
     return result
+
+
+def expire_at_reset(rows, reset):
+    boundary = instant(reset)
+    if boundary:
+        for row in rows:
+            expires = instant(row.get("expiresAt"))
+            if expires and boundary < expires:
+                row["expiresAt"] = stamp(boundary)
+    return rows
 
 
 def validate_public(value):
@@ -321,6 +362,12 @@ class Observer:
                 status = child.wait(timeout=3)
                 with self.lock:
                     self.state["journalError"] = "source-failed" if status else "source-unavailable"
+                    if status and cursor:
+                        # A rotated/invalid cursor must not wedge observation
+                        # forever. Resume from now, explicitly retaining the
+                        # coverage gap rather than replaying old executions.
+                        self.state.pop("journalCursor", None)
+                        self.state["journalGap"] = True
             except (OSError, subprocess.TimeoutExpired):
                 with self.lock:
                     self.state["journalError"] = "source-failed"
@@ -414,6 +461,7 @@ class Observer:
                 bucket = self.add_subject(f"quota-{lane}-{slot}-other", "quota-bucket", PROVIDERS[lane] + " quota", account)
                 rows.append(public_observation(bucket, "compute.subscriptions", "subscription.utilizationPercent", None, unit="percent", scope="provider-reported", error="unauthenticated" if seat.get("state") == "unauth" else "source-unavailable"))
             for index, window in enumerate(seat.get("windows", [])[:8]):
+                start_index = len(rows)
                 # No mutable model/window label crosses the boundary.
                 minutes = window.get("minutes")
                 kind = "weekly" if minutes == 10080 else "five-hour" if minutes == 300 else "daily" if minutes == 1440 else "other"
@@ -424,6 +472,7 @@ class Observer:
                 rows.append(public_observation(bucket, "compute.subscriptions", "subscription.windowKind", kind, at=stamp(measured_at) if measured_at else None, scope="provider-reported", ttl=3600))
                 resets = window.get("resets_at")
                 rows.append(public_observation(bucket, "compute.subscriptions", "subscription.resetsAt", stamp(instant(resets)) if instant(resets) else None, at=stamp(measured_at) if measured_at else None, scope="provider-reported", ttl=3600))
+                expire_at_reset(rows[start_index:], resets)
             # OpenRouter free account counter is a provider quota, distinct
             # from its local paid soft spending cap.
             if seat.get("id") == "openrouter-free":
@@ -432,6 +481,7 @@ class Observer:
                 for source_key, key in [("remaining", "quota.remaining"), ("limit", "quota.limit")]:
                     value = budget.get(source_key)
                     rows.append(public_observation(bucket, "compute.quota-headers", key, value if measured_at and finite(value) else None, at=stamp(measured_at) if measured_at else None, unit="requests", scope="provider-reported", ttl=3600))
+                expire_at_reset(rows[-2:], budget.get("resets_at"))
         return rows
 
     def cloudflare_quota(self):
@@ -444,8 +494,7 @@ class Observer:
         query = "query($account: String!, $start: Time!, $end: Time!) { viewer { accounts(filter: {accountTag: $account}) { aiInferenceAdaptiveGroups(limit: 100, filter: {datetime_geq: $start, datetime_lt: $end}) { sum { totalNeurons } } } } }"
         payload = {"query": query, "variables": {"account": account, "start": stamp(now.replace(hour=0, minute=0, second=0, microsecond=0)), "end": stamp(now)}}
         request = urllib.request.Request("https://api.cloudflare.com/client/v4/graphql", data=json.dumps(payload).encode(), headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
-        with urllib.request.urlopen(request, timeout=12) as response:
-            result = json.loads(response.read(1024 * 1024))
+        result = metadata_json(request, timeout=12, cap=1024 * 1024)
         if result.get("errors"):
             raise RuntimeError("source-failed")
         accounts = (result.get("data") or {}).get("viewer", {}).get("accounts", [])
@@ -460,8 +509,12 @@ class Observer:
         # The configured included allocation is declared, while its remainder
         # is computed against measured account analytics (which may lag).
         limit = settings["includedDailyNeurons"]
-        return [public_observation(bucket, "compute.quota-headers", "quota.limit", limit, unit="neurons", grade="declared", scope="shared-quota-bucket", ttl=7200),
-                public_observation(bucket, "compute.quota-headers", "quota.remaining", max(0, limit - usage), unit="neurons", grade="computed", scope="shared-quota-bucket", ttl=7200)]
+        reset = stamp(now.replace(hour=0, minute=0, second=0, microsecond=0) + dt.timedelta(days=1))
+        return expire_at_reset([
+            public_observation(bucket, "compute.quota-headers", "quota.limit", limit, unit="neurons", grade="declared", scope="shared-quota-bucket", ttl=7200),
+            public_observation(bucket, "compute.quota-headers", "quota.remaining", max(0, limit - usage), unit="neurons", grade="computed", scope="shared-quota-bucket", ttl=7200),
+            public_observation(bucket, "compute.quota-headers", "quota.resetAt", reset, scope="shared-quota-bucket", ttl=7200),
+        ], reset)
 
     def vercel_quota(self):
         settings = self.config.get("vercelQuota")
@@ -469,8 +522,7 @@ class Observer:
             return []
         token = Path(settings["tokenFile"]).read_text().strip()
         request = urllib.request.Request("https://ai-gateway.vercel.sh/v1/credits", headers={"Authorization": "Bearer " + token})
-        with urllib.request.urlopen(request, timeout=12) as response:
-            result = json.loads(response.read(65536))
+        result = metadata_json(request, timeout=12, cap=65536)
         balance = float(result["balance"])
         if not finite(balance) or balance < 0:
             raise RuntimeError("source-unavailable")
@@ -501,9 +553,26 @@ class Observer:
                 break
             private_key = str(path)
             new = private_key not in cursors
-            records, gap, more = tail_jsonl(path, cursors, enroll_at_end=self.new_process and new, byte_budget=512 * 1024)
-            remaining -= sum(len(json.dumps(record)) for record in records)
-            truncated = truncated or more or gap
+            enroll_end = self.new_process and new
+            floor_gap = False
+            if new and self.state.get("cursorFloorAt"):
+                # Bounded cursor eviction must never turn an old owner into
+                # new work. Its immutable session header is cheap metadata;
+                # source modification time can change when someone touches it.
+                try:
+                    with path.open("rb") as stream:
+                        header = json.loads(stream.readline(8192))
+                    created = instant(header.get("createdAt")) if header.get("type") == "session" else None
+                except (OSError, ValueError, UnicodeDecodeError):
+                    created = None
+                floor = instant(self.state["cursorFloorAt"])
+                if created is None or created <= floor:
+                    enroll_end = True
+                    floor_gap = True
+            records, gap, more = tail_jsonl(path, cursors, enroll_at_end=enroll_end, byte_budget=512 * 1024)
+            cursors[private_key]["lastSeenAt"] = time.time()
+            remaining -= cursors[private_key].get("lastReadBytes", 0)
+            truncated = truncated or more or gap or floor_gap
             session = sessions.setdefault(private_key, {"id": self.public_id("session", private_key), "seq": -1, "state": "unknown"})
             session["seenAt"] = time.time()
             subject = self.add_subject(session["id"], "session", "DSH session", "host-nas")
@@ -514,25 +583,34 @@ class Observer:
                 at = stamp(instant(record.get("time"))) if instant(record.get("time")) else stamp()
                 if kind == "request/context":
                     session["lane"] = self.lane(data.get("provider"))
-                elif kind == "assistant/message" and isinstance(data.get("usage"), dict):
+                    session["requestPending"] = True
+                    session.pop("pendingUsage", None)
+                    session.pop("pendingStep", None)
+                    session.pop("pendingResponse", None)
+                elif kind == "assistant/message":
                     # The persisted journal keeps usage here, whereas stdout
                     # repeats it on step_end. Retain numeric metadata only and
                     # join it to one canonical completion, never count twice.
-                    session["pendingUsage"] = {key: value for key, value in data["usage"].items() if key in ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "reasoningTokens"] and finite(value) and value >= 0}
+                    session["pendingResponse"] = data.get("interrupted") is not True
+                    session["pendingUsage"] = {key: value for key, value in (data.get("usage") or {}).items() if key in ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "reasoningTokens"] and finite(value) and value >= 0}
                     session["pendingStep"] = [data.get("turn"), data.get("step")]
                 elif kind in ["turn/start", "turn/end"]:
-                    session.update(state="active" if kind == "turn/start" else "completed", at=at)
+                    reason = (data.get("reason") or {}).get("kind")
+                    state = "active" if kind == "turn/start" else "completed" if reason == "completed" else "failed" if reason == "error" else "cancelled" if reason in ["aborted", "cancelled", "canceled"] else "unknown"
+                    session.update(state=state, at=at)
                     self.event(subject, "agent.sessions", "session.status", at, private_key + ":" + str(record.get("seq")))
                 elif kind == "step/end" and isinstance(record.get("seq"), int) and record["seq"] > session.get("seq", -1):
                     session["seq"] = record["seq"]
                     pending = session.pop("pendingUsage", {})
                     pending_step = session.pop("pendingStep", None)
+                    responded = session.pop("pendingResponse", False)
+                    attempted = session.pop("requestPending", False)
                     usage = data.get("usage") or (pending if pending_step == [data.get("turn"), data.get("step")] else {})
                     lane = session.get("lane")
-                    if lane:
+                    if lane and (attempted or responded):
                         counts = self.state["usage"].setdefault(lane, {"calls": 0, "successes": 0, "refusals": 0, "errors": 0, "inputTokens": 0, "outputTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0, "reasoningTokens": 0, "seenTokens": []})
                         counts["calls"] += 1
-                        counts["successes"] += 1
+                        counts["successes"] += int(responded)
                         counts["at"] = at
                         # step/end is canonical. assistant/message repeats
                         # the SAME usage and is deliberately never counted.
@@ -570,7 +648,15 @@ class Observer:
             for key in list(sessions):
                 if key not in retained:
                     del sessions[key]
-                    cursors.pop(key, None)
+                    # Keep owner offsets when evicting presentation metadata.
+                    # Re-reading an evicted session must not re-add its tokens.
+        if len(cursors) > 4096:
+            keep = set(sessions) | {key for key in cursors if not key.endswith("session.v4.jsonl")}
+            keep.update(sorted(cursors, key=lambda key: cursors[key].get("lastSeenAt", 0), reverse=True)[:4096 - len(keep)])
+            for key in list(cursors):
+                if key not in keep:
+                    del cursors[key]
+            self.state["cursorFloorAt"] = stamp()
         rows = []
         for item in sessions.values():
             self.add_subject(item["id"], "session", "DSH session", "host-nas")
@@ -592,7 +678,7 @@ class Observer:
                 for suffix, key in [("limit", "quota.limit"), ("remaining", "quota.remaining")]:
                     value = record["values"].get(f"x-ratelimit-{suffix}-{metric}")
                     if value is not None:
-                        rows.append(public_observation(bucket, "compute.quota-headers", key, value, at=record.get("at"), unit=metric, scope="shared-quota-bucket", ttl=180))
+                        rows.append(public_observation(bucket, "compute.quota-headers", key, value, at=record.get("at"), unit=metric, scope="shared-quota-bucket", ttl=60))
         self.state["tailTruncated"] = {"sessions": truncated, "meter": meter_gap}
         return rows
 
@@ -600,11 +686,13 @@ class Observer:
         try:
             return {"rows": function(), "error": None}
         except Exception as exc:
-            safe = str(exc) if isinstance(exc, RuntimeError) and str(exc) in CONTRACT["errorCodes"] else "source-failed"
-            return {"rows": None, "error": safe}
+            safe = "source-timeout" if isinstance(exc, TimeoutError) else str(exc) if isinstance(exc, RuntimeError) and str(exc) in CONTRACT["errorCodes"] else "source-failed"
+            return {"rows": None, "error": safe, "retryAfterAt": exc.retry_after if isinstance(exc, SourceError) else None}
 
     @synchronized
     def accept(self, name, result):
+        if result.get("rows") is not None and (len(result["rows"]) > 4096 or len(json.dumps(result["rows"], separators=(",", ":"))) > 512 * 1024):
+            result = {"rows": None, "error": "budget-truncated"}
         cache = self.cache.setdefault(name, {"rows": [], "failures": 0})
         cache["lastAttemptAt"] = stamp()
         if result["error"]:
@@ -613,7 +701,23 @@ class Observer:
         else:
             cache.update(rows=result["rows"], error=None, failures=0, lastSuccessAt=stamp())
         interval = self.config["intervals"][name]
-        cache["nextAt"] = time.time() + min(3600, interval * 2 ** min(cache["failures"], 5))
+        cache["nextAt"] = max(time.time() + min(3600, interval * 2 ** min(cache["failures"], 5)), result.get("retryAfterAt") or 0)
+        if name == "cloudflareQuota" and not result["error"]:
+            for row in result["rows"]:
+                reset = instant(row["value"]) if row["key"] == "quota.resetAt" else None
+                if reset:
+                    cache["nextAt"] = min(cache["nextAt"], reset.timestamp() + 15)
+
+    @synchronized
+    def prune_metadata(self):
+        # Run only between acquisitions: an in-flight source may have registered
+        # new identities whose observations have not reached its cache yet.
+        referenced = {row["subjectId"] for cache in self.cache.values() for row in cache.get("rows", [])}
+        referenced.update(row["subjectId"] for row in self.state["events"])
+        referenced.update(subject["id"] for subject in self.subjects.values() if subject["kind"] in ["fleet", "host", "provider", "account", "quota-bucket"])
+        for _ in range(4):
+            referenced.update(relation["targetId"] for ident in list(referenced) for relation in self.subjects.get(ident, {}).get("relations", []))
+        self.subjects = {ident: subject for ident, subject in self.subjects.items() if ident in referenced}
 
     @synchronized
     def snapshot(self):
@@ -727,6 +831,8 @@ class Observer:
                         self.accept(name, self.futures.pop(name).result())
                     if name not in self.futures and time.time() >= self.cache.get(name, {}).get("nextAt", 0):
                         self.futures[name] = self.pool.submit(self.acquire, name, fn)
+                if not self.futures:
+                    self.prune_metadata()
                 if time.monotonic() >= next_publish:
                     self.publish()
                     if self.config.get("publishUrl") and (self.publisher_future is None or self.publisher_future.done()):

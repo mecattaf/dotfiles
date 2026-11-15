@@ -40,7 +40,10 @@ metadata and is joined to its matching `step/end`. The completion sequence is
 counted once, including when stdout repeats usage or a source is resumed.
 Prompts, reasoning, code and tool output are never copied into observer state.
 No missing cache/reasoning counter is inferred from a total. The initial counts
-cover observed DSH completions since enrollment, not all HTTP calls, all clients,
+cover observed DSH model-step attempts since enrollment; successes require an
+actual non-interrupted response, while failed/cancelled turns stay distinct.
+Observed partial-response token usage is retained on cancellation. These are
+not all HTTP retries, all clients,
 or all prior history. Old transcripts are enrolled at their end. Truncation and
 cursor gaps are explicit coverage limitations.
 
