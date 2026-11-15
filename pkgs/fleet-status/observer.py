@@ -811,10 +811,15 @@ class Observer:
         for source, groups in acquired.items():
             error = next((cache.get("error") for cache, _ in groups if cache.get("error")), None)
             source_rows = [row for _, rows in groups for row in rows if row["sourceId"] == source]
-            coverage[source].update(state="unavailable" if error else "reporting" if source_rows else "not-configured",
+            reporting = bool(source_rows)
+            if source == "compute.tokens":
+                reporting = any(row.get("value") is not None for row in source_rows)
+            elif source == "agent.spans":
+                reporting = reporting or any(event.get("sourceId") == source for event in self.state.get("events", []))
+            coverage[source].update(state="unavailable" if error else "reporting" if reporting else "not-configured",
                                     lastAttemptAt=max((cache.get("lastAttemptAt") or "" for cache, _ in groups), default="") or None,
                                     lastSuccessAt=max((cache.get("lastSuccessAt") or "" for cache, _ in groups), default="") or None,
-                                    errorCode=error or coverage[source].get("errorCode") if coverage[source].get("truncated") else error or (None if source_rows else "not-instrumented"))
+                                    errorCode=error or coverage[source].get("errorCode") if coverage[source].get("truncated") else error or (None if reporting else "not-instrumented"))
         if self.config.get("journalCommand"):
             coverage["agent.lifecycle"] = {"sourceId": "agent.lifecycle", "state": "reporting" if self.state.get("journalLastSuccess") and not self.state.get("journalError") else "unavailable", "lastAttemptAt": stamp(), "lastSuccessAt": self.state.get("journalLastSuccess"), "errorCode": self.state.get("journalError") or ("cursor-gap" if self.state.get("journalGap") else None if self.state.get("journalLastSuccess") else "initial-enrollment")}
             if self.state.get("journalGap"):

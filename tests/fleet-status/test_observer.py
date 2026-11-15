@@ -46,6 +46,13 @@ class ObserverTests(unittest.TestCase):
             with patch.object(observer, "command", return_value=text), self.assertRaises(RuntimeError):
                 self.value.antigravity_quota("2", ["agy2"])
 
+    def test_unknown_token_placeholders_do_not_claim_reporting_coverage(self):
+        self.value.state["usage"]["gufo"] = {"calls": 2, "successes": 2, "seenTokens": []}
+        self.value.accept("tails", self.value.acquire("tails", self.value.tails))
+        coverage = {row["sourceId"]: row for row in self.value.snapshot()["coverage"]}
+        self.assertEqual(coverage["compute.tokens"]["state"], "not-configured")
+        self.assertEqual(coverage["compute.call-history"]["state"], "reporting")
+
     def test_zen_native_tokens_are_separate_deduplicated_and_missing_stays_unknown(self):
         self.value.state["usage"]["zen"] = {"calls": 1, "successes": 1, "inputTokens": 7, "seenTokens": ["inputTokens"]}
         row = {"lane": "zen", "slot": 2, "invocation_id": "private-invocation", "ts": "2026-11-15T22:00:00Z", "usage_steps": [{"input": 12, "output": 3, "cache": {"read": 4}, "total": 99, "text": "SECRET"}], "receipt": "/private/SECRET"}
