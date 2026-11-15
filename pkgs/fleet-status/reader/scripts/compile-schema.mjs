@@ -1,0 +1,11 @@
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
+import standaloneCode from 'ajv/dist/standalone/index.js';
+const schema = JSON.parse(await readFile(new URL('../contracts/snapshot.schema.json', import.meta.url), 'utf8'));
+const ajv = new Ajv2020({ strict: false, strictNumbers: true, allErrors: false, code: { source: true, esm: true } });
+addFormats(ajv, ['date-time', 'uri']);
+const code = standaloneCode(ajv, ajv.compile(schema));
+await mkdir(new URL('../.generated/', import.meta.url), { recursive: true });
+await writeFile(new URL('../.generated/validate-snapshot.js', import.meta.url), code);
+await writeFile(new URL('../.generated/validate-snapshot.d.ts', import.meta.url), 'export default function validate(value: unknown): boolean;\n');

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Proposed public status reader response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "serverTime", "connection", "snapshot"],
+  "properties": {
+    "schemaVersion": { "const": "fleet-status-response/1" },
+    "serverTime": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "connection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "lastReceivedAt", "deadlineAt"],
+      "properties": {
+        "state": { "enum": ["uninitialized", "connected", "disconnected"] },
+        "lastReceivedAt": { "type": ["string", "null"], "format": "date-time" },
+        "deadlineAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "snapshot": { "anyOf": [{ "$ref": "snapshot.schema.json" }, { "type": "null" }] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "connection": { "properties": { "state": { "const": "uninitialized" } }, "required": ["state"] } } },
+      "then": { "properties": { "snapshot": { "type": "null" }, "connection": { "properties": { "lastReceivedAt": { "type": "null" }, "deadlineAt": { "type": "null" } } } } },
+      "else": { "properties": { "snapshot": { "$ref": "snapshot.schema.json" }, "connection": { "properties": { "lastReceivedAt": { "type": "string", "format": "date-time" }, "deadlineAt": { "type": "string", "format": "date-time" } } } } }
+    }
+  ]
+}
