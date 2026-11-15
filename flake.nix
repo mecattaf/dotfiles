@@ -169,8 +169,12 @@
     # 12 Nov at 02:12Z, so it is no longer a known-good to protect.
     domicile.url = "github:cprussin/domicile/8115d932b41be551ca7769fc2e89e323e5692c8c";
     imagine = {
-      url = "path:./pkgs/client-desktop/imagine";
-      flake = false;
+      # Shared with Tarek's mac17-dotfiles; the SDK/engine stay at this
+      # fleet's independently reviewed Domicile pin. Private input: builders
+      # need read access or an archived source supplied by the NAS.
+      url = "github:agency-agency/imagine/8f2dae3b0c13091dd30630516eed49292516f317";
+      inputs.domicile.follows = "domicile";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
     dsh-domicile = {
       url = "path:./pkgs/client-desktop/dsh-domicile";
@@ -680,9 +684,11 @@
               nativeBuildInputs = [ inputs.domicile.legacyPackages.${system}.bun ];
             }
             ''
-              bun test ${./pkgs/client-desktop/imagine/src/imagine}/display-temperatures.test.ts
+              bun test ${inputs.imagine}/src/imagine/display-temperatures.test.ts
               touch "$out"
             '';
+        imagine-unit = inputs.imagine.checks.${system}.unit;
+        imagine-provenance = inputs.imagine.checks.${system}.provenance;
 
         # #734: the client's exact greetd guard binary, with stub session and
         # rescue. initial_session starts Domicile; default_session hands back.

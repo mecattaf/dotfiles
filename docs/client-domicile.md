@@ -5,13 +5,22 @@ Domicile is the only physical desktop. `hosts/client/default.nix` imports
 returns to a console shell after exit. No Sway, Niri, Vicinae, Mako, Waybar,
 Kanshi, external launcher, clipboard daemon or gamma relay is installed.
 
-The client config is `home/dot_config/domicile/domicile.tsx`. It uses the
-maintained Imagine shell through public Domicile capabilities. A frozen copy of
-the previously running production shell lives in `pkgs/client-desktop/imagine`;
-its MIT notices and provenance remain with it. Domicile source, SDK and official
-engine are selected together by the upstream flake. The compositor has no local
-engine patches. The config and every relative production import are checked and
-bundled together before installation.
+The client config is `home/dot_config/domicile/domicile.tsx`. It uses the shared
+`agency-agency/imagine` input through public Domicile capabilities. Tom and
+Tarek's dotfiles consume that standalone repository, while device facts and
+account settings remain in their own configurations. The input follows this
+fleet's reviewed Domicile SDK/engine pair; a shared-shell update does not select
+a different compositor. The config and every relative production import are
+checked and bundled together before installation. The old payload under
+`pkgs/client-desktop/imagine` is retained only as frozen migration history.
+
+The shared repository is currently private. Anonymous flake evaluation and
+unprivileged public CI cannot fetch it. The NAS evaluation account needs
+explicit read access; credential-free compute receives an archived exact
+source through the existing strict tailnet build path. No GitHub token belongs
+in the flake, the Nix store or a remote builder. Keep this adoption in draft
+until the intended build/CI access route is reviewed; repository visibility
+does not change as part of this configuration update.
 
 Domicile owns Finder/application launch, clipboard, notifications, screenshots,
 recording, native input settings and quick settings. Finder includes Quick

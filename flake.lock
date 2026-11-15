@@ -609,16 +609,28 @@
       }
     },
     "imagine": {
-      "flake": false,
+      "inputs": {
+        "domicile": [
+          "domicile"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
       "locked": {
-        "path": "./pkgs/client-desktop/imagine",
-        "type": "path"
+        "lastModified": 1794775064,
+        "narHash": "sha256-lhwhraDt7XMSKQzbdaCVSGT6dZPQTW6bRu6QEQyIv4c=",
+        "owner": "agency-agency",
+        "repo": "imagine",
+        "rev": "8f2dae3b0c13091dd30630516eed49292516f317",
+        "type": "github"
       },
       "original": {
-        "path": "./pkgs/client-desktop/imagine",
-        "type": "path"
-      },
-      "parent": []
+        "owner": "agency-agency",
+        "repo": "imagine",
+        "rev": "8f2dae3b0c13091dd30630516eed49292516f317",
+        "type": "github"
+      }
     },
     "linux-src": {
       "flake": false,
