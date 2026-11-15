@@ -20,6 +20,16 @@
     unitConfig.ConditionPathExists = "/var/lib/tailscale-personal/tailscaled.state";
   };
   # Never reset Serve/Funnel here: herdr-web-ui owns its declared listener.
+  # Academic drain's read-only master-index page owns ONLY /drain/ on the
+  # existing background :8444 listener. The root :8444 proxy and Herdr's
+  # foreground :443 listener are separate and must stay intact.
+  # Bootstrap once (Serve --bg persists in the existing tailscaled state):
+  #   tailscale serve --bg --https=8444 --set-path=/drain /var/lib/academic-drain-web
+  # The existing checkpoint renderer writes just index.html here. No server,
+  # generator timer, new agent harness or boot-time Serve reset is needed.
+  systemd.tmpfiles.rules = [
+    "d /var/lib/academic-drain-web 0700 tom users -"
+  ];
   networking.firewall.interfaces.tailscale0 = {
     allowedTCPPorts = [
       22
