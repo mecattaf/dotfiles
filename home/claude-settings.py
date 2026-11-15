@@ -8,7 +8,7 @@ import tempfile
 
 
 def initialize(home: Path, template: Path):
-    seats = [home / name / "settings.json" for name in (".claude", ".claude-work", ".claude-3")]
+    seats = [home / name / "settings.json" for name in (".claude", ".claude-work")]
     target = home / ".local/state/claude/settings.json"
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if not target.exists():

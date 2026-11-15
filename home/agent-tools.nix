@@ -28,7 +28,7 @@ let
     "claude-code-router" # bin: `ccr` — routes Claude Code requests to other model backends/providers
     "codex"
     "spec-kit" # bin: `specify` — GitHub Spec-Kit, spec-driven development bootstrapper
-    "cc-switch-cli" # bin: `cc-switch` — switches Claude Code/Codex/Gemini CLI provider configs
+    "cc-switch-cli" # bin: `cc-switch` — switches Claude Code/Codex provider configs (the Gemini CLI it also covers upstream is retired here)
     "opencode" # bin: `opencode` — headless client for OpenCode Zen's free models behind the `zen` wrapper (dot_local/bin); NOT a harness
   ];
   llmAgentsSelected = pkgs.buildEnv {

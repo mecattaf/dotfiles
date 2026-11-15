@@ -45,8 +45,8 @@ in
     };
     # ── backups: hand-run, no timers (Tom, 2026-09-30, ruling D17) ──────────
     # No scheduled agent work is declared in dotfiles, so the two daily
-    # snapshot timers are gone; both services stay and are part of the manual
-    # run until the factory (substrate) owns it:
+    # snapshot timers are gone; both services stay and are run by hand (any
+    # schedule would be an agency scheduled item, never a dotfiles timer):
     #   sudo systemctl start handwriting-annotation-backup handwriting-intake-backup
     # The two functions Tom wants preserved through that move:
     #   (A) his own corrections made via handwriting.internal are saved and

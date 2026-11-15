@@ -1,5 +1,9 @@
 # Pi appliance workflow pattern
 
+> **Historical (status 2026-11-13, #536).** Pi (retired 2026-10-25), Halogen
+> (2026-10-23) and Tally (2026-09-30) are all gone; no live workflow uses this
+> pattern. Kept as design history.
+
 This is the reusable mechanism behind durable local-model workflows in these
 dotfiles. A frontier model authors and refines inspectable procedural memory;
 a local model executes it through Pi against the fleet's inference server —

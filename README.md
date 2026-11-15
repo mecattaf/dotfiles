@@ -9,15 +9,16 @@ The flake exports these NixOS host configurations:
 
 | Host | Hardware | Role |
 |---|---|---|
-| `strix-coordinator` | Framework Desktop, AMD Strix Halo | Headless compute, wired 10.42.0.2; Gufo, the fleet's local model endpoint on :8731, and on-demand Immich ML |
-| `strix-worker` | Framework Desktop, AMD Strix Halo | Headless compute, wired 10.42.0.5; Gufo's second TP2 rank, and DeepSeek V4.1 on ds4 (:8732, started by hand) |
-| `nas` | UGREEN NASync DXP2800 GT, AMD R2514 | Wired 10.42.0.1: storage, DNS, media, and the closet's Tailscale subnet router |
-| `client` | ASUS Zenbook Duo | Physical Domicile desktop; Huion, Magic Trackpad and remote Herdr projector |
+| `strix-coordinator` | Framework Desktop, AMD Strix Halo | Headless compute, wired 10.42.0.2: the fleet's Nix builder, Gufo (the local model endpoint, `http://strix-coordinator:8731`) and on-demand Immich ML |
+| `strix-worker` | Framework Desktop, AMD Strix Halo | Dormant until its replacement arrives; wired 10.42.0.5. Not a builder, serves no model |
+| `nas` | UGREEN NASync DXP2800 GT, AMD R2514 | Wired 10.42.0.1: storage, DNS, media, the closet's Tailscale subnet router, and the agent host (Herdr, Claude Code, Codex, dsh); builds nothing locally |
+| `client` | ASUS Zenbook Duo, wired 10.42.0.16 | Physical Domicile desktop: Kitty, Chrome, Huion and Magic Trackpad; its terminals open on the NAS over SSH |
 
 Strix and NAS plug into the BE550, with Freebox upstream. Strix's public
 Internet route goes directly through BE550; private service DNS uses NAS.
-`coordinator` remains an SSH/LAN compatibility alias for `strix` during migration.
-strix-worker returned on 2026-10-23 (Tom). See `docs/closet-cutover.md` for the staged rollout.
+`strix` remains a temporary LAN alias for `strix-coordinator` (`modules/fleet-hosts.nix`).
+One Strix carries all compute; local DeepSeek (ds4) was retired on 2026-11-08.
+See `docs/closet-cutover.md` for the staged rollout.
 
 ```
 flake.nix        four NixOS hosts wired through one mkHost
@@ -26,7 +27,7 @@ hosts/           one module per machine
 home/            home-manager: typed nix (home.nix, nvim.nix) + RAW out-of-store
                  configs (kitty, fish, nvim lua) linked via mkOutOfStoreSymlink
 overlays/ pkgs/  custom packages (mactahoe themes, …)
-docs/local-ai/  Gufo (:8731) and ds4 (:8732), the model catalogue and per-host wanted sets
+docs/local-ai/   Gufo (:8731), the model catalogue and per-host wanted sets
 docs/old/       archival stub indexing retired docs in Git history
 ```
 
@@ -90,7 +91,7 @@ Key at `secrets/openrouter-token.age` (NAS brain tier), delivered to
 `/run/agenix/openrouter-token`. No harness routes to it since pi was retired
 (2026-10-25); `seats` reads it for the OpenRouter credit row. The free stealth
 model the key also reached has been withdrawn, and the openrouter-free lane is
-parked (AGENTS.md). A dsh route for the key, or retiring it, is Tom's call.
+parked. A dsh route for the key, or retiring it, is Tom's call.
 Check what is left with `curl -s https://openrouter.ai/api/v1/credits -H "Authorization: Bearer $(cat /run/agenix/openrouter-token)"`.
 
 ## Branches

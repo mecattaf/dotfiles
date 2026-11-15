@@ -21,8 +21,8 @@
     # is either an upstream binary (chrome), a leaf tool (uv), or the
     # versioned kernel attr whose whole doctrine is point-fix-only advance.
     #
-    # The lock entry is the reviewed revision. The Projects nightly checker
-    # proposes lock bumps in update/nixpkgs-fresh PRs; it never deploys.
+    # The lock entry is the reviewed revision. Lock bumps land as reviewed PRs
+    # and never deploy on their own (the nightly fleet update is disabled).
     # rollingInputOverrides remains available to explicit fleet candidates.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
@@ -127,17 +127,18 @@
     };
 
     # llm-agents.nix — numtide's daily-rebuilt catalog of ~100 AI coding agents
-    # and tooling (claude-code, codex, gemini-cli, opencode, crush, goose, amp,
-    # ...). Its `overlays.default` exposes the whole set, prebuilt against its OWN
+    # and tooling (claude-code, codex, opencode, crush, goose, amp, ...). Its
+    # `overlays.default` exposes the whole set, prebuilt against its OWN
     # fresh nixpkgs-unstable, under the namespaced `pkgs.llm-agents.*` — so it
     # neither re-evaluates our nixpkgs nor collides with it. This is how we get
     # newest claude-code DECOUPLED from our (deliberately lagging) nixpkgs pin.
-    # Nightly fleet builds re-resolve this input at HEAD via
-    # `rollingInputOverrides`; `nix flake update llm-agents` updates the local and
-    # failure-fallback lock without touching kernel/Mesa.
+    # Explicit fleet candidates may re-resolve this input at HEAD via
+    # `rollingInputOverrides` (the nightly fleet update is disabled);
+    # `nix flake update llm-agents` updates the lock without touching kernel/Mesa.
     # Deliberately NO inputs.nixpkgs.follows — following our pin would rebuild
     # against stale deps and miss the numtide cache (substituter added in
-    # modules/common.nix). home/home.nix installs the entire set via buildEnv.
+    # modules/common.nix). home/agent-tools.nix installs an allowlist of it
+    # (`keepFromLlmAgents`) via buildEnv.
     llm-agents.url = "github:numtide/llm-agents.nix";
 
     # NAS session supervision; DSH itself still comes from llm-agents.
@@ -166,7 +167,7 @@
     # Keep the SDK and prebuilt engine together. Upstream main with the #2047
     # dmabuf OOM fix (issue #2036); the 75708d76 rollback hit the OOM again on
     # 12 Nov at 02:12Z, so it is no longer a known-good to protect.
-    domicile.url = "github:cprussin/domicile/e2b4bc54df6c377596dec3c8228aba64b3144a97";
+    domicile.url = "github:cprussin/domicile/8115d932b41be551ca7769fc2e89e323e5692c8c";
     imagine = {
       url = "path:./pkgs/client-desktop/imagine";
       flake = false;
@@ -177,14 +178,16 @@
     };
 
     # herdr — the terminal workspace manager for AI coding agents
-    # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
-    # replaces everything this repo used to invent for itself: the home-grown
-    # kitten tier, its session layer, and its title-naming pipeline are all
-    # deleted in favour of one server holding every PTY.
+    # (github.com/herdrdev/herdr, Apache-2.0). It replaced everything this repo
+    # used to invent for itself: the home-grown kitten tier, its session layer,
+    # and its title-naming pipeline were deleted in favour of one server holding
+    # every PTY. Herdr itself is now out of the picture (#729): it stays
+    # installed on the NAS and holds live sessions until a replacement carries
+    # them.
     #
-    # PINNED TO A REV, not a branch: v0.9.1 (2026-09-16) is the current release
-    # (plugin API + the agent sidebar), and nixpkgs carries an older release. Bump by
-    # editing the rev here, deliberately, the way nixpkgs-paperless is bumped.
+    # PINNED TO A REV, not a branch (v0.9.3 today; nixpkgs carries an older
+    # release). Bump by editing the rev here, deliberately, the way
+    # nixpkgs-paperless is bumped.
     #
     # Consume `packages.<sys>.herdr` ONLY (home/herdr.nix). Upstream composes
     # rust-overlay into its own pkgs fixpoint to build the Rust toolchain from
@@ -265,8 +268,9 @@
       system = "x86_64-linux";
 
       # Inputs whose PACKAGE CONTENT may move independently of the committed
-      # flake.lock during the nightly fleet transaction. The strix resolves
-      # each once and passes the same immutable URLs to every build and activation.
+      # flake.lock in an explicit fleet candidate build (the nightly fleet
+      # update is disabled). The strix resolves each once and passes the same
+      # immutable URLs to every build and activation.
       #
       # This is intentionally NOT the main nixpkgs input: kernel/Mesa remain behind
       # an explicit lock-file review. These inputs are isolated package catalogs or
@@ -373,6 +377,15 @@
             # the deliberately-lagging main pin (which exists only to gate kernel/
             # Mesa churn — uv carries none of that risk).
             uv = fresh.uv;
+            # llama.cpp for the Hy-Memory route (modules/hy-memory.nix, #603)
+            # and nothing else. Hy-Memory is the hy_v3 architecture, merged
+            # upstream on 2026-07-13: the fleet's nix-strix-halo llama.cpp
+            # predates that merge, and the main pin's build is older than
+            # Tencent's validated 5aeac37a. nixpkgs-fresh carries a release
+            # past that commit; its Vulkan build (= llama-cpp-vulkan) comes from
+            # cache.nixos.org. Reached only through the llama-swap launcher,
+            # never put on PATH.
+            llama-cpp-hy-memory = fresh.llama-cpp.override { vulkanSupport = true; };
           }
         )
       ];
@@ -671,6 +684,43 @@
               touch "$out"
             '';
 
+        # #734: the client's exact greetd guard binary, with stub session and
+        # rescue. initial_session starts Domicile; default_session hands back.
+        domicile-greetd-guard =
+          let
+            words = nixpkgs.lib.splitString " " self.nixosConfigurations.client.config.services.greetd.settings.initial_session.command;
+          in
+          pkgs.runCommand "domicile-greetd-guard" { } ''
+            guard=${builtins.head words}
+            export HOME=$TMPDIR/home XDG_STATE_HOME=$TMPDIR/state
+            printf '#!/bin/sh\necho session\n' > s; printf '#!/bin/sh\necho rescue "$@"\n' > r
+            chmod +x s r
+            run() { "$guard" ./s ./r -l 2>/dev/null; }
+            hand() { "$guard" --handoff ./r -l 2>/dev/null; }
+            # Under the limit, handoff starts nothing, exits 0 and counts nothing.
+            [ -z "$(hand)" ]; hand; [ ! -e "$XDG_STATE_HOME/domicile/greetd-starts" ]
+            [ "$(run)" = session ]; [ -z "$(hand)" ]; [ "$(run)" = session ]
+            [ "$(run)" = session ]
+            [ "$(run)" = "rescue -l" ]; [ "$(run)" = "rescue -l" ]
+            [ "$(hand)" = "rescue -l" ]
+            # Starts older than the window, or from another boot, do not count.
+            sed -i 's/ [0-9]*$/ 1/' "$XDG_STATE_HOME/domicile/greetd-starts"
+            [ -z "$(hand)" ]; [ "$(run)" = session ]
+            sed -i 's/^[^ ]* / otherboot /' "$XDG_STATE_HOME/domicile/greetd-starts"
+            [ "$(run)" = session ]; [ "$(run)" = session ]
+            [ "$(run)" = session ]; [ "$(run)" = "rescue -l" ]
+            if "$guard" ./s 2>/dev/null; then exit 1; fi
+            if "$guard" --handoff 2>/dev/null; then exit 1; fi
+            touch "$out"
+          '';
+
+        # #734: Domicile's session is user class after boot, a greetd restart
+        # and a desktop exit, with the client's greetd values (VM test).
+        greetd-user-class = import ./tests/greetd-user-class {
+          inherit pkgs;
+          client = self.nixosConfigurations.client.config;
+        };
+
         fleet-agent-transport = import ./tests/fleet-agent-transport {
           inherit pkgs self;
           inherit (nixpkgs) lib;
@@ -695,10 +745,6 @@
         closet-topology = import ./tests/closet-topology {
           inherit pkgs self;
           inherit (nixpkgs) lib;
-        };
-        ds4-fleet = import ./tests/ds4 {
-          inherit pkgs self inputs;
-          lib = pkgs.lib;
         };
         gufo-rdma = import ./tests/gufo-rdma {
           inherit pkgs self inputs;
@@ -865,36 +911,8 @@
           cp "$TMPDIR/out" $out
         '';
 
-        # The l8-flash reconciliation's own row (U-D16, #319, #293).
-        #
-        # home/dot_local/bin/l8-flash-probe gained a row that says whether the
-        # two HAND-WRITTEN claude-transcript-mirror units are still plain files
-        # in ~/.config/systemd/user. They are, today: removing them is Tom's
-        # shell act in P05 walkthrough step 4 (DEFERRED.md DF-U-D16-1), and it
-        # must not happen before the switch that replaces them. So the row ships
-        # RED, and a row that is red on the day it is written is exactly the row
-        # nobody notices has stopped working. It is asserted here instead, in a
-        # temp HOME, in all four states that matter: pair present, half
-        # deleted, gone, and — the one an `-e` test would get backwards —
-        # present as home-manager's own symlinks, which is the switch having
-        # SUCCEEDED. Hermetic: no systemd, no tally, no network.
-        l8-flash-probe-row =
-          pkgs.runCommand "l8-flash-probe-row"
-            {
-              nativeBuildInputs = [
-                pkgs.gnugrep
-                pkgs.gawk
-              ];
-            }
-            ''
-              set -euo pipefail
-              L8_FLASH_PROBE=${./home/dot_local/bin/l8-flash-probe} \
-                bash ${./tests/l8-flash-probe/test-handwritten-row.sh} | tee "$TMPDIR/out"
-              cp "$TMPDIR/out" $out
-            '';
-
         # The two UTIL-01 rows l8-flash-probe gained with the reconciliation
-        # (U-D17, #320). Same reasoning as l8-flash-probe-row above: both rows
+        # (U-D17, #320). Both rows
         # ship RED, because nothing has switched yet and neither timer has a
         # fragment, and a row that is red on the day it is written is the row
         # nobody notices has stopped working. Asserted here in a fake HOME with
@@ -1182,6 +1200,18 @@
           assert !(nas.services.caddy.virtualHosts ? "http://drain.internal");
           assert !(nas.services.caddy.virtualHosts ? "http://paperless.internal");
           assert nixpkgs.lib.hasInfix "default_bind 10.42.0.1 127.0.0.1" nas.services.caddy.globalConfig;
+          # #744: Caddy waits, bounded, for 10.42.0.1 on enp1s0 before it binds.
+          assert
+            let
+              pre = nas.systemd.services.caddy.serviceConfig.ExecStartPre;
+              guard = builtins.head (builtins.filter (x: nixpkgs.lib.hasInfix "wait-caddy-lan" "${x}") pre);
+              text = guard.text;
+            in
+            nixpkgs.lib.hasInfix "seq 30" text
+            && nixpkgs.lib.hasInfix "addr show dev enp1s0" text
+            && nixpkgs.lib.hasInfix "10\\.42\\.0\\.1/" text
+            && nixpkgs.lib.hasInfix "exit 1" text;
+          assert builtins.elem "NetworkManager-ensure-profiles.service" nas.systemd.services.caddy.after;
           assert !(builtins.elem "tailscale0" nas.networking.firewall.trustedInterfaces);
           assert !strix.myNasClient.relayAttic;
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
@@ -1280,15 +1310,10 @@
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and the user timers are all real. What
           # it must NOT pick up are the things gated on being the strix —
-          # the Tally daemon, voxtype, and since 2026-09-11 the graphical
-          # session itself (no display output on that box: Tom's ruling).
-
-          # …and the herdr SERVER. The worker still gets the herdr binary (it is
-          # how `herdr --remote strix` works at all), just no unit.
-
-          # The BINARY, though, is the worker's too — the client is how you
-          # reach a server at all (`herdr --remote strix`). One server
-          # (ruling B5, #309 settled), clients elsewhere, unchanged.
+          # voxtype, and since 2026-09-11 the graphical session itself (no
+          # display output on that box: Tom's ruling) — nor a herdr server: the
+          # one server is the NAS's (ruling B5), and Herdr is retiring (#729).
+          # The worker itself is dormant until its replacement arrives.
 
           # The shared browser desktop and chrome-stream left strix-coordinator
           # on 2026-10-31 (#651): no host declares the browser-desktop user
@@ -1356,11 +1381,47 @@
             ) (hm.home.packages ++ c.environment.systemPackages))
             && (
               !c.myDisplay.enable
-              || nixpkgs.lib.hasSuffix "/bin/domicile-physical-session" c.services.greetd.settings.initial_session.command
+              || nixpkgs.lib.hasInfix "/bin/domicile-physical-session" c.services.greetd.settings.initial_session.command
             )
           ) displayHosts;
           assert (cfgOf "client").myDisplay.enable;
           assert (cfgOf "client").systemd.services.greetd.restartIfChanged == false;
+          # #734: Domicile runs in a user-class logind session after boot, a
+          # greetd restart and a desktop exit. Every greetd start runs
+          # initial_session (user class): the runfile sits in greetd's
+          # RuntimeDirectory, removed when greetd stops. initial_session starts
+          # Domicile through the loop guard with Tom's login shell as fallback.
+          # default_session (greeter class) only hands back: the guard exits,
+          # greetd exits 0 and Restart=on-success starts it again. A bare-shell
+          # or Domicile-starting default_session fails here. VT2-6 getty stays.
+          assert
+            let
+              g = (cfgOf "client").services.greetd;
+              svc = (cfgOf "client").systemd.services.greetd.serviceConfig;
+              is = g.settings.initial_session;
+              ds = g.settings.default_session;
+              iw = nixpkgs.lib.splitString " " is.command;
+              dw = nixpkgs.lib.splitString " " ds.command;
+            in
+            g.settings.general.runfile == "/run/greetd/${svc.RuntimeDirectory}.run"
+            && svc.RuntimeDirectory == "greetd"
+            && !(svc ? RuntimeDirectoryPreserve)
+            && svc.Restart == "on-success"
+            && is.user == "tom"
+            && builtins.length iw == 4
+            && nixpkgs.lib.hasSuffix "/bin/domicile-greetd-guard" (builtins.elemAt iw 0)
+            && nixpkgs.lib.hasSuffix "/bin/domicile-physical-session" (builtins.elemAt iw 1)
+            && nixpkgs.lib.hasSuffix "/bin/bash" (builtins.elemAt iw 2)
+            && builtins.elemAt iw 3 == "-l"
+            && ds.user == "tom"
+            &&
+              dw == [
+                (builtins.elemAt iw 0)
+                "--handoff"
+                (builtins.elemAt iw 2)
+                "-l"
+              ];
+          assert (cfgOf "client").services.getty.autologinUser == "tom";
           assert clientHome.xdg.configFile ? "domicile/domicile.tsx";
           assert clientHome.xdg.configFile ? "domicile/imagine";
           # MacTahoe on every session (non-negotiable): Home Manager's gtk
@@ -1625,8 +1686,6 @@
               export AI_MEMORY_ENGINE=${./home/dot_claude/skills/drain/scripts/ai_memory.py}
               export AI_MEMORY_ENQUEUE_CHECK=${./tools/enqueue-row-check.py}
               export AI_MEMORY_DRAIN_SKILL=${./home/dot_claude/skills/drain/SKILL.md}
-              export AI_MEMORY_HANDOFF_SKILL=${./home/dot_claude/skills/handoff/SKILL.md}
-              export AI_MEMORY_PICKUP_SKILL=${./home/dot_claude/skills/pickup/SKILL.md}
               export AI_MEMORY_UTILITY_OWNER=${./pkgs/utility-model/utility_model.py}
               mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR"
 
@@ -1747,6 +1806,8 @@
               ];
               FONTCONFIG_FILE = pkgs.paper-render.fonts;
               PRINT_PAPER_SCRIPT = ./home/dot_claude/skills/print/scripts/print-paper.py;
+              # #673: print-auto finds print-paper beside itself.
+              PRINT_SCRIPTS_DIR = ./home/dot_claude/skills/print/scripts;
             }
             ''
               export HOME="$TMPDIR/home"
@@ -1801,7 +1862,7 @@
           pkgs.runCommand "raw-dotfiles-guard" { } ''
             # stdenv runs with errexit; the stale fixture must be allowed to fail.
             set +e -u
-            progs="claude-transcript-mirror journal-day seats util-row util-sampler"
+            progs="journal-day seats util-row util-sampler"
             mk() {
               mkdir -p "$1/.git" "$1/home/dot_local/bin"
               for p in $progs; do
@@ -1815,7 +1876,7 @@
             rc=$?
             echo "$res"
             [ "$rc" -eq 0 ] || { echo "complete fixture: rc=$rc" >&2; exit 1; }
-            case "$res" in *"ok (5 programs)"*) ;; *) echo "complete fixture: no ok line" >&2; exit 1 ;; esac
+            case "$res" in *"ok (4 programs)"*) ;; *) echo "complete fixture: no ok line" >&2; exit 1 ;; esac
 
             mk "$TMPDIR/stale"
             rm "$TMPDIR/stale/home/dot_local/bin/journal-day"
@@ -2730,11 +2791,13 @@
           # retired engine formats are absent from both wanted set and catalog.
           # Each list is everything that host holds since the 2026-10-25
           # loans, so a default borrow restores it and prune keeps it. The
-          # coordinator's disk cannot hold Flash-Next Q8 or the ds4 Q2 (D-A).
+          # coordinator's disk cannot hold Flash-Next Q8, nor could it hold the
+          # since-retired ds4 Q2 (D-A).
           assert
             nixpkgs.lib.sort builtins.lessThan strix.services.local-models.artifacts
             == nixpkgs.lib.sort builtins.lessThan [
               "d3-ultra-bf16"
+              "hy-memory-30b-a3b-q8-gguf"
               "qwen38-flash-next-gguf"
               "qwen38-flash-next-abliterated-rocmfp4-gguf"
               "qwen38-27b-heretic-ara-q8-gguf"
@@ -2755,6 +2818,7 @@
             == nixpkgs.lib.sort builtins.lessThan (
               nixpkgs.lib.subtractLists [
                 "d3-ultra-bf16"
+                "hy-memory-30b-a3b-q8-gguf"
                 "qwen38-27b-heretic-ara-q8-gguf"
                 "qwen38-flash-next-abliterated-rocmfp4-gguf"
                 "qwen3-embedding-8b-q8-gguf"
@@ -2767,11 +2831,13 @@
           # attribute — no deployments, no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           # Plus Gufo's collection (lib/gufo-models.json), as gufo-org/gufo
-          # v0.22.0 plus Q8 and the separately pinned ds4 V4.1 model.
+          # v0.22.0 plus Q8; the ds4 V4.1 rows were retired on 2026-11-08
+          # and the empty lib/ds4-models.json was removed on 2026-11-13.
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "d3-ultra-bf16"
               "glm53-flash-iq2-xxs-gguf"
+              "hy-memory-30b-a3b-q8-gguf"
               "minimax-h3-fl2va"
               "qwen-image-2.1"
               "qwen-k2so-midway-b"

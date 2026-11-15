@@ -181,6 +181,36 @@ let
         id = "agent-default-model";
         config = route settings.pairs.${pair};
       }
+    ]
+    ++ lib.optionals (settings.pairs.${pair}.provider == "gufo") [
+      # Gufo headless Agents bind no preset. Their tools and compaction use
+      # these top-level rows, not the standard preset's nested plugin rows.
+      # Keep a bounded maintenance/OCR command in the foreground long enough
+      # to publish its checkpoint and return its canonical result.
+      {
+        id = "bash-sandbox";
+        config = {
+          timeoutMs = 660000;
+          maxTimeoutMs = 660000;
+        };
+      }
+      {
+        id = "tool-bash";
+        config = {
+          enableRunInBackground = false;
+          promoteOnTimeout = false;
+        };
+      }
+      {
+        id = "compaction-basic";
+        config.modelPolicies = [
+          {
+            inherit (settings.pairs.${pair}) provider model;
+            headroomTokens = 8192;
+            maxTokens = 8192;
+          }
+        ];
+      }
     ];
   };
 

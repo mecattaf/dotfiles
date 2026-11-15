@@ -5,13 +5,15 @@ from __future__ import annotations
 
 import argparse
 import html
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass, replace
+from collections import Counter
+from dataclasses import dataclass, field, replace
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import NoReturn
@@ -42,6 +44,32 @@ PROFILE_ALIASES = {
     "times-new-roman": "times",
 }
 DEFAULT_PRINTER = os.environ.get("PRINT_PAPER_PRINTER", "Brother_HL_L2445DW")
+
+
+@dataclass(frozen=True)
+class Layout:
+    """Bounded page fitting (#673): pagination first, then margins and leading,
+    and only then type size. Margins are top, sides, bottom in millimetres."""
+    top_mm: float
+    side_mm: float
+    bottom_mm: float
+    scale: float = 1.0
+    leading: float | None = None  # None keeps the profile's own leading
+
+
+LAYOUTS = {
+    "standard": Layout(20, 30, 21),
+    # Same type size; the render-only experiment in #673 measured 13 → 8 pages
+    # from table flow plus these margins and leading, with no font change.
+    "snug": Layout(19, 25, 20, leading=1.36),
+    "compact": Layout(18, 25, 19, scale=0.96, leading=1.34),
+    "dense": Layout(17, 23, 18, scale=0.91, leading=1.28),
+}
+# Readable floors (#673): continuous text, table text included.
+BODY_FLOOR_PT = 10.0
+TABLE_FLOOR_PT = 9.5
+TABLE_SCALE = 0.9
+MM = 72 / 25.4
 
 
 def fail(message: str) -> NoReturn:
@@ -377,8 +405,9 @@ def css_string(value: str) -> str:
 
 
 def print_css(profile: Profile, *, label: bool = False, layout: str = "standard") -> str:
-    margin = {"standard": "20mm 30mm 21mm", "compact": "18mm 25mm 19mm",
-              "dense": "17mm 23mm 18mm"}[layout]
+    geometry = LAYOUTS[layout]
+    margin = f"{geometry.top_mm:g}mm {geometry.side_mm:g}mm {geometry.bottom_mm:g}mm"
+    table_pt = max(TABLE_FLOOR_PT, round(profile.size_pt * TABLE_SCALE, 3))
     caption = (
         f"{profile.label} · {profile.size_pt:g} pt · {profile.line_height:g} line height"
     )
@@ -459,12 +488,12 @@ a {{
 }}
 blockquote {{
   border-left: 0.6pt solid #555;
-  break-inside: avoid-page;
+  break-inside: auto;
   font-style: italic;
   margin: 1.05em 0 1.05em 1.1em;
   padding-left: 1em;
 }}
-blockquote p {{ margin: 0; }}
+blockquote p {{ margin: 0; orphans: 3; widows: 3; }}
 ul, ol {{
   margin: 0.45em 0 0.9em 1.4em;
   padding: 0;
@@ -475,24 +504,33 @@ hr {{
   border-top: 0.6pt solid #888;
   margin: 1.3em 0;
 }}
+/* Tables flow across pages (#673). Keeping a whole long table together left
+   its section heading alone on the previous page. The column header repeats
+   on each continuation page, an ordinary row stays whole, and a row taller
+   than a page still breaks rather than clipping. */
 table {{
   border-collapse: collapse;
-  break-inside: avoid-page;
-  font-size: 0.9em;
+  break-inside: auto;
+  font-size: {table_pt:g}pt;
   margin: 0.8em 0 1em;
   width: 100%;
 }}
+thead {{ display: table-header-group; }}
+tr {{ break-inside: avoid; }}
 th, td {{
   border-bottom: 0.5pt solid #999;
   padding: 0.35em 0.5em;
   text-align: left;
   vertical-align: top;
 }}
-th {{ font-weight: 600; }}
+/* Column headers are short labels: no automatic hyphenation inside them. */
+th {{ font-weight: 600; hyphens: manual; overflow-wrap: break-word; }}
 pre {{
   background: #f4f4f2;
-  break-inside: avoid-page;
-  overflow: hidden;
+  break-inside: auto;
+  orphans: 4;
+  widows: 4;
+  overflow-wrap: anywhere;
   padding: 0.8em 0.9em;
   white-space: pre-wrap;
 }}
@@ -607,6 +645,342 @@ def pdf_info(path: Path) -> tuple[int | None, tuple[float, float] | None]:
     return pages, (x2 - x1, y2 - y1)
 
 
+def fitted_profile(profile: Profile, layout: str) -> Profile:
+    geometry = LAYOUTS[layout]
+    leading = profile.line_height
+    if geometry.leading is not None:
+        leading = min(leading, geometry.leading) if geometry.scale == 1.0 else geometry.leading
+    size = profile.size_pt
+    if geometry.scale != 1.0:
+        size = max(BODY_FLOOR_PT, size * geometry.scale)
+    return replace(profile, size_pt=size, line_height=leading)
+
+
+# --- Page-quality measurement (#673) ---------------------------------------
+#
+# A readable PDF and a printer receipt do not prove a well-paginated document.
+# These checks read the rendered PDF's own text geometry (pdftotext
+# -bbox-layout) and compare it with the HTML that produced it. Hard defects
+# block printing; nothing a model says can override them. Soft findings steer
+# the bounded layout choice in print-auto.py.
+
+NEAR_EMPTY_FILL = 0.25
+SHORT_TAIL_LINES = 3
+GIANT_TABLE_ROWS = 30
+GIANT_TABLE_COLUMNS = 7
+DENSE_CELL_CHARS = 160
+
+
+def normalize_text(value: str) -> str:
+    return "".join(ch for ch in value.casefold() if ch.isalnum())
+
+
+def text_tokens(value: str) -> list[str]:
+    return re.findall(r"[^\W_]+", value.casefold())
+
+
+@dataclass
+class SourceFacts:
+    """What the renderer was asked to show, read back from its HTML."""
+    text: list[str] = field(default_factory=list)
+    headings: list[str] = field(default_factory=list)
+    anchors: list[str] = field(default_factory=list)
+    tables: list[dict] = field(default_factory=list)
+    images: int = 0
+
+
+class SourceCollector(HTMLParser):
+    SKIP = {"head", "style", "script", "title"}
+    BLOCKS = {"h1", "h2", "h3", "h4", "h5", "h6", "p"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.facts = SourceFacts()
+        self.skip = 0
+        self.block: list[str] | None = None
+        self.block_tag = ""
+        self.table_depth = 0
+        self.table: dict | None = None
+        self.cell: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self.SKIP:
+            self.skip += 1
+        elif tag == "img":
+            self.facts.images += 1
+        elif tag == "table":
+            self.table_depth += 1
+            if self.table_depth == 1:
+                self.table = {"rows": 0, "columns": 0, "cell_chars": []}
+        elif tag == "tr" and self.table is not None and self.table_depth == 1:
+            self.table["rows"] += 1
+            self.table["_cols"] = 0
+        elif tag in ("td", "th") and self.table is not None and self.table_depth == 1:
+            self.table["_cols"] = self.table.get("_cols", 0) + 1
+            self.table["columns"] = max(self.table["columns"], self.table["_cols"])
+            self.cell = []
+        elif tag in self.BLOCKS and not self.table_depth:
+            self.block, self.block_tag = [], tag
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self.SKIP and self.skip:
+            self.skip -= 1
+        elif tag == "table" and self.table_depth:
+            self.table_depth -= 1
+            if not self.table_depth and self.table is not None:
+                cells = self.table.pop("cell_chars")
+                self.table.pop("_cols", None)
+                self.table["max_cell_chars"] = max(cells, default=0)
+                self.facts.tables.append(self.table)
+                self.table = None
+        elif tag in ("td", "th") and self.cell is not None and self.table is not None:
+            self.table["cell_chars"].append(len(" ".join("".join(self.cell).split())))
+            self.cell = None
+        elif tag == self.block_tag and self.block is not None:
+            text = " ".join("".join(self.block).split())
+            if text:
+                if tag.startswith("h"):
+                    self.facts.headings.append(text)
+                self.facts.anchors.append(text)
+            self.block, self.block_tag = None, ""
+
+    def handle_data(self, data: str) -> None:
+        if self.skip:
+            return
+        self.facts.text.append(data)
+        if self.block is not None:
+            self.block.append(data)
+        if self.cell is not None:
+            self.cell.append(data)
+
+
+def source_facts(body: str) -> SourceFacts:
+    collector = SourceCollector()
+    collector.feed(body)
+    collector.close()
+    return collector.facts
+
+
+@dataclass
+class TextLine:
+    x_min: float
+    y_min: float
+    x_max: float
+    y_max: float
+    words: list[str]
+
+    @property
+    def text(self) -> str:
+        return " ".join(self.words)
+
+
+@dataclass
+class PageText:
+    width: float
+    height: float
+    lines: list[TextLine]
+
+
+class BboxParser(HTMLParser):
+    """Reads `pdftotext -bbox-layout` XHTML: pages, lines and words."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.pages: list[PageText] = []
+        self.line: TextLine | None = None
+        self.word: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = {key: value or "0" for key, value in attrs}
+        if tag == "page":
+            self.pages.append(PageText(float(values["width"]), float(values["height"]), []))
+        elif tag == "line" and self.pages:
+            self.line = TextLine(float(values["xmin"]), float(values["ymin"]),
+                                 float(values["xmax"]), float(values["ymax"]), [])
+        elif tag == "word" and self.line is not None:
+            self.word = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "word" and self.word is not None and self.line is not None:
+            self.line.words.append("".join(self.word))
+            self.word = None
+        elif tag == "line" and self.line is not None:
+            if self.line.words:
+                self.pages[-1].lines.append(self.line)
+            self.line = None
+
+    def handle_data(self, data: str) -> None:
+        if self.word is not None:
+            self.word.append(data)
+
+
+def parse_bbox(xhtml: str) -> list[PageText]:
+    parser = BboxParser()
+    parser.feed(xhtml)
+    parser.close()
+    return parser.pages
+
+
+def _overlaps(a: TextLine, b: TextLine) -> bool:
+    width = min(a.x_max, b.x_max) - max(a.x_min, b.x_min)
+    height = min(a.y_max, b.y_max) - max(a.y_min, b.y_min)
+    if width <= 0 or height <= 0:
+        return False
+    smaller = min((a.x_max - a.x_min) * (a.y_max - a.y_min),
+                  (b.x_max - b.x_min) * (b.y_max - b.y_min))
+    return smaller > 0 and width * height > 0.3 * smaller
+
+
+def assess_layout(pages: list[PageText], facts: SourceFacts, geometry: Layout,
+                  *, body_pt: float, table_pt: float) -> dict:
+    """Measure every page and list the layout defects of one candidate."""
+    defects: list[dict] = []
+
+    def defect(kind: str, severity: str, detail: str, page: int | None = None) -> None:
+        entry = {"kind": kind, "severity": severity, "detail": detail}
+        if page is not None:
+            entry["page"] = page
+        defects.append(entry)
+
+    headings = [normalize_text(h) for h in facts.headings if normalize_text(h)]
+    count = len(pages)
+    page_facts: list[dict] = []
+    stream: list[str] = []
+    prefixes: set[str] = set()
+    words: set[str] = set()
+
+    for number, page in enumerate(pages, 1):
+        left = geometry.side_mm * MM
+        right = page.width - geometry.side_mm * MM
+        top = geometry.top_mm * MM
+        bottom = page.height - geometry.bottom_mm * MM
+        # Page furniture (the folio and the optional profile caption) lives
+        # in the bottom margin box, outside the content box.
+        content = sorted((line for line in page.lines if line.y_min < bottom - 0.5),
+                         key=lambda line: (round(line.y_min, 1), line.x_min))
+        for line in content:
+            if (line.x_min < left - 3 or line.x_max > right + 3 or line.y_min < top - 3
+                    or line.x_max > page.width or line.y_max > page.height):
+                defect("overflow", "hard",
+                       f"text outside the content box: {line.text[:60]!r}", number)
+                break
+        for index, first in enumerate(content):
+            if any(_overlaps(first, second) for second in content[index + 1:]):
+                defect("overlap", "hard", f"overlapping text near {first.text[:60]!r}", number)
+                break
+
+        def is_heading(line: TextLine) -> bool:
+            value = normalize_text(line.text)
+            return (len(value) >= 2 and abs(line.x_min - left) <= 1.5
+                    and any(value in heading for heading in headings))
+
+        flags = [is_heading(line) for line in content]
+        fill = 0.0
+        if content:
+            fill = max(0.0, min(1.0, (max(l.y_max for l in content) - top) / (bottom - top)))
+        page_facts.append({"page": number, "lines": len(content),
+                           "heading_lines": sum(flags), "fill": round(fill, 3)})
+        final = number == count
+        if count > 1:
+            if content and all(flags):
+                defect("heading_only_page", "hard",
+                       "the page holds only a section heading; its content starts overleaf",
+                       number)
+            elif not final and content and flags[max(range(len(content)),
+                                                     key=lambda i: content[i].y_max)]:
+                defect("heading_at_page_foot", "hard",
+                       "a heading ends the page and its content starts overleaf", number)
+            if not content:
+                defect("blank_page", "soft" if facts.images else "hard",
+                       "the page has no text", number)
+            elif not final and fill < NEAR_EMPTY_FILL and not all(flags):
+                defect("near_empty_page", "soft" if facts.images else "hard",
+                       f"only {fill:.0%} of the page is used before a page break", number)
+            if final and content and not all(flags) and len(content) <= SHORT_TAIL_LINES:
+                defect("short_tail", "soft",
+                       f"the last page carries only {len(content)} line(s); a reflow may save it",
+                       number)
+        for line in content:
+            stream.append(normalize_text(line.text))
+            for word in line.words:
+                words.add(normalize_text(word))
+                if word[-1:] in "-‐­":
+                    prefixes.add(normalize_text(word))
+            prefixes.add(normalize_text(line.words[-1]))
+
+    rendered = "".join(stream)
+    # Source preservation: every source character and word is on the page.
+    # Repeated table headers and list markers may add text; nothing may be lost.
+    source_text = " ".join(facts.text)
+    wanted, have = Counter(normalize_text(source_text)), Counter(rendered)
+    short = {ch: wanted[ch] - have[ch] for ch in wanted if have[ch] < wanted[ch]}
+    if short:
+        defect("content_missing", "hard",
+               f"{sum(short.values())} source character(s) are not in the PDF text")
+    missing = []
+    for token in dict.fromkeys(text_tokens(source_text)):
+        if token in rendered:
+            continue
+        # A word broken at a line end inside a table cell may be interleaved
+        # with the neighbouring cell in reading order.
+        if any(token[:cut] in prefixes and token[cut:] in words
+               for cut in range(1, len(token))):
+            continue
+        missing.append(token)
+    if missing:
+        defect("content_missing", "hard",
+               f"{len(missing)} source word(s) are not in the PDF text, e.g. {missing[:5]}")
+    # Reading order: headings and paragraphs appear in source order.
+    position = 0
+    for anchor in facts.anchors:
+        value = normalize_text(anchor)[:32]
+        if not value:
+            continue
+        found = rendered.find(value, position)
+        if found < 0:
+            defect("reading_order", "hard", f"out of order or missing: {anchor[:60]!r}")
+            break
+        position = found + len(value)
+
+    if body_pt < BODY_FLOOR_PT or table_pt < TABLE_FLOOR_PT:
+        defect("unreadable_type", "hard",
+               f"type below the readable floor (body {body_pt:g} pt, tables {table_pt:g} pt)")
+
+    advisories = []
+    for index, table in enumerate(facts.tables, 1):
+        if (table["rows"] > GIANT_TABLE_ROWS or table["columns"] >= GIANT_TABLE_COLUMNS
+                or table["max_cell_chars"] > DENSE_CELL_CHARS):
+            advisories.append({
+                "kind": "giant_table", "table": index, **table,
+                "detail": "a long or dense table reads poorly on paper; prose or short "
+                          "lists suit narrative material (#673). Printed as submitted.",
+            })
+    return {
+        "status": "measured",
+        "pages": count,
+        "type": {"body_pt": round(body_pt, 3), "table_pt": round(table_pt, 3)},
+        "page_facts": page_facts,
+        "defects": defects,
+        "advisories": advisories,
+    }
+
+
+def measure_pdf(path: Path, body: str, *, layout: str, profile: Profile) -> dict:
+    table_pt = max(TABLE_FLOOR_PT, round(profile.size_pt * TABLE_SCALE, 3))
+    executable = shutil.which("pdftotext")
+    pages, _ = pdf_info(path)
+    if not executable:
+        return {"status": "unmeasured", "pages": pages, "page_facts": [], "advisories": [],
+                "type": {"body_pt": profile.size_pt, "table_pt": table_pt},
+                "defects": [{"kind": "unmeasured", "severity": "hard",
+                             "detail": "pdftotext is unavailable; the layout cannot be checked"}]}
+    result = run([executable, "-bbox-layout", str(path), "-"])
+    report = assess_layout(parse_bbox(result.stdout), source_facts(body), LAYOUTS[layout],
+                           body_pt=profile.size_pt, table_pt=table_pt)
+    report["layout"] = layout
+    return report
+
+
 def render_pdf(renderer: str, page: str, output: Path, *, keep_html: bool) -> Path:
     output.parent.mkdir(parents=True, exist_ok=True)
     html_path = output.with_suffix(".html")
@@ -707,8 +1081,10 @@ def parse_args() -> argparse.Namespace:
         help="directory for generated PDFs (default: beside input)",
     )
     parser.add_argument("--title", help="document title metadata override")
-    parser.add_argument("--layout", choices=("standard", "compact", "dense"), default="standard",
+    parser.add_argument("--layout", choices=tuple(LAYOUTS), default="standard",
                         help="bounded page fitting; source text is unchanged and type stays at least 10 pt")
+    parser.add_argument("--measure", type=Path,
+                        help="write the page-quality measurement of the one rendered PDF as JSON (#673)")
     parser.add_argument(
         "--label",
         action="store_true",
@@ -787,6 +1163,8 @@ def main() -> None:
     profile_names = list(dict.fromkeys(profile_names))
     if args.output and len(profile_names) != 1:
         fail("--output is valid only when rendering one profile")
+    if args.measure and len(profile_names) != 1:
+        fail("--measure is valid only when rendering one profile")
 
     if args.input == "-":
         source = sys.stdin.read()
@@ -827,10 +1205,7 @@ def main() -> None:
     for profile_name in profile_names:
         profile = PROFILES[profile_name]
         require_font(profile)
-        if args.layout != "standard":
-            scale, leading = ((0.96, 1.34) if args.layout == "compact" else (0.91, 1.28))
-            profile = replace(profile, size_pt=max(10.0, profile.size_pt * scale),
-                              line_height=leading)
+        profile = fitted_profile(profile, args.layout)
         output = (
             args.output.expanduser().resolve()
             if args.output
@@ -858,6 +1233,13 @@ def main() -> None:
             )
         )
         outputs.append(render_pdf(renderer, page, output, keep_html=args.keep_html))
+        if args.measure:
+            report = measure_pdf(output, body, layout=args.layout, profile=profile)
+            args.measure.parent.mkdir(parents=True, exist_ok=True)
+            args.measure.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+            hard = [d for d in report["defects"] if d["severity"] == "hard"]
+            print(f"measured {output.name}: {report['pages']} page(s), "
+                  f"{len(hard)} hard layout defect(s)")
 
     if args.require_one_page:
         bad: list[str] = []

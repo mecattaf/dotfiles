@@ -27,7 +27,6 @@ let
     && lib.all (name: name == "gufo-tp2-control-token") (builtins.attrNames cfg.age.secrets)
     && !(home.systemd.user.services ? herdr)
     && !(home.systemd.user.services ? paper-daemon)
-    && !(home.systemd.user.services ? claude-transcript-mirror)
     && !(home.home.activation ? aiMemoryJournal)
     && !(home.home.activation ? claudeSettings)
     && !(home.home.file ? ".claude/skills")

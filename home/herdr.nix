@@ -7,13 +7,15 @@
   ...
 }:
 # herdr — the terminal workspace manager for AI coding agents
-# (github.com/herdrdev/herdr), pinned in flake.lock at 0.9.1. This file IS the
+# (github.com/herdrdev/herdr), pinned in flake.nix at 0.9.3. This file IS the
 # module: herdr ships packages.<sys>.herdr and nothing else — no NixOS module,
 # no home-manager module — so package + user service + config live here, the
 # way the other home/*.nix modules do for their tools.
 #
-# TOPOLOGY. The brain role owns the server; the NAS becomes that host at
-# cutover. Other interactive profiles keep the binary for remote projectors.
+# TOPOLOGY. The brain role owns the server, and the NAS is that host. Other
+# interactive profiles keep the binary for remote projectors. Herdr is out of
+# the picture (#729): it stays installed on the NAS and holds live sessions
+# until a replacement carries them.
 # Home Manager on the NAS has no compositor or graphical-session dependency.
 #
 # LIFECYCLE (ruling B6). Deliberately NOT PartOf=graphical-session.target. The

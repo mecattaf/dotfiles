@@ -183,11 +183,7 @@ export const input = {
 };
 
 // Upstream runs these once per compositor, not on shell reload or engine rejoin.
-// The terminal connects directly to the NAS Herdr server.
+// Empty on purpose: a fresh Domicile start opens no windows (#733).
 export const startup = {
-  commands: [
-    ["domicile-apps", "chrome"],
-    ["domicile-apps", "terminal"],
-    ["domicile-apps", "files"],
-  ],
+  commands: [],
 };

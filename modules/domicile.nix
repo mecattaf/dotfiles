@@ -6,7 +6,7 @@
   ...
 }:
 # Domicile is the client's physical desktop. greetd keeps the existing
-# password-free initial login; leaving the desktop returns to a console shell.
+# password-free initial login; leaving the desktop starts it again, guarded.
 # Changes apply at the next greetd start, preserving the current desktop.
 #
 # Do not copy upstream's services.displayManager or gdm lines. greetd runs a
@@ -246,6 +246,14 @@ let
     exec ${pkgs.systemd}/bin/systemd-cat --identifier=domicile-session \
       ${routedDomicile}/bin/domicile "''${configArgs[@]}"
   '';
+  # greetd's sessions: initial_session starts Domicile behind a restart-loop
+  # guard that falls back to a login shell; default_session hands back to a
+  # greetd restart, so Domicile always runs in a user-class session (#734).
+  greetdGuard = pkgs.writeShellScriptBin "domicile-greetd-guard" (
+    builtins.replaceStrings [ "@coreutils@" ] [ "${pkgs.coreutils}" ] (
+      builtins.readFile ./domicile-session/greetd-guard.sh
+    )
+  );
   # Runs on the currently booted kernel from a real console login. No HOME or
   # XDG_CONFIG_HOME replacement: Chrome retains its ordinary personal profile.
   # The environment survives the login-shell re-exec without shell interpolation.
@@ -359,21 +367,31 @@ in
     '';
 
     # Override each complete freeform TOML block, as in modules/common.nix.
-    # greetd starts the desktop once per boot without authentication. On exit,
-    # its default session is Tom's shell: no login prompt or compositor loop.
+    # Domicile runs in a user-class logind session after boot, a greetd
+    # restart and a desktop exit (#734). greetd runs initial_session (user
+    # class, no authentication) only when its runfile is absent; the runfile
+    # lives in greetd's RuntimeDirectory, which systemd removes whenever greetd
+    # stops, so every greetd start runs it. After a desktop exit greetd runs
+    # default_session (greeter class): the guard there exits, greetd exits with
+    # status 0 and Restart=on-success starts it again. Three Domicile starts
+    # within 120 s this boot open Tom's login shell on VT1 instead.
     # VT2-6 also retain their existing password-free getty recovery sessions.
     services.greetd.settings = {
+      general.runfile = "/run/greetd/greetd.run";
       initial_session = lib.mkForce {
-        command = "${session}/bin/domicile-physical-session";
+        command = "${greetdGuard}/bin/domicile-greetd-guard ${session}/bin/domicile-physical-session ${pkgs.bash}/bin/bash -l";
         user = "tom";
       };
       default_session = lib.mkForce {
-        command = "${pkgs.bash}/bin/bash -l";
+        command = "${greetdGuard}/bin/domicile-greetd-guard --handoff ${pkgs.bash}/bin/bash -l";
         user = "tom";
       };
     };
-    # Switching configuration must leave the current greetd and independently
-    # launched console Domicile session running.
+    services.greetd.restart = true;
+    systemd.services.greetd.serviceConfig = {
+      RuntimeDirectory = "greetd";
+      RestartSec = "1s";
+    };
     systemd.services.greetd.restartIfChanged = false;
   };
 }

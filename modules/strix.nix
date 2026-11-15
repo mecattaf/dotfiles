@@ -20,6 +20,8 @@
     # The on-demand embedding route on Gufo v0.33.0 (host-enabled).
     ./gufo-embedding.nix
     ./superroc.nix
+    # Plain llama-server for the Hy-Memory route (#603).
+    ./hy-memory.nix
     ./d3-decision.nix
     # The utility-model seam (/drain, /print), independent of the engine.
     ./utility-model.nix
@@ -54,9 +56,10 @@
           context = 131072;
         };
         # No DeepSeek alternate: Tom (2026-10-25) replaced Gufo's DeepSeek V4
-        # Flash 0731 with kyuz0's V4.1 Flash 1017, which only ds4 loads
-        # (modules/ds4.nix, :8732). The 0731 catalog rows and Library bytes
-        # stay until an explicit Library retirement.
+        # Flash 0731 with kyuz0's V4.1 Flash 1017, which only ds4 loaded
+        # (modules/ds4.nix, retired 2026-11-08, removed 2026-11-13). The 0731
+        # catalog rows and Library bytes stay until an explicit Library
+        # retirement.
       };
       # The one voice (Tom, 2026-09-14): the K-2SO midway-B matched prefix and
       # its transcript. qwentts.cpp stays the live voice until Tom has listened

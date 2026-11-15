@@ -34,8 +34,9 @@ is served instead of an error — a fifteen-minute-old utilization number is a f
 better admission input than "unknown", because these windows move in hours.
 Waybar's `interval` is set correspondingly long in the module definition.
 
-WHY ONE SCRIPT. DECISION-R2-1 moves Claude-specific capacity knowledge OUT of
-tally and INTO dotfiles: tally keeps a generic admission preflight hook
+WHY ONE SCRIPT. (History: Tally, the dispatcher this was written for, was
+removed on 2026-09-30; `--check` stays for any caller.) DECISION-R2-1 moved
+Claude-specific capacity knowledge OUT of tally and INTO dotfiles: tally keeps a generic admission preflight hook
 (configured command, nonzero exit = defer), and this file is the thing that
 knows what a Claude Max window is. The bar and the dispatcher must never be
 able to disagree about headroom, so they read the same rows from the same call.

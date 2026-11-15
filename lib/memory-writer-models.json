@@ -1,0 +1,26 @@
+{
+  "hy-memory-30b-a3b-q8-gguf": {
+    "kind": "model",
+    "maker": "tencent",
+    "baseCheckpoint": {
+      "url": "https://huggingface.co/tencent/Hy-Memory-30B-A3B",
+      "revision": "64a460a94d5498b7316fb02395c72d01c47a7347"
+    },
+    "quantization": "Q8_0",
+    "notes": "Tencent's official Q8_0 GGUF of Hy-Memory-30B-A3B (hy_v3 MoE, about 3B active), the memory-writer comparison candidate (#603). The GGUF embeds the base repository's chat_template.jinja byte for byte, so no template sidecar is pinned. Needs llama.cpp with hy_v3 (merged 2026-07-13; publisher-validated at 5aeac37a): served on demand as hy-memory-30b-a3b by plain llama-server from nixpkgs-fresh (modules/hy-memory.nix), not Gufo. Evaluation route only since 2026-11-09: it keeps a role only if it clearly beats well-prompted Flash-Next on a consequential memory-writing operation.",
+    "source": {
+      "hfUrl": "https://huggingface.co/tencent/Hy-Memory-30B-A3B-GGUF",
+      "revision": "38e10a37701e1caff4a6dc3831448aaf8c2e15d1",
+      "layout": "flat",
+      "primary": "Hy-Memory-30B-A3B-Q8_0.gguf",
+      "files": [
+        {
+          "path": "Hy-Memory-30B-A3B-Q8_0.gguf",
+          "bytes": 31985728896,
+          "oid": "3ba2897dbb7e21e618cb65cec4b31498e59eca2960b381c5e0a0590e7ce8526b",
+          "hash": "sha256-O6KJfbt+IeYYy2XOxLMUmOWeyilgs4HF4KBZDnzoUms="
+        }
+      ]
+    }
+  }
+}

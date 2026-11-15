@@ -53,8 +53,8 @@ in
 
   # Central service/operator credentials follow the brain to the NAS.
   # Attic's live key remains a runbook-placed file; moving this ciphertext's
-  # recipients does not replace that key. Substrate is paused: rekey its
-  # credentials centrally but do not deliver them or add its units on NAS.
+  # recipients does not replace that key. Substrate is retired: its two
+  # ciphertexts stay here as escrow only, delivered to no unit.
   "secrets/atticd-server-token.age".publicKeys = editors ++ brainOnly;
   "secrets/substrate-floor-token.age".publicKeys = editors ++ brainOnly;
   "secrets/substrate-link-token-strix.age".publicKeys = editors ++ brainOnly;

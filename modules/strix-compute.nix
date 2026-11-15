@@ -12,7 +12,6 @@ in
 {
   imports = [
     ./strix.nix
-    ./ds4.nix
     ./microvm-host.nix
     ./cli-anything.nix
     ./fleet-hosts.nix
@@ -44,19 +43,8 @@ in
   # Tom canceled the second Strix (#698). The pair-only driver/profile,
   # metadata interface and credential are archived rather than imported.
 
-  # Tom permanently retired the local DeepSeek bundle on 2026-11-08.
-  # Preserve historical options, with no deployment or wanted artifacts.
-  services.ds4 = {
-    enable = false;
-    wanted = lib.mkDefault false;
-    role = if coordinator then "coordinator" else "worker";
-    peerAddress = if coordinator then "10.42.0.5" else "10.42.0.2";
-  }
-  // lib.optionalAttrs (!coordinator) {
-    mode = "single-ssd";
-    dspark = false;
-    apiAddress = "10.42.0.5";
-  };
+  # Tom permanently retired the local DeepSeek bundle on 2026-11-08; its
+  # disabled ds4 module was removed on 2026-11-13 (#536).
 
   services.power-profiles-daemon.enable = lib.mkForce false;
   systemd.services.power-profile-balanced = {

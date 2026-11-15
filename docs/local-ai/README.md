@@ -1,24 +1,25 @@
 # Local AI
 
-The fleet runs two inference engines on the Strix pair and a Library of
-loanable model artifacts on the NAS. Every claim on this page names the Nix
+The fleet runs one inference engine, Gufo, on strix-coordinator and a Library
+of loanable model artifacts on the NAS. strix-worker is dormant until its
+replacement arrives: it is not a builder and serves no model. Every claim on this page names the Nix
 file that decides it.
 
 | Engine | Where | Port | Serves | Started by |
 |---|---|---|---|---|
-| Gufo ([`../../modules/gufo.nix`](../../modules/gufo.nix)) | `gufo-llm.service` on both Strix; the fleet endpoint is strix-coordinator's | 8731 | `qwen3.8-flash-next` (resident), `qwen3.8-27b` (alternate) | boot; `gufo-switch` for the alternate |
+| Gufo ([`../../modules/gufo.nix`](../../modules/gufo.nix)) | `gufo-llm.service` on strix-coordinator, the fleet endpoint | 8731 | `qwen3.8-flash-next` (resident), `qwen3.8-27b` (alternate) | boot; `gufo-switch` for the alternate |
 | Gufo v0.33.0 + Qwen3-Embedding extension ([`../../modules/gufo-embedding.nix`](../../modules/gufo-embedding.nix)) | a llama-swap child on strix-coordinator | 8731 (llama-swap) | `qwen3-embedding-8b` (`POST /v1/embeddings`) | the first request naming it; unloaded after 600 s idle or by the next route |
-| ds4 ([`../../modules/ds4.nix`](../../modules/ds4.nix)) | `ds4.service` on strix-worker, one host with SSD expert streaming | 8732 | `deepseek-v4.1-flash` (DeepSeek V4.1 Flash 1017) | an operator, by hand |
 
 The agent harness that uses them is dsh on the NAS (see [dsh](#dsh-on-the-nas)).
-Halogen, the earlier engine, was retired on 2026-10-23 and pi, the earlier
-harness, on 2026-10-25; both appear below only as history.
+Halogen, the earlier engine, was retired on 2026-10-23, pi, the earlier
+harness, on 2026-10-25, and local DeepSeek (ds4) on 2026-11-08; they appear
+below only as history.
 
 ## The resident server: Gufo Flash-Next on strix-coordinator
 
 [`../../modules/gufo.nix`](../../modules/gufo.nix) runs the native `gufo`
 binary for gfx1151 (flake input `gufo`, no container), one systemd unit per
-model. Both Strix declare it from one block in
+model. Both Strix configurations declare it from one block in
 [`../../modules/strix.nix`](../../modules/strix.nix). `gufo-llm.service` loads
 Qwen3.8 Flash-Next UD-Q4_K_XL (catalogue row `qwen38-flash-next-gguf`) with
 its MTP predictor and BF16 vision projector from
@@ -41,9 +42,9 @@ curl -s http://strix-coordinator:8731/v1/chat/completions -H 'content-type: appl
   -d '{"model":"qwen3.8-flash-next","messages":[{"role":"user","content":"ping"}],"max_tokens":16}'
 ```
 
-strix-worker carries the same unit. It is not the fleet endpoint: it is the
-second rank for `gufo-tp2.service` (the neuhaus RDMA fork, Flash-Next Q4 or
-Q8) and the failover copy.
+strix-worker's configuration carries the same unit, but the host is dormant
+and serves nothing. The two-host `gufo-tp2` rank and its RDMA link were
+retired with the second Strix (#698).
 
 ## The alternate and the switch
 
@@ -67,39 +68,13 @@ explicit Library retirement.
 loopback units with no boot target; `gufo-image` takes the GPU from every text
 unit while it runs.
 
-## DeepSeek V4.1 on ds4 (strix-worker)
+## DeepSeek V4.1 on ds4 (retired)
 
-[`../../modules/ds4.nix`](../../modules/ds4.nix) runs kyuz0's
-`strix-halo-ds4-toolbox` image, pinned by digest, under podman with
-`--pull=never`. On strix-worker it is in `single-ssd` mode: the 340.6 GiB Q2
-cannot be resident on one 128 GB box, so `ds4-server` streams routed experts
-from the local SSD through a 76 GB expert cache (`--ssd-streaming`). DSpark
-needs resident experts and is refused in this mode; vision stays off until the
-1017 encoder is proven in the image.
-
-| | |
-|---|---|
-| Base URL | `http://10.42.0.5:8732` (`lib/local-model.nix`'s `ds4` entry) |
-| Model id | `deepseek-v4.1-flash` |
-| Context | 32768 tokens; Think Max needs at least 393216, so requests get high |
-| Admitted from | the NAS (`10.42.0.1`) only, over `enp191s0` |
-| Auth | none |
-
-Nothing starts it at boot and nothing automated calls it. Bytes and image are
-explicit preparation steps:
-
-```console
-sudo podman pull docker.io/kyuz0/strix-halo-ds4-toolbox@sha256:34dec90a…   # the digest in modules/ds4.nix
-sudo env LOCAL_MODELS_MANIFEST=/etc/ds4/wanted.json local-models-borrow --dry-run
-sudo env LOCAL_MODELS_MANIFEST=/etc/ds4/wanted.json local-models-borrow --yes
-sudo systemctl start ds4     # Conflicts= stops the worker's Gufo text units
-sudo systemctl stop ds4 && sudo systemctl start gufo-llm
-```
-
-The fleet endpoint on strix-coordinator is untouched while ds4 runs. The
-coordinator keeps the `tp2` rank shape of the same module for the day both
-disks hold the Q2 (each rank needs the full file locally; the TP2 link is TCP
-until the image gains a usb4_rdma provider).
+Tom permanently retired the local DeepSeek bundle on 2026-11-08 (e832663c).
+[`../../modules/ds4.nix`](../../modules/ds4.nix) keeps its options for
+history, with `services.ds4.enable = false` and no wanted artifacts on either
+Strix ([`../../modules/strix-compute.nix`](../../modules/strix-compute.nix)).
+Nothing serves `:8732`. Remote DeepSeek API routes in dsh are unaffected.
 
 ## Embeddings: the `qwen3-embedding-8b` route
 
@@ -149,7 +124,6 @@ role to the NAS. Its routes ([`../../pkgs/dsh/config.nix`](../../pkgs/dsh/config
   Studio keys per run; [`../free-lanes.md`](../free-lanes.md));
 - `gufo/qwen3.8-flash-next` and `gufo/qwen3.8-27b` (the latter only after
   `gufo-switch qwen38-27b`);
-- `ds4/deepseek-v4.1-flash`, only while `ds4.service` runs on strix-worker;
 - in the hand-run `dsh zen` profile only, OpenCode Zen's free models through
   jiesou's provider plugin (`opencode-zen-free-provider/deepseek-v4.1-flash-free`).
 
@@ -177,9 +151,8 @@ identity and a pinned provenance record; it does not move a byte.
 2. **Wanted set.** Each Strix declares `services.local-models.artifacts`
    ([`../../modules/local-models.nix`](../../modules/local-models.nix)), which
    renders to `/etc/local-models/wanted.json`: everything the host holds,
-   and the set prune keeps. The scoped manifests `/etc/ds4/wanted.json`,
-   `/etc/gufo/tp2-q8-wanted.json` and `/etc/gufo/27b-q8-wanted.json` borrow
-   one bundle alone (`sudo env LOCAL_MODELS_MANIFEST=… local-models-borrow`).
+   and the set prune keeps. The scoped manifest
+   `/etc/gufo/27b-q8-wanted.json` borrows one bundle alone (`sudo env LOCAL_MODELS_MANIFEST=… local-models-borrow`).
    A switch describes a set; it transfers nothing.
 3. **Borrow.** An operator copies wanted artifacts from the Library into
    `/var/lib/local-models/<id>/`, verified by size and SHA-256, with a
@@ -207,9 +180,8 @@ runbook for the Library itself.
 
 | Host | Wanted artifacts | Served by |
 |---|---|---|
-| `strix-coordinator`, `strix-worker` | `qwen38-flash-next-gguf`, `qwen38-27b-gguf`, `qwen38-27b-q8-gguf`, `qwen38-27b-dflash2-gguf`, `qwen3-asr-1.7b`, `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` (exact lists asserted in `flake.nix`) | Gufo Flash-Next resident at boot, the 27B or 27B Q8 after `gufo-switch`, Gufo ASR, TTS and image on demand; streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`) |
-| `strix-coordinator` only | `qwen3-embedding-8b-q8-gguf` (since 2026-11-10) | the Gufo embedding route, on demand through llama-swap |
-| `strix-worker` only | `deepseek-v41-flash-1017-q2-gguf` (via `services.ds4.wanted`), `qwen38-flash-next-q8-gguf` | ds4, by hand; `gufo-tp2` with Q8. The coordinator's disk cannot hold either (D-A) |
+| `strix-coordinator` (and the dormant `strix-worker`'s configuration) | `qwen38-flash-next-gguf`, `qwen38-27b-gguf`, `qwen38-27b-q8-gguf`, `qwen38-27b-dflash2-gguf`, `qwen3-asr-1.7b`, `qwen3-tts-12hz-1.7b-base`, `qwen-image-2.1`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` (exact lists asserted in `flake.nix`) | Gufo Flash-Next resident at boot, the 27B or 27B Q8 after `gufo-switch`, Gufo ASR, TTS and image on demand; streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`) |
+| `strix-coordinator` only | `qwen3-embedding-8b-q8-gguf` (since 2026-11-10), `hy-memory-30b-a3b-q8-gguf`, `d3-ultra-bf16`, `qwen38-27b-heretic-ara-q8-gguf`, `qwen38-flash-next-abliterated-rocmfp4-gguf` | the Gufo embedding route, on demand through llama-swap; the others as their modules declare |
 | `client` | none | — |
 | `nas` | none (it holds the Library) | — |
 
@@ -236,7 +208,7 @@ all.
   `/var/lib/local-models/vibevoice-asr-streaming-7b-bf16`.
 - **MiniMax H3 FL2VA**: Tom accepted its licence on 2026-10-25 and the NAS
   Library holds it. No strix wants it yet: it is 144 GB against 100 GB free on
-  strix-coordinator and 61 GB on strix-worker, and Gufo's video support is
+  strix-coordinator, and Gufo's video support is
   upstream work in progress. `source.gate` has no users now.
 - **Mage** rows were retired on 2026-09-30 (sweep F1); [`mage.md`](mage.md)
   keeps the selection record.
@@ -250,7 +222,11 @@ all.
   explicit retirement. [`../gufo-cutover.md`](../gufo-cutover.md) records the
   move.
 - On 2026-10-25 Tom ruled that the DeepSeek harness completely replaces the
-  Halogen runtime: dsh over Gufo and ds4 is the local agent path.
+  Halogen runtime: dsh over Gufo and ds4 became the local agent path.
+- **ds4** (`modules/ds4.nix`, kyuz0's `strix-halo-ds4-toolbox` on `:8732`)
+  served DeepSeek V4.1 Flash 1017 by hand on strix-worker from 2026-10-25
+  until Tom retired local DeepSeek on 2026-11-08. The dual-Strix TP2 rank went
+  with the second Strix (#698).
 
 ## Sources of truth
 
@@ -260,10 +236,11 @@ all.
    and served model ids every consumer uses.
 3. [`../../modules/gufo.nix`](../../modules/gufo.nix),
    [`../../modules/gufo-embedding.nix`](../../modules/gufo-embedding.nix) and
-   [`../../modules/ds4.nix`](../../modules/ds4.nix) — the engines;
+   [`../../modules/ds4.nix`](../../modules/ds4.nix) (retired, disabled) —
+   the engines;
    [`../../modules/strix.nix`](../../modules/strix.nix) and
    [`../../modules/strix-compute.nix`](../../modules/strix-compute.nix) —
-   their declaration on the Strix pair and the wanted sets.
+   their declaration on the Strix hosts and the wanted sets.
 4. [`../../modules/local-models.nix`](../../modules/local-models.nix) — the
    wanted-set manifest and the borrow transaction;
    [`../../pkgs/local-models-prune.nix`](../../pkgs/local-models-prune.nix)
@@ -272,5 +249,5 @@ all.
    and `library-fetch`.
 6. [`model-roster.md`](model-roster.md) — the catalogue as a table.
 7. [`../../flake.nix`](../../flake.nix) and `tests/ds4` — assertions pinning
-   each host's wanted set and the ds4 shape, so the tables cannot drift
+   each host's wanted set and ds4's retirement, so the tables cannot drift
    silently.

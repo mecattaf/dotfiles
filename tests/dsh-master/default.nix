@@ -58,8 +58,8 @@ let
         pairCredentials = lib.mapAttrs (_: pair: pair.credentialFiles) c.pairs;
         nativeEfforts = lib.mapAttrs (_: pair: pair.nativeEffort) c.pairs;
         pairDependencies = lib.mapAttrs (_: pair: pair.dependencies) c.pairs;
-        workerRows = lib.mapAttrs (_: pair: pair.workerRows) c.pairs;
         presets = lib.mapAttrs (_: pair: pair.preset) c.pairs;
+        workerRows = lib.mapAttrs (_: pair: pair.workerRows) c.pairs;
         inherit (c)
           allowBuilds
           defaultPair
@@ -87,6 +87,20 @@ let
   # rendered as configured, and the check stays green.
   overridden = masterOf {
     superagent = "github:mecattaf/dsh-superagent-prototype#floor-v2.98";
+    pairs = cfg.pairs // {
+      gufo = cfg.pairs.gufo // {
+        workerRows = [
+          {
+            insert = [
+              {
+                id = "worker-row-fixture";
+                name = "/immutable-owner-module/worker.mjs";
+              }
+            ];
+          }
+        ];
+      };
+    };
     superagentRows = [
       {
         id = "dsh-superagent-scheduled";

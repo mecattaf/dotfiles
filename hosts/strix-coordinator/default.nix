@@ -42,6 +42,9 @@
   # like every other route (Tom, 2026-11-10). Coordinator only.
   services.gufo-embedding.enable = true;
   services.superroc.enable = true;
+  # Hy-Memory stays served while its role is undecided (Tom, 2026-11-12, #603):
+  # one demand-loaded llama-server route behind the same llama-swap.
+  services.hy-memory.enable = true;
   services.gufo.models."qwen3.8-27b-ara" = {
     artifact = "qwen38-27b-heretic-ara-q8-gguf";
     # The ARA checkpoint has no matching vision or speculative sidecar.
@@ -71,9 +74,6 @@
     wanted = true;
     demand.enable = true;
   };
-  # The canceled second Strix leaves no coordinator DS4 TCP rank (#698).
-  # Keep its historical model catalog; no single-host replacement is deployed.
-  services.ds4.wanted = false;
   # Compute holds no operator credentials. Existing state is retired separately
   # after NAS session continuity and the sealed backup have been verified.
   mySecrets.enable = false;

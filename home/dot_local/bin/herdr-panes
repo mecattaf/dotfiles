@@ -25,9 +25,8 @@
 # (`herdr pane process-info`), and LAST ACTIVITY. herdr exposes no timestamp
 # (`revision` is a counter, never a time), so last activity is the mtime of
 # the newest harness session file for the pane's cwd:
-#   claude  ~/.claude/projects, ~/.claude-work/projects and
-#           ~/.claude-3/projects (cc, cc2, cc3, as claude-sessions sweeps),
-#           under the cwd slug (every non-alphanumeric byte becomes '-');
+#   claude  ~/.claude/projects and ~/.claude-work/projects (cc and cc2,
+#           as claude-sessions sweeps), under the cwd slug (every non-alphanumeric byte becomes '-');
 #   codex   ~/.codex/sessions rollouts from the last 30 days whose
 #           session_meta cwd equals the pane's cwd.
 # Several panes in one cwd share the newest file, so the value is "the last
@@ -43,7 +42,7 @@ usage() {
 }
 
 HOME_DIR="${HERDR_PANES_HOME:-$HOME}"
-CLAUDE_SEATS=(.claude .claude-work .claude-3)
+CLAUDE_SEATS=(.claude .claude-work)
 
 panes_json() { herdr pane list | jq -c '.result.panes'; }
 

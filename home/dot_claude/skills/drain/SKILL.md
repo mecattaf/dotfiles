@@ -40,8 +40,7 @@ Hard boundaries:
 - Do not edit the generated note by hand.
 - Do not invoke a main agent, cloud model, or paid fallback if the local
   utility model fails.
-- Do not author a handoff, run Git commands, or imply that anything was backed
-  up remotely.
+- Do not run Git commands or imply that anything was backed up remotely.
 - Do not run this automatically at Stop time or as a side effect of another
   skill. The user must request every drain. That prohibition is about the
   journal and it stays; it is lifted only for the separate harvest store below
