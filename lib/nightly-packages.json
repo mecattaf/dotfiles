@@ -78,8 +78,7 @@
     {
       "id": "dsh",
       "hosts": [
-        "nas",
-        "client"
+        "nas"
       ],
       "provider": {
         "input": "llm-agents",
@@ -101,21 +100,24 @@
       "id": "herdr",
       "hosts": [
         "nas",
+        "strix-coordinator",
         "client"
       ],
       "provider": {
         "input": "herdr",
-        "channel": "latest-stable-release"
+        "channel": "latest-stable-release",
+        "repository": "herdrdev/herdr"
       },
-      "versionAttributes": [
-        "nixosConfigurations.{host}.pkgs.herdr.version"
-      ],
+      "versionAttributes": [],
       "updateMechanism": "Resolve the upstream stable release and update the explicit input revision and lock together.",
       "activationNotes": "Preserve the PTY-owning server and protocol compatibility. Package installation must not kill live sessions; report retained running server separately.",
       "intentDates": [
         "2026-10-10",
         "2026-10-21"
-      ]
+      ],
+      "inputVersionAttributes": {
+        "herdr": "packages.x86_64-linux.herdr.version"
+      }
     },
     {
       "id": "fish",
@@ -140,7 +142,6 @@
     {
       "id": "kitty",
       "hosts": [
-        "nas",
         "client"
       ],
       "provider": {
@@ -211,7 +212,7 @@
         "channel": "latest-compatible-published-build"
       },
       "versionAttributes": [
-        "nixosConfigurations.client.pkgs.domicile.version"
+        "nixosConfigurations.client.config.programs.domicile.package.version"
       ],
       "updateMechanism": "Update the explicit Domicile revision and lock together, keeping SDK and prebuilt engine matched.",
       "activationNotes": "Automatic flash is home-only. Preserve live desktop work; separately report installed and running compositor revisions.",
@@ -235,7 +236,8 @@
         "channel": "latest-stable-release"
       },
       "versionAttributes": [
-        "nixosConfigurations.strix-coordinator.pkgs.gufo.version"
+        "nixosConfigurations.strix-coordinator.config.services.gufo.package.version",
+        "nixosConfigurations.strix-coordinator.config.services.gufo-embedding.package.version"
       ],
       "updateMechanism": "Resolve stable upstream, update the relevant input pins and qualify the existing inference and embedding routes.",
       "activationNotes": "Wait for actual idle/checkpoint proof. No model acquisition, pruning, worker resurrection or inference-configuration change is implied. Report incompatible releases as blocked.",
