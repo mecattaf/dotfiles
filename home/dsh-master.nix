@@ -49,6 +49,11 @@ let
           default = null;
           description = "At most this many units of this pair at once.";
         };
+        workerRows = mkOption {
+          type = types.listOf types.attrs;
+          default = [ ];
+          description = "Additional plugin rows for only this pair's headless profile, appended after the shared rows. Pin a separately owned module by its immutable absolute path; the renderer records and checks the selection, but does not own that module's code.";
+        };
         # dsh headless binds no agent preset, and dsh-claude serves only a
         # Session bound to one of its presets. Its `claude` preset also routes
         # every request to Claude Code, so a pair of another provider binds none

@@ -209,6 +209,18 @@ def main(package, expect_path):
     subtest("Gufo headless foreground and compaction budgets only", problems)
 
     problems = []
+    for pair, extra_rows in expect["workerRows"].items():
+        target = f"master-{pair}"
+        for source in extra_rows:
+            listed = source.get("insert", [source])
+            for row in listed:
+                for name, ids in rows.items():
+                    got = [{k: v for k, v in item.items() if k != "inserted"} for item in ids.get(row["id"], [])]
+                    if got != ([row] if name == target else []):
+                        problems.append(f"{name}: pair-only {row['id']} is {got}")
+    subtest("additional worker rows stay with their pair and are manifest-checked", problems)
+
+    problems = []
     for name, ids in rows.items():
         claude = ids.get("llm-claude", [])
         if len(claude) != 1:
@@ -251,6 +263,7 @@ def main(package, expect_path):
             problems.append(f"{name}: binds preset {preset!r} to a {pairs[pair]['provider']} worker (the claude preset routes to Claude Code)")
         order = [row.get("insert", [{}])[0].get("id") for row in folders[name]["patch"] if "insert" in row]
         want = ["agent-preset-registry"] + ([] if preset is None else ["headless-preset"])
+        want += [item["id"] for row in expect["workerRows"][pair] for item in row.get("insert", [])[:1]]
         if order != want:
             problems.append(f"{name}: inserts in the order {order}, expected {want}")
     subtest("headless folders insert headless-preset after agent-preset-registry", problems)

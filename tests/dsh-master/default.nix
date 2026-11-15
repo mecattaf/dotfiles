@@ -56,6 +56,7 @@ let
         ) c.pairs;
         pairEnv = lib.mapAttrs (_: pair: { inherit (pair) env maxWorkers; }) c.pairs;
         presets = lib.mapAttrs (_: pair: pair.preset) c.pairs;
+        workerRows = lib.mapAttrs (_: pair: pair.workerRows) c.pairs;
         inherit (c)
           allowBuilds
           defaultPair
@@ -83,6 +84,16 @@ let
   # rendered as configured, and the check stays green.
   overridden = masterOf {
     superagent = "github:mecattaf/dsh-superagent-prototype#floor-v2.98";
+    pairs.gufo.workerRows = [
+      {
+        insert = [
+          {
+            id = "worker-row-fixture";
+            name = "/immutable-owner-module/worker.mjs";
+          }
+        ];
+      }
+    ];
     superagentRows = [
       {
         id = "dsh-superagent-scheduled";

@@ -273,7 +273,8 @@ let
         (off "dsh-superagent-github")
         (off "dsh-superagent-feishu")
       ]
-      ++ settings.superagentRows;
+      ++ settings.superagentRows
+      ++ settings.pairs.${pair}.workerRows;
   };
 
   bundles = app: [

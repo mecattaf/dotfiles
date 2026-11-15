@@ -50,6 +50,11 @@ Rules the renderer keeps, each asserted by `checks.dsh-master`:
   master panel or Claude workers. Select a changed worker profile only while
   no instance uses it: profile patches are watched for reload as well as read
   by newly launched units.
+- `programs.dsh.master.pairs.<pair>.workerRows` appends rows only to that
+  headless profile. It can select a separately versioned mechanical worker
+  module by its immutable absolute path. The profile manifest records that
+  selection and `dsh-master check` verifies it; a later render reproduces it.
+  The selected module's source and deployment manifest stay with its owner.
 - Both plugins are pinned to one release tag, `programs.dsh.master.tag`
   (`floor-v2.<n>`, first `floor-v2.1`). `superagent` or `claude` overrides
   one pin on its own.
