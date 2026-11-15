@@ -113,3 +113,14 @@ mock of conditional writes. A test-only throwing binding checks error handling.
 References: [R2 conditional operations](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/#conditional-operations),
 [Workers Web Crypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/#timingsafeequal),
 [Wrangler configuration](https://developers.cloudflare.com/workers/wrangler/configuration/).
+
+The first actual NAS observer projection was also accepted by this publisher
+inside the current Workers runtime: snapshot1,290subjects,316observations,
+35coverage entries,128389bytes. This was local R2 qualification, not a public
+fixture or a deployment. A second actual snapshot including DSHd instance
+resource counters also passed: snapshot2,572subjects,1230observations,
+432830bytes. Repeat against a privately staged public projection:
+
+```sh
+runtime-test -- node scripts/check-producer.mjs /path/to/public/status.json
+```

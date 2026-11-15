@@ -96,6 +96,10 @@ test('reader and scoped publisher in real workerd with R2', async t => {
         value => { value.observations[0].lastAttemptAt = '2000-01-01T00:00:00Z'; },
         value => { value.observations[0].lastGood = { value: 'PRIVATE SECRET', observedAt: value.observations[0].observedAt }; },
         value => { value.observations[0].value = 2; value.observations[0].unit = 'bytes'; },
+        value => { value.coverage[0].sourceId = 'host.pressure'; Object.assign(value.observations[0], {
+          sourceId: 'host.pressure', key: 'host.memoryTotalBytes', value: null, grade: 'unknown',
+          lastGood: { value: 100, observedAt: value.observations[0].observedAt }
+        }); },
         value => { value.events.push({ id: 'event-' + 'a'.repeat(24), subjectId: 'fleet', sourceId: 'fleet.snapshot', type: 'collector.error', summary: 'PRIVATE EXCEPTION', at: value.generatedAt }); },
       ];
       for (const mutate of invalid) {
