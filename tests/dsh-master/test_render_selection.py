@@ -27,7 +27,7 @@ class RenderSelection(unittest.TestCase):
         self.source, self.home = self.root / "source", self.root / "dsh-home"
         self.home.mkdir()
         self.dshd = self.root / "dshd"
-        self.dshd.write_text("#!/usr/bin/env python3\nimport json,os,sys\n"
+        self.dshd.write_text(f"#!{sys.executable}\nimport json,os,sys\n"
                             "if os.environ.get('INVENTORY_FAIL'): sys.exit(1)\n"
                             "if sys.argv[1]=='ls': print(json.dumps({'instances':[{'name':'floor','state':'running'}]}))\n"
                             "else: print(json.dumps({'activeState':'active','profile':{'name':os.environ.get('ACTIVE_PROFILE',''), 'dshHome':os.environ.get('ACTIVE_HOME',os.environ['DSH_HOME'])}}))\n")
