@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 SOURCE = Path(os.environ.get("FLEET_STATUS_OBSERVER_PY", Path(__file__).resolve().parents[2] / "pkgs/fleet-status/observer.py"))
 sys.path.insert(0, str(SOURCE.parent))
@@ -31,6 +32,36 @@ class ObserverTests(unittest.TestCase):
                 observer.public_observation("host-nas", "fleet.snapshot", "host.reachability", value)
         with self.assertRaises(ValueError):
             observer.public_observation("host-nas", "fleet.snapshot", "argv", "secret")
+
+    def test_native_usage_only_projects_reviewed_gemini_pool(self):
+        report = "Gemini Models\tWeekly Limit Remaining\t96%\t2099-11-22T10:26:55Z\nClaude and GPT models\tWeekly Limit Remaining\t0%\t2099-11-17T23:52:59Z\n"
+        with patch.object(observer, "command", return_value=report) as call:
+            rows = self.value.antigravity_quota("2", ["agy2", "--print", "/usage"])
+        self.assertEqual(call.call_args.kwargs, {"timeout": 18, "cap": 16384, "as_json": False})
+        self.assertEqual(rows[0]["value"], 4)
+        self.assertEqual(rows[0]["subjectId"], "quota-antigravity-2-gemini-weekly")
+        self.assertEqual(len(rows), 3)
+        self.assertNotIn("Claude", json.dumps(rows))
+        for text in [report.replace("96%", "101%"), report.replace("2099-11-22T10:26:55Z", "private-secret"), report.replace("Gemini Models", "Unreviewed account")]:
+            with patch.object(observer, "command", return_value=text), self.assertRaises(RuntimeError):
+                self.value.antigravity_quota("2", ["agy2"])
+
+    def test_zen_native_tokens_are_separate_deduplicated_and_missing_stays_unknown(self):
+        self.value.state["usage"]["zen"] = {"calls": 1, "successes": 1, "inputTokens": 7, "seenTokens": ["inputTokens"]}
+        row = {"lane": "zen", "slot": 2, "invocation_id": "private-invocation", "ts": "2026-11-15T22:00:00Z", "usage_steps": [{"input": 12, "output": 3, "cache": {"read": 4}, "total": 99, "text": "SECRET"}], "receipt": "/private/SECRET"}
+        self.value.zen_ledger(row)
+        self.value.zen_ledger(row)
+        self.value.zen_ledger({**row, "invocation_id": "empty", "usage_steps": []})
+        rows = self.value.tails()
+        counts = self.value.state["ledgerUsage"]["2"]
+        self.assertEqual(counts["inputTokens"], 12)
+        self.assertEqual(counts["cacheReadTokens"], 4)
+        self.assertNotIn("reasoningTokens", counts)
+        self.assertEqual(self.value.state["usage"]["zen"]["inputTokens"], 7)
+        account = [r for r in rows if r["subjectId"] == "account-zen-2"]
+        self.assertEqual(len(account), 5)
+        self.assertIsNone(next(r["value"] for r in account if r["key"] == "usage.reasoningTokens"))
+        self.assertNotIn("SECRET", json.dumps(account))
 
     def test_stale_publication_retains_original_last_good_without_fresh_timestamp(self):
         row = observer.public_observation("host-nas", "host.pressure", "host.load1", 2.0, at="2000-01-01T00:00:00Z", ttl=60)
