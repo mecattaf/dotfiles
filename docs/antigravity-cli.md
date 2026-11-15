@@ -69,7 +69,10 @@ explicitly, never rotated on refusal). Native process arguments place
 disables credit fallback without rewriting saved preferences.
 
 Worker config uses `allowDirectProvider=true`, `allowedModels` containing only
-the Gemini selector, `turnTimeoutMs=600000`, and low reasoning effort. Read
+the Gemini selector, `turnTimeoutMs=600000`, and `nativeThoughtLevel="low"`.
+Do not set outer DSH `reasoningEffort`: native capabilities are discovered
+after the core prepares its request; the plugin validates native effort
+against the actual ACP selector before submitting the prompt. Read
 roles use native `plan`; narrow implementation roles use `accept-edits`. The
 latter permits workspace edits while retaining native command approvals. DSH's
 outer sandbox does not contain native CLI tools: account/cwd bindings, native

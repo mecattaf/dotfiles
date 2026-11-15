@@ -27,16 +27,18 @@ def tail_jsonl(path, cursors, *, enroll_at_end=False, byte_budget=2 * 1024 * 102
     with path.open("rb") as stream:
         stream.seek(offset)
         while consumed < byte_budget:
-            line = stream.readline(min(1024 * 1024, byte_budget - consumed) + 1)
+            line_limit = min(1024 * 1024, byte_budget - consumed)
+            line = stream.readline(line_limit + 1)
             if not line:
                 break
             if not line.endswith(b"\n"):
                 # An over-budget line cannot block observation forever. Skip
                 # to a complete delimiter within a bounded extra byte window.
-                if len(line) > 1024 * 1024:
+                if len(line) > line_limit:
                     stream.seek(0, os.SEEK_END)
                     offset = stream.tell()
                     gap = True
+                consumed += len(line)
                 break
             consumed += len(line)
             offset = stream.tell()
@@ -47,5 +49,5 @@ def tail_jsonl(path, cursors, *, enroll_at_end=False, byte_budget=2 * 1024 * 102
                 continue
             if isinstance(record, dict):
                 records.append(record)
-    cursors[key] = {"identity": identity, "offset": offset}
+    cursors[key] = {"identity": identity, "offset": offset, "lastReadBytes": consumed}
     return records, gap, offset < stat.st_size

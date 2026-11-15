@@ -99,7 +99,13 @@ let
     # It may use its cache and read native usage endpoints; it sends no prompts.
     seatsCommand = [ "/home/tom/.local/bin/seats" "--json" "--only" "cc,cc2,codex,openrouter" "--no-spend" "--cache-ttl" "1800" ];
     systemctlCommand = [ "systemctl" "--user" "show" "dshd@*.service" "--property=Id,CPUUsageNSec,MemoryCurrent,MemoryPeak,TasksCurrent,IOReadBytes,IOWriteBytes,NRestarts" ];
-    journalCommand = [ "journalctl" "--user" "--follow" "--output=json" "--no-pager" "--user-unit=dshd@*.service" ];
+    journalCommand = [
+      "journalctl" "--user" "--follow" "--output=json" "--no-pager" "--user-unit=dshd@*.service"
+      "MESSAGE_ID=39f53479d3a045ac8e11786248231fbf"
+      "MESSAGE_ID=9d1aaa27d60140bd96365438aad20286"
+      "MESSAGE_ID=be02cf6855d2428ba40df7e9d022f03d"
+      "MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c"
+    ];
     dshSessions = "/home/tom/.dsh/sessions";
     laneMeter = "/home/tom/.local/state/seats/lane-usage.jsonl";
     python = "${pkgs.python3}/bin/python3";
