@@ -1,69 +1,338 @@
-#!/usr/bin/env bash
-# zen: headless client for OpenCode Zen's free models through the official
-# OpenCode CLI (docs/free-lanes.md, "Zen client: OpenCode CLI"). Not a harness.
-#   zen [-k N] [-m MODEL] [--burndown] PROMPT...
-# Key: /run/agenix/opencode-zen-key-N (N = -k, else $ZEN_SLOT, else 1), read
-# into OPENCODE_API_KEY for the opencode process only; never printed or traced.
-# Meter: one JSON line per attempt in ~/.local/state/seats/lane-usage.jsonl
-# (read by `seats`); this script writes nothing else. opencode itself keeps its
-# sessions and logs under ~/.local/share/opencode. opencode appends a non-TTY
-# stdin to the prompt and waits for EOF, which hangs under an agent's open
-# pipe; stdin is closed unless ZEN_STDIN=1 (`cat f | ZEN_STDIN=1 zen ...`).
-set -euo pipefail
-[ -t 0 ] || [ "${ZEN_STDIN:-0}" = 1 ] || exec </dev/null
+#!/usr/bin/env python3
+"""Bounded, recorded workers through the official OpenCode Zen client."""
+import argparse
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+import uuid
 
-slot=${ZEN_SLOT:-1} model='' burndown=0
-usage() { echo "usage: zen [-k N] [-m MODEL] [--burndown] PROMPT..." >&2; exit 2; }
-while [ $# -gt 0 ]; do
-  case $1 in
-    -k) [ $# -ge 2 ] || usage; slot=$2; shift 2 ;;
-    -m) [ $# -ge 2 ] || usage; model=$2; shift 2 ;;
-    --burndown) burndown=1; shift ;;
-    --) shift; break ;;
-    -*) usage ;;
-    *) break ;;
-  esac
-done
-[ $# -gt 0 ] || usage
-case $slot in [1-4]) ;; *) echo "zen: slot must be 1-4, got '$slot'" >&2; exit 2 ;; esac
 
-# Default order, strongest first. pulse-alpha-free is 403 RegionError (France)
-# and stays out; name it with -m if that ever changes.
-models=(deepseek-v4.1-flash-free glm-5.3-flash-free)
-[ -n "$model" ] && models=("$model")
-meter=$HOME/.local/state/seats/lane-usage.jsonl
+def stamp():
+    return dt.datetime.now(dt.timezone.utc).isoformat()
 
-load_key() { # slot -> exports OPENCODE_API_KEY; the value never reaches a trace
-  local f=/run/agenix/opencode-zen-key-$1
-  [ -r "$f" ] || { echo "zen: cannot read $f (slot $1)" >&2; return 1; }
-  { set +o xtrace; } 2>/dev/null
-  OPENCODE_API_KEY=$(<"$f"); export OPENCODE_API_KEY
-}
-record() { # slot model status
-  mkdir -p "${meter%/*}"
-  printf '{"ts":"%s","lane":"zen","slot":%s,"model":"%s","status":"%s"}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" "$3" >>"$meter"
-}
 
-if [ "$burndown" = 0 ]; then
-  load_key "$slot"
-  record "$slot" "${models[0]}" sent # exec: the outcome is opencode's exit status
-  exec opencode run -m "opencode/${models[0]}" "$@"
-fi
+def write_new(path, value):
+    with path.open("x", encoding="utf-8") as stream:
+        json.dump(value, stream, indent=2)
+        stream.write("\n")
 
-# Burndown: slot N..4 on the first model, then the same slots on the next.
-# A reply that names FreeUsageLimitError or 429 is "drained" whatever the exit
-# status (opencode's exit code on an API error is not documented); any other
-# failure stops here with opencode's own output.
-for m in "${models[@]}"; do
-  for s in $(seq "$slot" 4); do
-    load_key "$s" || continue
-    rc=0; out=$(opencode run -m "opencode/$m" "$@" 2>&1) || rc=$?
-    if grep -q 'FreeUsageLimitError\|429' <<<"$out"; then
-      echo "zen: slot $s model $m drained" >&2; record "$s" "$m" 429; continue
-    fi
-    if [ "$rc" = 0 ]; then printf '%s\n' "$out"; record "$s" "$m" ok; exit 0; fi
-    printf '%s\n' "$out" >&2; record "$s" "$m" error; exit "$rc"
-  done
-done
-echo "zen: every slot and model drained" >&2; exit 1
+
+def redact(text, key):
+    if key:
+        text = text.replace(key, "[REDACTED]")
+    return re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._~+/-]{12,}", r"\1[REDACTED]", text)
+
+
+def stop_group(process):
+    # Reap this invocation's private group, including inherited pipes after
+    # the direct child exits. Never signal another native client session.
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    end = time.monotonic() + 0.5
+    while time.monotonic() < end:
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.025)
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def client(argv, env, cwd, prefix, key, deadline, acp=False):
+    """Retain partial redacted output on timeout and cancellation, too."""
+    process = subprocess.Popen(argv, cwd=cwd, env=env, stdin=sys.stdin if acp else subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               start_new_session=True)
+    errors = []
+
+    def copy(source, target, forward=False):
+        try:
+            with target.open("x", encoding="utf-8") as out:
+                for line in iter(source.readline, b""):
+                    text = redact(line.decode("utf-8", errors="replace"), key)
+                    out.write(text)
+                    out.flush()
+                    if forward:
+                        sys.stdout.write(text)
+                        sys.stdout.flush()
+        except Exception as error:
+            errors.append(str(error))
+        finally:
+            source.close()
+
+    threads = [threading.Thread(target=copy, args=(source, Path(str(prefix) + suffix), acp and source is process.stdout))
+               for source, suffix in [(process.stdout, ".jsonl"), (process.stderr, ".stderr")]]
+    for thread in threads:
+        thread.start()
+    outcome = "ok"
+    try:
+        process.wait(timeout=max(0.001, deadline - time.monotonic()))
+        for thread in threads:
+            thread.join(timeout=max(0, deadline - time.monotonic()))
+        if any(thread.is_alive() for thread in threads):
+            outcome = "timeout"
+    except subprocess.TimeoutExpired:
+        outcome = "timeout"
+    except KeyboardInterrupt:
+        outcome = "cancelled"
+    finally:
+        stop_group(process)
+        process.wait()
+        for thread in threads:
+            thread.join()
+    if errors:
+        raise OSError("could not retain client output: " + "; ".join(errors))
+    return process.returncode, outcome
+
+
+def catalogue(text):
+    """Official --verbose output: selector lines followed by JSON objects."""
+    rows = {}
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"(?m)^opencode/([^\s]+)\s*\n", text):
+        try:
+            row, _ = decoder.raw_decode(text[match.end():].lstrip())
+        except ValueError:
+            continue
+        if row.get("id") == match[1] and row.get("providerID") == "opencode":
+            rows[match[1]] = row
+    return rows
+
+
+def is_free(row):
+    cost = row.get("cost", {})
+    def zero(value):
+        if isinstance(value, dict):
+            return all(zero(item) for item in value.values())
+        return isinstance(value, (int, float)) and value == 0
+    return (row.get("status") != "deprecated" and cost.get("input") == 0
+            and cost.get("output") == 0
+            and zero(cost))
+
+
+def edit_rules(cwd):
+    # v1.19.5 asks permission using paths relative to the Git worktree,
+    # or filesystem root for a non-Git project (not absolute file paths).
+    try:
+        git = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=5)
+        root = Path(git.stdout.strip()).resolve() if git.returncode == 0 else Path(cwd.anchor)
+    except (OSError, subprocess.TimeoutExpired):
+        root = Path(cwd.anchor)
+    relative = cwd.relative_to(root)
+    pattern = "*" if relative == Path(".") else relative.as_posix() + "/*"
+    return {"*": "deny", pattern: "allow"}
+
+
+def summarize(text):
+    errors, finals, finishes, sessions, tools = [], [], [], set(), []
+    count = 0
+    for line in text.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        count += 1
+        if event.get("sessionID"):
+            sessions.add(event["sessionID"])
+        part = event.get("part", {})
+        if event.get("type") in ("error", "session.error"):
+            errors.append(event.get("error", event.get("properties", {})))
+        if event.get("type") == "text" and part.get("text"):
+            finals.append(part["text"])
+        if event.get("type") == "step_finish":
+            finishes.append(part)
+        if event.get("type") == "tool_use":
+            tools.append({"tool": part.get("tool"), "status": part.get("state", {}).get("status")})
+    # Do not add reasoning/cache to total: provider counter semantics differ.
+    return {"event_count": count, "errors": errors, "text": finals,
+            "session_ids": sorted(sessions),
+            "usage_steps": [p["tokens"] for p in finishes if isinstance(p.get("tokens"), dict)],
+            "cost_steps": [p["cost"] for p in finishes if isinstance(p.get("cost"), (int, float))],
+            "finish_reasons": [p.get("reason") for p in finishes], "tools": tools}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("-k", "--slot", default=os.environ.get("ZEN_SLOT", "1"), choices=["1", "2", "3", "4"])
+    parser.add_argument("-m", "--model", default="deepseek-v4.1-flash-free")
+    parser.add_argument("--timeout", type=float, default=300, help="absolute seconds including catalogue refresh")
+    parser.add_argument("--cwd", type=Path, help="public/nonsecret workspace; required with --edit")
+    parser.add_argument("--edit", action="store_true", help="allow file edits inside the explicit workspace")
+    parser.add_argument("--format", choices=["text", "json"], default="text")
+    parser.add_argument("--pure", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--burndown", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--models", action="store_true", help="refresh/list zero-price models; no generation")
+    parser.add_argument("--acp", action="store_true", help="official ACP stdio server for the DSH native-agent adapter")
+    parser.add_argument("--task-id", help="logical task ID; invocation ID is always unique")
+    parser.add_argument("--retry-of", help="prior invocation ID for an explicit retry")
+    parser.add_argument("prompt", nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    if args.slot not in ("1", "2", "3", "4"):
+        parser.error("slot must be 1-4")
+    if args.acp and args.models:
+        parser.error("--acp and --models are separate operations")
+    if args.burndown:
+        parser.error("--burndown is retired; choose a fixed -k slot explicitly (no quota-triggered rotation)")
+    prompt = args.prompt[1:] if args.prompt[:1] == ["--"] else args.prompt
+    # Compatibility with the previous wrapper's upstream flag prefix.
+    while prompt and prompt[0] in ("--pure", "--format"):
+        flag = prompt.pop(0)
+        if flag == "--format":
+            if len(prompt) < 2 or prompt[0] not in ("json", "default", "text"):
+                parser.error("--format needs json, text or default and a prompt")
+            args.format = "json" if prompt.pop(0) == "json" else "text"
+    if not math.isfinite(args.timeout) or args.timeout <= 0:
+        parser.error("--timeout must be finite and positive")
+    if args.edit and args.cwd is None:
+        parser.error("--edit requires an explicit --cwd workspace")
+    try:
+        cwd = (args.cwd or Path.cwd()).resolve(strict=True)
+    except OSError as error:
+        parser.error(str(error))
+    if not cwd.is_dir() or (args.edit and cwd in (Path.home(), Path("/"))):
+        parser.error("select a workspace directory, not home or filesystem root")
+    message = " ".join(prompt)
+    if not args.acp and os.environ.get("ZEN_STDIN") == "1":
+        message += "\n" + sys.stdin.read()
+    if not message.strip() and not args.models and not args.acp:
+        parser.error("provide a prompt, or --models")
+    model = args.model.removeprefix("opencode/")
+    os.umask(0o077)
+    state = Path(os.environ.get("ZEN_STATE_DIR", str(Path.home() / ".local/state/seats/zen")))
+    invocation = str(uuid.uuid4())
+    run = state / "invocations" / invocation
+    run.mkdir(parents=True)
+    start = time.monotonic()
+    deadline = start + args.timeout
+    base = {"ts": stamp(), "lane": "zen", "slot": args.slot, "model": model,
+            "invocation_id": invocation, "task_id": args.task_id or invocation,
+            "retry_of": args.retry_of, "cwd": str(cwd), "edit": args.edit, "acp": args.acp,
+            "client_executable": os.path.realpath(shutil.which("opencode") or "opencode"),
+            "timeout_seconds": args.timeout, "prompt_sha256": hashlib.sha256(message.encode()).hexdigest()}
+    write_new(run / "invocation.json", base)
+    key, status, rc, details = "", "error", 1, {}
+    try:
+        keyroot = Path(os.environ.get("ZEN_KEY_DIR", "/run/agenix"))
+        key = (keyroot / ("opencode-zen-key-" + args.slot)).read_text().strip()
+        if not key:
+            raise ValueError("selected key file is empty")
+        env = os.environ.copy()
+        # Native client state is per invocation, so concurrency and cancellation
+        # do not attach to or alter live OpenCode sessions. HOME stays unchanged.
+        for kind in ("DATA", "STATE", "CONFIG", "CACHE"):
+            # ACP sessions must survive process replacement to support the
+            # bridge's native session/load binding. Keep that DB account-scoped.
+            native = state / "acp" / ("slot-" + args.slot) if args.acp else run / "native"
+            path = native / kind.lower()
+            path.mkdir(parents=True, exist_ok=True)
+            env["XDG_" + kind + "_HOME"] = str(path)
+        env["OPENCODE_API_KEY"] = key
+        for name in ("OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR", "OPENCODE_PERMISSION"):
+            env.pop(name, None)
+        for name in ("OPENCODE_DISABLE_PROJECT_CONFIG", "OPENCODE_DISABLE_CLAUDE_CODE",
+                     "OPENCODE_DISABLE_EXTERNAL_SKILLS", "OPENCODE_DISABLE_AUTOUPDATE"):
+            env[name] = "true"
+        permission = {"*": "deny", "read": "allow", "glob": "allow", "grep": "allow", "list": "allow",
+                      "external_directory": "deny", "edit": "deny"}
+        if args.edit:
+            permission["edit"] = edit_rules(cwd)
+        config = {"model": "opencode/" + model, "small_model": "opencode/" + model,
+                  "share": "disabled", "autoupdate": False, "enabled_providers": ["opencode"],
+                  "permission": permission, "snapshot": False,
+                  "agent": {"zen-worker": {"mode": "primary", "description": "Bounded source worker",
+                            "steps": 12, "permission": permission}}}
+        env["OPENCODE_CONFIG_CONTENT"] = json.dumps(config)
+        rc, state_status = client(["opencode", "models", "opencode", "--verbose", "--refresh", "--pure"],
+                                  env, cwd, run / "catalogue", key, deadline)
+        if state_status != "ok" or rc:
+            status = state_status if state_status != "ok" else "catalogue_error"
+        else:
+            rows = catalogue((run / "catalogue.jsonl").read_text())
+            if not rows:
+                raise ValueError("official catalogue returned no parseable model metadata")
+            free = sorted(name for name, row in rows.items() if is_free(row))
+            details["free_models"] = free
+            if args.models:
+                print("\n".join(free))
+                status = "catalogue"
+            elif model not in free:
+                status, rc = "model_refused", 2
+                details["error"] = "exact model is absent or not explicitly zero-price in refreshed official catalogue"
+            elif args.acp:
+                config["provider"] = {"opencode": {"whitelist": free}}
+                env["OPENCODE_CONFIG_CONTENT"] = json.dumps(config)
+                rc, state_status = client(["opencode", "acp", "--pure", "--cwd", str(cwd)],
+                                          env, cwd, run / "acp", key, deadline, acp=True)
+                status = "closed" if rc == 0 and state_status == "ok" else state_status
+                if status == "ok":
+                    status = "client_error"
+            else:
+                rc, state_status = client(["opencode", "run", "--pure", "--agent", "zen-worker",
+                                           "--format", "json", "-m", "opencode/" + model,
+                                           "--title", "Zen worker " + invocation, "--", message],
+                                          env, cwd, run / "events", key, deadline)
+                details.update(summarize((run / "events.jsonl").read_text()))
+                status = state_status
+                if status == "ok":
+                    if details["errors"]:
+                        status = "429" if re.search(r"429|FreeUsageLimitError", json.dumps(details["errors"])) else "provider_error"
+                    elif rc:
+                        status = "client_error"
+                    elif any(cost != 0 for cost in details["cost_steps"]):
+                        status = "unexpected_cost"
+                    elif not details["text"] or not details["usage_steps"] or details["finish_reasons"][-1:] != ["stop"]:
+                        status = "incomplete"
+                if args.format == "json":
+                    sys.stdout.write((run / "events.jsonl").read_text())
+                else:
+                    print("\n".join(details["text"]))
+    except KeyboardInterrupt:
+        status, rc = "cancelled", 130
+    except (OSError, ValueError) as error:
+        details["error"] = redact(str(error), key)
+        status, rc = "error", 1
+    if status == "timeout":
+        rc = 124
+    elif status == "cancelled":
+        rc = 130
+    elif status not in ("ok", "catalogue", "closed") and rc == 0:
+        rc = 1
+    row = {**base, "ended_at": stamp(), "elapsed_seconds": round(time.monotonic() - start, 3),
+           "status": status, "returncode": rc, "accepted": None, **details}
+    write_new(run / "result.json", row)
+    # One terminal record per invocation preserves existing seats call counts.
+    ledger = Path(os.environ.get("ZEN_LEDGER", str(Path.home() / ".local/state/seats/lane-usage.jsonl")))
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    with ledger.open("a", encoding="utf-8") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        stream.write(json.dumps({**{k: row[k] for k in ("ts", "lane", "slot", "model", "status", "invocation_id", "task_id", "retry_of", "elapsed_seconds")},
+                                 "usage_steps": details.get("usage_steps", []), "receipt": str(run / "result.json")}) + "\n")
+        stream.flush()
+    print("zen: " + status + "; receipt " + str(run / "result.json"), file=sys.stderr)
+    return rc if rc >= 0 else 128 - rc
+
+
+if __name__ == "__main__":
+    def cancelled(_signum, _frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, cancelled)
+    sys.exit(main())
