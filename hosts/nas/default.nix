@@ -146,6 +146,12 @@ in
   myNas.nixOnNvme.enable = true;
   myNas.homeDisk.enable = true;
 
+  # Outbound public observations only; the scoped token cannot control the fleet.
+  services.fleet-status.observer = {
+    publishUrl = "https://fleet-status-publisher.thomasmecattaf.workers.dev";
+    publishTokenFile = config.age.secrets.fleet-status-publisher-token.path;
+  };
+
   # amdtop — the same telemetry TUI the strix runs (modules/strix-ai.nix).
   # This box is AMD on both halves: common-cpu-amd/kvm-amd, plus the radeonsi
   # iGPU already driving Immich's VA-API transcodes above, so the GPU pane is
