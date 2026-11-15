@@ -8,6 +8,7 @@
   python3,
   coreutils,
   git,
+  nix,
   pnpm,
   dsh,
   llm-agents,
@@ -483,6 +484,7 @@ runCommand "dsh-master"
   ''
     ${assemble spec}
     install -Dm0644 ${./dsh-master.py} "$out/share/dsh-master/dsh-master.py"
+    install -Dm0644 ${./runtime.py} "$out/share/dsh-master/runtime.py"
     install -Dm0644 ${settings.settingsSeed} "$out/share/dsh-master/settings.seed.json"
     makeWrapper ${python3.withPackages (ps: [ ps.pyyaml ])}/bin/python3 "$out/bin/dsh-master" \
       --add-flags "$out/share/dsh-master/dsh-master.py" \
@@ -492,6 +494,7 @@ runCommand "dsh-master"
           # dsh plugin runs pnpm from PATH, and pnpm asks git for a github: tag.
           pnpm
           git
+          nix
         ]
       }
   ''

@@ -147,6 +147,8 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   grep -qx 'ok identical dependencies across profiles, pinned as configured' "$TMPDIR/overridden.out"
   DSH_MASTER=${master}/share/dsh-master/dsh-master.py SEED=${master}/share/dsh-master/settings.seed.json \
     python3 -I ${./test_seed.py} -v
+  DSH_MASTER_RUNTIME=${master}/share/dsh-master/runtime.py \
+    python3 -I ${./test_runtime.py} -v
   DSH_MASTER=${master}/share/dsh-master/dsh-master.py \
     python3 -I ${./test_credentials.py} -v
   DSH_MASTER=${master}/share/dsh-master/dsh-master.py \
