@@ -144,6 +144,8 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
     python3 -I ${./test_seed.py} -v
   DSH_MASTER=${master}/share/dsh-master/dsh-master.py \
     python3 -I ${./test_credentials.py} -v
+  DSH_MASTER=${master}/share/dsh-master/dsh-master.py PROBES=${master.probes} DSH=${releaseDsh} \
+    python3 -I ${./test_retry.py} -v
 
   dm=${lib.getExe master}
   # status exits 1 while any folder is stale or not installed; its lines go to status.out.
