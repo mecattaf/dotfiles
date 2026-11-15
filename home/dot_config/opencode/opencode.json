@@ -6,6 +6,7 @@
   "autoupdate": false,
   "enabled_providers": ["opencode"],
   "permission": {
+    "*": "deny",
     "read": "allow",
     "glob": "allow",
     "grep": "allow",
