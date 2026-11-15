@@ -118,6 +118,13 @@ in
           group = "users";
           mode = "600";
         };
+        # A separate writer can only publish the validated public status object.
+        age.secrets.fleet-status-publisher-token = {
+          file = ../secrets/fleet-status-publisher-token.age;
+          owner = "tom";
+          group = "users";
+          mode = "600";
+        };
         # Every login shell exports CLOUDFLARE_API_TOKEN from the delivered file, so
         # wrangler and the curl-based runbooks authenticate without a browser session.
         environment.extraInit = ''

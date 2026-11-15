@@ -66,6 +66,7 @@ in
   "secrets/gh-hosts.age".publicKeys = editors ++ brainOnly;
   "secrets/wrangler-config.age".publicKeys = editors ++ brainOnly;
   "secrets/cloudflare-api-token.age".publicKeys = editors ++ brainOnly;
+  "secrets/fleet-status-publisher-token.age".publicKeys = editors ++ brainOnly;
   # Only the Library/agent host accesses Hugging Face; compute borrows bytes.
   "secrets/huggingface-token.age".publicKeys = editors ++ brainOnly;
   "secrets/openrouter-token.age".publicKeys = editors ++ brainOnly;
