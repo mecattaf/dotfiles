@@ -1,0 +1,14 @@
+{
+  "name": "@mecattaf/dsh-openrouter-free",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-credentials": "*",
+    "@deepseek-ai/dsh-llm-pi-ai": "*",
+    "@earendil-works/pi-ai": "*"
+  }
+}

@@ -1,6 +1,6 @@
 """dsh-master: install, check and report the rendered Master DSH profiles.
 
-    dsh-master render [--from DIR] [--quiet]   copy the rendered files into $DSH_HOME
+    dsh-master render [PROFILE...] [--from DIR] [--quiet] copy selected profiles into $DSH_HOME
     dsh-master install [--force] [PROFILE...] install each profile's plugins
     dsh-master check [PROFILE...]             assert the rows in each config dump
     dsh-master status                         rendered, installed, current (exit 1 if not)
@@ -244,7 +244,24 @@ def render(args):
     if not os.path.isdir(home):
         print(f"dsh-master: {home} does not exist (dsh has never run here); nothing rendered", file=sys.stderr)
         return 0
-    for name, profile in sorted(manifest["profiles"].items()):
+    names = selected(manifest, args.profiles)
+    changed = set()
+    for name in names:
+        folder = os.path.join(home, "profiles", name)
+        profile = manifest["profiles"][name]
+        state = read_state(folder)
+        wanted_state = {"rendered": dict(profile["files"]), "installed": state.get("installed")}
+        if state != wanted_state or any(sha256(os.path.join(folder, file)) != profile["files"][file] for file, _ in FILES):
+            changed.add(name)
+    # HMR watches both the patch and package.json. Inventory precedes every
+    # mutation, including creation of another selected folder: an unavailable
+    # manager must not leave a partially rendered activation behind.
+    using = instances_using(args, manifest, home) if changed else {}
+    for name in names:
+        if name in changed and using.get(name):
+            print(f"render pending: {name}: dshd instance {', '.join(using[name])} is running; profile left unchanged", file=sys.stderr)
+            continue
+        profile = manifest["profiles"][name]
         folder = profile_folder(home, name, create=True)
         state = read_state(folder)
         rendered = state.get("rendered", {})
@@ -324,7 +341,7 @@ def instances_using(args, manifest, home):
             if os.path.realpath(profile["dshHome"]) == os.path.realpath(home):
                 using.setdefault(profile.get("name"), []).append(entry["name"])
     except (OSError, ValueError, KeyError, AttributeError, subprocess.TimeoutExpired, Failure) as error:
-        raise Failure(f"cannot tell which dshd instances run a Master profile ({error}); stop them and pass --force") from error
+        raise Failure(f"cannot tell which dshd instances run a Master profile ({error}); no profiles changed") from error
     return using
 
 
@@ -409,6 +426,8 @@ def dump_failures(dump, stderr, expect):
             failures.append(f"{want['id']}: disabled")
         if want["config"] is not None and got.get("config") != want["config"]:
             failures.append(f"{want['id']}: config is {json.dumps(got.get('config'), default=str, sort_keys=True)}")
+        if "inject" in want and got.get("inject") != want["inject"]:
+            failures.append(f"{want['id']}: required services are {got.get('inject')!r}, expected {want['inject']!r}")
     sessions = (by_id.get("session-persistence-jsonl") or {}).get("config") or {}
     if sessions.get("compression") != "none":
         failures.append(f"session-persistence-jsonl: compression is {sessions.get('compression')!r}")
@@ -498,6 +517,12 @@ def api(url, method="GET", body=None):
 def seeded(blocks, seed):
     """The blocks the seed changes, as {block: (value, revision)}; warnings go to stderr."""
     changes = {}
+    if "executor" in seed:
+        current = blocks["executor"]["value"]
+        value = copy.deepcopy(current)
+        value["maxWorkers"] = seed["executor"]["maxWorkers"]
+        if value != current:
+            changes["executor"] = (value, blocks["executor"]["revision"])
     if "rules" in seed or "admission" in seed:
         current = blocks["policy"]["value"]
         policy = copy.deepcopy(current)
@@ -540,6 +565,11 @@ def settings_seed(args):
         seed = json.load(stream)
     if "eval" in seed and mapping(seed["eval"]).get("mode") not in MODES:
         raise Failure(f"the seed's eval.mode is {mapping(seed['eval']).get('mode')!r}, not one of {', '.join(MODES)}")
+    if "executor" in seed:
+        executor = mapping(seed["executor"])
+        limit = executor.get("maxWorkers")
+        if set(executor) != {"maxWorkers"} or isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise Failure("the seed's executor must set only maxWorkers to a positive integer")
     url = args.url or load_manifest(args.source).get("url")
     if not url:
         raise Failure("no floor URL: this build's manifest names none; pass --url")
@@ -551,7 +581,7 @@ def settings_seed(args):
             return 0
         try:
             # Rules and admission before the mode, so `auto` never runs on the old rules.
-            for block in ("policy", "eval"):
+            for block in ("policy", "executor", "eval"):
                 if block in changes:
                     value, revision = changes[block]
                     api(f"{base}/{block}", "PUT", {"value": value, "revision": revision})
@@ -560,7 +590,7 @@ def settings_seed(args):
                 print(f"dsh-master: settings changed twice while seeding: {error}", file=sys.stderr)
                 return 1
             continue
-        print(f"changed {' '.join(block for block in ('policy', 'eval') if block in changes)}")
+        print(f"changed {' '.join(block for block in ('policy', 'executor', 'eval') if block in changes)}")
         return 0
     return 1
 
@@ -574,11 +604,13 @@ def main(argv):
         command.set_defaults(handler=handler)
         if name == "render":
             command.add_argument("--quiet", action="store_true", help="print only warnings and needed installs")
+        if name in ("render", "install", "check"):
+            command.add_argument("profiles", nargs="*", metavar="PROFILE")
         if name in ("install", "check"):
             command.add_argument("--dsh", help="the dsh to run (default: the manifest's, the one dshd runs)")
-            command.add_argument("profiles", nargs="*", metavar="PROFILE")
-        if name == "install":
+        if name in ("render", "install"):
             command.add_argument("--dshd", help="the dshd to ask which instances run (default: the manifest's)")
+        if name == "install":
             command.add_argument("--force", action="store_true", help="install even while a dshd instance runs the profile")
     settings = commands.add_parser("settings").add_subparsers(dest="settings", required=True)
     seed = settings.add_parser("seed", help="upsert the seed's rules and admission cells, raise eval.mode and eval.timeoutSeconds")
