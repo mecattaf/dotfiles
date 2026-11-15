@@ -315,7 +315,7 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   export DSH_HOME="$TMPDIR/probe-home"
   mkdir -p "$DSH_HOME" "$TMPDIR/cwd"
   cd "$TMPDIR/cwd"
-  $dm render --dshd ${dshdStub} --quiet --from ${master.probes} > /dev/null
+  STUB_PROFILE=web $dm render --dshd ${dshdStub} --quiet --from ${master.probes} > /dev/null
   $dm check --from ${master.probes} --dsh ${releaseDsh} | tee "$TMPDIR/check.out"
   test "$(grep -c '^ok ' "$TMPDIR/check.out")" = ${toString (builtins.length master.profileNames)}
   printf -- '- id: no-such-row\n  disabled: true\n' >> "$DSH_HOME/profiles/master-opus/cordis.patch.yml"
