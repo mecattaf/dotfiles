@@ -42,6 +42,14 @@ Rules the renderer keeps, each asserted by `checks.dsh-master`:
   dsh-claude's `headless-preset` binder. A pair of another provider binds
   none: the `claude` preset sends every request to Claude Code, and a Gufo
   worker under it fails its first turn.
+- Gufo headless workers use top-level `bash-sandbox`, `tool-bash` and
+  `compaction-basic` rows because they bind no preset. Bash stays in the
+  foreground for at most 660 seconds; automatic background promotion is off.
+  Compaction reserves 8,192 tokens of headroom and caps its summary at 8,192
+  tokens for that pair's Gufo model. These worker rows do not change the
+  master panel or Claude workers. Select a changed worker profile only while
+  no instance uses it: profile patches are watched for reload as well as read
+  by newly launched units.
 - Both plugins are pinned to one release tag, `programs.dsh.master.tag`
   (`floor-v2.<n>`, first `floor-v2.1`). `superagent` or `claude` overrides
   one pin on its own.
