@@ -84,7 +84,9 @@ let
   # following DSH_PERMISSION_MODE (danger-full-access under dshd). The
   # superagent pins its own Sessions to danger-full-access (the fork's
   # sessions.ts), so that preset is restated beside the fleet's two.
-  fleetRow = id: lib.findFirst (row: (row.id or null) == id) (throw "fleet policy has no ${id} row") dsh.policyRows;
+  fleetRow =
+    id:
+    lib.findFirst (row: (row.id or null) == id) (throw "fleet policy has no ${id} row") dsh.policyRows;
   panelRows =
     let
       permission = fleetRow "permission";
@@ -127,7 +129,9 @@ let
             name: pair:
             {
               profile = workerName name;
+              inherit (pair) provider model;
             }
+            // lib.optionalAttrs (pair.reasoningEffort != null) { effort = pair.reasoningEffort; }
             // lib.optionalAttrs (pair.env != { }) { inherit (pair) env; }
             // lib.optionalAttrs (pair.maxWorkers != null) { inherit (pair) maxWorkers; }
           ) settings.pairs;
@@ -243,7 +247,8 @@ let
         (off "dsh-superagent-github")
         (off "dsh-superagent-feishu")
       ]
-      ++ settings.superagentRows;
+      ++ settings.superagentRows
+      ++ settings.pairs.${pair}.workerRows;
   };
 
   bundles = app: [
@@ -269,6 +274,8 @@ let
       pair:
       lib.nameValuePair (workerName pair) {
         app = "@deepseek-ai/dsh-headless";
+        inherit (settings.pairs.${pair}) credentialFiles;
+        dependencies = settings.pairs.${pair}.dependencies;
         rows = firstParty.worker pair ++ extension.worker pair;
         firstPartyRows = firstParty.worker pair;
       }
@@ -294,6 +301,15 @@ let
       echo >> "$out"
       echo "# The ${name} profile rows." >> "$out"
       cat ${yaml.generate "${name}-rows.yml" rows} >> "$out"
+      ${lib.optionalString ((profiles.${name}.credentialFiles or { }) != { }) ''
+          cat >> "$out" <<'CREDENTIALS'
+        - id: credentials
+          disabled: false
+          config:
+            path: !!js dshHomePath('master-credentials/${name}.yaml')
+            watch: false
+        CREDENTIALS
+      ''}
     '';
 
   # dsh writes this text beside package.json when it creates a profile
@@ -360,6 +376,20 @@ let
         ]
     ) rows;
 
+  # Like the existing sessions root, the path follows DSH_HOME at launch.
+  # --dump-config preserves the expression, so the offline check verifies it
+  # without evaluating or reading a secret.
+  credentialExpect =
+    name: profile:
+    lib.optional ((profile.credentialFiles or { }) != { }) {
+      id = "credentials";
+      disabled = false;
+      config = {
+        path.__js = "dshHomePath('master-credentials/${name}.yaml')";
+        watch = false;
+      };
+    };
+
   spec = writeText "dsh-master-spec.json" (
     builtins.toJSON {
       dsh = settings.dshCommand;
@@ -367,10 +397,11 @@ let
       # The floor's web server, the default of `dsh-master settings seed`.
       url = "http://127.0.0.1:${toString settings.webPort}";
       profiles = lib.mapAttrs (name: profile: {
-        package = packageOf name dependencies (bundles profile.app);
+        package = packageOf name (dependencies // (profile.dependencies or { })) (bundles profile.app);
         patch = patchFile name profile.rows;
         workspace = pnpmWorkspace;
-        expect = expectRows (policyRows ++ profile.rows);
+        credentialFiles = profile.credentialFiles or { };
+        expect = expectRows (policyRows ++ profile.rows) ++ credentialExpect name profile;
       }) profiles;
     }
   );
@@ -387,7 +418,8 @@ let
         ];
         patch = patchFile name profile.firstPartyRows;
         workspace = pnpmWorkspace;
-        expect = expectRows (policyRows ++ profile.firstPartyRows);
+        credentialFiles = profile.credentialFiles or { };
+        expect = expectRows (policyRows ++ profile.firstPartyRows) ++ credentialExpect name profile;
       }) profiles;
     }
   );

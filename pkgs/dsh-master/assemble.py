@@ -52,6 +52,7 @@ def main(spec_path, out):
         manifest["profiles"][name] = {
             "files": {"package.json": digest(package), "cordis.patch.yml": digest(patch), "pnpm-workspace.yaml": digest(workspace)},
             "expect": profile["expect"],
+            "credentialFiles": profile.get("credentialFiles", {}),
         }
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as stream:
         json.dump(manifest, stream, indent=2, sort_keys=True)

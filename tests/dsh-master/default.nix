@@ -55,6 +55,9 @@ let
           }
         ) c.pairs;
         pairEnv = lib.mapAttrs (_: pair: { inherit (pair) env maxWorkers; }) c.pairs;
+        pairCredentials = lib.mapAttrs (_: pair: pair.credentialFiles) c.pairs;
+        pairDependencies = lib.mapAttrs (_: pair: pair.dependencies) c.pairs;
+        workerRows = lib.mapAttrs (_: pair: pair.workerRows) c.pairs;
         presets = lib.mapAttrs (_: pair: pair.preset) c.pairs;
         inherit (c)
           allowBuilds
@@ -116,8 +119,14 @@ assert
 assert
   master.profileNames == [
     "master"
+    "master-antigravity"
+    "master-cohere-extract"
+    "master-gemini-lite"
+    "master-groq"
     "master-gufo"
     "master-opus"
+    "master-zen-deepseek"
+    "master-zen-glm"
   ];
 # The Claude pair binds dsh-claude's preset; Gufo binds none.
 assert cfg.pairs.opus.preset == "claude" && cfg.pairs.gufo.preset == null;
@@ -133,6 +142,8 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   grep -qx 'ok identical dependencies across profiles, pinned as configured' "$TMPDIR/overridden.out"
   DSH_MASTER=${master}/share/dsh-master/dsh-master.py SEED=${master}/share/dsh-master/settings.seed.json \
     python3 -I ${./test_seed.py} -v
+  DSH_MASTER=${master}/share/dsh-master/dsh-master.py \
+    python3 -I ${./test_credentials.py} -v
 
   dm=${lib.getExe master}
   # status exits 1 while any folder is stale or not installed; its lines go to status.out.
@@ -160,7 +171,7 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   cmp "$TMPDIR/init-home/profiles/master-init/pnpm-workspace.yaml" ${master.dshWorkspace}
   head -c "$(stat -c %s ${master.dshWorkspace})" ${master.pnpmWorkspace} | cmp - ${master.dshWorkspace}
   grep -qx '  "msgpackr-extract": false' ${master.pnpmWorkspace}
-  for p in master master-gufo master-opus; do
+  for p in ${lib.concatStringsSep " " master.profileNames}; do
     cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/$p/pnpm-workspace.yaml"
     test "$(stat -c %a "$DSH_HOME/profiles/$p/pnpm-workspace.yaml")" = 644
     grep -qx "updated $p/pnpm-workspace.yaml" "$TMPDIR/first.out"
@@ -168,20 +179,20 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   # master had a workspace file and no render state: someone else wrote it.
   grep -qx 'dsh-master: master/pnpm-workspace.yaml was changed outside dsh-master; replacing it' "$TMPDIR/first.err"
   test "$(wc -l < "$TMPDIR/first.err")" = 1
-  for p in master master-gufo master-opus; do
+  for p in ${lib.concatStringsSep " " master.profileNames}; do
     grep -qx "install needed: $p" "$TMPDIR/first.out"
     cmp ${master}/profiles/$p/cordis.patch.yml "$DSH_HOME/profiles/$p/cordis.patch.yml"
     cmp ${master}/profiles/$p/package.json "$DSH_HOME/profiles/$p/package.json"
     test "$(stat -c %a "$DSH_HOME/profiles/$p/package.json")" = 600
     test "$(stat -c %a "$DSH_HOME/profiles/$p/cordis.patch.yml")" = 644
   done
-  test "$(ls "$DSH_HOME/profiles" | sort | tr '\n' ' ')" = "master master-gufo master-opus web "
+  test "$(ls "$DSH_HOME/profiles" | sort | tr '\n' ' ')" = "${lib.concatStringsSep " " master.profileNames} web "
   tree "$DSH_HOME" > "$TMPDIR/tree.first"
   $dm render > "$TMPDIR/second.out" 2> "$TMPDIR/second.err"
   # Nothing written, and the install still owed is said again.
   if grep -v '^install needed: ' "$TMPDIR/second.out"; then exit 1; fi
   test ! -s "$TMPDIR/second.err"
-  for p in master master-gufo master-opus; do grep -qx "install needed: $p" "$TMPDIR/second.out"; done
+  for p in ${lib.concatStringsSep " " master.profileNames}; do grep -qx "install needed: $p" "$TMPDIR/second.out"; done
   tree "$DSH_HOME" > "$TMPDIR/tree.second"
   cmp "$TMPDIR/tree.first" "$TMPDIR/tree.second"
   keep | cmp - "$TMPDIR/keep.before"
@@ -254,17 +265,20 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   grep -qx 'master-opus: rendered current, installed current, node_modules present' "$TMPDIR/status.out"
   # Every folder installed: status exits 0. A master* folder no build
   # renders is listed as an orphan and fails nothing.
-  for p in master master-gufo; do
+  for p in ${
+    lib.concatStringsSep " " (builtins.filter (name: name != "master-opus") master.profileNames)
+  }; do
     f="$DSH_HOME/profiles/$p"
     mkdir -p "$f/node_modules/dsh-superagent/lib" "$f/node_modules/@norman-else/dsh-claude/lib"
     touch "$f/node_modules/dsh-superagent/lib/index.js" "$f/node_modules/@norman-else/dsh-claude/lib/index.mjs"
+    python3 -I -c 'import json,pathlib,sys; f=pathlib.Path(sys.argv[1]); [(f/"node_modules"/d/"lib").mkdir(parents=True,exist_ok=True) or (f/"node_modules"/d/"lib"/"fixture.js").touch() for d in json.loads((f/"package.json").read_text())["dependencies"]]' "$f"
     ${python}/bin/python3 -I ${./lockfile.py} "$f"
     STUB_PROFILE=web $dm $di --dsh ${pkgs.coreutils}/bin/true $p | grep >/dev/null -x "installed $p"
   done
   mkdir "$DSH_HOME/profiles/master-retired"
   status 0
   grep -qx 'master-retired: orphan, not rendered by this build (remove it by hand when no instance uses it)' "$TMPDIR/status.out"
-  test "$(grep -c 'rendered current, installed current' "$TMPDIR/status.out")" = 3
+  test "$(grep -c 'rendered current, installed current' "$TMPDIR/status.out")" = ${toString (builtins.length master.profileNames)}
   rmdir "$DSH_HOME/profiles/master-retired"
 
   # install runs dsh with pnpm and git on PATH (dsh plugin spawns pnpm).
@@ -294,7 +308,7 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   cd "$TMPDIR/cwd"
   $dm render --quiet --from ${master.probes} > /dev/null
   $dm check --from ${master.probes} --dsh ${releaseDsh} | tee "$TMPDIR/check.out"
-  test "$(grep -c '^ok ' "$TMPDIR/check.out")" = 3
+  test "$(grep -c '^ok ' "$TMPDIR/check.out")" = ${toString (builtins.length master.profileNames)}
   printf -- '- id: no-such-row\n  disabled: true\n' >> "$DSH_HOME/profiles/master-opus/cordis.patch.yml"
   if $dm check --from ${master.probes} --dsh ${releaseDsh} master-opus 2> "$TMPDIR/typo.err"; then exit 1; fi
   grep -q 'stderr: .*no-such-row' "$TMPDIR/typo.err"

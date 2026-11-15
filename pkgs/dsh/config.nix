@@ -98,12 +98,24 @@ let
     }
     // extra;
 
-  # Groq (https://api.groq.com/openai/v1): three keys, 1,000 requests and
-  # 200K tokens per day per key (measured headers: 8,000 tokens/minute). All
+  # Groq (https://api.groq.com/openai/v1): three configured keys, not three
+  # independent pools. Limits are organization scoped: 1,000 requests and
+  # 200K tokens/day in the published free plan (8,000 TPM observed). All
   # three ids are catalog-verified (qwen3.8-27b: 131,042 context, 16,384 out).
   groq =
     retryPolicy:
     keyed "Groq" "GROQ_API_KEY" retryPolicy {
+      # A normal DSH tool round is ~5.6K input tokens; the next round can hit
+      # the observed 7K ITPM cap. Millisecond retries only repeat that refusal.
+      # Keep native recovery bounded and wait a full minute before retrying;
+      # QUOTA/AUTH remain terminal and no account or paid fallback is selected.
+      retryPolicy = retryPolicy // {
+        backoff = {
+          initialDelayMs = 60000;
+          maxDelayMs = 60000;
+          jitterRatio = 0;
+        };
+      };
       models = [
         {
           id = "qwen/qwen3.8-27b"; # default; Tom's wanted model
@@ -253,8 +265,8 @@ let
     };
 
   # Cerebras (https://api.cerebras.ai/v1): one key, no per-key rotation.
-  # The strongest lane by allowance (measured headers: 450 requests/minute,
-  # 648K/day, 150K tokens/minute, 216M tokens/day). Both ids are
+  # Historical headers advertised large rate limits, but current generation
+  # returns 402 without credit. They are not a usable token budget. Both ids are
   # catalog-verified (131,072 context, 40,960 out, reasoning); qwen-3.8-27b
   # answered.
   cerebras =

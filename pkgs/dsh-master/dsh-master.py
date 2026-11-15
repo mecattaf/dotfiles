@@ -4,6 +4,7 @@
     dsh-master install [--force] [PROFILE...] install each profile's plugins
     dsh-master check [PROFILE...]             assert the rows in each config dump
     dsh-master status                         rendered, installed, current (exit 1 if not)
+    dsh-master credentials sync [PROFILE...] private native stores from runtime secret files
     dsh-master settings seed [FILE] [--url U] seed the floor's Store settings
 
 The rendered folders come from the package (pkgs/dsh-master/default.nix) or
@@ -18,6 +19,12 @@ overlays would hide what a dshd instance really composes. settings seed is
 a client of the floor's management API: it upserts rules and admission cells
 and raises the accept mode and the eval time limit, and never touches
 anything else.
+
+credentials sync owns only $DSH_HOME/master-credentials/master*.yaml. It
+copies the manifest's runtime source refs into version-1 native DSH stores,
+with an owner-only directory and atomic 0600 files. It never edits the user's
+global .credentials.yaml and never prints values. The profile's credentials
+row follows DSH_HOME, so an isolated worker cannot silently read the live store.
 """
 
 import argparse
@@ -26,6 +33,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -148,6 +156,61 @@ def selected(manifest, names):
     if unknown:
         raise Failure(f"not a rendered Master profile: {', '.join(unknown)}")
     return names or sorted(manifest["profiles"])
+
+
+def credentials_sync(args):
+    """Publish exclusively owned native stores; never put values in metadata or output."""
+    manifest = load_manifest(args.source)
+    pending = []
+    # Read and validate the entire selected set first. A missing key cannot
+    # leave half a rotation published, and an old store is never silently used.
+    for name in selected(manifest, args.profiles):
+        files = manifest["profiles"][name].get("credentialFiles", {})
+        if not files:
+            continue
+        refs = {}
+        for ref, path in files.items():
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", ref) or not os.path.isabs(path):
+                raise Failure(f"{name}: invalid credential reference or source path")
+            try:
+                with open(path, encoding="utf-8") as stream:
+                    raw = stream.read(65537)
+            except OSError as error:
+                raise Failure(f"{name}: cannot read credential source {path}: {error.strerror}") from None
+            value = raw.strip()
+            if not value or len(raw) > 65536 or "\n" in value or "\r" in value:
+                raise Failure(f"{name}: credential source {path} is empty or not one bounded line")
+            refs[ref] = value
+        data = (json.dumps({"version": 1, "refs": refs}, indent=2, sort_keys=True) + "\n").encode()
+        pending.append((name, data))
+    if not pending:
+        return 0
+    home = dsh_home()
+    if not os.path.isdir(home):
+        raise Failure("DSH_HOME does not exist; run dsh-master render first")
+    folder = os.path.join(home, "master-credentials")
+    if not os.path.lexists(folder):
+        os.mkdir(folder, mode=0o700)
+    info = os.lstat(folder)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise Failure(f"{folder}: credential directory must be a real owner-only directory")
+    # Validate destinations before publishing any file, including symlinks.
+    for name, _ in pending:
+        path = os.path.join(folder, name + ".yaml")
+        if os.path.lexists(path):
+            info = os.lstat(path)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+                raise Failure(f"{path}: credential store must be a real owner-only file")
+    for name, data in pending:
+        path = os.path.join(folder, name + ".yaml")
+        unchanged = False
+        if os.path.exists(path):
+            with open(path, "rb") as stream:
+                unchanged = stream.read() == data
+        if not unchanged:
+            write_atomic(folder, name + ".yaml", data, 0o600)
+        print(f"credentials {'unchanged' if unchanged else 'synced'}: {name}")
+    return 0
 
 
 def mapping(value):
@@ -523,6 +586,11 @@ def main(argv):
     seed.add_argument("--url", help="the floor's web server (default: the rendered master's webserver port)")
     seed.add_argument("--from", dest="source", default=default_source(), help="a dsh-master build (default: this one)")
     seed.set_defaults(handler=settings_seed)
+    credentials = commands.add_parser("credentials").add_subparsers(dest="credentials", required=True)
+    sync = credentials.add_parser("sync", help="publish private per-profile native credential stores from runtime secret files")
+    sync.add_argument("--from", dest="source", default=default_source(), help="a dsh-master build (default: this one)")
+    sync.add_argument("profiles", nargs="*", metavar="PROFILE")
+    sync.set_defaults(handler=credentials_sync)
     args = parser.parse_args(argv)
     try:
         return args.handler(args)
