@@ -56,6 +56,7 @@ let
         ) c.pairs;
         pairEnv = lib.mapAttrs (_: pair: { inherit (pair) env maxWorkers; }) c.pairs;
         presets = lib.mapAttrs (_: pair: pair.preset) c.pairs;
+        workerRows = lib.mapAttrs (_: pair: pair.workerRows) c.pairs;
         inherit (c)
           allowBuilds
           defaultPair
@@ -83,6 +84,20 @@ let
   # rendered as configured, and the check stays green.
   overridden = masterOf {
     superagent = "github:mecattaf/dsh-superagent-prototype#floor-v2.98";
+    pairs = cfg.pairs // {
+      gufo = cfg.pairs.gufo // {
+        workerRows = [
+          {
+            insert = [
+              {
+                id = "worker-row-fixture";
+                name = "/immutable-owner-module/worker.mjs";
+              }
+            ];
+          }
+        ];
+      };
+    };
     superagentRows = [
       {
         id = "dsh-superagent-scheduled";
@@ -133,6 +148,8 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   grep -qx 'ok identical dependencies across profiles, pinned as configured' "$TMPDIR/overridden.out"
   DSH_MASTER=${master}/share/dsh-master/dsh-master.py SEED=${master}/share/dsh-master/settings.seed.json \
     python3 -I ${./test_seed.py} -v
+  DSH_MASTER=${master}/share/dsh-master/dsh-master.py \
+    python3 -I ${./test_render_selection.py} -v
 
   dm=${lib.getExe master}
   # status exits 1 while any folder is stale or not installed; its lines go to status.out.

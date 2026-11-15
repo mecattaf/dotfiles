@@ -42,6 +42,19 @@ Rules the renderer keeps, each asserted by `checks.dsh-master`:
   dsh-claude's `headless-preset` binder. A pair of another provider binds
   none: the `claude` preset sends every request to Claude Code, and a Gufo
   worker under it fails its first turn.
+- Gufo headless workers use top-level `bash-sandbox`, `tool-bash` and
+  `compaction-basic` rows because they bind no preset. Bash stays in the
+  foreground for at most 660 seconds; automatic background promotion is off.
+  Compaction reserves 8,192 tokens of headroom and caps its summary at 8,192
+  tokens for that pair's Gufo model. These worker rows do not change the
+  master panel or Claude workers. Select a changed worker profile only while
+  no instance uses it: profile patches are watched for reload as well as read
+  by newly launched units.
+- `programs.dsh.master.pairs.<pair>.workerRows` appends rows only to that
+  headless profile. It can select a separately versioned mechanical worker
+  module by its immutable absolute path. The profile manifest records that
+  selection and `dsh-master check` verifies it; a later render reproduces it.
+  The selected module's source and deployment manifest stay with its owner.
 - Both plugins are pinned to one release tag, `programs.dsh.master.tag`
   (`floor-v2.<n>`, first `floor-v2.1`). `superagent` or `claude` overrides
   one pin on its own.
@@ -111,7 +124,7 @@ current `package.json`, every render prints `install needed: <p>`.
 The other steps are by hand:
 
 ```sh
-dsh-master render            # what activation does, with a line per file
+dsh-master render [P...]     # all profiles by default, or only the named profiles
 dsh-master install [P...]    # pnpm install per folder, through the dsh dshd runs
 dsh-master check [P...]      # --dump-config per folder: every rendered row, no patch warning
 dsh-master status            # per folder: rendered current|stale, installed current|no, node_modules present|absent; exit 1 if not all current
@@ -121,6 +134,11 @@ dsh-master settings seed [FILE] [--url U]   # once, after the floor's first star
 Every verb takes `--from DIR`, a `nix build .#dsh-master` result, in
 place of the installed build; `install` and `check` take `--dsh PATH` to
 run another dsh than the one dshd runs.
+
+`render master-gufo` changes only that profile's rendered files and render state.
+The main and Claude worker folders are left untouched; an unknown name fails
+before any profile is written. With no profile argument, activation retains its
+existing render-all behavior.
 
 `install` runs `/etc/dshd/releases/default/bin/dsh plugin --profile <p>
 install` under a 600 s timeout, with pnpm and git on PATH, and then judges

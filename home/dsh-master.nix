@@ -49,6 +49,11 @@ let
           default = null;
           description = "At most this many units of this pair at once.";
         };
+        workerRows = mkOption {
+          type = types.listOf types.attrs;
+          default = [ ];
+          description = "Additional plugin rows for only this pair's headless profile, appended after the shared rows. Pin a separately owned module by its immutable absolute path; the renderer records and checks the selection, but does not own that module's code.";
+        };
         # dsh headless binds no agent preset, and dsh-claude serves only a
         # Session bound to one of its presets. Its `claude` preset also routes
         # every request to Claude Code, so a pair of another provider binds none
@@ -160,6 +165,18 @@ in
           model = localModel.modelId;
           env.GUFO_API_KEY = "local-no-auth";
           maxWorkers = 1;
+          # Separately owned immutable source; selected only for a framed
+          # mechanical task. Ordinary Gufo workers keep their model route.
+          workerRows = [
+            {
+              insert = [
+                {
+                  id = "academic-framed-mechanical-worker";
+                  name = "${home}/.agency/protocols/academic-drain/components/native-command/a6d912a2af2f200b982ee378e9b126277d10d691/framed-mechanical-worker.mjs";
+                }
+              ];
+            }
+          ];
         };
       };
       description = "Provider-harness pairs; each renders one headless folder master-<name>.";

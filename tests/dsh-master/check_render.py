@@ -188,6 +188,40 @@ def main(package, expect_path):
 
     problems = []
     for name, ids in rows.items():
+        pair = pairs.get(workers.get(name), {})
+        wanted = {}
+        if pair.get("provider") == "gufo":
+            wanted = {
+                "bash-sandbox": {"timeoutMs": 660000, "maxTimeoutMs": 660000},
+                "tool-bash": {"enableRunInBackground": False, "promoteOnTimeout": False},
+                "compaction-basic": {"modelPolicies": [{
+                    "provider": pair["provider"], "model": pair["model"],
+                    "headroomTokens": 8192, "maxTokens": 8192,
+                }]},
+            }
+        for row_id in ("bash-sandbox", "tool-bash", "compaction-basic"):
+            got = ids.get(row_id, [])
+            if row_id in wanted:
+                if len(got) != 1 or got[0].get("config") != wanted[row_id]:
+                    problems.append(f"{name}: {row_id} is {got}, expected {wanted[row_id]}")
+            elif got:
+                problems.append(f"{name}: Gufo-only headless row {row_id} leaked into this profile")
+    subtest("Gufo headless foreground and compaction budgets only", problems)
+
+    problems = []
+    for pair, extra_rows in expect["workerRows"].items():
+        target = f"master-{pair}"
+        for source in extra_rows:
+            listed = source.get("insert", [source])
+            for row in listed:
+                for name, ids in rows.items():
+                    got = [{k: v for k, v in item.items() if k != "inserted"} for item in ids.get(row["id"], [])]
+                    if got != ([row] if name == target else []):
+                        problems.append(f"{name}: pair-only {row['id']} is {got}")
+    subtest("additional worker rows stay with their pair and are manifest-checked", problems)
+
+    problems = []
+    for name, ids in rows.items():
         claude = ids.get("llm-claude", [])
         if len(claude) != 1:
             problems.append(f"{name}: {len(claude)} llm-claude rows")
@@ -229,6 +263,7 @@ def main(package, expect_path):
             problems.append(f"{name}: binds preset {preset!r} to a {pairs[pair]['provider']} worker (the claude preset routes to Claude Code)")
         order = [row.get("insert", [{}])[0].get("id") for row in folders[name]["patch"] if "insert" in row]
         want = ["agent-preset-registry"] + ([] if preset is None else ["headless-preset"])
+        want += [item["id"] for row in expect["workerRows"][pair] for item in row.get("insert", [])[:1]]
         if order != want:
             problems.append(f"{name}: inserts in the order {order}, expected {want}")
     subtest("headless folders insert headless-preset after agent-preset-registry", problems)

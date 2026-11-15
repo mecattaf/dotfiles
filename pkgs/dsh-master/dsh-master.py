@@ -1,6 +1,6 @@
 """dsh-master: install, check and report the rendered Master DSH profiles.
 
-    dsh-master render [--from DIR] [--quiet]   copy the rendered files into $DSH_HOME
+    dsh-master render [PROFILE...] [--from DIR] [--quiet] copy selected profiles into $DSH_HOME
     dsh-master install [--force] [PROFILE...] install each profile's plugins
     dsh-master check [PROFILE...]             assert the rows in each config dump
     dsh-master status                         rendered, installed, current (exit 1 if not)
@@ -181,7 +181,8 @@ def render(args):
     if not os.path.isdir(home):
         print(f"dsh-master: {home} does not exist (dsh has never run here); nothing rendered", file=sys.stderr)
         return 0
-    for name, profile in sorted(manifest["profiles"].items()):
+    for name in selected(manifest, args.profiles):
+        profile = manifest["profiles"][name]
         folder = profile_folder(home, name, create=True)
         state = read_state(folder)
         rendered = state.get("rendered", {})
@@ -511,9 +512,10 @@ def main(argv):
         command.set_defaults(handler=handler)
         if name == "render":
             command.add_argument("--quiet", action="store_true", help="print only warnings and needed installs")
+        if name in ("render", "install", "check"):
+            command.add_argument("profiles", nargs="*", metavar="PROFILE")
         if name in ("install", "check"):
             command.add_argument("--dsh", help="the dsh to run (default: the manifest's, the one dshd runs)")
-            command.add_argument("profiles", nargs="*", metavar="PROFILE")
         if name == "install":
             command.add_argument("--dshd", help="the dshd to ask which instances run (default: the manifest's)")
             command.add_argument("--force", action="store_true", help="install even while a dshd instance runs the profile")
