@@ -89,7 +89,12 @@ def main(package, expect_path):
     )
 
     deps = {name: folder["package"]["dependencies"] for name, folder in folders.items()}
-    problems = [f"{name}: {dep}" for name, dep in deps.items() if dep != deps["master"]]
+    problems = []
+    for name, dep in deps.items():
+        pair = workers.get(name)
+        wanted = deps["master"] | (expect["pairDependencies"].get(pair, {}) if pair else {})
+        if dep != wanted:
+            problems.append(f"{name}: dependencies {dep}, expected {wanted}")
     configured = {"dsh-superagent": expect["superagent"], "@norman-else/dsh-claude": expect["claude"]}
     problems += [] if deps["master"] == configured else [f"dependencies {deps['master']}, configured {configured}"]
     # The release form only while neither pin is set by hand (docs/dsh-master.md: a fork-only re-tag sets one).
@@ -177,6 +182,9 @@ def main(package, expect_path):
             problems.append(f"dshd.pairs.{pair}.profile is {got.get('profile')!r}")
         if got.get("env", {}) != settings["env"] or got.get("maxWorkers") != settings["maxWorkers"]:
             problems.append(f"dshd.pairs.{pair} is {got}")
+        route = pairs[pair]
+        if got.get("provider") != route["provider"] or got.get("model") != route["model"] or got.get("effort") != route.get("reasoningEffort"):
+            problems.append(f"dshd.pairs.{pair} lacks the exact provider/model/effort selection")
     if sorted(dshd.get("pairs", {})) != sorted(pairs):
         problems.append(f"dshd.pairs are {sorted(dshd.get('pairs', {}))}")
     config = superagent.get("master", {}).get("config", {})
@@ -228,10 +236,25 @@ def main(package, expect_path):
         if pairs[pair]["provider"] != "claude" and preset is not None:
             problems.append(f"{name}: binds preset {preset!r} to a {pairs[pair]['provider']} worker (the claude preset routes to Claude Code)")
         order = [row.get("insert", [{}])[0].get("id") for row in folders[name]["patch"] if "insert" in row]
-        want = ["agent-preset-registry"] + ([] if preset is None else ["headless-preset"])
+        extra = expect["workerRows"][pair]
+        want = ["agent-preset-registry"] + ([] if preset is None else ["headless-preset"]) + [inserted["id"] for row in extra for inserted in row.get("insert", [])]
         if order != want:
             problems.append(f"{name}: inserts in the order {order}, expected {want}")
     subtest("headless folders insert headless-preset after agent-preset-registry", problems)
+
+    problems = []
+    for name, pair in workers.items():
+        files = expect["pairCredentials"][pair]
+        if manifest["profiles"][name].get("credentialFiles") != files:
+            problems.append(f"{name}: runtime credential source metadata differs")
+        credentials = rows[name].get("credentials", [])
+        if files:
+            wanted = {"path": {"__js": f"dshHomePath('master-credentials/{name}.yaml')"}, "watch": False}
+            if len(credentials) != 1 or credentials[0].get("disabled") is not False or credentials[0].get("config") != wanted:
+                problems.append(f"{name}: native credential store selection is {credentials}")
+        elif credentials:
+            problems.append(f"{name}: a pair without credential files gained a credential store")
+    subtest("cloud pairs use private per-profile native credential stores", problems)
 
     problems = []
     try:

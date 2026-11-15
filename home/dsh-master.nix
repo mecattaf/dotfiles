@@ -21,6 +21,47 @@ let
   home = config.home.homeDirectory;
   localModel = import ../lib/local-model.nix;
   inherit (lib) mkOption types;
+  nativeClientPin = "github:mecattaf/dsh-gemini-cli#f2d30301180b0d8633b30b9f706dfbba63d4be0d";
+  zenPair = model: {
+    provider = "zen-cli-1";
+    inherit model;
+    maxWorkers = 1;
+    dependencies."@mecattaf/dsh-gemini-cli" = nativeClientPin;
+    workerRows = [
+      {
+        insert = [
+          {
+            id = "llm-zen-cli";
+            name = "@mecattaf/dsh-gemini-cli";
+            config = {
+              providerPrefix = "zen-cli";
+              runtimeName = "OpenCode Zen";
+              registerCommands = false;
+              allowDirectProvider = true;
+              allowedModels = [ model ];
+              defaultMode = "zen-worker";
+              turnTimeoutMs = 600000;
+              accounts = [
+                {
+                  id = "1";
+                  name = "Zen fixed slot 1";
+                  executablePath = "${home}/.local/bin/zen";
+                  cliArgs = [
+                    "--acp"
+                    "--edit"
+                    "--cwd"
+                    "."
+                    "--timeout"
+                    "3600"
+                  ];
+                }
+              ];
+            };
+          }
+        ];
+      }
+    ];
+  };
 
   pair = types.submodule (
     { config, ... }:
@@ -44,10 +85,25 @@ let
           default = { };
           description = "Environment of this pair's units. Recorded in each unit's recipe and its Assignment binding, and passed in the dshd run argv: public values only; a real key belongs in DSH's credential store.";
         };
+        credentialFiles = mkOption {
+          type = types.attrsOf types.str;
+          default = { };
+          description = "Credential reference to runtime secret file. dsh-master credentials sync copies only these refs into an owner-only per-profile native DSH credential store; values never enter Nix, argv, pair env or dshd recipes.";
+        };
         maxWorkers = mkOption {
           type = types.nullOr types.ints.positive;
           default = null;
           description = "At most this many units of this pair at once.";
+        };
+        dependencies = mkOption {
+          type = types.attrsOf types.str;
+          default = { };
+          description = "Additional pinned plugin packages installed only in this pair's profile.";
+        };
+        workerRows = mkOption {
+          type = types.listOf types.attrs;
+          default = [ ];
+          description = "Additional plugin rows for only this pair's headless profile, appended after the shared rows. Pin a separately owned module by its immutable absolute path; the renderer records and checks the selection, but does not own that module's code.";
         };
         # dsh headless binds no agent preset, and dsh-claude serves only a
         # Session bound to one of its presets. Its `claude` preset also routes
@@ -161,6 +217,65 @@ in
           env.GUFO_API_KEY = "local-no-auth";
           maxWorkers = 1;
         };
+        groq = {
+          provider = "groq";
+          model = "qwen/qwen3.8-27b";
+          reasoningEffort = "low";
+          credentialFiles.GROQ_API_KEY = osConfig.age.secrets.groq-api-key-1.path;
+          maxWorkers = 1;
+        };
+        gemini-lite = {
+          provider = "google";
+          model = "gemini-3.5-flash-lite";
+          reasoningEffort = "low";
+          credentialFiles.GEMINI_API_KEY = osConfig.age.secrets.gemini-api-key-1.path;
+          maxWorkers = 1;
+        };
+        cohere-extract = {
+          provider = "cohere";
+          model = "command-r-plus-08-2024";
+          credentialFiles.COHERE_API_KEY = osConfig.age.secrets.cohere-api-key-1.path;
+          maxWorkers = 1;
+        };
+        antigravity = {
+          provider = "antigravity-cli-1";
+          model = "gemini-3.8-flash";
+          reasoningEffort = "low";
+          maxWorkers = 1;
+          dependencies."@mecattaf/dsh-gemini-cli" = nativeClientPin;
+          workerRows = [
+            {
+              insert = [
+                {
+                  id = "llm-antigravity-cli";
+                  name = "@mecattaf/dsh-gemini-cli";
+                  config = {
+                    allowDirectProvider = true;
+                    registerCommands = false;
+                    terminalPrompts = false;
+                    defaultMode = "accept-edits";
+                    allowedModels = [ "gemini-3.8-flash" ];
+                    turnTimeoutMs = 600000;
+                    accounts = [
+                      {
+                        id = "1";
+                        name = "Google account 1";
+                        executablePath = "/etc/profiles/per-user/tom/bin/agy";
+                        cliArgs = [
+                          "--settings"
+                          ''{"useG1Credits":false}''
+                          "acp"
+                        ];
+                      }
+                    ];
+                  };
+                }
+              ];
+            }
+          ];
+        };
+        zen-deepseek = zenPair "opencode/deepseek-v4.1-flash-free";
+        zen-glm = zenPair "opencode/glm-5.3-flash-free";
       };
       description = "Provider-harness pairs; each renders one headless folder master-<name>.";
     };
@@ -267,6 +382,8 @@ in
     home.activation.dshMasterProfiles = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       run ${lib.getExe cfg.package} render --quiet \
         || echo "dsh-master: render failed; run dsh-master render" >&2
+      run ${lib.getExe cfg.package} credentials sync \
+        || echo "dsh-master: credential sync failed; cloud workers are not ready; run dsh-master credentials sync" >&2
     '';
   };
 }

@@ -13,6 +13,11 @@ pair:
 | `master-opus` | `dsh-headless` | `false` | one worker per dshd unit, Claude Opus at medium effort (the default pair) |
 | `master-gufo` | `dsh-headless` | `false` | one worker per dshd unit, Gufo `qwen3.8-flash-next`, one at a time |
 
+The qualified cloud pairs add `master-groq`, `master-gemini-lite`,
+`master-cohere-extract`, `master-antigravity`, `master-zen-deepseek` and
+`master-zen-glm`. See [cloud-worker-pairs.md](cloud-worker-pairs.md) for exact
+models, native credential delivery, supported-but-held providers and checks.
+
 The folders are `~/.dsh/profiles/master*`. No other profile folder and no
 `~/.dsh/cordis.patch.yml` is written: that home layer would change every
 profile of the home. Scheduled items, which wake this floor, are in
@@ -22,9 +27,11 @@ profile of the home. Scheduled items, which wake this floor, are in
 
 Rules the renderer keeps, each asserted by `checks.dsh-master`:
 
-- Every folder lists the same dependencies and the same non-app bundles
+- Every folder lists the shared dependencies and the same non-app bundles
   (base, dsh-claude, dsh-superagent). No folder lists both apps: the headless
-  layer turns authorization off for the whole tree.
+  layer turns authorization off for the whole tree. A pair's `dependencies`
+  adds pinned native-client plugins only to that pair's profile, mounted by
+  its `workerRows`.
 - The fleet policy (`pkgs/dsh/config.nix`) is in each folder's own
   `cordis.patch.yml`, because dshd runs the unwrapped dsh and never gets the
   wrapper's overlays. The sandbox, permission and approval rows are left out:
@@ -59,6 +66,9 @@ programs.dsh.master.pairs.sonnet = {
   reasoningEffort = "low";   # null for a model that declares none
   # env = { };               # public values only: each unit's recipe records them
   # maxWorkers = 2;          # at most this many units of this pair at once
+  # credentialFiles = { };  # credential ref -> runtime agenix path, no values
+  # dependencies = { };     # additional pinned packages for this pair only
+  # workerRows = [ ];       # pair-specific native modules
 };
 ```
 
