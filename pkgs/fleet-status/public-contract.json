@@ -1,0 +1,440 @@
+{
+  "schemaVersion": "fleet-public-contract/1",
+  "sources": {
+    "fleet.topology": [
+      "host.role",
+      "host.declaredMode",
+      "host.expectedCapabilities"
+    ],
+    "fleet.snapshot": [
+      "host.reachability",
+      "host.observedAt",
+      "host.failures",
+      "host.pressure",
+      "host.storage",
+      "host.revision"
+    ],
+    "host.unit-health": [
+      "service.activeState",
+      "service.subState",
+      "service.result",
+      "service.restartCount",
+      "service.socketReady"
+    ],
+    "host.revisions": [
+      "host.installedRevision",
+      "host.bootedRevision",
+      "host.pendingReboot",
+      "host.intendedRevision"
+    ],
+    "host.pressure": [
+      "host.load1",
+      "host.load5",
+      "host.load15",
+      "host.memoryTotalBytes",
+      "host.memoryAvailableBytes",
+      "host.swapUsedBytes",
+      "host.psi"
+    ],
+    "host.storage": [
+      "filesystem.totalBytes",
+      "filesystem.availableBytes",
+      "filesystem.usedPercent",
+      "filesystem.mounted",
+      "filesystem.onDemand"
+    ],
+    "host.network": [
+      "network.rxBytes",
+      "network.txBytes",
+      "network.rxBytesPerSecond",
+      "network.txBytesPerSecond",
+      "network.linkState"
+    ],
+    "host.incidents": [
+      "incident.kind",
+      "incident.publicServiceId",
+      "incident.at",
+      "incident.result",
+      "incident.count"
+    ],
+    "service.inventory": [
+      "service.owner",
+      "service.purpose",
+      "service.hostId",
+      "service.declaredMode",
+      "service.dependsOn",
+      "service.publicUrl"
+    ],
+    "service.adguard": [
+      "dns.queries",
+      "dns.blocked",
+      "dns.blockedFraction",
+      "dns.averageLatencyMs"
+    ],
+    "service.tailnet": [
+      "tailnet.backendState",
+      "tailnet.peersOnline",
+      "tailnet.lastSeen",
+      "tailnet.updatesAvailable"
+    ],
+    "cloud.deployments": [
+      "deployment.kind",
+      "deployment.publicName",
+      "deployment.sourceRevision",
+      "deployment.observedRevision",
+      "deployment.acceptedAt",
+      "deployment.publicUrl",
+      "deployment.maintenance"
+    ],
+    "cloud.resource-usage": [
+      "cloud.requests",
+      "cloud.errors",
+      "cloud.cpuTime",
+      "cloud.storageBytes",
+      "cloud.quotaWindow"
+    ],
+    "service.domain-health": [
+      "service.endpointReachable",
+      "service.expectedResponse",
+      "service.domainReady",
+      "service.latencyMs",
+      "service.version"
+    ],
+    "agent.instances": [
+      "instance.state",
+      "instance.transport",
+      "instance.enabled",
+      "instance.releaseCurrent",
+      "instance.releaseBooted",
+      "instance.restartCount",
+      "instance.cpuUsageNSec",
+      "instance.memoryCurrentBytes",
+      "instance.memoryPeakBytes",
+      "instance.tasksCurrent",
+      "instance.ioReadBytes",
+      "instance.ioWriteBytes"
+    ],
+    "agent.lifecycle": [
+      "invocation.id",
+      "invocation.startedAt",
+      "invocation.endedAt",
+      "invocation.result",
+      "invocation.exitCode",
+      "invocation.signal",
+      "invocation.restartCount",
+      "invocation.resourceTotals"
+    ],
+    "agent.sessions": [
+      "session.id",
+      "session.instanceId",
+      "session.state",
+      "session.attention",
+      "session.updatedAt"
+    ],
+    "agent.spans": [
+      "span.kind",
+      "span.startedAt",
+      "span.endedAt",
+      "span.parentId",
+      "span.sessionId",
+      "span.status",
+      "span.tokenMetrics"
+    ],
+    "agent.work": [
+      "work.state",
+      "work.instanceId",
+      "work.sessionId",
+      "work.assignedAt",
+      "work.startedAt",
+      "work.completedAt",
+      "work.waitReason",
+      "work.outcome"
+    ],
+    "compute.subscriptions": [
+      "subscription.utilizationPercent",
+      "subscription.windowKind",
+      "subscription.resetsAt",
+      "subscription.modelScope",
+      "subscription.providerSeverity",
+      "subscription.observedAt"
+    ],
+    "compute.providers": [
+      "provider.name",
+      "provider.accountCount",
+      "provider.routeIds",
+      "provider.modelIds",
+      "provider.authConfigured",
+      "provider.accessCondition",
+      "provider.quotaBucketId"
+    ],
+    "compute.call-history": [
+      "provider.calls",
+      "provider.successes",
+      "provider.refusals",
+      "provider.errors",
+      "provider.lastSuccessAt",
+      "provider.lastResultAt"
+    ],
+    "compute.tokens": [
+      "usage.inputTokens",
+      "usage.outputTokens",
+      "usage.cacheReadTokens",
+      "usage.cacheWriteTokens",
+      "usage.reasoningTokens",
+      "usage.estimatedApiEquivalentUsd"
+    ],
+    "compute.quota-headers": [
+      "quota.limit",
+      "quota.remaining",
+      "quota.resetAt",
+      "quota.metric",
+      "quota.scope",
+      "quota.bucketId"
+    ],
+    "inference.routes": [
+      "modelRoute.configured",
+      "modelRoute.loaded",
+      "modelRoute.state",
+      "modelRoute.capability",
+      "modelRoute.hostId"
+    ],
+    "inference.gpu": [
+      "gpu.utilizationPercent",
+      "device.socPowerWatts",
+      "gpu.temperatureCelsius",
+      "gpu.allocatedBytes",
+      "gpu.capacityBytes",
+      "gpu.memoryAccountingKind",
+      "device.powerAccountingKind"
+    ],
+    "inference.requests": [
+      "inference.requests",
+      "inference.inputTokens",
+      "inference.outputTokens",
+      "inference.tokensPerSecond",
+      "inference.latencyMs",
+      "inference.errors"
+    ],
+    "backup.receipts": [
+      "backup.scope",
+      "backup.lastAttemptAt",
+      "backup.lastSuccessAt",
+      "backup.result",
+      "backup.bytes",
+      "backup.lastRestoreEvidenceAt",
+      "backup.recordingCoverage"
+    ],
+    "storage.smart": [
+      "drive.health",
+      "drive.temperatureCelsius",
+      "drive.lastReportAt",
+      "drive.selfTestResult",
+      "drive.powerMode",
+      "drive.temperatureObservedAt"
+    ],
+    "runtime.containers": [
+      "runtime.kind",
+      "runtime.workloadCount",
+      "runtime.runningCount",
+      "runtime.failedCount",
+      "runtime.resourceUsage"
+    ],
+    "artifact.publications": [
+      "artifact.publicId",
+      "artifact.kind",
+      "artifact.visibility",
+      "artifact.state",
+      "artifact.createdAt",
+      "artifact.updatedAt",
+      "artifact.expiresAt",
+      "artifact.publicUrl",
+      "artifact.sourceRevision"
+    ],
+    "content.notes-index": [
+      "collection.publicLabel",
+      "collection.itemCount",
+      "collection.lastChangedAt",
+      "collection.kind"
+    ],
+    "optional.media": [
+      "media.serviceMode",
+      "media.libraryCount",
+      "media.lastAddedAt",
+      "media.collectionCount"
+    ],
+    "optional.weather": [
+      "weather.condition",
+      "weather.temperatureCelsius",
+      "weather.observedAt"
+    ],
+    "host.temperatures": [
+      "sensor.kind",
+      "sensor.devicePublicId",
+      "sensor.temperatureCelsius",
+      "sensor.criticalCelsius",
+      "sensor.observedAt",
+      "sensor.powerMode"
+    ]
+  },
+  "valuePolicy": "Only null, finite numbers, booleans and bounded strings; no arbitrary objects/arrays in initial producer. Keys ending At are RFC3339 UTC or null. Public source keys must belong to this reviewed source whitelist.",
+  "errorCodes": [
+    "source-timeout",
+    "source-failed",
+    "source-unavailable",
+    "stale",
+    "not-instrumented",
+    "cursor-gap",
+    "unsupported",
+    "budget-truncated",
+    "initial-enrollment",
+    "unauthenticated",
+    "missing-credential"
+  ],
+  "scopes": [
+    "host-total",
+    "this-instance",
+    "this-publisher-only",
+    "provider-reported",
+    "shared-quota-bucket",
+    "this-observer-only"
+  ],
+  "providers": {
+    "claude": "Claude",
+    "codex": "Codex",
+    "openrouter": "OpenRouter",
+    "google": "Google API",
+    "groq": "Groq",
+    "cohere": "Cohere",
+    "mistral": "Mistral",
+    "nvidia": "NVIDIA NIM",
+    "cloudflare": "Cloudflare Workers AI",
+    "cerebras": "Cerebras",
+    "huggingface": "Hugging Face",
+    "vercel": "Vercel AI Gateway",
+    "zen": "OpenCode Zen",
+    "antigravity": "Antigravity Gemini",
+    "gufo": "Gufo"
+  },
+  "hosts": [
+    "nas",
+    "strix-coordinator",
+    "client",
+    "strix-worker"
+  ],
+  "subjectPatterns": {
+    "fleet": {
+      "id": "fleet",
+      "label": "Fleet"
+    },
+    "host": {
+      "id": "host-(nas|strix-coordinator|client|strix-worker)",
+      "label": "NAS|Strix coordinator|Zenbook|Strix worker"
+    },
+    "provider": {
+      "id": "provider-[a-z]+",
+      "label": "Use the providers lookup only"
+    },
+    "account": {
+      "id": "account-[a-z]+-[1-9][0-9]?",
+      "label": "Provider label plus account N"
+    },
+    "quota-bucket": {
+      "id": "quota-[a-z]+-[1-9][0-9]?-[a-z0-9-]+",
+      "label": "Provider quota"
+    },
+    "instance": {
+      "id": "instance-[a-f0-9]{24}",
+      "label": "DSH instance"
+    },
+    "session": {
+      "id": "session-[a-f0-9]{24}",
+      "label": "DSH session"
+    },
+    "invocation": {
+      "id": "invocation-[a-f0-9]{24}",
+      "label": "Supervised run"
+    }
+  },
+  "eventSummaries": {
+    "run.started": "Supervised run started",
+    "run.ended": "Supervised run ended",
+    "session.status": "DSH session state changed",
+    "model.span": "DSH model step completed",
+    "collector.error": "Observation source failed",
+    "collector.gap": "Observation coverage has a gap"
+  },
+  "stringDomains": {
+    "host.reachability": [
+      "reachable",
+      "unreachable",
+      "timeout",
+      "error"
+    ],
+    "instance.state": [
+      "running",
+      "stopped",
+      "starting",
+      "failed",
+      "idle",
+      "unknown",
+      "masked",
+      "inconsistent",
+      "orphaned",
+      "interrupted",
+      "exited",
+      "draining"
+    ],
+    "instance.transport": [
+      "web",
+      "acp",
+      "headless",
+      "unknown"
+    ],
+    "session.state": [
+      "active",
+      "idle",
+      "completed",
+      "failed",
+      "cancelled",
+      "unknown"
+    ],
+    "span.kind": [
+      "model"
+    ],
+    "span.status": [
+      "completed",
+      "failed",
+      "cancelled"
+    ],
+    "quota.metric": [
+      "requests",
+      "tokens",
+      "neurons",
+      "usd",
+      "percent"
+    ],
+    "quota.scope": [
+      "shared-quota-bucket",
+      "provider-reported"
+    ],
+    "subscription.windowKind": [
+      "weekly",
+      "five-hour",
+      "daily",
+      "monthly",
+      "other"
+    ],
+    "subscription.providerSeverity": [
+      "normal",
+      "warning",
+      "critical",
+      "unknown"
+    ],
+    "device.powerAccountingKind": [
+      "soc"
+    ],
+    "gpu.memoryAccountingKind": [
+      "shared-apu"
+    ]
+  }
+}

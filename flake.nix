@@ -1919,12 +1919,19 @@
           # Root over ssh for every node, the strix too: root-only state
           # stays readable, and every node is graded through one code path.
           assert builtins.all (h: h.transport == "ssh") hostsJson;
+          assert self.nixosConfigurations.nas.config.services.fleet-status.observer.enable;
+          assert !self.nixosConfigurations.strix-coordinator.config.services.fleet-status.observer.enable;
+          assert !self.nixosConfigurations.client.config.services.fleet-status.observer.enable;
           pkgs.runCommand "fleet-status" { nativeBuildInputs = [ pkgs.python3 ]; } ''
             set -euo pipefail
             export HOME="$TMPDIR/home"
             export PYTHONDONTWRITEBYTECODE=1
               export LOCAL_MODEL_ENDPOINT=${(import ./lib/local-model.nix).endpoint}
             export FLEET_STATUS_PY=${pkgs.fleet-status}/share/fleet-status/fleet_status.py
+            export FLEET_STATUS_OBSERVER_PY=${pkgs.fleet-status}/share/fleet-status/observer.py
+            export FLEET_STATUS_PUBLISHER_PY=${pkgs.fleet-status}/share/fleet-status/publisher.py
+            export FLEET_STATUS_OBSERVER_CONFIG=${agentProbe.environment.etc."fleet-status/observer.json".source}
+            python3 -c 'import json, os; c=json.load(open(os.environ["FLEET_STATUS_OBSERVER_CONFIG"])); assert all(x > 0 for x in c["intervals"].values()); assert "--no-spend" in c["seatsCommand"]'
             mkdir -p "$HOME"
             python3 -m unittest discover -s ${./tests/fleet-status} -p 'test_*.py' -v
             touch "$out"
