@@ -29,6 +29,8 @@ class Endpoint(BaseHTTPRequestHandler):
     def do_HEAD(self):
         if self.headers.get("Authorization") != "Bearer " + self.server.token:
             return self.answer(401)
+        if self.headers.get("User-Agent") != "fleet-status-observer/1":
+            return self.answer(403)
         self.answer(200 if self.server.value is not None else 404)
 
     def do_PUT(self):

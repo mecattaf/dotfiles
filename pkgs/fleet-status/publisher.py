@@ -100,6 +100,7 @@ class Client:
         request = urllib.request.Request(self.url, data=data, method=method, headers={
             "Authorization": "Bearer " + self.token,
             "Content-Type": "application/json",
+            "User-Agent": "fleet-status-observer/1",
             **(headers or {}),
         })
         try:
