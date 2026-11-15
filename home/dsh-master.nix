@@ -165,6 +165,18 @@ in
           model = localModel.modelId;
           env.GUFO_API_KEY = "local-no-auth";
           maxWorkers = 1;
+          # Separately owned immutable source; selected only for a framed
+          # mechanical task. Ordinary Gufo workers keep their model route.
+          workerRows = [
+            {
+              insert = [
+                {
+                  id = "academic-framed-mechanical-worker";
+                  name = "${home}/.agency/protocols/academic-drain/components/native-command/a6d912a2af2f200b982ee378e9b126277d10d691/framed-mechanical-worker.mjs";
+                }
+              ];
+            }
+          ];
         };
       };
       description = "Provider-harness pairs; each renders one headless folder master-<name>.";

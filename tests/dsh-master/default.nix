@@ -84,16 +84,20 @@ let
   # rendered as configured, and the check stays green.
   overridden = masterOf {
     superagent = "github:mecattaf/dsh-superagent-prototype#floor-v2.98";
-    pairs.gufo.workerRows = [
-      {
-        insert = [
+    pairs = cfg.pairs // {
+      gufo = cfg.pairs.gufo // {
+        workerRows = [
           {
-            id = "worker-row-fixture";
-            name = "/immutable-owner-module/worker.mjs";
+            insert = [
+              {
+                id = "worker-row-fixture";
+                name = "/immutable-owner-module/worker.mjs";
+              }
+            ];
           }
         ];
-      }
-    ];
+      };
+    };
     superagentRows = [
       {
         id = "dsh-superagent-scheduled";
