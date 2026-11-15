@@ -14,6 +14,7 @@ import signal
 import subprocess
 import sys
 import threading
+import tempfile
 import time
 import uuid
 
@@ -54,11 +55,20 @@ def stop_group(process):
         pass
 
 
-def client(argv, env, cwd, prefix, key, deadline, acp=False):
+def client(argv, env, cwd, prefix, key, deadline, acp=False, file_stdout=False):
     """Retain partial redacted output on timeout and cancellation, too."""
-    process = subprocess.Popen(argv, cwd=cwd, env=env, stdin=sys.stdin if acp else subprocess.DEVNULL,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               start_new_session=True)
+    # OpenCode's models command can exit before buffered pipe writes drain.
+    # A regular anonymous file makes native stdout writes synchronous; only
+    # the final redacted receipt receives a filesystem name.
+    captured = tempfile.TemporaryFile() if file_stdout else None
+    try:
+        process = subprocess.Popen(argv, cwd=cwd, env=env, stdin=sys.stdin if acp else subprocess.DEVNULL,
+                                   stdout=captured if captured is not None else subprocess.PIPE,
+                                   stderr=subprocess.PIPE, start_new_session=True)
+    except BaseException:
+        if captured is not None:
+            captured.close()
+        raise
     errors = []
 
     def copy(source, target, forward=False):
@@ -77,7 +87,7 @@ def client(argv, env, cwd, prefix, key, deadline, acp=False):
             source.close()
 
     threads = [threading.Thread(target=copy, args=(source, Path(str(prefix) + suffix), acp and source is process.stdout))
-               for source, suffix in [(process.stdout, ".jsonl"), (process.stderr, ".stderr")]]
+               for source, suffix in [(process.stdout, ".jsonl"), (process.stderr, ".stderr")] if source is not None]
     for thread in threads:
         thread.start()
     outcome = "ok"
@@ -96,6 +106,14 @@ def client(argv, env, cwd, prefix, key, deadline, acp=False):
         process.wait()
         for thread in threads:
             thread.join()
+        if captured is not None:
+            try:
+                captured.seek(0)
+                text = redact(captured.read().decode("utf-8", errors="replace"), key)
+                with Path(str(prefix) + ".jsonl").open("x", encoding="utf-8") as out:
+                    out.write(text)
+            finally:
+                captured.close()
     if errors:
         raise OSError("could not retain client output: " + "; ".join(errors))
     return process.returncode, outcome
@@ -109,7 +127,7 @@ def catalogue(text):
         try:
             row, _ = decoder.raw_decode(text[match.end():].lstrip())
         except ValueError:
-            continue
+            raise ValueError("official catalogue ended with incomplete model metadata") from None
         if row.get("id") == match[1] and row.get("providerID") == "opencode":
             rows[match[1]] = row
     return rows
@@ -246,7 +264,8 @@ def main():
             path.mkdir(parents=True, exist_ok=True)
             env["XDG_" + kind + "_HOME"] = str(path)
         env["OPENCODE_API_KEY"] = key
-        for name in ("OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR", "OPENCODE_PERMISSION"):
+        for name in ("OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR", "OPENCODE_PERMISSION",
+                     "OPENCODE_MODELS_PATH", "OPENCODE_MODELS_URL", "OPENCODE_DISABLE_MODELS_FETCH"):
             env.pop(name, None)
         for name in ("OPENCODE_DISABLE_PROJECT_CONFIG", "OPENCODE_DISABLE_CLAUDE_CODE",
                      "OPENCODE_DISABLE_EXTERNAL_SKILLS", "OPENCODE_DISABLE_AUTOUPDATE"):
@@ -261,8 +280,26 @@ def main():
                   "agent": {"zen-worker": {"mode": "primary", "description": "Bounded source worker",
                             "steps": 12, "permission": permission}}}
         env["OPENCODE_CONFIG_CONTENT"] = json.dumps(config)
+        cache = Path(env["XDG_CACHE_HOME"]) / "opencode/models.json"
+        before = cache.stat() if cache.exists() else None
         rc, state_status = client(["opencode", "models", "opencode", "--verbose", "--refresh", "--pure"],
-                                  env, cwd, run / "catalogue", key, deadline)
+                                  env, cwd, run / "catalogue-refresh", key, deadline, file_stdout=True)
+        if state_status == "ok" and rc == 0:
+            # A successful native refresh command also swallows fetch failures.
+            # Verify its actual cache replacement, then load that metadata in
+            # a new process instead of trusting an embedded snapshot.
+            after = cache.stat() if cache.exists() else None
+            if after is None or (before is not None and
+                                 (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)):
+                raise ValueError("official client did not refresh its model metadata cache")
+            data = cache.read_bytes()
+            snapshot = json.loads(data)
+            if not isinstance(snapshot.get("opencode", {}).get("models"), dict):
+                raise ValueError("official client refreshed no OpenCode model metadata")
+            details["catalogue_cache_sha256"] = hashlib.sha256(data).hexdigest()
+            details["catalogue_scope"] = "official-client model metadata; account entitlement is not exposed"
+            rc, state_status = client(["opencode", "models", "opencode", "--verbose", "--pure"],
+                                      env, cwd, run / "catalogue", key, deadline, file_stdout=True)
         if state_status != "ok" or rc:
             status = state_status if state_status != "ok" else "catalogue_error"
         else:

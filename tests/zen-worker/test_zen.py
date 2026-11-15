@@ -12,7 +12,7 @@ import unittest
 
 ZEN = Path(__file__).resolve().parents[2] / 'home/dot_local/bin/zen'
 FAKE = r'''#!/usr/bin/env python3
-import json,os,subprocess,sys,time
+import json,os,stat,subprocess,sys,time
 from pathlib import Path
 with open(os.environ['FAKE_CALLS'],'a') as out:
  out.write(json.dumps({'args':sys.argv[1:],'slot_key':os.environ['OPENCODE_API_KEY'],'config':json.loads(os.environ['OPENCODE_CONFIG_CONTENT']),'data':os.environ['XDG_DATA_HOME']})+'\n')
@@ -24,9 +24,24 @@ if sys.argv[1]=='acp':
  sys.exit(0)
 if sys.argv[1]=='models':
  if mode=='catalogue_timeout':time.sleep(30)
- for model,cost in [('deepseek-v4.1-flash-free',0),('big-pickle',0),('paid-model',1)]:
+ refresh='--refresh' in sys.argv
+ cache=Path(os.environ['XDG_CACHE_HOME'])/'opencode/models.json'
+ if refresh and mode!='silent_refresh_failure':
+  cache.parent.mkdir(parents=True,exist_ok=True)
+  cache.write_text(json.dumps({'opencode':{'models':{'fresh-model-free':{'cost':{'input':0,'output':0}}}}}))
+ if mode=='listing_timeout' and not refresh:time.sleep(30)
+ rows=[('deepseek-v4.1-flash-free',0),('big-pickle',0),('paid-model',1)]
+ if not refresh:rows.append(('fresh-model-free',0))
+ if mode=='price_changed' and not refresh:rows=[(model,1 if model=='big-pickle' else cost) for model,cost in rows]
+ if mode=='buffered_exit':
+  text=''.join('opencode/'+model+'\n'+json.dumps({'id':model,'providerID':'opencode','status':'active','cost':{'input':cost,'output':cost},'description':'x'*120000})+'\n' for model,cost in rows)
+  os.set_blocking(1,False)
+  os.write(1,text.encode())
+  os._exit(0)
+ for model,cost in rows:
   print('opencode/'+model)
   print(json.dumps({'id':model,'providerID':'opencode','status':'active','cost':{'input':cost,'output':cost,'cache':{'read':0,'write':0}}}))
+ if mode=='truncated_catalogue':print('opencode/incomplete-free\n{"id":')
  sys.exit(0)
 if mode in ('timeout','cancel','orphan'):
  child=subprocess.Popen([sys.executable,'-c','import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);time.sleep(30)'])
@@ -86,12 +101,12 @@ class ZenTests(unittest.TestCase):
         self.assertEqual(result['usage_steps'][0]['reasoning'],3)
         self.assertIsNone(result['accepted'])
         calls = [json.loads(s) for s in (self.root/'calls').read_text().splitlines()]
-        self.assertEqual(len(calls),2)
-        self.assertEqual(calls[1]['config']['permission']['edit'],'deny')
-        self.assertEqual(calls[1]['config']['permission']['*'],'deny')
-        self.assertEqual(calls[1]['config']['small_model'],'opencode/big-pickle')
-        self.assertEqual(calls[1]['slot_key'],'fixture-secret-slot-2')
-        self.assertNotEqual(calls[1]['data'],str(Path.home()/'.local/share'))
+        self.assertEqual(len(calls),3)
+        self.assertEqual(calls[-1]['config']['permission']['edit'],'deny')
+        self.assertEqual(calls[-1]['config']['permission']['*'],'deny')
+        self.assertEqual(calls[-1]['config']['small_model'],'opencode/big-pickle')
+        self.assertEqual(calls[-1]['slot_key'],'fixture-secret-slot-2')
+        self.assertNotEqual(calls[-1]['data'],str(Path.home()/'.local/share'))
 
     def test_paid_and_absent_models_stop_before_generation(self):
         for model in ('paid-model','old-model-free'):
@@ -105,7 +120,7 @@ class ZenTests(unittest.TestCase):
         result, = self.results()
         self.assertEqual(result['status'],'429')
         self.assertNotIn('fixture-secret-slot-1',json.dumps(result)+process.stdout+process.stderr)
-        self.assertEqual(len((self.root/'calls').read_text().splitlines()),2)
+        self.assertEqual(len((self.root/'calls').read_text().splitlines()),3)
         self.assertEqual(len((self.root/'ledger.jsonl').read_text().splitlines()),1)
 
     def test_incomplete_success_has_nonzero_exit(self):
@@ -131,6 +146,48 @@ class ZenTests(unittest.TestCase):
         self.assertEqual(process.returncode,124,process.stderr)
         self.assertEqual(self.results()[0]['status'],'timeout')
         self.assertEqual(len((self.root/'calls').read_text().splitlines()),1)
+
+    def test_new_model_uses_second_process_current_metadata(self):
+        process=self.run_zen('-k','2','-m','fresh-model-free','Read source')
+        self.assertEqual(process.returncode,0,process.stderr)
+        result,=self.results()
+        self.assertIn('fresh-model-free',result['free_models'])
+        self.assertEqual(len(result['catalogue_cache_sha256']),64)
+        calls=[json.loads(s) for s in (self.root/'calls').read_text().splitlines()]
+        self.assertIn('--refresh',calls[0]['args'])
+        self.assertNotIn('--refresh',calls[1]['args'])
+        self.assertTrue(all(c['slot_key']=='fixture-secret-slot-2' for c in calls))
+        self.assertEqual(calls[-1]['args'][0],'run')
+
+    def test_silent_refresh_failure_never_uses_embedded_catalogue(self):
+        process=self.run_zen('Read source',mode='silent_refresh_failure')
+        self.assertNotEqual(process.returncode,0)
+        self.assertIn('did not refresh',self.results()[0]['error'])
+        self.assertEqual(len((self.root/'calls').read_text().splitlines()),1)
+
+    def test_relisted_price_increase_refuses_before_generation(self):
+        process=self.run_zen('-m','big-pickle','Read source',mode='price_changed')
+        self.assertEqual(process.returncode,2,process.stderr)
+        self.assertTrue(all(json.loads(s)['args'][0]=='models' for s in (self.root/'calls').read_text().splitlines()))
+
+    def test_second_listing_shares_absolute_deadline(self):
+        before=time.monotonic()
+        process=self.run_zen('--timeout','0.3','Read source',mode='listing_timeout')
+        self.assertEqual(process.returncode,124,process.stderr)
+        self.assertLess(time.monotonic()-before,2)
+        self.assertEqual(len((self.root/'calls').read_text().splitlines()),2)
+
+    def test_large_catalogue_survives_native_exit_before_pipe_drain(self):
+        process=self.run_zen('-m','fresh-model-free','Read source',mode='buffered_exit')
+        self.assertEqual(process.returncode,0,process.stderr)
+        result,=self.results()
+        self.assertIn('fresh-model-free',result['free_models'])
+        self.assertGreater(next((self.root/'state/invocations').glob('*/catalogue.jsonl')).stat().st_size,400000)
+
+    def test_incomplete_catalogue_is_not_a_smaller_available_pool(self):
+        process=self.run_zen('--models',mode='truncated_catalogue')
+        self.assertNotEqual(process.returncode,0)
+        self.assertIn('incomplete model metadata',self.results()[0]['error'])
 
     def test_cancellation_kills_only_invocation_group(self):
         process=subprocess.Popen([str(ZEN),'Read source'],cwd=self.cwd,
