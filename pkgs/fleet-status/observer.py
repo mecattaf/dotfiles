@@ -656,7 +656,10 @@ class Observer:
             for key in list(cursors):
                 if key not in keep:
                     del cursors[key]
-            self.state["cursorFloorAt"] = stamp()
+            # Header timestamps have millisecond precision. Preserve finer
+            # precision here so same-second eviction cannot classify an old
+            # owner as new work and count it again.
+            self.state["cursorFloorAt"] = dt.datetime.now(UTC).isoformat(timespec="microseconds")
         rows = []
         for item in sessions.values():
             self.add_subject(item["id"], "session", "DSH session", "host-nas")
@@ -783,7 +786,8 @@ class Observer:
                   "publisher": {"id": "nas-observer", "sequence": self.state["sequence"], "expectedHeartbeatSeconds": 60},
                   "generatedAt": stamp(), "subjects": sorted(subjects.values(), key=lambda row: row["id"]), "observations": observations,
                   "events": self.state["events"], "coverage": list(coverage.values())}
-        descriptor = json.dumps(result["subjects"], sort_keys=True, separators=(",", ":"))
+        signals = sorted({(row["sourceId"], row["key"], row.get("unit", "")) for row in observations})
+        descriptor = json.dumps({"subjects": result["subjects"], "sources": sorted(SOURCES), "signals": signals}, sort_keys=True, separators=(",", ":"))
         result["catalogRevision"] = hashlib.sha256(descriptor.encode()).hexdigest()
         if len(json.dumps(result)) > 1024 * 1024:
             raise RuntimeError("budget-truncated")

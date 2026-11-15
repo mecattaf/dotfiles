@@ -127,6 +127,14 @@ class ObserverTests(unittest.TestCase):
         ident = self.value.public_id("session", "/secret/cwd")
         self.assertRegex(ident, r"^session-[a-f0-9]{24}$")
         self.assertEqual(ident, self.value.public_id("session", "/secret/cwd"))
+        initial = self.value.publish()["catalogRevision"]
+        row = observer.public_observation("host-nas", "host.pressure", "host.load1", 1.0)
+        self.value.accept("metrics", {"rows": [row], "error": None})
+        descriptor = self.value.publish()["catalogRevision"]
+        self.assertNotEqual(initial, descriptor, "new signal descriptors change the catalogue")
+        row["value"] = 2.0
+        self.value.accept("metrics", {"rows": [row], "error": None})
+        self.assertEqual(descriptor, self.value.publish()["catalogRevision"], "fresh measurements do not change descriptors")
 
     def test_retained_private_cache_cannot_inject_new_public_fields_or_strings(self):
         row = observer.public_observation("host-nas", "host.pressure", "host.load1", 1.0)
