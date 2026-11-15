@@ -148,6 +148,8 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   grep -qx 'ok identical dependencies across profiles, pinned as configured' "$TMPDIR/overridden.out"
   DSH_MASTER=${master}/share/dsh-master/dsh-master.py SEED=${master}/share/dsh-master/settings.seed.json \
     python3 -I ${./test_seed.py} -v
+  DSH_MASTER=${master}/share/dsh-master/dsh-master.py \
+    python3 -I ${./test_render_selection.py} -v
 
   dm=${lib.getExe master}
   # status exits 1 while any folder is stale or not installed; its lines go to status.out.

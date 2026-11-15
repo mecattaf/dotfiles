@@ -124,7 +124,7 @@ current `package.json`, every render prints `install needed: <p>`.
 The other steps are by hand:
 
 ```sh
-dsh-master render            # what activation does, with a line per file
+dsh-master render [P...]     # all profiles by default, or only the named profiles
 dsh-master install [P...]    # pnpm install per folder, through the dsh dshd runs
 dsh-master check [P...]      # --dump-config per folder: every rendered row, no patch warning
 dsh-master status            # per folder: rendered current|stale, installed current|no, node_modules present|absent; exit 1 if not all current
@@ -134,6 +134,11 @@ dsh-master settings seed [FILE] [--url U]   # once, after the floor's first star
 Every verb takes `--from DIR`, a `nix build .#dsh-master` result, in
 place of the installed build; `install` and `check` take `--dsh PATH` to
 run another dsh than the one dshd runs.
+
+`render master-gufo` changes only that profile's rendered files and render state.
+The main and Claude worker folders are left untouched; an unknown name fails
+before any profile is written. With no profile argument, activation retains its
+existing render-all behavior.
 
 `install` runs `/etc/dshd/releases/default/bin/dsh plugin --profile <p>
 install` under a 600 s timeout, with pnpm and git on PATH, and then judges
