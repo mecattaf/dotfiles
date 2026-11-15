@@ -14,13 +14,10 @@ a different compositor. The config and every relative production import are
 checked and bundled together before installation. The old payload under
 `pkgs/client-desktop/imagine` is retained only as frozen migration history.
 
-The shared repository is currently private. Anonymous flake evaluation and
-unprivileged public CI cannot fetch it. The NAS evaluation account needs
-explicit read access; credential-free compute receives an archived exact
-source through the existing strict tailnet build path. No GitHub token belongs
-in the flake, the Nix store or a remote builder. Keep this adoption in draft
-until the intended build/CI access route is reviewed; repository visibility
-does not change as part of this configuration update.
+The shared repository is public. The locked revision can be fetched anonymously
+by Nix, CI and credential-free builders; no cross-repository token or archived
+source handoff is required. No GitHub credential belongs in the flake, the Nix
+store or a remote builder. Updates remain explicit changes to the pinned input.
 
 Domicile owns Finder/application launch, clipboard, notifications, screenshots,
 recording, native input settings and quick settings. Finder includes Quick
