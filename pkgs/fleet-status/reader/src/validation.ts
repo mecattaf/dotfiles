@@ -104,7 +104,7 @@ export function validateSnapshot(data: unknown, now = Date.now()): data is Snaps
     if (row.observedAt !== null && row.lastAttemptAt !== null && time(row.observedAt) > time(row.lastAttemptAt)) return false;
     if (row.observedAt !== null && row.expiresAt !== null && time(row.expiresAt) < time(row.observedAt)) return false;
     if ([row.observedAt, row.lastAttemptAt, row.lastGood?.observedAt].some(value => value != null && time(value) > time(snapshot.generatedAt) + 5000)) return false;
-    if (row.lastGood && (!primitiveAllowed(row.key, row.lastGood.value, ids)
+    if (row.lastGood && (!primitiveAllowed(row.key, row.lastGood.value, ids) || !unitAllowed(row.key, row.unit, row.lastGood.value)
       || row.lastAttemptAt !== null && time(row.lastGood.observedAt) > time(row.lastAttemptAt))) return false;
   }
   for (const event of snapshot.events) {
