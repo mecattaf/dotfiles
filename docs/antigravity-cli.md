@@ -58,3 +58,35 @@ Sources: [plans](https://antigravity.google/docs/plans/),
 [ACP](https://antigravity.google/docs/cli/acp),
 [BoringSSL CPU masking](https://boringssl.googlesource.com/boringssl/+/HEAD/crypto/cpu_intel.cc).
 The retained [Gemini investigation](gemini-cli.md) records the superseded path.
+
+## Included Gemini workers
+
+The existing full-agent ACP integration is packaged privately as
+`@mecattaf/dsh-gemini-cli` and pinned by the Master worker profile. It selects
+`antigravity-cli-1/gemini-3.8-flash` explicitly (other account IDs are selected
+explicitly, never rotated on refusal). Native process arguments place
+`--settings '{"useG1Credits":false}'` before `acp`; this session-local setting
+disables credit fallback without rewriting saved preferences.
+
+Worker config uses `allowDirectProvider=true`, `allowedModels` containing only
+the Gemini selector, `turnTimeoutMs=600000`, and `nativeThoughtLevel="low"`.
+Do not set outer DSH `reasoningEffort`: native capabilities are discovered
+after the core prepares its request; the plugin validates native effort
+against the actual ACP selector before submitting the prompt. Read
+roles use native `plan`; narrow implementation roles use `accept-edits`. The
+latter permits workspace edits while retaining native command approvals. DSH's
+outer sandbox does not contain native CLI tools: account/cwd bindings, native
+approvals, runtime policy and disposable worktrees remain the actual boundary.
+A missing unattended approval answer denies the action. Timeout is failure;
+inspect native state before resubmission because earlier effects may exist.
+
+The same existing ACP runtime supports an explicit separate provider namespace
+for official OpenCode Zen, with independent account/process/state ownership.
+It does not turn those two clients into independent quota pools per model.
+
+Qualification on 15 November2026 used installed Antigravity1.5.6 through the
+unchanged DSH headless driver: Gemini read a public synthetic asynchronous
+lease-reader fixture, correctly traced out-of-order completion, then created a
+node:test test with native file tools in `accept-edits`. The generated test
+passed inside `runtime-test`. These prove bounded source work and file edits,
+not sustained quota or all-command autonomy.

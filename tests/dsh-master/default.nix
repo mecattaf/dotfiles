@@ -55,6 +55,9 @@ let
           }
         ) c.pairs;
         pairEnv = lib.mapAttrs (_: pair: { inherit (pair) env maxWorkers; }) c.pairs;
+        pairCredentials = lib.mapAttrs (_: pair: pair.credentialFiles) c.pairs;
+        nativeEfforts = lib.mapAttrs (_: pair: pair.nativeEffort) c.pairs;
+        pairDependencies = lib.mapAttrs (_: pair: pair.dependencies) c.pairs;
         presets = lib.mapAttrs (_: pair: pair.preset) c.pairs;
         workerRows = lib.mapAttrs (_: pair: pair.workerRows) c.pairs;
         inherit (c)
@@ -131,8 +134,20 @@ assert
 assert
   master.profileNames == [
     "master"
+    "master-antigravity"
+    "master-antigravity-2"
+    "master-antigravity-3"
+    "master-cohere-extract"
+    "master-gemini-lite"
+    "master-groq"
     "master-gufo"
+    "master-nvidia"
+    "master-openrouter-free"
     "master-opus"
+    "master-zen-deepseek"
+    "master-zen-glm"
+    "master-zen-mimo"
+    "master-zen-minimax"
   ];
 # The Claude pair binds dsh-claude's preset; Gufo binds none.
 assert cfg.pairs.opus.preset == "claude" && cfg.pairs.gufo.preset == null;
@@ -148,8 +163,14 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   grep -qx 'ok identical dependencies across profiles, pinned as configured' "$TMPDIR/overridden.out"
   DSH_MASTER=${master}/share/dsh-master/dsh-master.py SEED=${master}/share/dsh-master/settings.seed.json \
     python3 -I ${./test_seed.py} -v
+  DSH_MASTER_RUNTIME=${master}/share/dsh-master/runtime.py \
+    python3 -I ${./test_runtime.py} -v
+  DSH_MASTER=${master}/share/dsh-master/dsh-master.py \
+    python3 -I ${./test_credentials.py} -v
   DSH_MASTER=${master}/share/dsh-master/dsh-master.py \
     python3 -I ${./test_render_selection.py} -v
+  DSH_MASTER=${master}/share/dsh-master/dsh-master.py PROBES=${master.probes} DSH=${releaseDsh} \
+    python3 -I ${./test_retry.py} -v
 
   dm=${lib.getExe master}
   # status exits 1 while any folder is stale or not installed; its lines go to status.out.
@@ -170,14 +191,14 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   keep() { (cd "$DSH_HOME" && sha256sum cordis.patch.yml profiles/web/* profiles/master/cordis.yml profiles/master/pnpm-lock.yaml); }
   keep > "$TMPDIR/keep.before"
 
-  $dm render > "$TMPDIR/first.out" 2> "$TMPDIR/first.err"
+  $dm render --dshd ${dshdStub} > "$TMPDIR/first.out" 2> "$TMPDIR/first.err"
   # The workspace file starts with the text dsh itself writes for a new
   # profile; the build policy follows it.
   DSH_HOME="$TMPDIR/init-home" ${releaseDsh} plugin --profile master-init version-exemptions > /dev/null
   cmp "$TMPDIR/init-home/profiles/master-init/pnpm-workspace.yaml" ${master.dshWorkspace}
   head -c "$(stat -c %s ${master.dshWorkspace})" ${master.pnpmWorkspace} | cmp - ${master.dshWorkspace}
   grep -qx '  "msgpackr-extract": false' ${master.pnpmWorkspace}
-  for p in master master-gufo master-opus; do
+  for p in ${lib.concatStringsSep " " master.profileNames}; do
     cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/$p/pnpm-workspace.yaml"
     test "$(stat -c %a "$DSH_HOME/profiles/$p/pnpm-workspace.yaml")" = 644
     grep -qx "updated $p/pnpm-workspace.yaml" "$TMPDIR/first.out"
@@ -185,20 +206,20 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   # master had a workspace file and no render state: someone else wrote it.
   grep -qx 'dsh-master: master/pnpm-workspace.yaml was changed outside dsh-master; replacing it' "$TMPDIR/first.err"
   test "$(wc -l < "$TMPDIR/first.err")" = 1
-  for p in master master-gufo master-opus; do
+  for p in ${lib.concatStringsSep " " master.profileNames}; do
     grep -qx "install needed: $p" "$TMPDIR/first.out"
     cmp ${master}/profiles/$p/cordis.patch.yml "$DSH_HOME/profiles/$p/cordis.patch.yml"
     cmp ${master}/profiles/$p/package.json "$DSH_HOME/profiles/$p/package.json"
     test "$(stat -c %a "$DSH_HOME/profiles/$p/package.json")" = 600
     test "$(stat -c %a "$DSH_HOME/profiles/$p/cordis.patch.yml")" = 644
   done
-  test "$(ls "$DSH_HOME/profiles" | sort | tr '\n' ' ')" = "master master-gufo master-opus web "
+  test "$(ls "$DSH_HOME/profiles" | sort | tr '\n' ' ')" = "${lib.concatStringsSep " " master.profileNames} web "
   tree "$DSH_HOME" > "$TMPDIR/tree.first"
-  $dm render > "$TMPDIR/second.out" 2> "$TMPDIR/second.err"
+  $dm render --dshd ${dshdStub} > "$TMPDIR/second.out" 2> "$TMPDIR/second.err"
   # Nothing written, and the install still owed is said again.
   if grep -v '^install needed: ' "$TMPDIR/second.out"; then exit 1; fi
   test ! -s "$TMPDIR/second.err"
-  for p in master master-gufo master-opus; do grep -qx "install needed: $p" "$TMPDIR/second.out"; done
+  for p in ${lib.concatStringsSep " " master.profileNames}; do grep -qx "install needed: $p" "$TMPDIR/second.out"; done
   tree "$DSH_HOME" > "$TMPDIR/tree.second"
   cmp "$TMPDIR/tree.first" "$TMPDIR/tree.second"
   keep | cmp - "$TMPDIR/keep.before"
@@ -212,7 +233,7 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   grep -qx 'master-gufo: rendered stale, installed no, node_modules absent' "$TMPDIR/status.out"
   if $dm install --dsh /nonexistent master-gufo 2> "$TMPDIR/noworkspace.err"; then exit 1; fi
   grep -q 'master-gufo is not the rendered version' "$TMPDIR/noworkspace.err"
-  $dm render --quiet
+  $dm render --dshd ${dshdStub} --quiet
   cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
   # A build DSH's plugin manager recorded as pending (dsh-plugin-manager
   # recordPendingBuilds) is replaced by the rendered policy, and said so.
@@ -220,7 +241,7 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   status 1
   grep -qx 'master-gufo: rendered stale, installed no, node_modules absent, builds pending: esbuild' "$TMPDIR/status.out"
   if $dm install --dsh /nonexistent master-gufo 2> /dev/null; then exit 1; fi
-  $dm render --quiet 2> "$TMPDIR/pending.err"
+  $dm render --dshd ${dshdStub} --quiet 2> "$TMPDIR/pending.err"
   grep -qx 'dsh-master: master-gufo/pnpm-workspace.yaml was changed outside dsh-master; replacing it' "$TMPDIR/pending.err"
   cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
   # A folder rendered before render owned the file (its state records no
@@ -228,7 +249,7 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   python3 -I -c 'import json, sys; s = json.load(open(sys.argv[1])); s["rendered"].pop("pnpm-workspace.yaml"); json.dump(s, open(sys.argv[1], "w"))' \
     "$DSH_HOME/profiles/master-gufo/.dsh-master.json"
   cp ${master.dshWorkspace} "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
-  $dm render --quiet 2> "$TMPDIR/migrate.err"
+  $dm render --dshd ${dshdStub} --quiet 2> "$TMPDIR/migrate.err"
   grep -qx 'dsh-master: master-gufo/pnpm-workspace.yaml predates dsh-master rendering it; replacing it' "$TMPDIR/migrate.err"
   cmp ${master.pnpmWorkspace} "$DSH_HOME/profiles/master-gufo/pnpm-workspace.yaml"
   grep -q '"pnpm-workspace.yaml"' "$DSH_HOME/profiles/master-gufo/.dsh-master.json"
@@ -271,17 +292,20 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   grep -qx 'master-opus: rendered current, installed current, node_modules present' "$TMPDIR/status.out"
   # Every folder installed: status exits 0. A master* folder no build
   # renders is listed as an orphan and fails nothing.
-  for p in master master-gufo; do
+  for p in ${
+    lib.concatStringsSep " " (builtins.filter (name: name != "master-opus") master.profileNames)
+  }; do
     f="$DSH_HOME/profiles/$p"
     mkdir -p "$f/node_modules/dsh-superagent/lib" "$f/node_modules/@norman-else/dsh-claude/lib"
     touch "$f/node_modules/dsh-superagent/lib/index.js" "$f/node_modules/@norman-else/dsh-claude/lib/index.mjs"
+    python3 -I -c 'import json,pathlib,sys; f=pathlib.Path(sys.argv[1]); [(f/"node_modules"/d/"lib").mkdir(parents=True,exist_ok=True) or (f/"node_modules"/d/"lib"/"fixture.js").touch() for d in json.loads((f/"package.json").read_text())["dependencies"]]' "$f"
     ${python}/bin/python3 -I ${./lockfile.py} "$f"
     STUB_PROFILE=web $dm $di --dsh ${pkgs.coreutils}/bin/true $p | grep >/dev/null -x "installed $p"
   done
   mkdir "$DSH_HOME/profiles/master-retired"
   status 0
   grep -qx 'master-retired: orphan, not rendered by this build (remove it by hand when no instance uses it)' "$TMPDIR/status.out"
-  test "$(grep -c 'rendered current, installed current' "$TMPDIR/status.out")" = 3
+  test "$(grep -c 'rendered current, installed current' "$TMPDIR/status.out")" = ${toString (builtins.length master.profileNames)}
   rmdir "$DSH_HOME/profiles/master-retired"
 
   # install runs dsh with pnpm and git on PATH (dsh plugin spawns pnpm).
@@ -290,18 +314,18 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
 
   # A changed copy is put back, and the change is reported.
   echo '- id: hand-edit' >> "$DSH_HOME/profiles/master-gufo/cordis.patch.yml"
-  $dm render --quiet > "$TMPDIR/third.out" 2> "$TMPDIR/third.err"
+  $dm render --dshd ${dshdStub} --quiet > "$TMPDIR/third.out" 2> "$TMPDIR/third.err"
   if grep -v '^install needed: ' "$TMPDIR/third.out"; then exit 1; fi
   if grep -q 'install needed: master-opus' "$TMPDIR/third.out"; then exit 1; fi
   grep -q 'master-gufo/cordis.patch.yml was changed outside dsh-master' "$TMPDIR/third.err"
   cmp ${master}/profiles/master-gufo/cordis.patch.yml "$DSH_HOME/profiles/master-gufo/cordis.patch.yml"
 
   # No DSH_HOME yet: nothing is created. A symlinked folder is refused.
-  DSH_HOME="$TMPDIR/absent" $dm render --quiet 2> "$TMPDIR/absent.err"
+  DSH_HOME="$TMPDIR/absent" $dm render --dshd ${dshdStub} --quiet 2> "$TMPDIR/absent.err"
   test ! -e "$TMPDIR/absent" && grep -q 'does not exist' "$TMPDIR/absent.err"
   mkdir -p "$TMPDIR/linked/profiles" "$TMPDIR/elsewhere"
   ln -s "$TMPDIR/elsewhere" "$TMPDIR/linked/profiles/master"
-  if DSH_HOME="$TMPDIR/linked" $dm render --quiet 2> "$TMPDIR/linked.err"; then exit 1; fi
+  if DSH_HOME="$TMPDIR/linked" $dm render --dshd ${dshdStub} --quiet 2> "$TMPDIR/linked.err"; then exit 1; fi
   grep -q 'symbolic link' "$TMPDIR/linked.err" && test -z "$(ls -A "$TMPDIR/elsewhere")"
 
   # 5. The release's dsh composes the first-party half of each folder with
@@ -309,9 +333,9 @@ pkgs.runCommand "dsh-master" { nativeBuildInputs = [ python ]; } ''
   export DSH_HOME="$TMPDIR/probe-home"
   mkdir -p "$DSH_HOME" "$TMPDIR/cwd"
   cd "$TMPDIR/cwd"
-  $dm render --quiet --from ${master.probes} > /dev/null
+  STUB_PROFILE=web $dm render --dshd ${dshdStub} --quiet --from ${master.probes} > /dev/null
   $dm check --from ${master.probes} --dsh ${releaseDsh} | tee "$TMPDIR/check.out"
-  test "$(grep -c '^ok ' "$TMPDIR/check.out")" = 3
+  test "$(grep -c '^ok ' "$TMPDIR/check.out")" = ${toString (builtins.length master.profileNames)}
   printf -- '- id: no-such-row\n  disabled: true\n' >> "$DSH_HOME/profiles/master-opus/cordis.patch.yml"
   if $dm check --from ${master.probes} --dsh ${releaseDsh} master-opus 2> "$TMPDIR/typo.err"; then exit 1; fi
   grep -q 'stderr: .*no-such-row' "$TMPDIR/typo.err"

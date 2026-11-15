@@ -1,0 +1,508 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://status.mecattaf.dev/contracts/snapshot-v1.schema.json",
+  "title": "Proposed public fleet observation snapshot",
+  "description": "A proposed reader contract, not an installed endpoint. Source references resolve against sources.json in the implementation bundle. Public responses contain selected facts, not source commands, credentials, raw journals or transcripts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "snapshotId",
+    "publisher",
+    "generatedAt",
+    "subjects",
+    "observations",
+    "events",
+    "coverage",
+    "catalogRevision"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "fleet-observations/1"
+    },
+    "snapshotId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "synthetic": {
+      "type": "boolean",
+      "description": "True for fixtures. Fixtures are never accepted into the production publication key."
+    },
+    "generatedAt": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "publisher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sequence",
+        "expectedHeartbeatSeconds"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Persisted monotonic sequence for the single publisher; not reset on a host reboot."
+        },
+        "sourceRevision": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "expectedHeartbeatSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400,
+          "description": "Publisher cadence hint only; Worker receipt time and its own policy determine connection state."
+        }
+      }
+    },
+    "subjects": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "relations"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "fleet",
+              "host",
+              "service",
+              "provider",
+              "account",
+              "model-route",
+              "instance",
+              "invocation",
+              "session",
+              "work-item",
+              "deployment",
+              "artifact",
+              "backup",
+              "collection",
+              "sensor",
+              "drive",
+              "filesystem",
+              "network-interface",
+              "quota-bucket"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "description": "Explicit public label; never copied from a private title, cwd, prompt or environment."
+          },
+          "relations": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "targetId"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "hosted-by",
+                    "supervised-by",
+                    "invocation-of",
+                    "session-of",
+                    "part-of",
+                    "uses-route",
+                    "depends-on",
+                    "published-by",
+                    "backs-up"
+                  ]
+                },
+                "targetId": {
+                  "$ref": "#/$defs/id"
+                }
+              }
+            }
+          },
+          "publicUrl": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://",
+            "maxLength": 2048,
+            "description": "Explicit public allowlist only. No token, internal address, tailnet URL or arbitrary proxy target."
+          },
+          "declaredMode": {
+            "enum": [
+              "continuous",
+              "demand-loaded",
+              "socket-activated",
+              "manual",
+              "dormant",
+              "retired",
+              "unknown"
+            ]
+          }
+        }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "maxItems": 32768,
+      "items": {
+        "$ref": "#/$defs/observation"
+      }
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "subjectId",
+          "sourceId",
+          "type",
+          "at",
+          "summary"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "subjectId": {
+            "$ref": "#/$defs/id"
+          },
+          "sourceId": {
+            "$ref": "#/$defs/id"
+          },
+          "type": {
+            "enum": [
+              "unit.starting",
+              "unit.started",
+              "unit.stopped",
+              "unit.failed",
+              "unit.restart-scheduled",
+              "unit.resources",
+              "run.started",
+              "run.ended",
+              "session.status",
+              "model.span",
+              "tool.span",
+              "subagent.span",
+              "deployment.observed",
+              "backup.result",
+              "collector.error",
+              "collector.gap"
+            ]
+          },
+          "at": {
+            "$ref": "#/$defs/timestamp"
+          },
+          "endedAt": {
+            "$ref": "#/$defs/timestamp"
+          },
+          "durationMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "invocationId": {
+            "$ref": "#/$defs/id"
+          },
+          "sessionId": {
+            "$ref": "#/$defs/id"
+          },
+          "workItemId": {
+            "$ref": "#/$defs/id"
+          },
+          "parentEventId": {
+            "$ref": "#/$defs/id"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 240,
+            "description": "Template-generated summary of selected metadata, never raw MESSAGE, command output or prompt text."
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ]
+          },
+          "metrics": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "$ref": "#/$defs/metric"
+            }
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceId",
+          "state",
+          "lastAttemptAt",
+          "lastSuccessAt",
+          "errorCode"
+        ],
+        "properties": {
+          "sourceId": {
+            "$ref": "#/$defs/id"
+          },
+          "state": {
+            "enum": [
+              "reporting",
+              "cached",
+              "unavailable",
+              "not-configured",
+              "disabled-by-policy",
+              "not-applicable"
+            ]
+          },
+          "lastAttemptAt": {
+            "$ref": "#/$defs/nullableTimestamp"
+          },
+          "lastSuccessAt": {
+            "$ref": "#/$defs/nullableTimestamp"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "gapFrom": {
+            "$ref": "#/$defs/timestamp"
+          }
+        }
+      }
+    },
+    "catalogRevision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Identity of the public catalogue whose source and subject IDs this snapshot uses."
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "nullableTimestamp": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "value",
+        "unit"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unit": {
+          "enum": [
+            "count",
+            "bytes",
+            "nanoseconds",
+            "milliseconds",
+            "seconds",
+            "percent",
+            "tokens",
+            "tokens-per-second",
+            "requests",
+            "requests-per-second",
+            "watts",
+            "celsius",
+            "kwh",
+            "usd",
+            "credits",
+            "neurons",
+            "bytes-per-second",
+            "rpm",
+            "hertz"
+          ]
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subjectId",
+        "sourceId",
+        "key",
+        "grade",
+        "value",
+        "observedAt",
+        "lastAttemptAt",
+        "expiresAt",
+        "errorCode"
+      ],
+      "properties": {
+        "subjectId": {
+          "$ref": "#/$defs/id"
+        },
+        "sourceId": {
+          "$ref": "#/$defs/id"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "grade": {
+          "enum": [
+            "measured",
+            "cached",
+            "computed",
+            "declared",
+            "unknown",
+            "not-applicable"
+          ]
+        },
+        "value": {},
+        "unit": {
+          "$ref": "#/$defs/metric/properties/unit"
+        },
+        "scope": {
+          "type": "string",
+          "maxLength": 160,
+          "description": "E.g. this-instance, host-total, this-publisher-only, provider-reported, shared-quota-bucket."
+        },
+        "observedAt": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "lastAttemptAt": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "errorCode": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        },
+        "lastGood": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "value",
+            "observedAt"
+          ],
+          "properties": {
+            "value": {},
+            "observedAt": {
+              "$ref": "#/$defs/timestamp"
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "grade": {
+                "enum": [
+                  "unknown",
+                  "not-applicable"
+                ]
+              }
+            },
+            "required": [
+              "grade"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "grade": {
+                "enum": [
+                  "measured",
+                  "cached",
+                  "computed"
+                ]
+              }
+            },
+            "required": [
+              "grade"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observedAt": {
+                "$ref": "#/$defs/timestamp"
+              },
+              "expiresAt": {
+                "$ref": "#/$defs/timestamp"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

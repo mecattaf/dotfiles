@@ -8,6 +8,8 @@ Two entry points share this file and its schema (SCHEMA.md):
   fleet-status [--json]         on the strix: fans the collector out over
                                 the root SSH mesh in parallel, one hard deadline
                                 per node, and renders a compact terminal view.
+  fleet-status observations     reads the existing observer snapshot; --json
+                                emits the same contract for other consumers.
 
 The rules that make the output honest rather than pretty:
 
@@ -1207,8 +1209,14 @@ def main_collect(argv: list[str]) -> int:
 
 
 def main_status(argv: list[str]) -> int:
+    if argv[:1] == ["observations"]:
+        from observations_cli import main
+        return main(argv[1:])
     if "-h" in argv or "--help" in argv:
-        print("usage: fleet-status [--json]\n  FLEET_STATUS_HOSTS=a,b,c limits/extends the node list (names not declared ssh to root@<name>).")
+        print("usage: fleet-status [--json]\n"
+              "       fleet-status observations [--json] [--state-dir DIR | --snapshot FILE]\n"
+              "  observations reads the retained account/compute/fleet contract without collecting.\n"
+              "  FLEET_STATUS_HOSTS=a,b,c limits/extends the node list (names not declared ssh to root@<name>).")
         return 0
     snap = snapshot()
     if "--json" in argv:

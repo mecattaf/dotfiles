@@ -13,6 +13,11 @@ pair:
 | `master-opus` | `dsh-headless` | `false` | one worker per dshd unit, Claude Opus at medium effort (the default pair) |
 | `master-gufo` | `dsh-headless` | `false` | one worker per dshd unit, Gufo `qwen3.8-flash-next`, one at a time |
 
+The qualified cloud pairs add `master-groq`, `master-gemini-lite`,
+`master-cohere-extract`, `master-openrouter-free`, `master-antigravity`, `master-zen-deepseek` and
+`master-zen-glm`, plus `master-nvidia`. See [cloud-worker-pairs.md](cloud-worker-pairs.md) for exact
+models, native credential delivery, supported-but-held providers and checks.
+
 The folders are `~/.dsh/profiles/master*`. No other profile folder and no
 `~/.dsh/cordis.patch.yml` is written: that home layer would change every
 profile of the home. Scheduled items, which wake this floor, are in
@@ -22,9 +27,11 @@ profile of the home. Scheduled items, which wake this floor, are in
 
 Rules the renderer keeps, each asserted by `checks.dsh-master`:
 
-- Every folder lists the same dependencies and the same non-app bundles
+- Every folder lists the shared dependencies and the same non-app bundles
   (base, dsh-claude, dsh-superagent). No folder lists both apps: the headless
-  layer turns authorization off for the whole tree.
+  layer turns authorization off for the whole tree. A pair's `dependencies`
+  adds pinned native-client plugins only to that pair's profile, mounted by
+  its `workerRows`.
 - The fleet policy (`pkgs/dsh/config.nix`) is in each folder's own
   `cordis.patch.yml`, because dshd runs the unwrapped dsh and never gets the
   wrapper's overlays. The sandbox, permission and approval rows are left out:
@@ -72,6 +79,9 @@ programs.dsh.master.pairs.sonnet = {
   reasoningEffort = "low";   # null for a model that declares none
   # env = { };               # public values only: each unit's recipe records them
   # maxWorkers = 2;          # at most this many units of this pair at once
+  # credentialFiles = { };  # credential ref -> runtime agenix path, no values
+  # dependencies = { };     # additional pinned packages for this pair only
+  # workerRows = [ ];       # pair-specific native modules
 };
 ```
 
@@ -86,8 +96,8 @@ How a Ticket picks its pair:
 | Work | Pair |
 |---|---|
 | A scheduled occurrence | always `defaultPair`: an item has no pair key |
-| A workflow run | the `pair` the start request names, for every node of the run; else the workflow row's `pair` (empty in Master); else `defaultPair` |
-| A node's `agent(…, { model })` | recorded, not used: nodes run on their run's pair |
+| A workflow run | its selected pair is the default for nodes without an explicit selector; else the workflow row's `pair` (empty in Master), then `defaultPair` |
+| A node's `agent(…, { pair, model, effort })` | resolved against the declared pair metadata; an unknown or ambiguous route fails rather than falling back to Claude |
 
 `defaultPair` (`opus`) is one option; changing it re-renders `master`
 and every `agent-default-model` row that follows it. Pair names match
@@ -121,10 +131,18 @@ A failed render does not fail the switch, so check `dsh-master status`
 after one; it adds `builds pending: <names>` for a build DSH's plugin
 manager recorded as undecided. Until `install` has recorded the folder's
 current `package.json`, every render prints `install needed: <p>`.
+Before changing files, render checks the dshd instances in the same
+`DSH_HOME`. An active profile is left entirely unchanged, including its
+render/install state, and reported as `render pending` with the instance
+names. Other selected inactive profiles still render. This matters because
+DSH's HMR watches both `package.json` and `cordis.patch.yml`. An unavailable
+inventory fails before any writes; rendering has no force bypass. Stop the
+specific instance before rendering its profile, then install and restart it
+when appropriate. A pending profile remains stale in `status`.
 The other steps are by hand:
 
 ```sh
-dsh-master render [P...]     # all profiles by default, or only the named profiles
+dsh-master render [P...]     # selected profiles; no P means all, as in activation
 dsh-master install [P...]    # pnpm install per folder, through the dsh dshd runs
 dsh-master check [P...]      # --dump-config per folder: every rendered row, no patch warning
 dsh-master status            # per folder: rendered current|stale, installed current|no, node_modules present|absent; exit 1 if not all current
@@ -330,8 +348,12 @@ until it is released. A floor restart resumes every unfinished run from
 its journal: a finished node never runs again, and a running node's unit
 goes on and is adopted.
 
-Not supported: token budgets, a node's `model` or `effort` (the run's
-pair decides), nesting deeper than one `workflow()`, and a `workflow`
+Explicit per-node selectors are supported by floor-v2.7. For example,
+`agent(prompt, { pair: 'groq' })` selects its declared native worker;
+`model` and `effort` must identify a unique compatible declared pair. This
+selects configured capacity rather than manufacturing a new provider or account.
+
+Not supported: token budgets, nesting deeper than one `workflow()`, and a `workflow`
 key in a scheduled item.
 
 ## Starting state

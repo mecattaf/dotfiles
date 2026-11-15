@@ -8,6 +8,7 @@
   python3,
   coreutils,
   git,
+  nix,
   pnpm,
   dsh,
   llm-agents,
@@ -60,6 +61,7 @@ let
     };
 
   pairNames = builtins.attrNames settings.pairs;
+  pairEffort = pair: if pair.nativeEffort != null then pair.nativeEffort else pair.reasoningEffort;
   workerName = pair: "master-${pair}";
 
   # Every Claude process dsh-claude starts (turns, titles, the model probe)
@@ -84,7 +86,9 @@ let
   # following DSH_PERMISSION_MODE (danger-full-access under dshd). The
   # superagent pins its own Sessions to danger-full-access (the fork's
   # sessions.ts), so that preset is restated beside the fleet's two.
-  fleetRow = id: lib.findFirst (row: (row.id or null) == id) (throw "fleet policy has no ${id} row") dsh.policyRows;
+  fleetRow =
+    id:
+    lib.findFirst (row: (row.id or null) == id) (throw "fleet policy has no ${id} row") dsh.policyRows;
   panelRows =
     let
       permission = fleetRow "permission";
@@ -127,7 +131,9 @@ let
             name: pair:
             {
               profile = workerName name;
+              inherit (pair) provider model;
             }
+            // lib.optionalAttrs (pairEffort pair != null) { effort = pairEffort pair; }
             // lib.optionalAttrs (pair.env != { }) { inherit (pair) env; }
             // lib.optionalAttrs (pair.maxWorkers != null) { inherit (pair) maxWorkers; }
           ) settings.pairs;
@@ -300,6 +306,8 @@ let
       pair:
       lib.nameValuePair (workerName pair) {
         app = "@deepseek-ai/dsh-headless";
+        inherit (settings.pairs.${pair}) credentialFiles;
+        dependencies = settings.pairs.${pair}.dependencies;
         rows = firstParty.worker pair ++ extension.worker pair;
         firstPartyRows = firstParty.worker pair;
       }
@@ -314,17 +322,51 @@ let
     # profile's own rows.
   '';
 
+  # realpathSync checks existence before credentials-local mounts. Its normal
+  # missing-file behavior is an empty store plus ambient/.env fallback; that
+  # would silently change the declared cloud account when sync was omitted.
+  # This reads no credential content. The native service validates modes and
+  # the versioned document before a provider request can start.
+  credentialPathExpression =
+    name:
+    "process.getBuiltinModule('node:fs').realpathSync(dshHomePath('master-credentials/${name}.yaml'))";
+
+  profilePolicyRows =
+    name:
+    map (
+      row:
+      if row.id == "llm-pi-ai" && (profiles.${name}.credentialFiles or { }) != { } then
+        row
+        // {
+          inject = [
+            "llm"
+            "credentials"
+          ];
+        }
+      else
+        row
+    ) policyRows;
+
   # The dsh-config policy file and sessions row are plain block sequences, so
   # the parts concatenate into one YAML list.
   patchFile =
     name: rows:
     runCommand "${name}-cordis.patch.yml" { } ''
-      cat ${header} ${yaml.generate "policy.yml" policyRows} > "$out"
+      cat ${header} ${yaml.generate "policy.yml" (profilePolicyRows name)} > "$out"
       echo >> "$out"
       cat ${dsh.sessions} >> "$out"
       echo >> "$out"
       echo "# The ${name} profile rows." >> "$out"
       cat ${yaml.generate "${name}-rows.yml" rows} >> "$out"
+      ${lib.optionalString ((profiles.${name}.credentialFiles or { }) != { }) ''
+          cat >> "$out" <<'CREDENTIALS'
+        - id: credentials
+          disabled: false
+          config:
+            path: !!js ${credentialPathExpression name}
+            watch: false
+        CREDENTIALS
+      ''}
     '';
 
   # dsh writes this text beside package.json when it creates a profile
@@ -383,13 +425,30 @@ let
         }) row.insert
       else
         [
-          {
-            inherit (row) id;
-            config = row.config or null;
-            disabled = row.disabled or (if row.id == "dsh-superagent" then false else null);
-          }
+          (
+            {
+              inherit (row) id;
+              config = row.config or null;
+              disabled = row.disabled or (if row.id == "dsh-superagent" then false else null);
+            }
+            // lib.optionalAttrs (row ? inject) { inherit (row) inject; }
+          )
         ]
     ) rows;
+
+  # Like the existing sessions root, the path follows DSH_HOME at launch.
+  # --dump-config preserves the expression, so the offline check verifies it
+  # without evaluating or reading a secret.
+  credentialExpect =
+    name: profile:
+    lib.optional ((profile.credentialFiles or { }) != { }) {
+      id = "credentials";
+      disabled = false;
+      config = {
+        path.__js = credentialPathExpression name;
+        watch = false;
+      };
+    };
 
   spec = writeText "dsh-master-spec.json" (
     builtins.toJSON {
@@ -398,10 +457,11 @@ let
       # The floor's web server, the default of `dsh-master settings seed`.
       url = "http://127.0.0.1:${toString settings.webPort}";
       profiles = lib.mapAttrs (name: profile: {
-        package = packageOf name dependencies (bundles profile.app);
+        package = packageOf name (dependencies // (profile.dependencies or { })) (bundles profile.app);
         patch = patchFile name profile.rows;
         workspace = pnpmWorkspace;
-        expect = expectRows (policyRows ++ profile.rows);
+        credentialFiles = profile.credentialFiles or { };
+        expect = expectRows (profilePolicyRows name ++ profile.rows) ++ credentialExpect name profile;
       }) profiles;
     }
   );
@@ -418,7 +478,9 @@ let
         ];
         patch = patchFile name profile.firstPartyRows;
         workspace = pnpmWorkspace;
-        expect = expectRows (policyRows ++ profile.firstPartyRows);
+        credentialFiles = profile.credentialFiles or { };
+        expect =
+          expectRows (profilePolicyRows name ++ profile.firstPartyRows) ++ credentialExpect name profile;
       }) profiles;
     }
   );
@@ -452,6 +514,7 @@ runCommand "dsh-master"
   ''
     ${assemble spec}
     install -Dm0644 ${./dsh-master.py} "$out/share/dsh-master/dsh-master.py"
+    install -Dm0644 ${./runtime.py} "$out/share/dsh-master/runtime.py"
     install -Dm0644 ${settings.settingsSeed} "$out/share/dsh-master/settings.seed.json"
     makeWrapper ${python3.withPackages (ps: [ ps.pyyaml ])}/bin/python3 "$out/bin/dsh-master" \
       --add-flags "$out/share/dsh-master/dsh-master.py" \
@@ -461,6 +524,7 @@ runCommand "dsh-master"
           # dsh plugin runs pnpm from PATH, and pnpm asks git for a github: tag.
           pnpm
           git
+          nix
         ]
       }
   ''

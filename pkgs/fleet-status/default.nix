@@ -21,7 +21,9 @@ stdenvNoCC.mkDerivation {
   dontBuild = true;
   installPhase = ''
     runHook preInstall
-    install -Dm0644 fleet_status.py $out/share/fleet-status/fleet_status.py
+    mkdir -p $out/share/fleet-status
+    cp *.py public-contract.json $out/share/fleet-status/
+    cp -r schema $out/share/fleet-status/
     install -Dm0644 SCHEMA.md $out/share/doc/fleet-status/SCHEMA.md
     # --argv0 does not reach Python's sys.argv[0] (that is the script path),
     # so the collector's entry point passes its subcommand explicitly.
@@ -37,6 +39,11 @@ stdenvNoCC.mkDerivation {
           ]
         }
     done
+    makeWrapper ${python3.interpreter} $out/bin/fleet-observer \
+      --add-flags "$out/share/fleet-status/observer.py" \
+      --suffix PATH : ${lib.makeBinPath [ openssh util-linux ]}
+    makeWrapper ${python3.interpreter} $out/bin/fleet-status-metrics \
+      --add-flags "$out/share/fleet-status/metrics.py"
     runHook postInstall
   '';
   meta = {

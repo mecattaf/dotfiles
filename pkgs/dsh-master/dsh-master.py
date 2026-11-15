@@ -4,6 +4,8 @@
     dsh-master install [--force] [PROFILE...] install each profile's plugins
     dsh-master check [PROFILE...]             assert the rows in each config dump
     dsh-master status                         rendered, installed, current (exit 1 if not)
+    dsh-master credentials sync [PROFILE...] private native stores from runtime secret files
+    dsh-master runtime snapshot --installed-profile DIR --from BUILD freeze a checked graph and floor overlay
     dsh-master settings seed [FILE] [--url U] seed the floor's Store settings
 
 The rendered folders come from the package (pkgs/dsh-master/default.nix) or
@@ -18,14 +20,22 @@ overlays would hide what a dshd instance really composes. settings seed is
 a client of the floor's management API: it upserts rules and admission cells
 and raises the accept mode and the eval time limit, and never touches
 anything else.
+
+credentials sync owns only $DSH_HOME/master-credentials/master*.yaml. It
+copies the manifest's runtime source refs into version-1 native DSH stores,
+with an owner-only directory and atomic 0600 files. It never edits the user's
+global .credentials.yaml and never prints values. The profile's credentials
+row follows DSH_HOME, so an isolated worker cannot silently read the live store.
 """
 
 import argparse
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -150,6 +160,61 @@ def selected(manifest, names):
     return names or sorted(manifest["profiles"])
 
 
+def credentials_sync(args):
+    """Publish exclusively owned native stores; never put values in metadata or output."""
+    manifest = load_manifest(args.source)
+    pending = []
+    # Read and validate the entire selected set first. A missing key cannot
+    # leave half a rotation published, and an old store is never silently used.
+    for name in selected(manifest, args.profiles):
+        files = manifest["profiles"][name].get("credentialFiles", {})
+        if not files:
+            continue
+        refs = {}
+        for ref, path in files.items():
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", ref) or not os.path.isabs(path):
+                raise Failure(f"{name}: invalid credential reference or source path")
+            try:
+                with open(path, encoding="utf-8") as stream:
+                    raw = stream.read(65537)
+            except OSError as error:
+                raise Failure(f"{name}: cannot read credential source {path}: {error.strerror}") from None
+            value = raw.strip()
+            if not value or len(raw) > 65536 or "\n" in value or "\r" in value:
+                raise Failure(f"{name}: credential source {path} is empty or not one bounded line")
+            refs[ref] = value
+        data = (json.dumps({"version": 1, "refs": refs}, indent=2, sort_keys=True) + "\n").encode()
+        pending.append((name, data))
+    if not pending:
+        return 0
+    home = dsh_home()
+    if not os.path.isdir(home):
+        raise Failure("DSH_HOME does not exist; run dsh-master render first")
+    folder = os.path.join(home, "master-credentials")
+    if not os.path.lexists(folder):
+        os.mkdir(folder, mode=0o700)
+    info = os.lstat(folder)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise Failure(f"{folder}: credential directory must be a real owner-only directory")
+    # Validate destinations before publishing any file, including symlinks.
+    for name, _ in pending:
+        path = os.path.join(folder, name + ".yaml")
+        if os.path.lexists(path):
+            info = os.lstat(path)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+                raise Failure(f"{path}: credential store must be a real owner-only file")
+    for name, data in pending:
+        path = os.path.join(folder, name + ".yaml")
+        unchanged = False
+        if os.path.exists(path):
+            with open(path, "rb") as stream:
+                unchanged = stream.read() == data
+        if not unchanged:
+            write_atomic(folder, name + ".yaml", data, 0o600)
+        print(f"credentials {'unchanged' if unchanged else 'synced'}: {name}")
+    return 0
+
+
 def mapping(value):
     return value if isinstance(value, dict) else {}
 
@@ -181,7 +246,26 @@ def render(args):
     if not os.path.isdir(home):
         print(f"dsh-master: {home} does not exist (dsh has never run here); nothing rendered", file=sys.stderr)
         return 0
-    for name in selected(manifest, args.profiles):
+    names = selected(manifest, args.profiles)
+    changed = set()
+    for name in names:
+        folder = os.path.join(home, "profiles", name)
+        for path in (os.path.join(home, "profiles"), folder):
+            if os.path.islink(path):
+                raise Failure(f"{path} is a symbolic link; dsh-master writes only real folders")
+        profile = manifest["profiles"][name]
+        state = read_state(folder)
+        wanted_state = {"rendered": dict(profile["files"]), "installed": state.get("installed")}
+        if state != wanted_state or any(sha256(os.path.join(folder, file)) != profile["files"][file] for file, _ in FILES):
+            changed.add(name)
+    # HMR watches both the patch and package.json. Inventory precedes every
+    # mutation, including creation of another selected folder: an unavailable
+    # manager must not leave a partially rendered activation behind.
+    using = instances_using(args, manifest, home) if changed else {}
+    for name in names:
+        if name in changed and using.get(name):
+            print(f"render pending: {name}: dshd instance {', '.join(using[name])} is running; profile left unchanged", file=sys.stderr)
+            continue
         profile = manifest["profiles"][name]
         folder = profile_folder(home, name, create=True)
         state = read_state(folder)
@@ -262,7 +346,7 @@ def instances_using(args, manifest, home):
             if os.path.realpath(profile["dshHome"]) == os.path.realpath(home):
                 using.setdefault(profile.get("name"), []).append(entry["name"])
     except (OSError, ValueError, KeyError, AttributeError, subprocess.TimeoutExpired, Failure) as error:
-        raise Failure(f"cannot tell which dshd instances run a Master profile ({error}); stop them and pass --force") from error
+        raise Failure(f"cannot tell which dshd instances run a Master profile ({error}); no profiles changed") from error
     return using
 
 
@@ -347,6 +431,8 @@ def dump_failures(dump, stderr, expect):
             failures.append(f"{want['id']}: disabled")
         if want["config"] is not None and got.get("config") != want["config"]:
             failures.append(f"{want['id']}: config is {json.dumps(got.get('config'), default=str, sort_keys=True)}")
+        if "inject" in want and got.get("inject") != want["inject"]:
+            failures.append(f"{want['id']}: required services are {got.get('inject')!r}, expected {want['inject']!r}")
     sessions = (by_id.get("session-persistence-jsonl") or {}).get("config") or {}
     if sessions.get("compression") != "none":
         failures.append(f"session-persistence-jsonl: compression is {sessions.get('compression')!r}")
@@ -436,6 +522,12 @@ def api(url, method="GET", body=None):
 def seeded(blocks, seed):
     """The blocks the seed changes, as {block: (value, revision)}; warnings go to stderr."""
     changes = {}
+    if "executor" in seed:
+        current = blocks["executor"]["value"]
+        value = copy.deepcopy(current)
+        value["maxWorkers"] = seed["executor"]["maxWorkers"]
+        if value != current:
+            changes["executor"] = (value, blocks["executor"]["revision"])
     if "rules" in seed or "admission" in seed:
         current = blocks["policy"]["value"]
         policy = copy.deepcopy(current)
@@ -478,6 +570,11 @@ def settings_seed(args):
         seed = json.load(stream)
     if "eval" in seed and mapping(seed["eval"]).get("mode") not in MODES:
         raise Failure(f"the seed's eval.mode is {mapping(seed['eval']).get('mode')!r}, not one of {', '.join(MODES)}")
+    if "executor" in seed:
+        executor = mapping(seed["executor"])
+        limit = executor.get("maxWorkers")
+        if set(executor) != {"maxWorkers"} or isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise Failure("the seed's executor must set only maxWorkers to a positive integer")
     url = args.url or load_manifest(args.source).get("url")
     if not url:
         raise Failure("no floor URL: this build's manifest names none; pass --url")
@@ -489,7 +586,7 @@ def settings_seed(args):
             return 0
         try:
             # Rules and admission before the mode, so `auto` never runs on the old rules.
-            for block in ("policy", "eval"):
+            for block in ("policy", "executor", "eval"):
                 if block in changes:
                     value, revision = changes[block]
                     api(f"{base}/{block}", "PUT", {"value": value, "revision": revision})
@@ -498,9 +595,22 @@ def settings_seed(args):
                 print(f"dsh-master: settings changed twice while seeding: {error}", file=sys.stderr)
                 return 1
             continue
-        print(f"changed {' '.join(block for block in ('policy', 'eval') if block in changes)}")
+        print(f"changed {' '.join(block for block in ('policy', 'executor', 'eval') if block in changes)}")
         return 0
     return 1
+
+
+def runtime_snapshot(args):
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "runtime.py")
+    spec = importlib.util.spec_from_file_location("dsh_master_runtime", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        result = module.snapshot(args.source, args.installed_profile, dsh_home(), args.nix_store)
+    except module.SnapshotError as error:
+        raise Failure(str(error)) from None
+    print(json.dumps(result, sort_keys=True))
+    return 0
 
 
 def main(argv):
@@ -516,8 +626,9 @@ def main(argv):
             command.add_argument("profiles", nargs="*", metavar="PROFILE")
         if name in ("install", "check"):
             command.add_argument("--dsh", help="the dsh to run (default: the manifest's, the one dshd runs)")
-        if name == "install":
+        if name in ("render", "install"):
             command.add_argument("--dshd", help="the dshd to ask which instances run (default: the manifest's)")
+        if name == "install":
             command.add_argument("--force", action="store_true", help="install even while a dshd instance runs the profile")
     settings = commands.add_parser("settings").add_subparsers(dest="settings", required=True)
     seed = settings.add_parser("seed", help="upsert the seed's rules and admission cells, raise eval.mode and eval.timeoutSeconds")
@@ -525,6 +636,17 @@ def main(argv):
     seed.add_argument("--url", help="the floor's web server (default: the rendered master's webserver port)")
     seed.add_argument("--from", dest="source", default=default_source(), help="a dsh-master build (default: this one)")
     seed.set_defaults(handler=settings_seed)
+    credentials = commands.add_parser("credentials").add_subparsers(dest="credentials", required=True)
+    sync = credentials.add_parser("sync", help="publish private per-profile native credential stores from runtime secret files")
+    sync.add_argument("--from", dest="source", default=default_source(), help="a dsh-master build (default: this one)")
+    sync.add_argument("profiles", nargs="*", metavar="PROFILE")
+    sync.set_defaults(handler=credentials_sync)
+    runtime = commands.add_parser("runtime").add_subparsers(dest="runtime", required=True)
+    snapshot = runtime.add_parser("snapshot", help="freeze an installed graph and emit a floor-only overlay; never control instances")
+    snapshot.add_argument("--installed-profile", required=True, help="an installed profile folder matching the new build's package pins and lock")
+    snapshot.add_argument("--from", dest="source", default=default_source(), help="the new dsh-master build")
+    snapshot.add_argument("--nix-store", default="nix-store", help="nix-store used only to retain already-valid peer paths")
+    snapshot.set_defaults(handler=runtime_snapshot)
     args = parser.parse_args(argv)
     try:
         return args.handler(args)

@@ -98,12 +98,24 @@ let
     }
     // extra;
 
-  # Groq (https://api.groq.com/openai/v1): three keys, 1,000 requests and
-  # 200K tokens per day per key (measured headers: 8,000 tokens/minute). All
+  # Groq (https://api.groq.com/openai/v1): three configured keys, not three
+  # independent pools. Limits are organization scoped: 1,000 requests and
+  # 200K tokens/day in the published free plan (8,000 TPM observed). All
   # three ids are catalog-verified (qwen3.8-27b: 131,042 context, 16,384 out).
   groq =
     retryPolicy:
     keyed "Groq" "GROQ_API_KEY" retryPolicy {
+      # A normal DSH tool round is ~5.6K input tokens; the next round can hit
+      # the observed 7K ITPM cap. Millisecond retries only repeat that refusal.
+      # Keep native recovery bounded and wait a full minute before retrying;
+      # QUOTA/AUTH remain terminal and no account or paid fallback is selected.
+      retryPolicy = retryPolicy // {
+        backoff = {
+          initialDelayMs = 60000;
+          maxDelayMs = 60000;
+          jitterRatio = 0;
+        };
+      };
       models = [
         {
           id = "qwen/qwen3.8-27b"; # default; Tom's wanted model
@@ -182,8 +194,9 @@ let
     };
 
   # NVIDIA NIM (https://integrate.api.nvidia.com/v1): one key, about 40
-  # requests/minute (docs, unconfirmed). glm-5.3-flash answered with
-  # reasoning; the other catalog ids were listed. nemotron-3-super and
+  # requests/minute (docs, unconfirmed). The exact Lightning route returned
+  # checked code with thinking explicitly off on 2026-11-15; GLM/OSS timeouts
+  # remain route observations, not a provider outage. nemotron-3-super and
   # minimax-m3.1-flash are listed for this account but absent from the
   # catalog, so they are declared by hand (sizes assumed, no reasoning
   # offered). moonshotai/kimi-k2.6 is in the catalog but 404 for this
@@ -191,7 +204,20 @@ let
   nvidia =
     retryPolicy:
     keyed "NVIDIA NIM" "NVIDIA_API_KEY" retryPolicy {
+      timeoutMs = 120000;
+      streamIdleTimeoutMs = 120000;
       models = [
+        {
+          id = "nvidia/nemotron-3.5-lightning-30b-a3b";
+          maxTokens = 4096;
+          # Native pi-ai chat-template support, not an arbitrary extra body.
+          # Default thinking spent a short output allowance without a final;
+          # explicit off returned the checked public-code answer immediately.
+          compat = {
+            thinkingFormat = "chat-template";
+            chatTemplateKwargs.enable_thinking = false;
+          };
+        }
         { id = "z-ai/glm-5.3-flash"; } # default; answered with reasoning
         { id = "deepseek-ai/deepseek-v4.1-flash"; }
         { id = "nvidia/nemotron-3.5-super-vl-120b-a12b"; }
@@ -253,8 +279,8 @@ let
     };
 
   # Cerebras (https://api.cerebras.ai/v1): one key, no per-key rotation.
-  # The strongest lane by allowance (measured headers: 450 requests/minute,
-  # 648K/day, 150K tokens/minute, 216M tokens/day). Both ids are
+  # Historical headers advertised large rate limits, but current generation
+  # returns 402 without credit. They are not a usable token budget. Both ids are
   # catalog-verified (131,072 context, 40,960 out, reasoning); qwen-3.8-27b
   # answered.
   cerebras =
@@ -392,6 +418,11 @@ let
       model = "command-a-plus-05-2026";
     };
     nvidia = {
+      provider = "nvidia";
+      model = "nvidia/nemotron-3.5-lightning-30b-a3b";
+      reasoningEffort = null;
+    };
+    nvidia-glm = {
       provider = "nvidia";
       model = "z-ai/glm-5.3-flash";
     };

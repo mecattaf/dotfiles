@@ -89,7 +89,12 @@ def main(package, expect_path):
     )
 
     deps = {name: folder["package"]["dependencies"] for name, folder in folders.items()}
-    problems = [f"{name}: {dep}" for name, dep in deps.items() if dep != deps["master"]]
+    problems = []
+    for name, dep in deps.items():
+        pair = workers.get(name)
+        wanted = deps["master"] | (expect["pairDependencies"].get(pair, {}) if pair else {})
+        if dep != wanted:
+            problems.append(f"{name}: dependencies {dep}, expected {wanted}")
     configured = {"dsh-superagent": expect["superagent"], "@norman-else/dsh-claude": expect["claude"]}
     problems += [] if deps["master"] == configured else [f"dependencies {deps['master']}, configured {configured}"]
     # The release form only while neither pin is set by hand (docs/dsh-master.md: a fork-only re-tag sets one).
@@ -177,6 +182,10 @@ def main(package, expect_path):
             problems.append(f"dshd.pairs.{pair}.profile is {got.get('profile')!r}")
         if got.get("env", {}) != settings["env"] or got.get("maxWorkers") != settings["maxWorkers"]:
             problems.append(f"dshd.pairs.{pair} is {got}")
+        route = pairs[pair]
+        effort = expect["nativeEfforts"][pair] or route.get("reasoningEffort")
+        if got.get("provider") != route["provider"] or got.get("model") != route["model"] or got.get("effort") != effort:
+            problems.append(f"dshd.pairs.{pair} lacks the exact provider/model/effort selection")
     if sorted(dshd.get("pairs", {})) != sorted(pairs):
         problems.append(f"dshd.pairs are {sorted(dshd.get('pairs', {}))}")
     config = superagent.get("master", {}).get("config", {})
@@ -209,15 +218,17 @@ def main(package, expect_path):
     subtest("Gufo headless foreground and compaction budgets only", problems)
 
     problems = []
-    for pair, extra_rows in expect["workerRows"].items():
-        target = f"master-{pair}"
-        for source in extra_rows:
-            listed = source.get("insert", [source])
-            for row in listed:
-                for name, ids in rows.items():
-                    got = [{k: v for k, v in item.items() if k != "inserted"} for item in ids.get(row["id"], [])]
-                    if got != ([row] if name == target else []):
-                        problems.append(f"{name}: pair-only {row['id']} is {got}")
+    extra_by_profile = {
+        f"master-{pair}": [row for source in extra_rows for row in source.get("insert", [source])]
+        for pair, extra_rows in expect["workerRows"].items()
+    }
+    extra_ids = {row["id"] for extra_rows in extra_by_profile.values() for row in extra_rows}
+    for name, ids in rows.items():
+        for row_id in extra_ids:
+            wanted = [row for row in extra_by_profile.get(name, []) if row["id"] == row_id]
+            got = [{k: v for k, v in item.items() if k != "inserted"} for item in ids.get(row_id, [])]
+            if got != wanted:
+                problems.append(f"{name}: pair-only {row_id} is {got}, expected {wanted}")
     subtest("additional worker rows stay with their pair and are manifest-checked", problems)
 
     problems = []
@@ -262,11 +273,25 @@ def main(package, expect_path):
         if pairs[pair]["provider"] != "claude" and preset is not None:
             problems.append(f"{name}: binds preset {preset!r} to a {pairs[pair]['provider']} worker (the claude preset routes to Claude Code)")
         order = [row.get("insert", [{}])[0].get("id") for row in folders[name]["patch"] if "insert" in row]
-        want = ["agent-preset-registry"] + ([] if preset is None else ["headless-preset"])
-        want += [item["id"] for row in expect["workerRows"][pair] for item in row.get("insert", [])[:1]]
+        extra = expect["workerRows"][pair]
+        want = ["agent-preset-registry"] + ([] if preset is None else ["headless-preset"]) + [inserted["id"] for row in extra for inserted in row.get("insert", [])]
         if order != want:
             problems.append(f"{name}: inserts in the order {order}, expected {want}")
     subtest("headless folders insert headless-preset after agent-preset-registry", problems)
+
+    problems = []
+    for name, pair in workers.items():
+        files = expect["pairCredentials"][pair]
+        if manifest["profiles"][name].get("credentialFiles") != files:
+            problems.append(f"{name}: runtime credential source metadata differs")
+        credentials = rows[name].get("credentials", [])
+        if files:
+            wanted = {"path": {"__js": f"process.getBuiltinModule('node:fs').realpathSync(dshHomePath('master-credentials/{name}.yaml'))"}, "watch": False}
+            if len(credentials) != 1 or credentials[0].get("disabled") is not False or credentials[0].get("config") != wanted:
+                problems.append(f"{name}: native credential store selection is {credentials}")
+        elif credentials:
+            problems.append(f"{name}: a pair without credential files gained a credential store")
+    subtest("cloud pairs use private per-profile native credential stores", problems)
 
     problems = []
     try:
@@ -361,7 +386,10 @@ def main(package, expect_path):
         have = sorted(set(ids) & set(expect["policyIds"]) - {"agent-default-model"} - (PERMISSION_ROWS if name == "master" else set()))
         if have != wanted:
             problems.append(f"{name}: policy ids {have}")
-        problems += [f"{name}: {row_id} differs from the policy" for row_id in wanted if ids.get(row_id, [None])[0] != policy[row_id]]
+        expected_policy = copy.deepcopy(policy)
+        if name in workers and expect["pairCredentials"][workers[name]]:
+            expected_policy["llm-pi-ai"]["inject"] = ["llm", "credentials"]
+        problems += [f"{name}: {row_id} differs from the policy" for row_id in wanted if ids.get(row_id, [None])[0] != expected_policy[row_id]]
         sessions = ids.get("session-persistence-jsonl", [])
         if len(sessions) != 1 or sessions[0].get("config", {}).get("compression") != "none" or "__js" not in sessions[0].get("config", {}).get("root", {}):
             problems.append(f"{name}: sessions row is {sessions}")

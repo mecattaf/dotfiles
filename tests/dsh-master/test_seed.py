@@ -29,6 +29,7 @@ class Floor:
         self.blocks = {
             "policy": {"value": {"rules": [{"id": "own", "name": "Own", "enabled": True, "instruction": "Keep me."}], "sources": {}}, "revision": 3},
             "eval": {"value": {"mode": mode, "timeoutSeconds": 120, "model": None}, "revision": 5},
+            "executor": {"value": {"maxWorkers": 8, "otherOption": "keep"}, "revision": 9},
         }
         self.puts = []
         self.conflicts = 0
@@ -92,7 +93,8 @@ class Seed(unittest.TestCase):
         # Limits of the fork's RuleSchema and AdmissionRowSchema (src/policy.ts, src/limits.ts).
         with open(SEED, encoding="utf-8") as stream:
             seed = json.load(stream)
-        self.assertEqual(sorted(seed), ["admission", "eval", "rules"])
+        self.assertEqual(sorted(seed), ["admission", "eval", "executor", "rules"])
+        self.assertEqual(seed["executor"], {"maxWorkers": 8})
         self.assertEqual(seed["eval"], {"mode": "auto", "timeoutSeconds": 600})
         # The fork's EvalConfigSchema bounds (src/limits.ts evalTimeoutSeconds).
         self.assertTrue(30 <= seed["eval"]["timeoutSeconds"] <= 600)
@@ -178,6 +180,14 @@ class Seed(unittest.TestCase):
         code, out, err = self.run_seed(floor)
         self.assertEqual((code, out), (1, ""))
         self.assertIn("changed twice", err)
+
+    def test_executor_capacity_upsert_preserves_other_options_and_is_idempotent(self):
+        floor = Floor()
+        floor.blocks["executor"]["value"] = {"maxWorkers": 3, "nested": {"token": "untouched"}, "otherOption": False}
+        self.assertEqual(self.run_seed(floor)[:2], (0, "changed policy executor eval\n"))
+        self.assertEqual(floor.blocks["executor"]["value"], {"maxWorkers": 8, "nested": {"token": "untouched"}, "otherOption": False})
+        self.assertEqual(self.run_seed(floor)[:2], (0, "unchanged\n"))
+        self.assertEqual(floor.puts, ["policy", "executor", "eval"])
 
 
 if __name__ == "__main__":
