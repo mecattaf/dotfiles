@@ -95,9 +95,15 @@ let
   observerConfig = pkgs.writeText "fleet-observer.json" (builtins.toJSON {
     fleetCommand = [ "${pkgs.fleet-status}/bin/fleet-status" "--json" ];
     dshdCommand = [ "/run/current-system/sw/bin/dshd" "ls" "--json" ];
-    # The normal seats helper remains the only slow account acquisition owner.
-    # It may use its cache and read native usage endpoints; it sends no prompts.
+    # Seats owns the account families it supports, using its ordinary cache.
+    # Antigravity has a separate native metadata command below, never a prompt.
     seatsCommand = [ "/home/tom/.local/bin/seats" "--json" "--only" "cc,cc2,codex,openrouter" "--no-spend" "--cache-ttl" "1800" ];
+    # Native CLI metadata command; /usage is handled without inference. Each
+    # independently authenticated Gemini account has one slow acquisition.
+    antigravityQuotaCommands = builtins.listToAttrs (map (slot: {
+      name = toString slot;
+      value = [ "/etc/profiles/per-user/tom/bin/agy${if slot == 1 then "" else toString slot}" "--settings" ''{"useG1Credits":false}'' "--print" "/usage" "--print-timeout" "12s" ];
+    }) [ 1 2 3 ]);
     systemctlCommand = [ "systemctl" "--user" "show" "dshd@*.service" "--property=Id,CPUUsageNSec,MemoryCurrent,MemoryPeak,TasksCurrent,IOReadBytes,IOWriteBytes,NRestarts" ];
     journalCommand = [
       "journalctl" "--user" "--follow" "--output=json" "--no-pager" "--user-unit=dshd@*.service"
@@ -109,7 +115,7 @@ let
     dshSessions = "/home/tom/.dsh/sessions";
     laneMeter = "/home/tom/.local/state/seats/lane-usage.jsonl";
     python = "${pkgs.python3}/bin/python3";
-    intervals = { hosts = 300; metrics = 60; instances = 60; seats = 600; tails = 10; cloudflareQuota = 3600; vercelQuota = 3600; };
+    intervals = { hosts = 300; metrics = 60; instances = 60; seats = 600; tails = 10; cloudflareQuota = 3600; vercelQuota = 3600; antigravity1 = 1800; antigravity2 = 1800; antigravity3 = 1800; };
     cloudflareQuota = if config.age.secrets ? cloudflare-account-id && config.age.secrets ? cloudflare-api-token then {
       accountFile = config.age.secrets.cloudflare-account-id.path;
       tokenFile = config.age.secrets.cloudflare-api-token.path;

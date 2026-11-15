@@ -484,6 +484,69 @@ class Observer:
                 expire_at_reset(rows[-2:], budget.get("resets_at"))
         return rows
 
+    def antigravity_quota(self, slot, argv):
+        # Official standalone /usage is handled by the CLI without a model
+        # turn. Only the configured Gemini pool is projected; no login or
+        # credit fallback is permitted by the fixed argv in the module.
+        if str(slot) not in ["1", "2", "3"]:
+            raise RuntimeError("source-failed")
+        text = command(argv, timeout=18, cap=16384, as_json=False)
+        readings = []
+        for line in text.splitlines():
+            fields = line.split("\t")
+            if len(fields) != 4 or fields[:2] != ["Gemini Models", "Weekly Limit Remaining"]:
+                continue
+            match = re.fullmatch(r"(100|[0-9]{1,2})(?:\.([0-9]+))?%", fields[2])
+            reset = instant(fields[3])
+            if not match or reset is None or reset <= dt.datetime.now(UTC):
+                raise RuntimeError("source-failed")
+            remaining = float(fields[2][:-1])
+            if not 0 <= remaining <= 100:
+                raise RuntimeError("source-failed")
+            readings.append((remaining, stamp(reset)))
+        if len(readings) != 1:
+            raise RuntimeError("source-failed")
+        remaining, reset = readings[0]
+        account = self.add_subject(f"account-antigravity-{slot}", "account", f"{PROVIDERS['antigravity']} account {slot}", "provider-antigravity")
+        bucket = self.add_subject(f"quota-antigravity-{slot}-gemini-weekly", "quota-bucket", PROVIDERS["antigravity"] + " quota", account)
+        rows = [public_observation(bucket, "compute.subscriptions", key, value, unit=unit, scope="provider-reported", ttl=3600)
+                for key, value, unit in [("subscription.utilizationPercent", 100 - remaining, "percent"), ("subscription.windowKind", "weekly", None), ("subscription.resetsAt", reset, None)]]
+        return expire_at_reset(rows, reset)
+
+    def zen_ledger(self, row):
+        # Supplemental native receipt view, never added to DSH provider totals.
+        # ACP currently reports no usage_steps: missing counters stay unknown.
+        slot, invocation, steps = str(row.get("slot")), row.get("invocation_id"), row.get("usage_steps")
+        at = instant(row.get("ts"))
+        if row.get("lane") != "zen" or slot not in ["1", "2", "3", "4"] or not isinstance(invocation, str) or not 1 <= len(invocation) <= 256 or not isinstance(steps, list) or not steps or len(steps) > 1024 or at is None:
+            return
+        ident = hashlib.sha256(invocation.encode()).hexdigest()
+        seen = self.state.setdefault("ledgerSeen", {})
+        floor = instant(self.state.get("ledgerFloorAt"))
+        if ident in seen or (floor and at <= floor):
+            return
+        totals = {}
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            cache = step.get("cache") if isinstance(step.get("cache"), dict) else {}
+            for key, value in [("inputTokens", step.get("input")), ("outputTokens", step.get("output")), ("reasoningTokens", step.get("reasoning")), ("cacheReadTokens", cache.get("read")), ("cacheWriteTokens", cache.get("write"))]:
+                if finite(value) and value >= 0:
+                    totals[key] = totals.get(key, 0) + value
+        if not totals:
+            return
+        counts = self.state.setdefault("ledgerUsage", {}).setdefault(slot, {})
+        for key, value in totals.items():
+            counts[key] = counts.get(key, 0) + value
+        counts["at"] = stamp(at)
+        seen[ident] = stamp(at)
+        if len(seen) > 4096:
+            ordered = sorted(seen, key=seen.get)
+            dropped = ordered[:-4096]
+            self.state["ledgerFloorAt"] = max(seen[key] for key in dropped)
+            for key in dropped:
+                del seen[key]
+
     def cloudflare_quota(self):
         settings = self.config.get("cloudflareQuota")
         if not settings:
@@ -630,6 +693,7 @@ class Observer:
             meter_gap = gap or more
             headers = self.state.setdefault("headers", {})
             for row in records:
+                self.zen_ledger(row)
                 lane = self.lane(row.get("lane"))
                 if lane and isinstance(row.get("rl"), dict):
                     approved = {}
@@ -682,6 +746,11 @@ class Observer:
                     value = record["values"].get(f"x-ratelimit-{suffix}-{metric}")
                     if value is not None:
                         rows.append(public_observation(bucket, "compute.quota-headers", key, value, at=record.get("at"), unit=metric, scope="shared-quota-bucket", ttl=60))
+        for slot, counts in self.state.get("ledgerUsage", {}).items():
+            account = self.add_subject(f"account-zen-{slot}", "account", f"{PROVIDERS['zen']} account {slot}", "provider-zen")
+            for key in ["inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens"]:
+                value = counts.get(key)
+                rows.append(public_observation(account, "compute.tokens", "usage." + key, value, unit="tokens", scope="provider-reported", grade="computed", error="not-instrumented" if value is None else None, ttl=180))
         self.state["tailTruncated"] = {"sessions": truncated, "meter": meter_gap}
         return rows
 
@@ -727,6 +796,7 @@ class Observer:
         observations = []
         coverage = {key: {"sourceId": key, "state": "disabled-by-policy" if key.startswith("optional.") or key in ["storage.smart", "host.temperatures"] else "not-configured", "lastAttemptAt": None, "lastSuccessAt": None, "errorCode": "not-instrumented"} for key in SOURCES}
         memberships = {"hosts": ["fleet.snapshot", "host.pressure"], "metrics": ["host.pressure", "inference.gpu"], "instances": ["agent.instances"], "seats": ["compute.subscriptions", "compute.quota-headers"], "cloudflareQuota": ["compute.quota-headers"], "vercelQuota": ["compute.quota-headers"], "tails": ["agent.sessions", "agent.spans", "compute.call-history", "compute.tokens", "compute.quota-headers"]}
+        memberships.update({"antigravity" + str(slot): ["compute.subscriptions"] for slot in self.config.get("antigravityQuotaCommands", {})})
         acquired = {}
         for name, cache in self.cache.items():
             if name not in memberships:
@@ -815,6 +885,8 @@ class Observer:
 
     def run(self, once=False):
         functions = {"hosts": self.hosts, "metrics": self.metrics, "instances": self.instances, "seats": self.seats, "tails": self.tails}
+        for slot, argv in self.config.get("antigravityQuotaCommands", {}).items():
+            functions["antigravity" + str(slot)] = lambda slot=slot, argv=argv: self.antigravity_quota(slot, argv)
         if self.config.get("cloudflareQuota"):
             functions["cloudflareQuota"] = self.cloudflare_quota
         if self.config.get("vercelQuota"):

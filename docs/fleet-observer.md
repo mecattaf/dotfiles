@@ -46,6 +46,7 @@ the existing observer enrolled each source.
 | User journal | One cursor-owned lifecycle subscription | Events, bounded reconnect backoff |
 | DSH | Incremental selected metadata from recent session journals | 10 seconds |
 | Seats | `--no-spend`, normal 1800-second native cache TTL, one shared acquisition | 600 seconds |
+| Antigravity accounts 1–3 | Official standalone `--print /usage` metadata, credits disabled; independent Gemini weekly pools | 1800 seconds per account |
 | Cloudflare | Read-only account Neurons analytics; declared included allocation kept separate | 3600 seconds |
 | Vercel | Read-only credits balance | 3600 seconds |
 | Free-provider headers | Existing lane meter, recorded during ordinary calls | Incremental; no inference/catalogue probes |
@@ -73,6 +74,13 @@ Observed partial-response token usage is retained on cancellation. These are
 not all HTTP retries, all clients,
 or all prior history. Old transcripts are enrolled at their end. Truncation and
 cursor gaps are explicit coverage limitations.
+
+Zen native `usage_steps` receipts supply a separate per-account reported token
+view. These counters are never added to the DSH provider aggregate: the two
+views may overlap and must not be summed. Only reported numeric token fields
+are retained; missing counters remain unknown. Native ACP receipts currently
+omit these token fields, so an open or closed ACP process supplies no invented
+token usage. Historical ledger rows are enrolled at their end.
 
 The private state directory is mode 0700; state files are 0600. Public records
 are constructed from fixed fields and finite value domains. Account slots are
