@@ -35,7 +35,16 @@ in
         hostNames = map (a: "[${a}]:${toString h.initrd.port}") h.aliases;
         publicKey = h.initrd.hostKey;
       }
-    ) (lib.filterAttrs (_: h: h ? initrd) registry);
+    ) (lib.filterAttrs (_: h: h ? initrd) registry)
+    # Friends' Macs (./managed-macs.nix): pinned like fleet hosts, but outside
+    # the fleet registry and never given tom's authorized keys from here.
+    // lib.mapAttrs' (
+      name: m:
+      lib.nameValuePair "${name}-mac" {
+        hostNames = m.aliases;
+        publicKey = m.hostKey;
+      }
+    ) (import ./managed-macs.nix);
 
   users.users.tom.openssh.authorizedKeys.keys = meshKeys;
 
