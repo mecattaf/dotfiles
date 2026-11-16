@@ -8,6 +8,9 @@ let
     nas = "nas";
     client = "client";
   };
+  # Friends' Macs: `ssh marwan-mac`, `ssh frank-mac`. Host keys are pinned
+  # system-wide by modules/mesh.nix from the same file.
+  macs = import ../modules/managed-macs.nix;
 in
 assert builtins.all (name: builtins.hasAttr name registry) (builtins.attrValues targets);
 {
@@ -20,6 +23,16 @@ assert builtins.all (name: builtins.hasAttr name registry) (builtins.attrValues 
       IdentityFile = "~/.ssh/id_ed25519";
       IdentitiesOnly = true;
       StrictHostKeyChecking = "yes";
-    }) targets;
+    }) targets
+    // lib.mapAttrs' (
+      name: m:
+      lib.nameValuePair "${name}-mac" {
+        HostName = builtins.head m.aliases;
+        User = m.user;
+        IdentityFile = "~/.ssh/id_ed25519";
+        IdentitiesOnly = true;
+        StrictHostKeyChecking = "yes";
+      }
+    ) macs;
   };
 }
