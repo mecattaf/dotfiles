@@ -65,8 +65,10 @@ let
       }
     ];
   };
-  zenPair = slot: model: {
-    provider = "zen-cli-${slot}";
+  # Provider aliases remain compatible with an already running floor. Their
+  # suffix is a route identifier, not the selected credential identity.
+  zenPair = providerAlias: credentialSlot: model: {
+    provider = "zen-cli-${providerAlias}";
     inherit model;
     maxWorkers = 1;
     dependencies."@mecattaf/dsh-gemini-cli" = nativeClientPin;
@@ -87,8 +89,8 @@ let
               turnTimeoutMs = 600000;
               accounts = [
                 {
-                  id = slot;
-                  name = "Zen fixed slot ${slot}";
+                  id = providerAlias;
+                  name = "Zen fixed credential ${credentialSlot} (route ${providerAlias})";
                   executablePath = "${home}/.local/bin/zen";
                   # --model makes the launcher admit, pin as small model and
                   # record the pair's own model, not its default DeepSeek.
@@ -97,7 +99,7 @@ let
                   cliArgs = [
                     "--acp"
                     "--slot"
-                    slot
+                    credentialSlot
                     "--model"
                     (lib.removePrefix "opencode/" model)
                     "--edit"
@@ -335,10 +337,10 @@ in
         antigravity = antigravityPair "1";
         antigravity-2 = antigravityPair "2";
         antigravity-3 = antigravityPair "3";
-        zen-deepseek = zenPair "1" "opencode/deepseek-v4.1-flash-free";
-        zen-glm = zenPair "1" "opencode/glm-5.3-flash-free";
-        zen-mimo = zenPair "1" "opencode/mimo-v2.6-flash-free";
-        zen-minimax = zenPair "2" "opencode/minimax-m3.1-flash-free";
+        zen-deepseek = zenPair "1" "1" "opencode/deepseek-v4.1-flash-free";
+        zen-glm = zenPair "1" "2" "opencode/glm-5.3-flash-free";
+        zen-mimo = zenPair "1" "3" "opencode/mimo-v2.6-flash-free";
+        zen-minimax = zenPair "2" "4" "opencode/minimax-m3.1-flash-free";
       };
       description = "Provider-harness pairs; each renders one headless folder master-<name>.";
     };
