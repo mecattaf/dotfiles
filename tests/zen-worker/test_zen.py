@@ -231,6 +231,28 @@ class ZenTests(unittest.TestCase):
         self.assertNotIn('paid-model',acp[0]['config']['provider']['opencode']['whitelist'])
         self.assertTrue(all(row['status']=='closed' for row in self.results()))
 
+    def test_acp_in_home_serves_read_only_instead_of_closing(self):
+        # A floor worker's ACP cwd is its workflow run's directory, often home.
+        request=json.dumps({'jsonrpc':'2.0','id':1,'method':'initialize','params':{}})+'\n'
+        env=dict(self.env,HOME=str(self.cwd))
+        process=subprocess.run([str(ZEN),'--acp','--slot','1','-m','big-pickle','--edit','--cwd','.','--timeout','30'],
+                               cwd=self.cwd,env=env,input=request,capture_output=True,text=True,timeout=8)
+        self.assertEqual(process.returncode,0,process.stderr)
+        self.assertEqual(json.loads(process.stdout)['id'],1)
+        self.assertIn('read-only',process.stderr)
+        acp=[json.loads(s) for s in (self.root/'calls').read_text().splitlines() if json.loads(s)['args'][0]=='acp']
+        self.assertEqual(acp[-1]['config']['permission']['edit'],'deny')
+        self.assertEqual(acp[-1]['config']['agent']['zen-worker']['permission']['edit'],'deny')
+        self.assertEqual(acp[-1]['config']['model'],'opencode/big-pickle')
+        self.assertEqual(acp[-1]['config']['small_model'],'opencode/big-pickle')
+        [row]=self.results()
+        self.assertEqual((row['status'],row['edit'],row['edit_requested'],row['model']),('closed',False,True,'big-pickle'))
+        # A hand-run edit in home is still refused before any client starts.
+        refused=subprocess.run([str(ZEN),'--edit','--cwd','.','Draft patch'],cwd=self.cwd,env=env,
+                               stdin=subprocess.DEVNULL,capture_output=True,text=True,timeout=8)
+        self.assertEqual(refused.returncode,2)
+        self.assertIn('not home or filesystem root',refused.stderr)
+
     def test_no_automatic_burndown(self):
         self.assertEqual(self.run_zen('--burndown','Read source').returncode,2)
         self.assertFalse((self.root/'calls').exists())

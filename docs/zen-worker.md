@@ -77,6 +77,18 @@ native session binding and DSH presentation. ACP native data persists privately
 under `~/.local/state/seats/zen/acp/slot-N/` so a new process can load a bound
 native session. A second route/key does not imply independent quota.
 
+The Master floor's Zen pairs also pass `--model <selector>` (without the
+`opencode/` prefix), so the launcher admits, pins as small model and records
+the pair's own model rather than its DeepSeek default. A floor worker's cwd is
+its workflow run's directory. When that is home or the filesystem root, the
+ACP launcher serves the session read-only and says so on stderr and in its
+receipt (`edit_requested`, `edit_refused`), instead of exiting before ACP
+starts. Edits are never granted across home or root; a hand-run `zen --edit`
+in home is still refused. Before this, every floor Zen worker of a run started
+in home exited at once and DSH reported only "ACP connection closed before the
+operation completed"; the adapter now appends the client's exit status and
+redacted stderr tail to that error.
+
 OpenCode 1.19.5 returns ACP `configOptions`: `model` uses full
 `opencode/<selector>` values, `mode` includes `zen-worker`, and the effort
 option has ID `effort`, category `thought_level`, values `low/high/max/default`
@@ -96,7 +108,8 @@ zen --cwd /tmp/public-worktree --edit -m deepseek-v4.1-flash-free \
 
 Read-only is the default. Shell, delegation, external directories, web and
 unknown tools are denied. `--edit` requires an explicit workspace and enables
-only edits inside it; root and home are refused. These native permissions are
+only edits inside it; root and home are refused (an `--acp` session there is
+served read-only instead, as described above). These native permissions are
 not an OS filesystem sandbox. Supply public/nonsecret workspaces and source
 packets. In v1.19.5 the edit permission patterns are relative to the Git worktree
 (or filesystem root outside Git), which is why absolute allow patterns fail.
