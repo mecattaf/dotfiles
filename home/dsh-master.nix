@@ -337,10 +337,10 @@ in
         antigravity = antigravityPair "1";
         antigravity-2 = antigravityPair "2";
         antigravity-3 = antigravityPair "3";
-        zen-deepseek = zenPair "1" "1" "opencode/deepseek-v4.1-flash-free";
-        zen-glm = zenPair "1" "2" "opencode/glm-5.3-flash-free";
-        zen-mimo = zenPair "1" "3" "opencode/mimo-v2.6-flash-free";
-        zen-minimax = zenPair "2" "4" "opencode/minimax-m3.1-flash-free";
+        zen-deepseek = zenPair "1" "3" "opencode/deepseek-v4.1-flash-free";
+        zen-glm = zenPair "1" "4" "opencode/glm-5.3-flash-free";
+        zen-mimo = zenPair "1" "1" "opencode/mimo-v2.6-flash-free";
+        zen-minimax = zenPair "2" "2" "opencode/minimax-m3.1-flash-free";
       };
       description = "Provider-harness pairs; each renders one headless folder master-<name>.";
     };
