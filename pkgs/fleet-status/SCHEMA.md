@@ -81,3 +81,29 @@ added together or swapped for each other (#357).
 
 Bump `schema` for any change that removes or renames a field. Adding a fact
 does not require a bump.
+
+## Public observer snapshot (`fleet-observer`)
+
+The observer publishes `fleet-observations/1` (`schema/snapshot-v1.schema.json`;
+the reviewed field whitelist is `public-contract.json`, copied under
+`reader/contracts/`). Every reader of it — `publisher.py`, `fleet-status
+observations` and the public Worker — refuses a body over 1 MiB, counted as
+written: compact JSON plus the trailing newline. The observer measures that
+same quantity and never refuses to publish because of size:
+
+- `agent.instances` lists active and anomalous dshd instances first
+  (`running`, `starting`, `idle`, `draining`, `masked`, `inconsistent`,
+  `orphaned`), then finished ones newest first, within 320 KiB of
+  observations. dshd keeps finished instances until they are removed, so a
+  batch of short-lived workers can leave hundreds.
+- If the assembled snapshot still exceeds 960 KiB, whole records are dropped
+  in this order until it fits: finished instances, ended sessions (oldest
+  first), the oldest events, then live instances and sessions. Fleet, host,
+  provider, account and quota records are never dropped.
+- Every source that left records out carries `truncated: true` in its
+  coverage entry, and `errorCode: "budget-truncated"` unless it already
+  reports another error. A reader treats such a source as a partial list,
+  never as a count of everything that exists.
+
+This adds no field: `truncated` and `budget-truncated` were already part of
+the schema and the contract.

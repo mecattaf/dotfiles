@@ -249,6 +249,99 @@ class ObserverTests(unittest.TestCase):
         self.assertEqual(self.value.state["usage"]["groq"]["inputTokens"], 12)
         self.assertIn(str(path), self.value.state["cursors"])
 
+    # A batch of short-lived workers leaves hundreds of finished dshd
+    # instances that nothing removes. The snapshot must stay publishable.
+    def fake_instances(self, count, running=4):
+        now = 1794800000
+        items = [{"name": f"private-worker-{index:04d}", "state": "running" if index < running else "failed" if index % 3 == 0 else "stopped",
+                  "transport": "none", "enabled": False, "since": now - index * 60, "labels": {"private.ticket": "SECRET-LABEL"}} for index in range(count)]
+        units = "\n\n".join(f"Id=dshd@{item['name']}.service\nCPUUsageNSec=1\nMemoryCurrent=2\nMemoryPeak=3\nTasksCurrent=4\nIOReadBytes=5\nIOWriteBytes=6\nNRestarts=0"
+                            for item in items if item["state"] != "stopped")
+        self.value.config.update(dshdCommand=["dshd", "ls", "--json"], systemctlCommand=["systemctl", "--user", "show"])
+
+        def source(argv, **_):
+            return {"instances": items, "linger": True, "warnings": []} if argv[0] == "dshd" else units
+        return items, source
+
+    def assert_publishable(self, value):
+        written = (self.root / "state/public/status.json").read_bytes()
+        self.assertLessEqual(len(written), observer.PUBLIC_MAX_BYTES)
+        self.assertEqual(len(written), observer.public_size(value), "the budget is measured as written")
+        observer.validate_public(json.loads(written))
+        for private in [b"private-worker", b"SECRET-LABEL"]:
+            self.assertNotIn(private, written)
+        return {row["sourceId"]: row for row in value["coverage"]}
+
+    def test_oversized_instance_set_publishes_a_trimmed_valid_snapshot(self):
+        items, source = self.fake_instances(3000)
+        with patch.object(observer, "command", side_effect=source):
+            self.value.accept("instances", self.value.acquire("instances", self.value.instances))
+        self.assertIsNone(self.value.cache["instances"]["error"])
+        value = self.value.publish()
+        coverage = self.assert_publishable(value)["agent.instances"]
+        self.assertEqual((coverage["state"], coverage["truncated"], coverage["errorCode"]), ("reporting", True, "budget-truncated"))
+        listed = {row["id"] for row in value["subjects"] if row["kind"] == "instance"}
+        ids = [self.value.public_id("instance", item["name"]) for item in items]
+        self.assertTrue(set(ids[:4]) <= listed, "every running instance stays listed")
+        self.assertIn(ids[4], listed, "the newest finished instance stays listed")
+        self.assertNotIn(ids[-1], listed, "the oldest finished instance is omitted first")
+        self.assertGreater(self.value.cache["instances"]["omitted"], 0)
+
+    def test_retained_oversized_cache_cannot_wedge_publication_or_restart(self):
+        # The 16 Nov failure: an instance source refused for size keeps its
+        # earlier rows, every row turns stale and gains a last-good copy, and
+        # the unchanged state then exceeded 1 MiB on every restart.
+        old = "2026-11-15T23:10:33Z"
+        rows = []
+        for index in range(900):
+            ident = self.value.add_subject(self.value.public_id("instance", f"private-worker-{index}"), "instance", "DSH instance", "host-nas")
+            state = "running" if index < 3 else "stopped"
+            rows += [observer.public_observation(ident, "agent.instances", "instance.state", state, at=old, scope="this-instance"),
+                     observer.public_observation(ident, "agent.instances", "instance.transport", "unknown", at=old, scope="this-instance"),
+                     observer.public_observation(ident, "agent.instances", "instance.enabled", False, at=old, scope="this-instance")]
+            rows += [observer.public_observation(ident, "agent.instances", key, 1, at=old, unit=measure, scope="this-instance") for key, measure in observer.UNIT_FIELDS.values()]
+        self.value.cache["instances"] = {"rows": rows, "error": "budget-truncated", "failures": 3, "lastAttemptAt": old, "lastSuccessAt": old, "nextAt": 0}
+        value = self.value.publish()
+        coverage = self.assert_publishable(value)["agent.instances"]
+        self.assertEqual((coverage["state"], coverage["truncated"], coverage["errorCode"]), ("unavailable", True, "budget-truncated"))
+        self.assertEqual(self.value.state["publicTrim"]["sources"], ["agent.instances"])
+        listed = {row["id"] for row in value["subjects"] if row["kind"] == "instance"}
+        for index in range(3):
+            self.assertIn(self.value.public_id("instance", f"private-worker-{index}"), listed)
+        again = observer.Observer(self.value.config, self.root / "state")
+        self.addCleanup(again.pool.shutdown, wait=True)
+        self.addCleanup(again.publisher_pool.shutdown, wait=True)
+        self.assert_publishable(again.publish())
+
+    def test_a_small_instance_set_is_complete_and_unflagged(self):
+        _, source = self.fake_instances(5)
+        with patch.object(observer, "command", side_effect=source):
+            self.value.accept("instances", self.value.acquire("instances", self.value.instances))
+        value = self.value.publish()
+        coverage = self.assert_publishable(value)["agent.instances"]
+        self.assertEqual((coverage["state"], coverage["errorCode"]), ("reporting", None))
+        self.assertNotIn("truncated", coverage)
+        self.assertEqual(len([row for row in value["subjects"] if row["kind"] == "instance"]), 5)
+        self.assertIsNone(self.value.state["publicTrim"])
+
+    def test_trim_order_spares_live_and_fixed_records(self):
+        subjects = {"host-nas": {"id": "host-nas", "kind": "host", "label": "NAS", "relations": []}}
+        for ident, kind in [("instance-" + "a" * 24, "instance"), ("instance-" + "b" * 24, "instance"), ("session-" + "c" * 24, "session"), ("session-" + "d" * 24, "session")]:
+            subjects[ident] = {"id": ident, "kind": kind, "label": "DSH instance" if kind == "instance" else "DSH session", "relations": []}
+        observations = [observer.public_observation("host-nas", "host.pressure", "host.load1", 1.0),
+                        observer.public_observation("instance-" + "a" * 24, "agent.instances", "instance.state", "stopped"),
+                        observer.public_observation("instance-" + "b" * 24, "agent.instances", "instance.state", "running"),
+                        observer.public_observation("session-" + "c" * 24, "agent.sessions", "session.state", "completed"),
+                        observer.public_observation("session-" + "d" * 24, "agent.sessions", "session.state", "active")]
+        events = [{"id": "event-" + "e" * 24, "subjectId": "session-" + "d" * 24, "sourceId": "agent.sessions", "type": "session.status", "at": "2026-11-16T00:00:00Z", "summary": "DSH session state changed", "severity": "info"}]
+        kept, kept_events, sources = observer.trim_public(observations, events, subjects, 1)
+        self.assertEqual([row["subjectId"] for row in kept], ["host-nas", "instance-" + "b" * 24, "session-" + "c" * 24, "session-" + "d" * 24])
+        self.assertEqual((sources, len(kept_events)), ({"agent.instances"}, 1))
+        kept, kept_events, sources = observer.trim_public(observations, events, subjects, 10 ** 9)
+        self.assertEqual([row["subjectId"] for row in kept], ["host-nas"])
+        self.assertEqual((sources, kept_events), ({"agent.instances", "agent.sessions"}, []))
+        self.assertEqual(observer.trim_public(kept, kept_events, subjects, 10 ** 9)[2], set(), "fixed records are never trimmed")
+
 
 if __name__ == "__main__":
     unittest.main()

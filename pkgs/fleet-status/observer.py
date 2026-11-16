@@ -20,6 +20,7 @@ import re
 import secrets
 import signal
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -35,6 +36,21 @@ SOURCES = CONTRACT["sources"]
 PROVIDERS = CONTRACT["providers"]
 UTC = dt.timezone.utc
 STOP = threading.Event()
+# publisher.py, observations_cli.py and the public Worker each refuse a body
+# over 1 MiB, measured as written: compact JSON plus the newline atomic_json
+# adds. The snapshot is trimmed to the target, which leaves headroom, and is
+# never refused for its size: refusing stopped every publication, and the
+# unchanged state then refused again on every restart.
+PUBLIC_MAX_BYTES = 1024 * 1024
+PUBLIC_TARGET_BYTES = PUBLIC_MAX_BYTES - 64 * 1024
+# dshd keeps every finished instance until someone removes it, and a batch of
+# short-lived workers leaves hundreds. Active instances and anomalies are
+# listed first; finished ones fill the remaining budget, newest first.
+ACTIVE_INSTANCE_STATES = {"running", "starting", "idle", "draining"}
+ATTENTION_INSTANCE_STATES = {"masked", "inconsistent", "orphaned"}
+LIVE_SESSION_STATES = {"active", "idle"}
+INSTANCE_ROWS_BUDGET = 320 * 1024
+UNIT_FIELDS = {"CPUUsageNSec": ("instance.cpuUsageNSec", "nanoseconds"), "MemoryCurrent": ("instance.memoryCurrentBytes", "bytes"), "MemoryPeak": ("instance.memoryPeakBytes", "bytes"), "TasksCurrent": ("instance.tasksCurrent", "count"), "IOReadBytes": ("instance.ioReadBytes", "bytes"), "IOWriteBytes": ("instance.ioWriteBytes", "bytes"), "NRestarts": ("instance.restartCount", "count")}
 
 
 class SourceError(RuntimeError):
@@ -102,6 +118,59 @@ def atomic_json(path, value):
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temporary, path)
+
+
+def public_size(value):
+    """Bytes atomic_json writes for value: the size every reader caps."""
+    return len(json.dumps(value, separators=(",", ":"), allow_nan=False).encode()) + 1
+
+
+def row_size(row):
+    # One compact array element plus its separating comma.
+    return len(json.dumps(row, separators=(",", ":"), allow_nan=False).encode()) + 1
+
+
+def current_or_last_good(rows, key):
+    for row in rows:
+        if row["key"] == key:
+            return row["value"] if row["value"] is not None else (row.get("lastGood") or {}).get("value")
+    return None
+
+
+def trim_public(observations, events, subjects, excess):
+    """Drop whole low-value records until about `excess` bytes are freed.
+
+    Order: finished DSH instances, then ended sessions, oldest first; then
+    the oldest events; then live instances and sessions. Fleet, host,
+    provider, account and quota records are never trimmed. Returns the kept
+    observations and events and the source ids that lost records; an empty
+    set means nothing more can go."""
+    groups = {}
+    for row in observations:
+        if subjects.get(row["subjectId"], {}).get("kind") in ["instance", "session"]:
+            groups.setdefault(row["subjectId"], []).append(row)
+    candidates = []
+    for ident, rows in groups.items():
+        if subjects[ident]["kind"] == "instance":
+            tier = 3 if current_or_last_good(rows, "instance.state") in ACTIVE_INSTANCE_STATES | ATTENTION_INSTANCE_STATES else 0
+        else:
+            tier = 3 if current_or_last_good(rows, "session.state") in LIVE_SESSION_STATES else 1
+        oldest = min(row.get("observedAt") or "" for row in rows)
+        cost = sum(row_size(row) for row in rows) + row_size(subjects[ident])
+        candidates.append((tier, oldest, ident, "subject", cost))
+    for event in events:
+        candidates.append((2, event.get("at") or "", event["id"], "event", row_size(event)))
+    candidates.sort(key=lambda item: item[:3])
+    drop_subjects, drop_events, freed = set(), set(), 0
+    for _, _, ident, kind, cost in candidates:
+        if freed >= excess:
+            break
+        (drop_subjects if kind == "subject" else drop_events).add(ident)
+        freed += cost
+    sources = {row["sourceId"] for row in observations if row["subjectId"] in drop_subjects}
+    sources.update(event["sourceId"] for event in events if event["id"] in drop_events)
+    return ([row for row in observations if row["subjectId"] not in drop_subjects],
+            [event for event in events if event["id"] not in drop_events], sources)
 
 
 def command(argv, timeout=15, cap=2 * 1024 * 1024, as_json=True):
@@ -302,31 +371,61 @@ class Observer:
         self.add_subject("host-strix-worker", "host", "Strix worker", "fleet", "dormant")
         return rows
 
-    def instances(self):
-        report = command(self.config["dshdCommand"], timeout=15)
+    def instance_rows(self, ident, item, unit):
         rows = []
-        for item in report.get("instances", [])[:1024]:
-            ident = self.public_id("instance", item.get("name"))
-            self.add_subject(ident, "instance", "DSH instance", "host-nas")
+        if item is not None:
             for raw, key in [(item.get("state"), "instance.state"), (item.get("transport"), "instance.transport")]:
                 value = raw if raw in CONTRACT["stringDomains"][key] else "unknown"
                 rows.append(public_observation(ident, "agent.instances", key, value, ttl=180, scope="this-instance"))
             enabled = item.get("enabled")
             rows.append(public_observation(ident, "agent.instances", "instance.enabled", enabled if isinstance(enabled, bool) else None, ttl=180, scope="this-instance"))
+        if unit is not None:
+            for raw_key, (key, measure) in UNIT_FIELDS.items():
+                value = unit.get(raw_key, "")
+                parsed = int(value) if value.isdigit() and int(value) < 2 ** 63 else None
+                rows.append(public_observation(ident, "agent.instances", key, parsed, unit=measure, scope="this-instance", ttl=180))
+        return rows
+
+    def instances(self):
+        report = command(self.config["dshdCommand"], timeout=15)
+        records = {}
+        for item in report.get("instances", [])[:4096]:
+            if isinstance(item, dict) and isinstance(item.get("name"), str):
+                records.setdefault(item["name"], item)
+        units = {}
         if self.config.get("systemctlCommand"):
             raw = command(self.config["systemctlCommand"], timeout=12, as_json=False)
-            fields = {"CPUUsageNSec": ("instance.cpuUsageNSec", "nanoseconds"), "MemoryCurrent": ("instance.memoryCurrentBytes", "bytes"), "MemoryPeak": ("instance.memoryPeakBytes", "bytes"), "TasksCurrent": ("instance.tasksCurrent", "count"), "IOReadBytes": ("instance.ioReadBytes", "bytes"), "IOWriteBytes": ("instance.ioWriteBytes", "bytes"), "NRestarts": ("instance.restartCount", "count")}
-            for block in raw.split("\n\n")[:1024]:
+            for block in raw.split("\n\n")[:4096]:
                 values = dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
                 unit = values.get("Id", "")
-                if not unit.startswith("dshd@") or not unit.endswith(".service"):
-                    continue
-                ident = self.public_id("instance", unit[5:-8])
-                self.add_subject(ident, "instance", "DSH instance", "host-nas")
-                for raw_key, (key, measure) in fields.items():
-                    value = values.get(raw_key, "")
-                    parsed = int(value) if value.isdigit() and int(value) < 2 ** 63 else None
-                    rows.append(public_observation(ident, "agent.instances", key, parsed, unit=measure, scope="this-instance", ttl=180))
+                if unit.startswith("dshd@") and unit.endswith(".service"):
+                    units.setdefault(unit[5:-8], values)
+
+        def rank(name):
+            # Active and anomalous instances first, with any unit the manager
+            # holds without a dshd record; then finished ones, newest first.
+            item = records.get(name)
+            state = item.get("state") if item else None
+            since = item.get("since") if item and finite(item.get("since")) else 0
+            first = item is None or state in ACTIVE_INSTANCE_STATES | ATTENTION_INSTANCE_STATES
+            return (0 if first else 1, -since, name)
+
+        rows, used = [], 0
+        ordered = sorted(set(records) | set(units), key=rank)
+        for index, name in enumerate(ordered):
+            ident = self.public_id("instance", name)
+            group = self.instance_rows(ident, records.get(name), units.get(name))
+            cost = sum(row_size(row) for row in group)
+            if used + cost > INSTANCE_ROWS_BUDGET or len(rows) + len(group) > 4096:
+                # The rest is omitted, and coverage says the list is partial.
+                with self.lock:
+                    self.state["instancesOmittedPending"] = len(ordered) - index
+                return rows
+            self.add_subject(ident, "instance", "DSH instance", "host-nas")
+            rows.extend(group)
+            used += cost
+        with self.lock:
+            self.state["instancesOmittedPending"] = 0
         return rows
 
     def journal(self):
@@ -772,6 +871,13 @@ class Observer:
             cache["failures"] += 1
         else:
             cache.update(rows=result["rows"], error=None, failures=0, lastSuccessAt=stamp())
+            if name == "instances":
+                # How many instances this accepted list leaves out. A failed
+                # acquisition keeps the count of the rows it keeps.
+                omitted = self.state.pop("instancesOmittedPending", 0)
+                if bool(omitted) != bool(cache.get("omitted")):
+                    print(f"fleet-observer: instance list {'omits ' + str(omitted) + ' instances, finished ones first' if omitted else 'is complete again'}", file=sys.stderr, flush=True)
+                cache["omitted"] = omitted
         interval = self.config["intervals"][name]
         cache["nextAt"] = max(time.time() + min(3600, interval * 2 ** min(cache["failures"], 5)), result.get("retryAfterAt") or 0)
         if name == "cloudflareQuota" and not result["error"]:
@@ -807,6 +913,8 @@ class Observer:
                 acquired.setdefault(source, []).append((cache, rows))
                 truncated = self.state.get("tailTruncated", {})
                 if name == "tails" and (truncated.get("meter") if source == "compute.quota-headers" else truncated.get("sessions")):
+                    coverage[source].update(truncated=True, errorCode="budget-truncated")
+                if name == "instances" and cache.get("omitted"):
                     coverage[source].update(truncated=True, errorCode="budget-truncated")
         for source, groups in acquired.items():
             error = next((cache.get("error") for cache, _ in groups if cache.get("error")), None)
@@ -846,22 +954,49 @@ class Observer:
             if previous is None or (row.get("observedAt") or "") >= (previous.get("observedAt") or ""):
                 unique[key] = row
         observations = list(unique.values())
-        referenced = {row["subjectId"] for row in observations} | {row["subjectId"] for row in self.state["events"]}
-        referenced.update("provider-" + lane for lane in PROVIDERS)
-        referenced.update(["fleet", "host-nas", "host-strix-coordinator", "host-client", "host-strix-worker"])
-        for _ in range(4):
-            referenced.update(relation["targetId"] for ident in list(referenced) for relation in subjects.get(ident, {}).get("relations", []))
-        subjects = {key: value for key, value in subjects.items() if key in referenced}
-        result = {"schemaVersion": "fleet-observations/1", "snapshotId": "snapshot-" + str(self.state["sequence"]), "synthetic": False,
-                  "publisher": {"id": "nas-observer", "sequence": self.state["sequence"], "expectedHeartbeatSeconds": 60},
-                  "generatedAt": stamp(), "subjects": sorted(subjects.values(), key=lambda row: row["id"]), "observations": observations,
-                  "events": self.state["events"], "coverage": list(coverage.values())}
-        signals = sorted({(row["sourceId"], row["key"], row.get("unit", "")) for row in observations})
-        descriptor = json.dumps({"subjects": result["subjects"], "sources": sorted(SOURCES), "signals": signals}, sort_keys=True, separators=(",", ":"))
-        result["catalogRevision"] = hashlib.sha256(descriptor.encode()).hexdigest()
-        if len(json.dumps(result)) > 1024 * 1024:
+        events = list(self.state["events"])
+        generated = stamp()
+
+        def assemble(observations, events):
+            referenced = {row["subjectId"] for row in observations} | {row["subjectId"] for row in events}
+            referenced.update("provider-" + lane for lane in PROVIDERS)
+            referenced.update(["fleet", "host-nas", "host-strix-coordinator", "host-client", "host-strix-worker"])
+            for _ in range(4):
+                referenced.update(relation["targetId"] for ident in list(referenced) for relation in subjects.get(ident, {}).get("relations", []))
+            result = {"schemaVersion": "fleet-observations/1", "snapshotId": "snapshot-" + str(self.state["sequence"]), "synthetic": False,
+                      "publisher": {"id": "nas-observer", "sequence": self.state["sequence"], "expectedHeartbeatSeconds": 60},
+                      "generatedAt": generated, "subjects": sorted((value for key, value in subjects.items() if key in referenced), key=lambda row: row["id"]),
+                      "observations": observations, "events": events, "coverage": list(coverage.values())}
+            signals = sorted({(row["sourceId"], row["key"], row.get("unit", "")) for row in observations})
+            descriptor = json.dumps({"subjects": result["subjects"], "sources": sorted(SOURCES), "signals": signals}, sort_keys=True, separators=(",", ":"))
+            result["catalogRevision"] = hashlib.sha256(descriptor.encode()).hexdigest()
+            return result
+
+        # Degrade rather than refuse: drop the least useful records until the
+        # written body fits, and flag every source that lost records.
+        result, trimmed = assemble(observations, events), set()
+        # Private state restores the identity of every cached row on restart,
+        # including rows this publication leaves out.
+        retained = result["subjects"]
+        before, size = (len(observations), len(events)), public_size(result)
+        while size > PUBLIC_TARGET_BYTES:
+            observations, events, sources = trim_public(observations, events, subjects, size - PUBLIC_TARGET_BYTES)
+            if not sources:
+                break
+            for source in sources - trimmed:
+                coverage[source].update(truncated=True, errorCode=coverage[source].get("errorCode") or "budget-truncated")
+            trimmed |= sources
+            result = assemble(observations, events)
+            size = public_size(result)
+        if size > PUBLIC_MAX_BYTES:
+            # Only fixed fleet, host and provider records remain: a code defect.
             raise RuntimeError("budget-truncated")
-        self.state["subjects"] = result["subjects"]
+        trim = {"sources": sorted(trimmed), "observations": before[0] - len(observations), "events": before[1] - len(events)} if trimmed else None
+        if (trim or {}).get("sources") != (self.state.get("publicTrim") or {}).get("sources"):
+            # Counts and reviewed source ids only, once per change.
+            print("fleet-observer: public snapshot " + (f"trimmed to its size budget: {trim['observations']} observations and {trim['events']} events dropped from {', '.join(trim['sources'])}" if trim else "fits its size budget again"), file=sys.stderr, flush=True)
+        self.state["publicTrim"] = trim
+        self.state["subjects"] = retained
         return validate_public(result)
 
     @synchronized
