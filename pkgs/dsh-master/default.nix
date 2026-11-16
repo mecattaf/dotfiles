@@ -7,6 +7,7 @@
   makeWrapper,
   python3,
   coreutils,
+  systemd,
   git,
   nix,
   pnpm,
@@ -521,6 +522,10 @@ runCommand "dsh-master"
       --prefix PATH : ${
         lib.makeBinPath [
           coreutils
+          # render and install ask `dshd ls` which instances are live, and
+          # dshd runs systemctl from PATH. Home Manager activation's PATH has
+          # no systemd, so without this every switch's render failed.
+          systemd
           # dsh plugin runs pnpm from PATH, and pnpm asks git for a github: tag.
           pnpm
           git
