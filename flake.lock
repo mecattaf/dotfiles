@@ -171,16 +171,16 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1794896752,
-        "narHash": "sha256-hxIifGS8Z1EZV2VKbQO7hlDpRYWlDaBifa0TXxu9S3c=",
+        "lastModified": 1794899137,
+        "narHash": "sha256-m8f2HmCgRW19Y/SAsApv4G7XdLgxCzbNZE+WyzpWnXQ=",
         "ref": "refs/heads/main",
-        "rev": "b2a7638d1faed8edd1eaed530b582930cfd39572",
-        "revCount": 249,
+        "rev": "54c3d30aa46b1bfda3bba0cacc3ff85966de8d21",
+        "revCount": 251,
         "type": "git",
         "url": "https://github.com/agency-agency/communications"
       },
       "original": {
-        "rev": "b2a7638d1faed8edd1eaed530b582930cfd39572",
+        "rev": "54c3d30aa46b1bfda3bba0cacc3ff85966de8d21",
         "type": "git",
         "url": "https://github.com/agency-agency/communications"
       }
