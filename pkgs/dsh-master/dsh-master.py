@@ -51,6 +51,9 @@ WORKSPACE = "pnpm-workspace.yaml"
 # (dsh-plugin-manager build-approval UNDECIDED_BUILD).
 UNDECIDED = "set this to true or false"
 STATE = ".dsh-master.json"
+# D-51: a dependency of this name that `dsh plugin --profile master add` put in
+# a folder's package.json is kept by render, install and status.
+EXTENSION = re.compile(r"(@[a-z0-9][a-z0-9._-]*/)?dsh-[a-z0-9][a-z0-9._-]*")
 INSTALL_TIMEOUT = "600"
 # timeout(1) itself failed, or could not run or find the command: dsh never ran.
 NOT_RUN = (125, 126, 127)
@@ -219,6 +222,38 @@ def mapping(value):
     return value if isinstance(value, dict) else {}
 
 
+def wanted_files(source, name, profile, folder):
+    """(digests, package.json bytes): the rendered files, with package.json carrying the dsh-
+    extensions the folder's live package.json adds to the rendered one (D-51), dependency and
+    bundle selection as the live file has them. Without any, exactly the rendered file."""
+    with open(os.path.join(source, "profiles", name, "package.json"), "rb") as stream:
+        data = stream.read()
+    if hashlib.sha256(data).hexdigest() != profile["files"]["package.json"]:
+        raise Failure(f"{source}/profiles/{name}/package.json does not match its manifest digest")
+    try:
+        with open(os.path.join(folder, "package.json"), encoding="utf-8") as stream:
+            live = mapping(json.load(stream))
+    except (FileNotFoundError, NotADirectoryError, UnicodeDecodeError, json.JSONDecodeError):
+        live = {}
+    candidates = {
+        dep: spec
+        for dep, spec in mapping(live.get("dependencies")).items()
+        if EXTENSION.fullmatch(dep) and isinstance(spec, str)
+    }
+    if not candidates:
+        return dict(profile["files"]), data
+    package = json.loads(data)
+    dependencies = package["dependencies"]
+    extra = {dep: spec for dep, spec in candidates.items() if dep not in dependencies}
+    if extra:
+        package["dependencies"] = dict(sorted({**dependencies, **extra}.items()))
+        selected = mapping(mapping(live.get("dsh")).get("profile")).get("bundles")
+        bundles = package["dsh"]["profile"]["bundles"]
+        bundles += [b for b in selected if b in extra and b not in bundles] if isinstance(selected, list) else []
+        data = (json.dumps(package, indent=2) + "\n").encode("utf-8")
+    return {**profile["files"], "package.json": hashlib.sha256(data).hexdigest()}, data
+
+
 def workspace(folder):
     """The folder's workspace text, or None when there is none."""
     path = os.path.join(folder, WORKSPACE)
@@ -255,8 +290,9 @@ def render(args):
                 raise Failure(f"{path} is a symbolic link; dsh-master writes only real folders")
         profile = manifest["profiles"][name]
         state = read_state(folder)
-        wanted_state = {"rendered": dict(profile["files"]), "installed": state.get("installed")}
-        if state != wanted_state or any(sha256(os.path.join(folder, file)) != profile["files"][file] for file, _ in FILES):
+        files, _ = wanted_files(source, name, profile, folder)
+        wanted_state = {"rendered": files, "installed": state.get("installed")}
+        if state != wanted_state or any(sha256(os.path.join(folder, file)) != files[file] for file, _ in FILES):
             changed.add(name)
     # HMR watches both the patch and package.json. Inventory precedes every
     # mutation, including creation of another selected folder: an unavailable
@@ -270,9 +306,10 @@ def render(args):
         folder = profile_folder(home, name, create=True)
         state = read_state(folder)
         rendered = state.get("rendered", {})
+        files, package = wanted_files(source, name, profile, folder)
         package_changed = False
         for file, mode in FILES:
-            want = profile["files"][file]
+            want = files[file]
             live_path = os.path.join(folder, file)
             live = sha256(live_path)
             if live == want:
@@ -280,16 +317,20 @@ def render(args):
             if live is not None and live != rendered.get(file):
                 # A folder rendered before dsh-master owned the file has no digest of it.
                 why = "was changed outside dsh-master" if file in rendered or not rendered else "predates dsh-master rendering it"
-                print(f"dsh-master: {name}/{file} {why}; replacing it", file=sys.stderr)
-            with open(os.path.join(source, "profiles", name, file), "rb") as stream:
-                data = stream.read()
+                kept = " (its dsh- extensions kept)" if file == "package.json" and want != profile["files"][file] else ""
+                print(f"dsh-master: {name}/{file} {why}; replacing it{kept}", file=sys.stderr)
+            if file == "package.json":
+                data = package
+            else:
+                with open(os.path.join(source, "profiles", name, file), "rb") as stream:
+                    data = stream.read()
             if hashlib.sha256(data).hexdigest() != want:
                 raise Failure(f"{source}/profiles/{name}/{file} does not match its manifest digest")
             write_atomic(folder, file, data, mode)
             package_changed = package_changed or file == "package.json"
             if not args.quiet:
                 print(f"updated {name}/{file}")
-        write_state(folder, {"rendered": dict(profile["files"]), "installed": state.get("installed")})
+        write_state(folder, {"rendered": files, "installed": state.get("installed")})
         # Every render until an install records this package.json, not only the one that changed it.
         if state.get("installed") != profile["files"]["package.json"]:
             print(f"install needed: {name}")
@@ -360,8 +401,9 @@ def install(args):
         folder = profile_folder(home, name, create=False)
         package = os.path.join(folder, "package.json")
         want = profile["files"]["package.json"]
+        files, _ = wanted_files(args.source, name, profile, folder)
         # Without pnpm-workspace.yaml pnpm treats the folder as no workspace and pulls the DSH peers from the registry.
-        if any(sha256(os.path.join(folder, file)) != profile["files"][file] for file, _ in FILES):
+        if any(sha256(os.path.join(folder, file)) != files[file] for file, _ in FILES):
             raise Failure(f"{name} is not the rendered version; run dsh-master render first")
         with open(package, encoding="utf-8") as stream:
             dependencies = json.load(stream)["dependencies"]
@@ -381,10 +423,13 @@ def install(args):
         # pnpm has printed "Done" and then hung: judge the folder, not the exit.
         # The lockfile must lock this package.json: an old install's lockfile and lib/ do not count.
         problems = []
-        if sha256(package) != want:
+        if sha256(package) != files["package.json"]:
             problems.append("the install rewrote package.json")
         problems += lock_problems(folder, dependencies)
-        problems += [f"{dep} has no built lib/" for dep in sorted(dependencies) if not lib_present(folder, dep)]
+        # A D-51 extension's layout is its own; only the rendered pins must have built lib/.
+        with open(os.path.join(args.source, "profiles", name, "package.json"), encoding="utf-8") as stream:
+            pinned = json.load(stream)["dependencies"]
+        problems += [f"{dep} has no built lib/" for dep in sorted(pinned) if not lib_present(folder, dep)]
         if problems:
             print(f"dsh-master: {name}: install failed (exit {code}): {'; '.join(problems)}", file=sys.stderr)
             failed = True
@@ -474,7 +519,8 @@ def status(args):
     behind = False
     for name, profile in sorted(manifest["profiles"].items()):
         folder = os.path.join(home, "profiles", name)
-        current = all(sha256(os.path.join(folder, file)) == profile["files"][file] for file, _ in FILES)
+        files, _ = wanted_files(args.source, name, profile, folder)
+        current = all(sha256(os.path.join(folder, file)) == files[file] for file, _ in FILES)
         text = workspace(folder) if os.path.isdir(folder) else None
         installed = read_state(folder).get("installed") == profile["files"]["package.json"]
         modules = os.path.isdir(os.path.join(folder, "node_modules"))

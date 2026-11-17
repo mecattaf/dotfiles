@@ -5,6 +5,8 @@
   bubblewrap,
   coreutils,
   findutils,
+  git,
+  pnpm,
   writeText,
   llm-agents,
   dsh-plugins,
@@ -64,9 +66,11 @@
 #   1. unsets DEEPSEEK_*: DEEPSEEK_BASE_URL alone repoints the official
 #      adapter, which attaches the whole session log to any base URL;
 #   2. DSH_TELEMETRY_DISABLED=1, the only full OTel opt-out;
-#   3. refuses (exit 2, one stderr line): `dsh plugin` (plugins come from Nix
-#      only), any profile but `profiles` (Tom, 2026-10-22: "no dsh web,
-#      ever"; sdk-minimal pins danger-full-access), --from-default-profile
+#   3. refuses (exit 2, one stderr line): `dsh plugin` but D-51's `dsh
+#      plugin --profile master add|remove <dsh-* extension>...` (Tom,
+#      2026-11-16: "d51 lift the guard is totally fine"; the hand-run
+#      profiles' plugins still come from Nix only), any profile but
+#      `profiles` (Tom, 2026-10-22: "no dsh web, ever"; sdk-minimal pins danger-full-access), --from-default-profile
 #      outside `profiles`, an empty profile word or `--profile` value, any
 #      argv without a profile except a lone --version/-V/--help/-h,
 #      DSH_PERMISSION_MODE=danger-full-access, a DSH_HOME under /tmp or
@@ -335,8 +339,32 @@ writeShellApplication {
       exit 2
     }
 
+    # D-51: dsh- extensions go into the floor's master profile by hand, never
+    # through Nix (Tom, 12 Nov: "dsh extensions don't go through nix"). Only
+    # add and remove of dsh-* specs, no pnpm option, and only for master. The
+    # provider keys are already unset above and no slot file is read on this
+    # path, so pnpm and the package's lifecycle scripts see no key. dsh-master
+    # render keeps such extensions in master's package.json.
     if [ "''${1-}" = plugin ]; then
-      refuse "plugins come from Nix only (no dsh plugin)"
+      if [ "$#" -lt 5 ] || [ "$2" != --profile ] || [ "$3" != master ]; then
+        refuse "dsh plugin is only 'dsh plugin --profile master add|remove <dsh-* extension>...'"
+      fi
+      case "$4" in
+        add | remove) ;;
+        *) refuse "dsh plugin --profile master takes only add or remove (got '$4')" ;;
+      esac
+      for spec in "''${@:5}"; do
+        case "$spec" in
+          -*) refuse "dsh plugin takes no pnpm option here ($spec)" ;;
+          # dsh-master pins these two in master; a spec must not repoint or drop them.
+          dsh-superagent* | @norman-else/dsh-claude* | *[/:]dsh-superagent* | *[/:]dsh-claude*)
+            refuse "'$spec' is a dsh-master pin, not an extension" ;;
+          dsh-* | @*/dsh-* | */dsh-* | *:dsh-*) ;;
+          *) refuse "'$spec' does not name a dsh- extension" ;;
+        esac
+      done
+      # dsh plugin spawns pnpm, and pnpm asks git for a github: spec.
+      PATH="${lib.makeBinPath [ pnpm git ]}:$PATH" exec ${unwrapped}/bin/dsh "$@"
     fi
     # dsh would read an empty first word as `--profile ""`, and the no-profile
     # branch below would boot it unwrapped.

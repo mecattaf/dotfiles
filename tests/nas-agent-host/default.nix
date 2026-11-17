@@ -152,6 +152,18 @@ assert builtins.all (name: !(builtins.elem name (helperNames compute.home-manage
 ];
 assert c.systemd.services."user@".overrideStrategy == "asDropin";
 assert !(client.home.file ? ".local/state/agency/crm/node");
+# Communications (home/communications.nix): the user unit and the CLI root
+# on the brain only, blobs on the HDD subvolume the NAS declares, and no timer.
+assert h.services.communications.enable;
+assert h.services.communications.blobRoot == "/mnt/nas/communications";
+assert h.systemd.user.services ? communications;
+assert !(h.systemd.user.timers ? communications);
+assert h.home.file ? ".local/state/agency/communications/cli";
+assert builtins.elem "v /mnt/nas/communications 0700 tom users -" c.systemd.tmpfiles.rules;
+assert builtins.all (
+  cfg: !(cfg.home-manager.users.tom.systemd.user.services ? communications)
+) nonBrainConfigs;
+assert !(client.home.file ? ".local/state/agency/communications/cli");
 assert builtins.all (name: h.home.file ? ${name}) [
   ".claude/skills"
   ".claude-work/skills"
