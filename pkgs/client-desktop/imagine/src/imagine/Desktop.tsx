@@ -66,6 +66,7 @@ import { options } from "./options";
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { outputToward, useAgencyKeys } from "./AgencyKeys";
 import { Finder } from "./Finder";
+import { AudioMenu } from "./AudioMenu";
 import { windowsIn } from "./GaplessFrames";
 import { agencyScreens } from "./layout";
 import { useImagineSnapshot } from "./ipc/useImagineSnapshot";
@@ -112,6 +113,7 @@ export const Desktop = ({ applications, floating, keybindings, policy, ambientCh
   const { act } = windows;
   const [railOpen, setRailOpen] = useState(false);
   const [finderOpen, setFinderOpen] = useState(false);
+  const [audioMenu, setAudioMenu] = useState<"audio" | "recording">();
   // Presentation preferences belong to this running host-window ID only.
   const [hiddenChrome, setHiddenChrome] = useState<ReadonlySet<string>>(() => new Set());
   const liveWindowIds = useMemo(() => new Set(windows.windows.map(({ id }) => id)), [windows.windows]);
@@ -210,7 +212,7 @@ export const Desktop = ({ applications, floating, keybindings, policy, ambientCh
 
   useLayoutEffect(() => applyFont(shellOptions.font), [shellOptions.font]);
   const virtual = useRef<Awaited<ReturnType<typeof domicile.displays.addVirtual>>[]>([]);
-  const otherPanel = !windows.layoutReady || finderOpen || windows.launcherOpen || windows.clipboardOpen ||
+  const otherPanel = !windows.layoutReady || audioMenu !== undefined || finderOpen || windows.launcherOpen || windows.clipboardOpen ||
     popup.opened !== undefined || portal.url !== undefined || notificationsOpen || heldPanels > 0 || lock.locked;
   const composer = useChatComposer({ domicile, config: chatWindow, state: windows, blocked: otherPanel,
     place: windows.placeChat, reserve: windows.reserveChat });
@@ -256,7 +258,7 @@ export const Desktop = ({ applications, floating, keybindings, policy, ambientCh
     }
   };
   const keys = useAgencyKeys({ domicile, keybindings, mode: windows.mode,
-    modal: windows.launcherOpen || finderOpen || composer.open, onAction, chatWindow: chatWindow?.bindAltEnter === true,
+    modal: audioMenu !== undefined || windows.launcherOpen || finderOpen || composer.open, onAction, chatWindow: chatWindow?.bindAltEnter === true,
     onModeChanged: (mode) => act(WindowAction.ModeSet(mode)),
     onAgency: (args) => {
       if (snapshotCommand(args)) return;
@@ -264,6 +266,10 @@ export const Desktop = ({ applications, floating, keybindings, policy, ambientCh
       if (composer.command(args)) return;
       if (ambient.command(args)) return;
       if (lock.locked) return;
+      if (args.length === 2 && args[1] === "menu" && (args[0] === "audio" || args[0] === "recording")) {
+        closeFinder();
+        setAudioMenu(args[0]); domicile.windows.focusShell(); return;
+      }
       if (args[0] === "layout-recovery" && args.length === 2) {
         if (behindPanel) return;
         if (args[1] === "restore") void recovery.restore();
@@ -357,6 +363,8 @@ export const Desktop = ({ applications, floating, keybindings, policy, ambientCh
                   onSelectWorkspace={(name) => act(WindowAction.WorkspaceSelected(name))}
                   onSelectWindow={(id) => act(WindowAction.WindowSelected(id))} />
                 <ChatComposer composer={composer} bounds={bounds} />
+                <AudioMenu domicile={domicile} kind={lock.locked ? undefined : audioMenu} bounds={bounds}
+                  onClose={() => setAudioMenu(undefined)} />
                 <Launcher fromPrivate={activeIsPrivate(windows)} glances={new Map()} open={windows.launcherOpen}
                   opening={opening} screen={windows.focused} searchApps={apps.search}
                   search={(query) => domicile.files.search(query)} preview={(path) => previewFile(domicile, path)}

@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Native Imagine menus over the original paired-route and call-record commands.
+
+One request on stdin, one bounded JSON reply. Device facts and recording state
+stay on the audio seat; no terminal, menu program, timer or resident service.
+"""
+import datetime
+import json
+import subprocess
+import sys
+
+
+def run(*command):
+    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError((result.stderr.strip() or result.stdout.strip())[-3000:]
+                           or f"{command[0]} exited with status {result.returncode}")
+    return result.stdout
+
+
+def handle(request):
+    action = request.get("action")
+    if action == "audio-menu":
+        choices = json.loads(run("audio-route", "list"))["choices"]
+        return {"choices": choices, "detail": "Choose an output and microphone together." if choices
+                else "No complete audio pair is connected. Check the dock or laptop audio devices."}
+    if action == "audio-select":
+        route = request.get("route")
+        if route not in ("speaker", "inzone", "internal"):
+            raise ValueError("Unknown audio pair")
+        return {"message": run("audio-route", route).strip()}
+    if action == "recording-menu":
+        status = json.loads(run("call-record", "status", "--json"))
+        recording = status["state"] in ("recording", "interrupted")
+        choices = ([{"id": "stop", "label": "Stop and save", "detail": status["session"]}] if recording
+                   else [{"id": "start", "label": "Start recording", "detail": "Capture the current output and microphone"}]
+                   if status["state"] == "idle" else [])
+        return {"choices": choices, "detail": status["detail"]}
+    if action == "recording-start":
+        # Match the old Shift+F9 controller, with enough precision to avoid
+        # overwriting a stopped session started in the same second.
+        slug = "call-" + datetime.datetime.now().strftime("%H%M%S-%f")
+        run("call-record", "start", slug)
+        return {"message": "Recording started. Shift+F9 opens Stop and save."}
+    if action == "recording-stop":
+        output = run("call-record", "stop")
+        # Includes the actual NAS handoff or retained-local-copy result, never
+        # infer a successful upload merely from the recorder having stopped.
+        return {"message": output.strip()[-3000:] or "Recording stopped."}
+    raise ValueError("Unknown audio control action")
+
+
+def main():
+    try:
+        data = sys.stdin.buffer.read(4097)
+        if len(data) > 4096:
+            raise ValueError("Audio control request is too large")
+        request = json.loads(data)
+        if not isinstance(request, dict):
+            raise ValueError("Expected an audio control request")
+        reply = {"ok": True, **handle(request)}
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
+        reply = {"ok": False, "message": str(error)[:3000]}
+    print(json.dumps(reply))
+
+
+if __name__ == "__main__":
+    main()

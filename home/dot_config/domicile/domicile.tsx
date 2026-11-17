@@ -59,6 +59,8 @@ const keybindings = {
   F6: volume("mute"),
   F7: volume("down"),
   F8: volume("up"),
+  F9: agency("audio", "menu"),
+  "Shift+F9": agency("recording", "menu"),
   // Agency controls both DRM panels and the OSD directly through Domicile.
   F1: agency("brightness", "down"),
   F2: agency("brightness", "up"),

@@ -89,6 +89,7 @@ node_id_match() {
               .type == "PipeWire:Interface:Node"
               and .info.props["media.class"] == $media_class
               and ((.info.props["node.name"] // "") | test($name_re))
+              and (((.info.props["node.name"] // "") | test("hdmi"; "i")) | not)
               and (
                 ((.info.props["node.name"] // "") | test($card_re))
                 or ((.info.props["alsa.card_name"] // "") | test($card_re; "i"))
@@ -109,9 +110,22 @@ inzone_sink_id=$(node_id Audio/Sink "$INZONE_SINK" 2>/dev/null || true)
 inzone_source_id=$(node_id Audio/Source "$INZONE_SOURCE" 2>/dev/null || true)
 internal_sink_id=$(node_id_match Audio/Sink "$INTERNAL_SINK_PREFIX" "$INTERNAL_CARD_RE" 2>/dev/null || true)
 internal_source_id=$(node_id_match Audio/Source "$INTERNAL_SOURCE_PREFIX" "$INTERNAL_CARD_RE" 2>/dev/null || true)
+# The Imagine picker uses the same live discovery as the original F9 menu.
+# Listing never changes defaults, mute or volume; incomplete pairs stay hidden.
+if [[ "${1:-}" == list ]]; then
+    jq -n --arg speaker "$speaker_sink_id:$webcam_source_id" \
+        --arg inzone "$inzone_sink_id:$inzone_source_id" \
+        --arg internal "$internal_sink_id:$internal_source_id" '
+        {choices: [
+          {id: "speaker", label: "Sound Blaster GS3 + webcam mic", pair: $speaker},
+          {id: "inzone", label: "Sony INZONE stereo + INZONE mic", pair: $inzone},
+          {id: "internal", label: "Laptop speakers + laptop mic", pair: $internal}
+        ] | map(select(.pair | test("^[0-9]+:[0-9]+$")) | del(.pair))}'
+    exit 0
+fi
 case "${1:-}" in
 speaker|inzone|internal) choice=$1 ;;
-*) printf 'Usage: %s speaker|inzone|internal\n' "${0##*/}" >&2; exit 2 ;;
+*) printf 'Usage: %s list|speaker|inzone|internal\n' "${0##*/}" >&2; exit 2 ;;
 esac
 
 case "$choice" in
