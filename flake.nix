@@ -2982,6 +2982,31 @@
             touch "$out"
           '';
 
+        # The crm and mail wrappers default to the Communications service from
+        # the host-local cli.json, let an explicit environment win and keep the
+        # CLI's own config when cli.json is absent. Fixtures only.
+        communications-cli-wrappers =
+          pkgs.runCommand "communications-cli-wrappers"
+            {
+              nativeBuildInputs = [
+                pkgs.dash
+                pkgs.jq
+                pkgs.coreutils
+                pkgs.gnugrep
+              ];
+            }
+            ''
+              ${pkgs.shellcheck}/bin/shellcheck \
+                ${./home/dot_local/bin/crm} \
+                ${./home/dot_local/bin/mail} \
+                ${./tests/communications-cli/test.sh}
+              { echo '#!${pkgs.dash}/bin/dash'; tail -n +2 ${./home/dot_local/bin/crm}; } > "$TMPDIR/crm"
+              { echo '#!${pkgs.dash}/bin/dash'; tail -n +2 ${./home/dot_local/bin/mail}; } > "$TMPDIR/mail"
+              chmod +x "$TMPDIR/crm" "$TMPDIR/mail"
+              dash ${./tests/communications-cli/test.sh} "$TMPDIR/crm" "$TMPDIR/mail"
+              touch "$out"
+            '';
+
         herdr-launchers =
           pkgs.runCommand "herdr-launchers"
             {

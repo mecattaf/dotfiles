@@ -1,3 +1,29 @@
 #!/bin/sh
 # mail: the Communications mail CLI, from the pinned flake input (home/communications.nix).
+#
+# Default target: the Communications service named by the host-local client
+# config ~/.config/agency/communications/cli.json (or $COMMS_CONFIG): `url`
+# plus `token_dir` (default: tokens/ beside it), the same file the agency
+# folder's SessionStart hook reads. The mail CLI takes its token only by value,
+# so the token file is read here at run time into the CLI's environment; it is
+# never printed or written anywhere. An explicit EMAIL_URL or EMAIL_TOKEN wins
+# and is passed through untouched; with no cli.json the CLI keeps its own
+# config, as before.
+set -eu
+cfg="${COMMS_CONFIG:-$HOME/.config/agency/communications/cli.json}"
+case "$cfg" in \~/*) cfg="$HOME/${cfg#\~/}" ;; esac
+if [ -z "${EMAIL_URL:-}${EMAIL_TOKEN:-}" ] && [ -e "$cfg" ]; then
+  command -v jq >/dev/null 2>&1 || { echo "mail: jq is needed to read $cfg" >&2; exit 3; }
+  url="${COMMS_URL:-$(jq -er '.url | select(type == "string" and test("^https?://"))' "$cfg")}" ||
+    { echo "mail: no http(s) url in $cfg; set EMAIL_URL to override" >&2; exit 3; }
+  tokens="${COMMS_TOKEN_DIR:-$(jq -r '.token_dir // empty | strings' "$cfg")}" ||
+    { echo "mail: cannot read $cfg" >&2; exit 3; }
+  [ -n "$tokens" ] || tokens="$(dirname "$cfg")/tokens"
+  case "$tokens" in \~/*) tokens="$HOME/${tokens#\~/}" ;; esac
+  [ -f "$tokens/mail" ] && [ -r "$tokens/mail" ] ||
+    { echo "mail: the token file $tokens/mail is missing or unreadable" >&2; exit 3; }
+  EMAIL_URL="${url%/}/mail"
+  EMAIL_TOKEN="$(cat "$tokens/mail")"
+  export EMAIL_URL EMAIL_TOKEN
+fi
 exec "$HOME/.local/state/agency/communications/cli/bin/mail" "$@"

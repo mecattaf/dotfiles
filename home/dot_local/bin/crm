@@ -1,3 +1,25 @@
 #!/bin/sh
 # crm: the Communications crm CLI, from the pinned flake input (home/communications.nix).
+#
+# Default target: the Communications service named by the host-local client
+# config ~/.config/agency/communications/cli.json (or $COMMS_CONFIG): `url`
+# plus `token_dir` (default: tokens/ beside it), the same file the agency
+# folder's SessionStart hook reads. The token is passed as a file path, never as
+# a value. An explicit CRM_URL, CRM_TOKEN or CRM_TOKEN_FILE wins and is passed
+# through untouched; with no cli.json the CLI keeps its own config, as before.
+set -eu
+cfg="${COMMS_CONFIG:-$HOME/.config/agency/communications/cli.json}"
+case "$cfg" in \~/*) cfg="$HOME/${cfg#\~/}" ;; esac
+if [ -z "${CRM_URL:-}${CRM_TOKEN:-}${CRM_TOKEN_FILE:-}" ] && [ -e "$cfg" ]; then
+  command -v jq >/dev/null 2>&1 || { echo "crm: jq is needed to read $cfg" >&2; exit 3; }
+  url="${COMMS_URL:-$(jq -er '.url | select(type == "string" and test("^https?://"))' "$cfg")}" ||
+    { echo "crm: no http(s) url in $cfg; set CRM_URL to override" >&2; exit 3; }
+  tokens="${COMMS_TOKEN_DIR:-$(jq -r '.token_dir // empty | strings' "$cfg")}" ||
+    { echo "crm: cannot read $cfg" >&2; exit 3; }
+  [ -n "$tokens" ] || tokens="$(dirname "$cfg")/tokens"
+  case "$tokens" in \~/*) tokens="$HOME/${tokens#\~/}" ;; esac
+  CRM_URL="${url%/}/crm"
+  CRM_TOKEN_FILE="$tokens/crm"
+  export CRM_URL CRM_TOKEN_FILE
+fi
 exec "$HOME/.local/state/agency/communications/cli/bin/crm" "$@"
