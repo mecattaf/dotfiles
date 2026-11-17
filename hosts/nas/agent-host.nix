@@ -1,4 +1,12 @@
-{ lib, unstablePkgs, ... }:
+{
+  config,
+  lib,
+  unstablePkgs,
+  ...
+}:
+let
+  communications = config.home-manager.users.tom.services.communications;
+in
 {
   imports = [
     ../../modules/agent-offload.nix
@@ -18,6 +26,11 @@
   # The home package pin stays for the version-match test; the NAS home itself
   # leaves programs.atuin disabled (home/home.nix, T-55).
   services.atuin.package = unstablePkgs.atuin;
+
+  # Communications (home/communications.nix) listens on the tailnet address
+  # only. Open its port on tailscale0 so the rest of the tailnet reaches it;
+  # the input policy still drops it on every other interface.
+  networking.firewall.interfaces.tailscale0.allowedTCPPorts = lib.optional communications.enable communications.port;
   home-manager.users.tom.programs.atuin.package = unstablePkgs.atuin;
 
   # The router must stay reachable when an agent exhausts memory. Reserve
