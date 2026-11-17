@@ -16,10 +16,13 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   patches = [ ./battery-parser.patch ];
+  postPatch = ''
+    cp ${./connected.rs} src/connected.rs
+  '';
   nativeBuildInputs = [ pkg-config ];
   buildInputs = [ dbus ];
   meta = {
-    description = "On-demand AirPods BLE battery readings as JSON";
+    description = "AirPods connected-device battery readings as JSON";
     homepage = "https://github.com/t4t5/podpower";
     license = lib.licenses.mit;
     mainProgram = "podpower";

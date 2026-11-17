@@ -67,6 +67,7 @@ import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRe
 import { outputToward, useAgencyKeys } from "./AgencyKeys";
 import { Finder } from "./Finder";
 import { AudioMenu } from "./AudioMenu";
+import { useAirPodsAudio } from "./useAirPodsAudio";
 import { windowsIn } from "./GaplessFrames";
 import { agencyScreens } from "./layout";
 import { useImagineSnapshot } from "./ipc/useImagineSnapshot";
@@ -196,6 +197,7 @@ export const Desktop = ({ applications, floating, keybindings, policy, ambientCh
   const casting = useCasting(domicile);
   const portal = useCaptivePortal(domicile);
   const media = useMediaNotices(domicile);
+  const audioRevision = useAirPodsAudio(domicile, media.announce);
   const keymaps = useSharedWatch(deskKeymaps(domicile));
   const [keymapSwitches, setKeymapSwitches] = useState(0);
   const [heldPanels, setHeldPanels] = useState(0);
@@ -364,7 +366,7 @@ export const Desktop = ({ applications, floating, keybindings, policy, ambientCh
                   onSelectWorkspace={(name) => act(WindowAction.WorkspaceSelected(name))}
                   onSelectWindow={(id) => act(WindowAction.WindowSelected(id))} />
                 <ChatComposer composer={composer} bounds={bounds} />
-                <AudioMenu domicile={domicile} kind={lock.locked ? undefined : audioMenu} bounds={bounds}
+                <AudioMenu domicile={domicile} revision={audioRevision} kind={lock.locked ? undefined : audioMenu} bounds={bounds}
                   onClose={() => setAudioMenu(undefined)} />
                 <Launcher fromPrivate={activeIsPrivate(windows)} glances={new Map()} open={windows.launcherOpen}
                   opening={opening} screen={windows.focused} searchApps={apps.search}

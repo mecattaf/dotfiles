@@ -4,8 +4,8 @@ import type { Domicile } from "@domicile-desktop/sdk/desktop/desktop";
 import type { AgencyBounds } from "./WorkspaceRail";
 import { runHelperRequest } from "./HelperRequest";
 
-export function AudioMenu({ domicile, kind, bounds, onClose }: {
-  domicile: Domicile; kind?: "audio" | "recording"; bounds?: AgencyBounds; onClose: () => void;
+export function AudioMenu({ domicile, kind, bounds, onClose, revision = 0 }: {
+  revision?: number; domicile: Domicile; kind?: "audio" | "recording"; bounds?: AgencyBounds; onClose: () => void;
 }) {
   const [choices, setChoices] = useState<{ id: string; label: string; detail?: string; selected?: boolean }[]>([]);
   const [battery, setBattery] = useState<{ id: string; label: string; detail: string; sampledAt?: number }[]>([]);
@@ -40,7 +40,7 @@ export function AudioMenu({ domicile, kind, bounds, onClose }: {
     };
     void refresh();
     return () => { alive = false; clearTimeout(timer); };
-  }, [kind, domicile, refreshVersion]);
+  }, [kind, domicile, refreshVersion, revision]);
   useEffect(() => {
     const version = ++generation.current;
     setChoices([]); setMessage(""); setDetail("");
@@ -53,7 +53,7 @@ export function AudioMenu({ domicile, kind, bounds, onClose }: {
     }).catch((error: unknown) => { if (version === generation.current) setMessage(String(error)); })
       .finally(() => { if (version === generation.current) setBusy(false); });
     return () => { generation.current++; };
-  }, [kind, domicile, refreshVersion]);
+  }, [kind, domicile, refreshVersion, revision]);
   if (kind === undefined) return null;
   const choose = async (id: string) => {
     if (pending.current || busy || !choices.some(choice => choice.id === id)) return;
@@ -84,8 +84,6 @@ export function AudioMenu({ domicile, kind, bounds, onClose }: {
     <button className="agency-finder-backdrop" aria-label="Close audio menu" onClick={onClose} tabIndex={-1} type="button" />
     <section className="agency-finder" role="dialog" aria-modal="true" aria-label={title} ref={panel} tabIndex={-1}>
       <header className="agency-finder-header"><span className="agency-row-text">{title}</span>
-        {kind === "audio" && <button type="button" disabled={busy} onClick={() => setRefreshVersion(version => version + 1)}
-          style={{ background: "transparent", border: 0, fontSize: 12 }}>Refresh</button>}
         <button className="agency-icon-button" aria-label="Close audio menu" onClick={onClose} type="button">×</button></header>
       <p className="agency-source-status">{detail}</p>
       <div className="agency-finder-results">
@@ -99,7 +97,7 @@ export function AudioMenu({ domicile, kind, bounds, onClose }: {
       </div>
       {kind === "audio" && battery.map(reading => <p className="agency-source-status" key={reading.id} role="status">
         {reading.label}: {reading.detail}
-        {reading.sampledAt !== undefined && <span className="agency-row-detail">Nearby BLE estimate · checked {new Date(reading.sampledAt * 1000).toLocaleTimeString()}</span>}
+        {reading.sampledAt !== undefined && <span className="agency-row-detail">Reported by AirPods · updated {new Date(reading.sampledAt * 1000).toLocaleTimeString()}</span>}
       </p>)}
       {readingBattery && <p className="agency-source-status" role="status">Reading AirPods battery…</p>}
       {message && <p className="agency-source-status" role="status" style={{ whiteSpace: "pre-wrap" }}>{message}</p>}

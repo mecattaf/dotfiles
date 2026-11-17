@@ -691,6 +691,13 @@
           python3 -m unittest discover -s ${./tests/audio-control} -v
           touch "$out"
         '';
+        domicile-airpods-policy =
+          pkgs.runCommand "domicile-airpods-policy"
+            { nativeBuildInputs = [ inputs.domicile.legacyPackages.${system}.bun ]; }
+            ''
+              bun test ${./pkgs/client-desktop/imagine/src/imagine}/AirPodsPolicy.test.ts
+              touch "$out"
+            '';
         domicile-config =
           self.nixosConfigurations.client.config.programs.domicilePhysical.checkedConfigPackage;
         domicile-display-temperatures =

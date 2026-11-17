@@ -43,6 +43,10 @@ export const useMediaNotices = (domicile: Domicile) => {
   return {
     press,
     choice,
+    announce: (label: string, value: string, detail?: string) => {
+      setPress(undefined);
+      setChoice(last => ({ count: (last?.count ?? 0) + 1, label, value, detail }));
+    },
     requestBrightness,
     requestMedia: (action: MediaAction) => {
       void player.press(action).then((snapshot) => {

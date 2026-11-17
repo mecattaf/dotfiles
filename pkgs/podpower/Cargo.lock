@@ -471,6 +471,7 @@ name = "podpower"
 version = "0.1.1"
 dependencies = [
  "btleplug",
+ "libc",
  "serde",
  "serde_json",
  "tokio",

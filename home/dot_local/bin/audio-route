@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Imagine's paired routes: laptop or connected AirPods, USB camera mic first."""
+"""Imagine paired routes: AirPods input/output or laptop speakers/camera mic."""
 import json
 import re
 import subprocess
@@ -41,7 +41,7 @@ def paired_airpods():
     return result
 
 
-def discover(graph, paired=()):
+def discover(graph, paired=(), include_fallback=False):
     nodes = [node for node in graph if node.get("type") == "PipeWire:Interface:Node"]
     devices = {node["id"]: props(node) for node in graph
                if node.get("type") == "PipeWire:Interface:Device"}
@@ -54,9 +54,7 @@ def discover(graph, paired=()):
         p = props(node)
         card = " ".join(str(p.get(key, "")) for key in
                         ("node.name", "alsa.card_name", "api.alsa.card.name"))
-        return (p.get("media.class") == media and
-                str(p.get("node.name", "")).startswith("alsa_") and
-                ".pci-" in p.get("node.name", "") and
+        return (p.get("media.class") == media and ".pci-" in p.get("node.name", "") and
                 not re.search("hdmi", p.get("node.name", ""), re.I) and
                 re.search(r"sof[-_]?hda[-_]?dsp", card, re.I))
 
@@ -64,23 +62,31 @@ def discover(graph, paired=()):
     webcam = sorted([node for node in nodes if props(node).get("media.class") == "Audio/Source"
                      and "icontact" in (props(node).get("node.name", "") + " " +
                                         props(node).get("node.description", "")).lower()], key=lambda n: n["id"])
-    mic = next(iter(webcam or microphones), None)
-    if mic is None:
-        return []
-    mic_label = "webcam mic" if webcam else "laptop mic"
-    routes = []
-
-    def route(identity, label, sink, **extra):
-        return {"id": identity, "label": f"{label} + {mic_label}",
-                "sink": sink["id"], "source": mic["id"],
-                "sinkName": props(sink)["node.name"], "sourceName": props(mic)["node.name"],
-                "selected": (defaults.get("default.audio.sink") == props(sink)["node.name"] and
-                             defaults.get("default.audio.source") == props(mic)["node.name"]), **extra}
-
     sinks = sorted([node for node in nodes if internal(node, "Audio/Sink")],
                    key=lambda n: ("speaker" not in props(n).get("node.name", "").lower(), n["id"]))
-    if sinks:
-        routes.append(route("internal", "Laptop audio", sinks[0]))
+    routes = []
+
+    def route(identity, label, sink, source, **extra):
+        return {"id": identity, "label": label, "sink": sink["id"], "source": source["id"],
+                "sinkName": props(sink)["node.name"], "sourceName": props(source)["node.name"],
+                "selected": (defaults.get("default.audio.sink") == props(sink)["node.name"] and
+                             defaults.get("default.audio.source") == props(source)["node.name"]), **extra}
+
+    mic = next(iter(webcam or (microphones if include_fallback else [])), None)
+    if sinks and mic:
+        extra = {}
+        # Some SOF/UCM cards publish separate Speaker and Headphones profiles.
+        # A headphone-only node with an unplugged jack cannot be our fallback.
+        if "speaker" not in props(sinks[0]).get("node.name", "").lower():
+            device_id = props(sinks[0]).get("device.id")
+            card = next((n for n in graph if n.get("id") == device_id), {})
+            profiles = card.get("info", {}).get("params", {}).get("EnumProfile", [])
+            speaker = next((p for p in profiles if "speaker" in p.get("name", "").lower()
+                            and p.get("available") != "no"), None)
+            if speaker is not None:
+                extra = {"profileDevice": device_id, "profileIndex": speaker["index"]}
+        routes.append(route("internal", "Laptop speakers + " + ("USB camera mic" if webcam else "laptop mic"),
+                            sinks[0], mic, **extra))
     for node in nodes:
         p = props(node)
         device = devices.get(p.get("device.id"), {})
@@ -97,22 +103,20 @@ def discover(graph, paired=()):
         address = device.get("api.bluez5.address") or p.get("api.bluez5.address")
         if not address or not re.fullmatch(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", address):
             continue
+        inputs = [entry for entry in nodes if props(entry).get("media.class") == "Audio/Source"
+                  and props(entry).get("device.id") == p.get("device.id")]
+        if not inputs:
+            continue
         model_id = f"{((product & 255) << 8) | (product >> 8):04X}" if product else None
-        codec = p.get("api.bluez5.codec")
-        profile = p.get("api.bluez5.profile")
-        detail = ["Connected"]
-        if codec:
-            detail.append(str(codec).upper())
-        if profile:
-            detail.append("Stereo" if profile.startswith("a2dp") else profile)
-        entry = route("airpods:" + address, str(name), node, modelId=model_id,
-                      connected=True, detail=" · ".join(detail))
+        entry = route("airpods:" + address, str(name) + " input + output", node, inputs[0],
+                      modelId=model_id, connected=True,
+                      detail="Connected · " + str(p.get("api.bluez5.codec", "Bluetooth")).upper())
         routes.append(entry)
     available = {entry["id"] for entry in routes}
     for device in paired:
         identity = "airpods:" + device["address"]
         if identity not in available:
-            routes.append({"id": identity, "label": f"{device['name']} + {mic_label}",
+            routes.append({"id": identity, "label": f"{device['name']} input + output",
                            "modelId": device["modelId"], "connected": False, "selected": False,
                            "detail": "Disconnected · select to connect"})
     return routes
@@ -120,12 +124,27 @@ def discover(graph, paired=()):
 
 def select(route):
     # Resolve again on each selection: reconnects may replace every PipeWire ID.
+    if "profileDevice" in route:
+        run("wpctl", "set-profile", str(route["profileDevice"]), str(route["profileIndex"]))
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            ready = next((entry for entry in discover(json.loads(run("pw-dump")), include_fallback=True)
+                          if entry["id"] == "internal" and "profileDevice" not in entry), None)
+            if ready is not None:
+                route = ready
+                break
+            time.sleep(0.1)
+        else:
+            raise ValueError("Laptop speaker profile did not become ready.")
     if route.get("connected") is False:
         address = route["id"].removeprefix("airpods:")
-        run("bluetoothctl", "--timeout", "8", "connect", address, timeout=10)
+        # A BlueZ Connected signal can precede PipeWire's audio nodes. Wait
+        # for them without racing the connection already in progress.
         if not re.search(r"Connected:\s+yes", run("bluetoothctl", "info", address)):
-            raise ValueError("AirPods are not connected. Open their case nearby and select them again.")
-        deadline = time.monotonic() + 4
+            run("bluetoothctl", "--timeout", "8", "connect", address, timeout=10)
+            if not re.search(r"Connected:\s+yes", run("bluetoothctl", "info", address)):
+                raise ValueError("AirPods are not connected. Open their case nearby and select them again.")
+        deadline = time.monotonic() + 6
         while time.monotonic() < deadline:
             connected = next((entry for entry in discover(json.loads(run("pw-dump")))
                               if entry["id"] == route["id"]), None)
@@ -144,13 +163,14 @@ def select(route):
 
 def main():
     try:
-        routes = discover(json.loads(run("pw-dump")), paired_airpods())
+        fallback = sys.argv[1:] == ["fallback"]
+        routes = discover(json.loads(run("pw-dump")), paired_airpods(), include_fallback=fallback)
         if sys.argv[1:] == ["list"]:
             print(json.dumps({"choices": routes}))
             return
         if len(sys.argv) != 2:
             raise ValueError("usage: audio-route list|<route id from list>")
-        selected = next((route for route in routes if route["id"] == sys.argv[1]), None)
+        selected = next((route for route in routes if route["id"] == ("internal" if fallback else sys.argv[1])), None)
         if selected is None:
             raise ValueError("That audio pair is no longer available. Reopen F9 to refresh devices.")
         print(select(selected))
