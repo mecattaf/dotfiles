@@ -85,6 +85,28 @@ in
     ".claude/skills/scheduled".source = scheduledSkill;
     ".claude-work/skills/scheduled".source = scheduledSkill;
   };
+  # The dotfiles `crm` skill gave way to the per-agency communications skill
+  # (Communications build, acceptance L14). Its three hand-made links in the
+  # frozen seat roots would dangle once home/dot_claude/skills/crm is gone, so
+  # activation removes exactly those links: a symlink named crm whose target is
+  # that checkout path, and nothing else in the roots.
+  home-manager.users.tom.imports = [
+    (
+      { config, lib, ... }:
+      {
+        home.activation.retireCrmSkillLinks = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+          for seat in .claude .claude-work .agents; do
+            l="$HOME/$seat/skills/crm"
+            if [ -L "$l" ] && [ "$(readlink "$l")" = ${
+              lib.escapeShellArg "${config.rawDotfiles.repoDir}/home/dot_claude/skills/crm"
+            } ]; then
+              run rm $VERBOSE_ARG "$l"
+            fi
+          done
+        '';
+      }
+    )
+  ];
 
   # Central credentials move here with the brain role. Ciphertexts must be
   # rekeyed by Tom before deployment; see REKEY.md. No compute host receives them.
