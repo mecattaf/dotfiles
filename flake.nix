@@ -57,7 +57,7 @@
     # pnpm-deps hash is fixed against its own lock. Its home-manager input only
     # feeds its checks, so it follows ours.
     communications = {
-      url = "git+https://github.com/agency-agency/communications?rev=cda8aa755e92601e7f5a49a3bd67602a8c4c0c03";
+      url = "git+https://github.com/agency-agency/communications?rev=042a77a13f458f0a089a185dda4339c2880383ca";
       inputs.home-manager.follows = "home-manager";
     };
 
