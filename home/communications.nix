@@ -11,7 +11,9 @@
 # id, tailnet name, tokens, own addresses) live in the 0600 files under the
 # module's configDir, outside this repository, and the service merges its host
 # config over these settings at boot. Only the blob root is set here: it is
-# the HDD subvolume hosts/nas/storage.nix declares.
+# the HDD subvolume hosts/nas/storage.nix declares. blobMount makes the service
+# refuse to start, and refuse every blob write, when the nofail HDD is not
+# mounted, so no blob lands on the root disk and is acked away.
 let
   cfg = config.services.communications;
 in
@@ -22,6 +24,7 @@ in
     services.communications = {
       enable = true;
       blobRoot = "/mnt/nas/communications";
+      blobMount = "/mnt/nas";
     };
 
     # The crm and mail wrappers (dot_local/bin) exec the CLIs through this GC

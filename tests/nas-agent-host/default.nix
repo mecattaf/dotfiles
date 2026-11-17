@@ -157,6 +157,7 @@ assert !(client.home.file ? ".local/state/agency/crm/node");
 # on the brain only, blobs on the HDD subvolume the NAS declares, and no timer.
 assert h.services.communications.enable;
 assert h.services.communications.blobRoot == "/mnt/nas/communications";
+assert h.services.communications.blobMount == "/mnt/nas";
 assert h.systemd.user.services ? communications;
 assert !(h.systemd.user.timers ? communications);
 assert h.home.file ? ".local/state/agency/communications/cli";
