@@ -8,9 +8,13 @@ import datetime
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 
 def run(*command):
+    sibling = Path(__file__).resolve().parent / command[0]
+    if sibling.is_file():
+        command = (str(sibling), *command[1:])
     result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True)
     if result.returncode:
         raise RuntimeError((result.stderr.strip() or result.stdout.strip())[-3000:]
