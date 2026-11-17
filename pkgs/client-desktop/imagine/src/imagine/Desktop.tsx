@@ -268,7 +268,8 @@ export const Desktop = ({ applications, floating, keybindings, policy, ambientCh
       if (lock.locked) return;
       if (args.length === 2 && args[1] === "menu" && (args[0] === "audio" || args[0] === "recording")) {
         closeFinder();
-        setAudioMenu(args[0]); domicile.windows.focusShell(); return;
+        const kind = args[0];
+        setAudioMenu(current => current === kind ? undefined : kind); domicile.windows.focusShell(); return;
       }
       if (args[0] === "layout-recovery" && args.length === 2) {
         if (behindPanel) return;

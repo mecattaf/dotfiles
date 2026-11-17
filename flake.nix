@@ -625,6 +625,8 @@
             scheduled
             ;
 
+          podpower = self.nixosConfigurations.client.pkgs.callPackage ./pkgs/podpower { };
+
           # Explicit accelerator escape hatches. The host module installs the
           # operational subset safely; these aliases also make every requested
           # upstream output directly buildable with `nix build .#<name>` without
@@ -682,6 +684,13 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        audio-controls = pkgs.runCommand "audio-controls" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          export PYTHONDONTWRITEBYTECODE=1
+          export AUDIO_ROUTE_SCRIPT=${./home/dot_local/bin/audio-route}
+          export AUDIO_CONTROL_SCRIPT=${./home/dot_local/bin/imagine-audio-control}
+          python3 -m unittest discover -s ${./tests/audio-control} -v
+          touch "$out"
+        '';
         domicile-config =
           self.nixosConfigurations.client.config.programs.domicilePhysical.checkedConfigPackage;
         domicile-display-temperatures =

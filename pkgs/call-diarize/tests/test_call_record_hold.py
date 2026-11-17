@@ -29,8 +29,12 @@ class HoldLifecycle(unittest.TestCase):
                         FAKE_EVENTS=str(self.events), RECORDINGS_ROOT=str(self.home / "recording-store"))
         self.script = os.environ['CALL_RECORD_TEST_SCRIPT']
         self.bash = os.environ['CALL_RECORD_TEST_BASH']
+        self.write_fake('utility-path', "import os;print(os.environ['RECORDINGS_ROOT'])\n")
         self.write_fake('pw-dump', '''import json
 print(json.dumps([{'info': {'props': {'media.class': c, 'node.name': 'INZONE-'+c}}} for c in ['Audio/Sink', 'Audio/Source']]))
+''')
+        self.write_fake('wpctl', '''import sys
+print('    node.name = \"' + ('selected-output' if sys.argv[-1] == '@DEFAULT_AUDIO_SINK@' else 'selected-microphone') + '\"')
 ''')
         self.write_fake('pw-record', '''import json,os,pathlib,signal,sys,time
 state=pathlib.Path(os.environ['XDG_STATE_HOME']); output=pathlib.Path(sys.argv[-1])
@@ -40,7 +44,7 @@ def stopped(*args):sys.exit(0)
 signal.signal(signal.SIGINT,signal.SIG_IGN if os.environ.get('IGNORE_INT') else stopped)
 signal.signal(signal.SIGTERM,stopped)
 output.write_bytes(b'fake finalized audio')
-with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'capture','pid':os.getpid(),'output':str(output)})+'\\n')
+with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'capture','pid':os.getpid(),'output':str(output),'target':sys.argv[sys.argv.index('--target')+1]})+'\\n')
 while True:time.sleep(.05)
 ''')
         self.write_fake('sox', '''import json,os,pathlib,sys
@@ -82,6 +86,7 @@ with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'enque
         self.assertEqual(started.returncode, 0, started.stderr)
         self.assertEqual(len(self.current.read_text().splitlines()), 5)
         self.assertEqual(len(self.records()), 2)
+        self.assertEqual([event['target'] for event in self.records()], ['selected-output', 'selected-microphone'])
         self.assertEqual(self.hold.stat().st_mode & 0o777, 0o600)
         stopped = self.invoke('stop')
         self.assertEqual(stopped.returncode, 0, stopped.stderr)

@@ -8,29 +8,67 @@ import datetime
 import json
 import subprocess
 import sys
+import time
+from collections import Counter
 from pathlib import Path
 
 
-def run(*command):
+def run(*command, timeout=None):
     sibling = Path(__file__).resolve().parent / command[0]
     if sibling.is_file():
         command = (str(sibling), *command[1:])
-    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True)
+    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
     if result.returncode:
         raise RuntimeError((result.stderr.strip() or result.stdout.strip())[-3000:]
                            or f"{command[0]} exited with status {result.returncode}")
     return result.stdout
 
 
+def audio_routes():
+    return json.loads(run("audio-route", "list", timeout=7))["choices"]
+
+
+def battery_readings():
+    routes = [route for route in audio_routes() if route["id"].startswith("airpods:")
+              and route.get("connected", True)]
+    models = Counter(route.get("modelId") for route in routes)
+    readings = []
+    for route in routes[:4]:
+        entry = {"id": route["id"], "label": route["label"].split(" + ")[0]}
+        if models[route.get("modelId")] > 1:
+            entry["detail"] = "Battery unknown: more than one connected pair of this model."
+        else:
+            try:
+                command = ["podpower"]
+                if route.get("modelId"):
+                    command += ["--model-id", route["modelId"]]
+                result = json.loads(run(*command, timeout=7))
+                components = {item["name"]: item for item in result["components"]}
+                names = ("headphones",) if result["type"] == "over_ear" else ("left", "right", "case")
+                parts = []
+                for name in names:
+                    item = components.get(name, {})
+                    percent = item.get("battery")
+                    value = f"≈{percent}%" if type(percent) is int and 0 <= percent <= 100 else "unknown"
+                    parts.append(f"{name.capitalize()} {value}" + (" charging" if item.get("charging") else ""))
+                entry.update(detail=" · ".join(parts), sampledAt=time.time(), approximate=True)
+            except (OSError, ValueError, KeyError, TypeError, RuntimeError, subprocess.SubprocessError):
+                entry["detail"] = "Battery unavailable. Open the case nearby, then refresh."
+        readings.append(entry)
+    return readings
+
+
 def handle(request):
     action = request.get("action")
     if action == "audio-menu":
-        choices = json.loads(run("audio-route", "list"))["choices"]
+        choices = audio_routes()
         return {"choices": choices, "detail": "Choose an output and microphone together." if choices
-                else "No complete audio pair is connected. Check the dock or laptop audio devices."}
+                else "No complete audio pair is connected. Check the camera or laptop microphone."}
+    if action == "audio-battery":
+        return {"readings": battery_readings()}
     if action == "audio-select":
         route = request.get("route")
-        if route not in ("speaker", "inzone", "internal"):
+        if route not in [entry["id"] for entry in audio_routes()]:
             raise ValueError("Unknown audio pair")
         return {"message": run("audio-route", route).strip()}
     if action == "recording-menu":
