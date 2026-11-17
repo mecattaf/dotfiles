@@ -267,6 +267,21 @@ export const Desktop = ({ applications, floating, keybindings, policy, ambientCh
       if (agentCommand(args)) return;
       if (composer.command(args)) return;
       if (ambient.command(args)) return;
+      // The compositor owns monitor sleep and input-to-wake. Keep this usable
+      // while locked too, as the public API permits; never zero backlights.
+      if (args.length === 2 && args[0] === "displays" && (args[1] === "sleep" || args[1] === "wake")) {
+        void domicile.displays[args[1]]().then(result => result.match({
+          Ok: () => undefined,
+          Err: error => {
+            console.error("Imagine display power", error);
+            media.announce("Displays", "Unavailable", error.message);
+          },
+        })).catch((error: unknown) => {
+          console.error("Imagine display power", error);
+          media.announce("Displays", "Unavailable", String(error));
+        });
+        return;
+      }
       if (lock.locked) return;
       if (args.length === 2 && args[1] === "menu" && (args[0] === "audio" || args[0] === "recording")) {
         closeFinder();

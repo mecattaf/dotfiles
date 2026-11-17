@@ -65,7 +65,9 @@ const keybindings = {
   F1: agency("brightness", "down"),
   F2: agency("brightness", "up"),
   "Shift+F2": agency("brightness", "max"),
-  F10: agency("brightness", "toggle"),
+  // Native display power: keep window/workspace placement and brightness.
+  F10: agency("displays", "sleep"),
+  "Shift+F10": agency("displays", "wake"),
   XF86MonBrightnessDown: agency("brightness", "down"),
   XF86MonBrightnessUp: agency("brightness", "up"),
   "Shift+XF86MonBrightnessDown": agency("brightness", "down", "fine"),
