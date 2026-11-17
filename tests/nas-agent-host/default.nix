@@ -169,6 +169,10 @@ assert builtins.all (name: h.home.file ? ${name}) [
   ".claude/skills"
   ".claude-work/skills"
 ];
+# The retired dotfiles crm skill: its source is gone and activation removes
+# only its old checkout links from the frozen seat roots.
+assert !(builtins.pathExists ../../home/dot_claude/skills/crm);
+assert lib.hasInfix "/home/dot_claude/skills/crm" h.home.activation.retireCrmSkillLinks.data;
 # The seat skill roots stay frozen (hosts/nas/default.nix); the scheduled skill
 # is the one link added inside each, into the checkout like every raw dotfile.
 assert builtins.all (seat: !h.home.file."${seat}/skills".enable) [
