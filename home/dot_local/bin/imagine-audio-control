@@ -101,7 +101,7 @@ def main():
         if not isinstance(request, dict):
             raise ValueError("Expected an audio control request")
         reply = {"ok": True, **handle(request)}
-    except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError, subprocess.SubprocessError) as error:
         reply = {"ok": False, "message": str(error)[:3000]}
     print(json.dumps(reply))
 

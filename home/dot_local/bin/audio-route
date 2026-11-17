@@ -121,7 +121,10 @@ def discover(graph, paired=()):
 def select(route):
     # Resolve again on each selection: reconnects may replace every PipeWire ID.
     if route.get("connected") is False:
-        run("bluetoothctl", "--timeout", "8", "connect", route["id"].removeprefix("airpods:"), timeout=10)
+        address = route["id"].removeprefix("airpods:")
+        run("bluetoothctl", "--timeout", "8", "connect", address, timeout=10)
+        if not re.search(r"Connected:\s+yes", run("bluetoothctl", "info", address)):
+            raise ValueError("AirPods are not connected. Open their case nearby and select them again.")
         deadline = time.monotonic() + 4
         while time.monotonic() < deadline:
             connected = next((entry for entry in discover(json.loads(run("pw-dump")))

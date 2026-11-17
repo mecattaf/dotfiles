@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# call-record — capture both sides of a call (INZONE Buds) into per-speaker
+# call-record — capture the selected output and microphone into per-speaker
 # WAVs plus a mixed track for diarization testing.
 #
 #   call-record start <slug>   begin capturing far (call audio) + near (mic)
@@ -7,8 +7,8 @@
 #   call-record status         show current session, levels sanity
 #   call-record handoff <dir>  thin client: retry a failed hand-off by hand
 #
-# Far side  = monitor of the INZONE Buds sink (what you hear).
-# Near side = INZONE Buds mono mic (what you say).
+# Far side  = monitor of the selected output (what you hear).
+# Near side = selected microphone (what you say).
 # Both mono s16 48 kHz; mix.wav is the diarization test input, the split
 # tracks are per-speaker ground truth. Evidence files, keep all three.
 #
@@ -153,13 +153,6 @@ summary() {
     for f in far near mix; do
         [[ -f "$dir/$f.wav" ]] && printf '  %-8s %s  (%s)\n' "$f.wav" "$1/$f.wav" "$(soxi -d "$dir/$f.wav" 2>/dev/null || echo '?')"
     done
-}
-
-find_node() { # $1 = media.class, $2 = case-insensitive description/name pattern
-    pw-dump | jq -r --arg class "$1" --arg pat "$2" '
-        .[] | select(.info.props["media.class"] == $class)
-            | select((.info.props["node.name"] + " " + (.info.props["node.description"] // "")) | test($pat; "i"))
-            | .info.props["node.name"]' | head -n1
 }
 
 case "${1:-}" in

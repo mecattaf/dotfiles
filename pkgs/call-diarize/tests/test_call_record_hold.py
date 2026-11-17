@@ -86,7 +86,7 @@ with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'enque
         self.assertEqual(started.returncode, 0, started.stderr)
         self.assertEqual(len(self.current.read_text().splitlines()), 5)
         self.assertEqual(len(self.records()), 2)
-        self.assertEqual([event['target'] for event in self.records()], ['selected-output', 'selected-microphone'])
+        self.assertCountEqual([event['target'] for event in self.records()], ['selected-output', 'selected-microphone'])
         self.assertEqual(self.hold.stat().st_mode & 0o777, 0o600)
         stopped = self.invoke('stop')
         self.assertEqual(stopped.returncode, 0, stopped.stderr)

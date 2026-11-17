@@ -1644,7 +1644,10 @@
           assert !(nas.systemd.services ? update-center);
           assert !(nas.services.nginx.virtualHosts ? fleet-candidates);
           assert !(nixpkgs.lib.hasInfix "8734" nas.networking.firewall.extraInputRules);
-          assert !(builtins.any (p: nixpkgs.lib.getName p == "update-center-publish") nas.environment.systemPackages);
+          assert
+            !(builtins.any (
+              p: nixpkgs.lib.getName p == "update-center-publish"
+            ) nas.environment.systemPackages);
           pkgs.runCommand "update-center" { } ''
             touch "$out"
           '';
@@ -2010,7 +2013,9 @@
             export FLEET_STATUS_PY=${pkgs.fleet-status}/share/fleet-status/fleet_status.py
             export FLEET_STATUS_OBSERVER_PY=${pkgs.fleet-status}/share/fleet-status/observer.py
             export FLEET_STATUS_PUBLISHER_PY=${pkgs.fleet-status}/share/fleet-status/publisher.py
-            export FLEET_STATUS_OBSERVER_CONFIG=${agentProbe.environment.etc."fleet-status/observer.json".source}
+            export FLEET_STATUS_OBSERVER_CONFIG=${
+              agentProbe.environment.etc."fleet-status/observer.json".source
+            }
             python3 -c 'import json, os; c=json.load(open(os.environ["FLEET_STATUS_OBSERVER_CONFIG"])); assert all(x > 0 for x in c["intervals"].values()); assert "--no-spend" in c["seatsCommand"]'
             mkdir -p "$HOME"
             python3 -m unittest discover -s ${./tests/fleet-status} -p 'test_*.py' -v

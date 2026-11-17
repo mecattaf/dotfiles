@@ -83,6 +83,16 @@ class Routes(unittest.TestCase):
         self.assertEqual(calls, [("wpctl", "set-mute", "91", "0"), ("wpctl", "set-mute", "4", "0"),
                                  ("wpctl", "set-default", "91"), ("wpctl", "set-default", "4")])
 
+    def test_failed_bluetooth_connection_never_changes_audio_defaults(self):
+        calls = []
+        def run(*args, **kwargs):
+            calls.append(args)
+            return "Connected: no"
+        with patch.dict(route["select"].__globals__, run=run):
+            with self.assertRaisesRegex(ValueError, "not connected"):
+                route["select"]({"id": "airpods:AA:BB:CC:11:22:33", "connected": False})
+        self.assertFalse(any(command[0] == "wpctl" for command in calls))
+
 
 class Battery(unittest.TestCase):
     def readings(self, result, choices=None):
