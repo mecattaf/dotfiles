@@ -93,6 +93,7 @@ in
     ./agent-helpers.nix
     ./agency-kitty.nix
     ./agency-editor.nix
+    ./communications.nix
     ./ai-memory.nix
     ./dsh.nix
     ./dsh-master.nix

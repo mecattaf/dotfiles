@@ -216,6 +216,12 @@ in
       "z ${storageRoot}/documents 0750 tom users -"
       "z ${storageRoot}/videos 0750 tom users -"
       "z ${storageRoot}/services 0711 root root -"
+      # The Communications blob root (raw mail and attachments with JSON
+      # sidecars; home/communications.nix). It arrived after the Day-2
+      # runbook, so 'v' rather than 'z': it creates the BTRFS SUBVOLUME on
+      # first activation (one snapshot boundary, like the other data roots)
+      # and acts as 'd' afterwards. Never NFS-exported: no entry above.
+      "v ${storageRoot}/communications 0700 tom users -"
     ];
   };
 }

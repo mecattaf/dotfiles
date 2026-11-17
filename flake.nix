@@ -51,6 +51,16 @@
     # mismatch (2026-10-25, T-13; measured on both strix).
     project-cli.url = "git+https://github.com/agency-agency/backlog?rev=05e5f351ef5fdd1fc12fd5b805ee47e2e2be486a";
 
+    # Communications: the user service (cordis: crm and mail over one SQLite),
+    # its CLIs and Home Manager module (home/communications.nix). Pinned by rev
+    # like project-cli and for the same reason no nixpkgs.follows: its
+    # pnpm-deps hash is fixed against its own lock. Its home-manager input only
+    # feeds its checks, so it follows ours.
+    communications = {
+      url = "git+https://github.com/agency-agency/communications?rev=cda8aa755e92601e7f5a49a3bd67602a8c4c0c03";
+      inputs.home-manager.follows = "home-manager";
+    };
+
     # Per-device hardware quirks. No nixpkgs.follows — it's just module files.
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
 

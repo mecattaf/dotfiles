@@ -167,7 +167,15 @@ count, and a dsh that never ran (exit 125 to 127) fails whatever the folder
 holds. Without the folder's `pnpm-workspace.yaml` pnpm would pull the
 plugins' DSH peers from the registry, so install refuses a folder whose
 three files are not the rendered ones. The fleet wrapper refuses `dsh
-plugin`. Stop the floor before installing into `master` (`dshd stop floor`,
+plugin` except `dsh plugin --profile master add|remove <dsh-* extension>...`
+(D-51, Tom 2026-11-16: "d51 lift the guard is totally fine"): no pnpm option,
+no other verb or profile, and never the two dsh-master pins. The provider keys
+are already unset on that path, so pnpm and lifecycle scripts see none. Such
+an extension is kept by `render`, `install` and `status`: the rendered
+`package.json` plus each live `(@scope/)dsh-*` dependency it lacks, with its
+bundle where the live file selects it. With no extension the bytes are
+exactly the rendered file, and only the rendered pins need a built `lib/`.
+The hand-run profiles still get their plugins from Nix only. Stop the floor before installing into `master` (`dshd stop floor`,
 install, `dshd start floor`); a worker folder is read when each unit boots,
 so install it while none of its units runs. install checks this: it asks
 `dshd ls` and `dshd get` and refuses a profile that a running instance of

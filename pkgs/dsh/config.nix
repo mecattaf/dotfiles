@@ -487,7 +487,8 @@ let
     (off "session-telemetry-otel")
     (off "otel")
     (off "command-feedback") # /feedback; mints $DSH_HOME/.anonymous-user-id
-    # 3. No runtime plugin installs; plugins come from Nix only.
+    # 3. No runtime plugin installs in the hand-run profiles; their plugins come
+    #    from Nix only (D-51 extensions go into master, docs/dsh-master.md).
     (off "plugin-manager")
     (off "tool-plugin-manager")
     # 4. Inference: Gemini (free tier) is the default; the other keyed lanes
