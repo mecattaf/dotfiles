@@ -257,17 +257,17 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1794655731,
-        "narHash": "sha256-bkoWOtzgA6yj1cjMlJV0/PGjx1T6VAGmpKW6w1VQ20o=",
+        "lastModified": 1794476092,
+        "narHash": "sha256-4vrnf+OAC0VqcO/HgwQWVIqnVaiOHOWuXyhyaOIHpAA=",
         "owner": "cprussin",
         "repo": "domicile",
-        "rev": "8115d932b41be551ca7769fc2e89e323e5692c8c",
+        "rev": "e2b4bc54df6c377596dec3c8228aba64b3144a97",
         "type": "github"
       },
       "original": {
         "owner": "cprussin",
         "repo": "domicile",
-        "rev": "8115d932b41be551ca7769fc2e89e323e5692c8c",
+        "rev": "e2b4bc54df6c377596dec3c8228aba64b3144a97",
         "type": "github"
       }
     },
@@ -633,14 +633,19 @@
     "imagine": {
       "flake": false,
       "locked": {
-        "path": "./pkgs/client-desktop/imagine",
-        "type": "path"
+        "lastModified": 1795030430,
+        "narHash": "sha256-ELWpw6YXwdjLtcUL7eENkEhO1W5A+MsmGmwZYxjuL1w=",
+        "owner": "agency-agency",
+        "repo": "imagine",
+        "rev": "e9d0ab68d288f1a714ff4df4f29b3278a95fe603",
+        "type": "github"
       },
       "original": {
-        "path": "./pkgs/client-desktop/imagine",
-        "type": "path"
-      },
-      "parent": []
+        "owner": "agency-agency",
+        "repo": "imagine",
+        "rev": "e9d0ab68d288f1a714ff4df4f29b3278a95fe603",
+        "type": "github"
+      }
     },
     "linux-src": {
       "flake": false,

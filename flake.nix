@@ -173,13 +173,12 @@
       inputs.utils.follows = "flake-utils";
     };
 
-    # The daily desktop and its SDK use one pinned official upstream release.
-    # Keep the SDK and prebuilt engine together. Upstream main with the #2047
-    # dmabuf OOM fix (issue #2036); the 75708d76 rollback hit the OOM again on
-    # 12 Nov at 02:12Z, so it is no longer a known-good to protect.
-    domicile.url = "github:cprussin/domicile/8115d932b41be551ca7769fc2e89e323e5692c8c";
+    # Match the SDK and official engine already loaded on the client.
+    # e2b4bc54 selects official f658eb3, series81e711f6038d; source-only
+    # Imagine updates retain that running pair and never restart the desktop.
+    domicile.url = "github:cprussin/domicile/e2b4bc54df6c377596dec3c8228aba64b3144a97";
     imagine = {
-      url = "path:./pkgs/client-desktop/imagine";
+      url = "github:agency-agency/imagine/e9d0ab68d288f1a714ff4df4f29b3278a95fe603";
       flake = false;
     };
     dsh-domicile = {
@@ -695,7 +694,7 @@
           pkgs.runCommand "domicile-airpods-policy"
             { nativeBuildInputs = [ inputs.domicile.legacyPackages.${system}.bun ]; }
             ''
-              bun test ${./pkgs/client-desktop/imagine/src/imagine}/AirPodsPolicy.test.ts
+              bun test ${inputs.imagine}/src/imagine/AirPodsPolicy.test.ts
               touch "$out"
             '';
         domicile-config =
@@ -706,7 +705,7 @@
               nativeBuildInputs = [ inputs.domicile.legacyPackages.${system}.bun ];
             }
             ''
-              bun test ${./pkgs/client-desktop/imagine/src/imagine}/display-temperatures.test.ts
+              bun test ${inputs.imagine}/src/imagine/display-temperatures.test.ts
               touch "$out"
             '';
 
