@@ -74,7 +74,7 @@
     # not from the host's pkgs. Pinned by rev like project-cli; the repository
     # is private, hence git+https.
     kitty-persist = {
-      url = "git+https://github.com/mecattaf/kitty-persist?ref=lane/H&rev=25b813ca314d46b8b3015b4c32cc8c9c414aa65a";
+      url = "git+https://github.com/mecattaf/kitty-persist?ref=lane/H&rev=9d55b1482cdd49c8dc21150926171183334b73b4";
       inputs.nixpkgs.follows = "nixpkgs-fresh";
     };
 
