@@ -1,0 +1,20 @@
+{
+  "name": "@mecattaf/kitty-persist-hooks",
+  "version": "0.1.0",
+  "description": "Dotfiles dsh plugin: reports a hand-run dsh agent's state to kitty-persist through `kitty-persist hook NAME EVENT`.",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.1-0 <0.3.0-0"
+  }
+}

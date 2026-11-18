@@ -28,6 +28,11 @@ in
   # Owned here: prints the plugins' ctx.logger lines (jevcore's ready line,
   # warnings) to stderr, which dsh itself never does.
   stderr-log = callPackage ./stderr-log { };
+  # Owned here: reports a hand-run agent's state to kitty-persist through
+  # `kitty-persist hook dsh-<profile> EVENT` (home/kitty-persist-agents.nix
+  # selects it and installs the matching harness definitions). The program is
+  # found on PATH until the flake input exposes its package.
+  kitty-persist-hooks = callPackage ./kitty-persist-hooks { kitty-persist = null; };
   # Mnemon's published JS plus its pinned runtime dependency closure.
   mnemon = callPackage ./mnemon { inherit dshModules; };
   # jiesou's OpenCode Zen free-model provider, committed lib/ as published.

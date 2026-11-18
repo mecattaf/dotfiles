@@ -150,6 +150,7 @@ let
     mnemon = "dsh-mnemon";
     opencode-zen-free = "@jiesou/dsh-opencode-zen-free-provider";
     kitty-native = "@agency/kitty-native";
+    kitty-persist-hooks = "@mecattaf/kitty-persist-hooks";
   };
   selectedPackages =
     name:
@@ -165,6 +166,14 @@ let
         name: profile:
         profile
         // {
+          # kitty-persist-hooks reports under the harness name of this
+          # profile's definition (pkgs/dsh-plugins/kitty-persist-hooks). A
+          # DSH_* name, so dsh never passes it to the children it spawns.
+          env =
+            profile.env
+            // lib.optionalAttrs (builtins.elem "kitty-persist-hooks" (profilePlugins.${name} or [ ])) {
+              DSH_KITTY_PERSIST_HARNESS = "dsh-${name}";
+            };
           packages = selectedPackages name;
           bundles = [
             "@deepseek-ai/dsh-base"
