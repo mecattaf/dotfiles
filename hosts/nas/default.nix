@@ -96,6 +96,10 @@ in
     # the laptop's forward_audio, off unless set (home/kitty-persist.nix).
     alsaPulsePlugin = true;
   };
+  # Agent hooks and resume (home/kitty-persist-agents.nix): the dsh plugin in
+  # the hand-run profiles and the dsh harness definitions now; the Claude Code
+  # and Codex hook installs once `agents.package` names the one-program build.
+  home-manager.users.tom.programs.kittyPersist.agents.enable = true;
   # The live skill roots are writable directories. Keep them frozen for the
   # separate DSH ownership work; activation must not back them up or replace
   # them with the older whole-directory links.

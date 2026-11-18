@@ -101,6 +101,7 @@ in
     ./harness-records.nix
     ./herdr.nix
     ./kitty-persist.nix
+    ./kitty-persist-agents.nix
     ./nvim.nix
     ./paper.nix
     ./scheduled.nix
