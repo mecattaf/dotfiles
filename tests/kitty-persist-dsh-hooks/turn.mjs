@@ -14,6 +14,8 @@
 //      approval-asked and approval-decided before the tool result.
 //   4. The states those events give through the generated definition are the
 //      ones the specification gives Claude Code and Codex for the same turns.
+//   The definition's draft conversation reader finds the real texts of the
+//   turn in the conversation file the hook was given.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -102,6 +104,18 @@ function dsh(args, env, input) {
   })
 }
 
+// A reader path: `a.b[].c` (`[]` steps into every element of an array).
+function pick(value, path) {
+  let values = [value]
+  for (const part of path.split('.')) {
+    const many = part.endsWith('[]')
+    const key = many ? part.slice(0, -2) : part
+    values = values.flatMap(v => (v !== null && typeof v === 'object' && key in v ? [v[key]] : []))
+    if (many) values = values.flatMap(v => (Array.isArray(v) ? v : []))
+  }
+  return values
+}
+
 const calls = () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)) : [])
 
 try {
@@ -168,8 +182,21 @@ try {
   // The conversation file, once dsh has written it: plain JSONL under DSH_HOME.
   const transcript = JSON.parse(first.at(-1).stdin).transcript_path
   assert.ok(transcript?.startsWith(process.env.DSH_HOME + '/sessions/'), `transcript ${transcript}`)
-  const types = readFileSync(transcript, 'utf8').trim().split('\n').map(l => JSON.parse(l).type)
-  for (const type of ['user/message', 'assistant/message', 'tool/call', 'tool/result']) assert.ok(types.includes(type), type)
+  const lines = readFileSync(transcript, 'utf8').trim().split('\n').map(l => JSON.parse(l))
+  // The definition's draft conversation reader, applied to that file: each
+  // path finds the text the turn really had.
+  const conv = definition.conversation
+  const shape = v => (Array.isArray(v) ? [v.length ? shape(v[0]) : []] : v && typeof v === 'object'
+    ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shape(x)])) : typeof v)
+  const of = kind => lines.filter(l => pick(l, conv.kind)[0] === kind)
+  const texts = (kind, path) => of(kind).flatMap(l => pick(l, path)).map(v => (typeof v === 'string' ? v : JSON.stringify(v))).join('\n')
+  const why = kind => JSON.stringify(of(kind).map(shape))
+  assert.match(texts(conv.user.kind, conv.user.text), /Use one tool/, `user: ${why(conv.user.kind)}`)
+  assert.match(texts(conv.assistant.kind, conv.assistant.text), /KP_MOCK_DONE/, `assistant: ${why(conv.assistant.kind)}`)
+  assert.match(texts(conv.toolCall.kind, conv.toolCall.name), /^read$/m, `tool call: ${why(conv.toolCall.kind)}`)
+  assert.match(texts(conv.toolCall.kind, conv.toolCall.input), /note\.txt/, `tool input: ${why(conv.toolCall.kind)}`)
+  assert.match(texts(conv.toolResult.kind, conv.toolResult.text), /a note for the read tool/, `tool result: ${why(conv.toolResult.kind)}`)
+  assert.deepEqual(of(conv.toolResult.kind).flatMap(l => pick(l, conv.toolResult.error)).filter(v => v === true), [], `tool error: ${why(conv.toolResult.kind)}`)
 
   // 3. The typed resume from the definition, the instruction on stdin.
   const resume = definition.resume.command.map(word => (word === '{id}' ? id : word))
