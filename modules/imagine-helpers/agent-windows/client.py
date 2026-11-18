@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shlex
 import socket
 import stat
 import struct
@@ -13,12 +14,14 @@ import sys
 import time
 import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from transport import failure, validate
+from transport import failure, session_id, validate
 
 ROOT = ".local/state/kitty-dsh/agent-windows"
+KITTY = "/etc/profiles/per-user/tom/bin/kitty"
 
 def tag(request):
-    if request["kind"] == "terminal": return "agencyagent" + request["requestId"].replace("-", "")
+    # kitty-persist's window class names the session the window shows.
+    if request["kind"] == "terminal": return "kitty-persist-" + session_id(request["requestId"])
     value = str(uuid.UUID(bytes=hashlib.sha256(request["requestId"].encode()).digest()[:16], version=4))
     return "agencychata6e17a11" + value.replace("-", "")[8:]
 
@@ -99,10 +102,14 @@ def launch(value):
     if value["kind"] == "chat": raise ValueError("unavailable")
     directory = Path.home()/ROOT/value["requestId"].replace("-", "")
     logfd = os.open(directory/"terminal.log", os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
-    shell = str(Path.home()/".local/bin/domicile-terminal")
+    # The window program creates the session on first start and attaches to it
+    # on any repeat (kitty-persist new --id ... --attach), and switches on its
+    # exit codes. Kitty's own new window/tab start further persistent sessions.
+    persist = str(Path.home()/".local/bin/domicile-persist")
     with os.fdopen(logfd, "ab") as log:
-        child = subprocess.Popen(["/etc/profiles/per-user/tom/bin/kitty", "--class", value["tag"],
-            "--title", "NAS terminal", "--override", "shell="+shell, "-e", shell, "--cwd", value["cwd"]],
+        child = subprocess.Popen([KITTY, "--class", value["tag"],
+            "--title", "NAS terminal", "--override", "shell="+shlex.join([persist, "new"]),
+            "-e", persist, "new", "--id", session_id(value["requestId"]), "--cwd", value["cwd"]],
             stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
     return dict(tag=value["tag"], pid=child.pid)
 

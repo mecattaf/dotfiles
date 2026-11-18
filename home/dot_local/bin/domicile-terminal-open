@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Open one fresh NAS Kitty through an explicitly selected Imagine desktop."""
+"""Open one fresh persistent NAS Kitty through an explicitly selected Imagine desktop.
+
+--session UUID makes the caller the one that chooses the kitty-persist session
+id, so it knows the session before the window exists; the reply then names it.
+"""
 import argparse
 import json
 import os
@@ -37,7 +41,10 @@ def discover_socket(runtime):
     return live[0]
 
 
-def launch(desktop, cwd, config_path):
+UUID4 = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
+
+
+def launch(desktop, cwd, config_path, session=None):
     info = config_path.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
         raise ValueError("owned regular mode0600 desktop config required")
@@ -49,6 +56,8 @@ def launch(desktop, cwd, config_path):
         raise ValueError("explicit absolute Domicile executable required")
     selected = discover_socket(config["runtimeDirectory"])
     command = [binary, "send-shell", "exec", "domicile-apps", "terminal", "--cwd", cwd]
+    if session is not None:
+        command[5:5] = ["--id", session]
     result = subprocess.run(command, env=dict(os.environ, DOMICILE_SOCK=selected),
                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             timeout=5, check=False)
@@ -56,8 +65,9 @@ def launch(desktop, cwd, config_path):
         # Preserve diagnostics on the trusted SSH channel, never as success.
         sys.stderr.buffer.write(result.stderr)
         raise ValueError("native launch refused or outcome unknown; inspect snapshot before retrying")
-    return {"ok": True, "desktop": desktop, "status": "launch-queued",
-            "dshOwnedPty": False, "observedWindow": None}
+    reply = {"ok": True, "desktop": desktop, "status": "launch-queued",
+             "dshOwnedPty": False, "observedWindow": None}
+    return reply if session is None else dict(reply, session=session)
 
 
 def main():
@@ -65,13 +75,16 @@ def main():
     parser.add_argument("desktop")
     parser.add_argument("--cwd", required=True, help="absolute NAS project directory")
     parser.add_argument("--config", type=Path, default=Path.home()/".config/dsh-domicile/client.json")
+    parser.add_argument("--session", help="lower-case version-4 UUID for the new kitty-persist session")
     args = parser.parse_args()
+    if args.session is not None and not UUID4.fullmatch(args.session):
+        parser.error("--session must be a lower-case version-4 UUID")
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", args.desktop):
         parser.error("invalid desktop identity")
     if not Path(args.cwd).is_absolute() or any(ord(c) < 32 or ord(c) == 127 for c in args.cwd):
         parser.error("absolute NAS path without control characters required")
     try:
-        print(json.dumps(launch(args.desktop, args.cwd, args.config)))
+        print(json.dumps(launch(args.desktop, args.cwd, args.config, args.session)))
         return 0
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         print(json.dumps({"ok": False, "desktop": args.desktop, "status": "unavailable-or-unknown",

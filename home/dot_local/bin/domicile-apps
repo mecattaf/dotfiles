@@ -5,6 +5,26 @@ here=$(dirname -- "$0")
 case "${1:-terminal}" in
   terminal)
     [[ $# == 0 ]] || shift
+    # A persistent NAS session (kitty-persist) in a new Kitty OS window, with
+    # the window class kitty-persist-<id>; domicile-persist chooses the id
+    # unless --id names one. Kitty's own new window/new tab in it start
+    # further persistent sessions, never the global local fish shell.
+    exec "$here/domicile-persist" open "$@"
+    ;;
+  attach)
+    # Reopen a window on an existing session: domicile-apps attach UUID.
+    shift
+    exec "$here/domicile-persist" reopen "$@"
+    ;;
+  restore)
+    # One window per running session that no window shows (after this
+    # desktop restarted, or for agents the NAS brought back).
+    shift
+    exec "$here/domicile-persist" restore "$@"
+    ;;
+  nas-shell)
+    shift
+    # The former fresh NAS shell over plain ssh, which ends with its window.
     # Kitty's own new-window/new-tab actions must also stay on NAS. An -e
     # child alone would leave those actions using the global local fish shell.
     exec kitty --class domicile-terminal --title "NAS terminal" \
@@ -23,5 +43,5 @@ case "${1:-terminal}" in
     export GDK_BACKEND=wayland
     exec nautilus --new-window "$@"
     ;;
-  *) echo 'usage: domicile-apps [terminal|rescue [--cwd PATH]|chrome [URL...]|files [PATH...]]' >&2; exit 2 ;;
+  *) echo 'usage: domicile-apps [terminal [--id UUID] [--cwd PATH]|attach UUID|restore [--dry-run]|nas-shell [--cwd PATH]|rescue [--cwd PATH]|chrome [URL...]|files [PATH...]]' >&2; exit 2 ;;
 esac

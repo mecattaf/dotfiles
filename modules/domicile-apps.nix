@@ -137,10 +137,31 @@
         ];
         terminal = false;
       };
+      # Persistent NAS sessions (kitty-persist, home/kitty-persist.nix): a
+      # session outlives its window, the network and a restart of this
+      # desktop. domicile-persist is the window program.
       domicile-terminal = {
         name = "NAS terminal";
-        comment = "Fresh NAS shell in Kitty over SSH";
+        comment = "Persistent NAS session in Kitty";
         exec = "domicile-apps terminal";
+        icon = "utilities-terminal";
+        categories = [
+          "System"
+          "TerminalEmulator"
+        ];
+        terminal = false;
+      };
+      domicile-restore = {
+        name = "NAS sessions: reopen windows";
+        comment = "One Kitty window per running NAS session that no window shows";
+        exec = "domicile-apps restore";
+        icon = "utilities-terminal";
+        terminal = false;
+      };
+      domicile-nas-shell = {
+        name = "NAS shell (not kept)";
+        comment = "Fresh NAS shell in Kitty over SSH; it ends with its window";
+        exec = "domicile-apps nas-shell";
         icon = "utilities-terminal";
         categories = [
           "System"

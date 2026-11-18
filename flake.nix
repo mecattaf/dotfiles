@@ -711,6 +711,42 @@
               touch "$out"
             '';
 
+        # The desktop opener of persistent terminals (kitty-persist): domicile-apps,
+        # domicile-persist, the agent-window helper and the NAS workflow path,
+        # against a fake kitty, a fake kitty-persist, a fake Domicile and a fake
+        # ssh. No desktop, Kitty, ssh or kitty-persist is reached.
+        domicile-opener =
+          pkgs.runCommand "domicile-opener"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+              ];
+            }
+            ''
+              set -euo pipefail
+              export PYTHONDONTWRITEBYTECODE=1
+              cp -R ${./home/dot_local/bin} bin
+              chmod -R u+w bin
+              patchShebangs bin
+              export DOMICILE_OPENER_BIN=$PWD/bin
+              export DOMICILE_AGENT_WINDOWS=${./modules/imagine-helpers/agent-windows}
+              export DOMICILE_IMAGINE_SRC=${./pkgs/client-desktop/imagine/src/imagine}
+              python3 -m unittest discover -s ${./tests/domicile-opener} -v
+              touch "$out"
+            '';
+        # Imagine keeps agent-requested windows quiet by their class alone; the
+        # owner's own kitty-persist windows must not match.
+        domicile-agent-identity =
+          pkgs.runCommand "domicile-agent-identity"
+            {
+              nativeBuildInputs = [ inputs.domicile.legacyPackages.${system}.bun ];
+            }
+            ''
+              bun test ${./pkgs/client-desktop/imagine/src/imagine}/agentIdentity.test.ts
+              touch "$out"
+            '';
+
         # #734: the client's exact greetd guard binary, with stub session and
         # rescue. initial_session starts Domicile; default_session hands back.
         domicile-greetd-guard =

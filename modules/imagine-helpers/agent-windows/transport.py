@@ -1,4 +1,5 @@
 """Fixed NAS-to-Zenbook operations. No commands, URLs or focus arguments."""
+import hashlib
 import ipaddress
 import json
 import os
@@ -14,6 +15,22 @@ import uuid
 NAMES = {"domicile_open_terminal": "terminal", "domicile_open_chat": "chat"}
 CODES = {"ok", "invalid-arguments", "unavailable", "not-ready", "busy", "locked-or-modal",
          "no-workspace", "request-conflict", "outcome-unknown", "cancelled"}
+
+# A terminal window shows a persistent kitty-persist session. Its id is not a
+# request field: it is derived from requestId, so a retried request names the
+# same session and the NAS side can find it (kitty-persist list --json), and
+# its first group is this fixed marker, so Imagine tells an agent-requested
+# window from the owner's own by its class kitty-persist-<id> alone
+# (pkgs/client-desktop/imagine/src/imagine/agentIdentity.ts). The wire format
+# and the reply are unchanged from protocol version 1.
+AGENT_SESSION_MARKER = "a6e17a12"
+
+
+def session_id(request_id):
+    """The lower-case version-4 UUID of the session a terminal request opens."""
+    digest = hashlib.sha256(("kitty-persist:" + str(uuid.UUID(request_id))).encode()).digest()
+    return AGENT_SESSION_MARKER + str(uuid.UUID(bytes=digest[:16], version=4))[8:]
+
 
 def failure(request, code):
     return dict(ok=False, code=code, desktop=request.get("desktop", ""),
@@ -40,7 +57,7 @@ def validate(request, desktops):
 
 def tools(desktops):
     return [dict(name=name, description=(
-        "Open one fresh NAS project terminal" if kind == "terminal" else "Open a Chrome viewer of an existing DSH chat; do not send a prompt") +
+        "Open one fresh persistent NAS project terminal, a kitty-persist session that outlives its window (kitty-persist list --json on NAS)" if kind == "terminal" else "Open a Chrome viewer of an existing DSH chat; do not send a prompt") +
         " on an allowed desktop without taking focus or switching its workspace. Requires the prepared Imagine agent-window handler; unavailable has no launch fallback. Use a stable UUID requestId for retries; never automatically retry an unknown outcome.",
         inputSchema=dict(type="object", additionalProperties=False,
             required=["desktop", "requestId", "cwd" if kind == "terminal" else "sessionId"],
