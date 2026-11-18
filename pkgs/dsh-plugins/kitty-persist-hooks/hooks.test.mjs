@@ -155,6 +155,19 @@ test('a run reports in order, with identifiers only', async () => {
   assert.equal(calls[4].payload.reason, 'completed')
 })
 
+test('coalesce: false sends every tool result', async () => {
+  const { ctx, on, effects } = fakeCtx()
+  const { calls, spawnImpl } = fakeSpawn()
+  apply(ctx, { coalesce: false }, baseEnv, spawnImpl)
+  const session = sessionOf('session-all')
+  on['agent/created']({ agent: agentOf(session), source: 'startup' })
+  on['session/event'](session, { type: 'turn/start', data: { turn: 1 } })
+  on['session/event'](session, { type: 'tool/result', data: { turn: 1 } })
+  on['session/event'](session, { type: 'tool/result', data: { turn: 1 } })
+  await effects[0]()()
+  assert.deepEqual(words(calls), ['session-start', 'turn-start', 'tool-result', 'tool-result', 'session-end'])
+})
+
 test('subagent sessions and unknown sessions are ignored', async () => {
   const { ctx, on, effects } = fakeCtx()
   const { calls, spawnImpl } = fakeSpawn()

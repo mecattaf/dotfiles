@@ -189,9 +189,9 @@ export function createReporter({ command, harness, env, spawnImpl = spawn, timeo
 /**
  * Mount the listeners.
  * @param ctx - the Cordis context.
- * @param config - `{ command, harness? }` from the bundle row; `harness`
- *   defaults to DSH_KITTY_PERSIST_HARNESS, which the fleet wrapper exports
- *   per hand-run profile (`dsh-<profile>`).
+ * @param config - `{ command, harness?, coalesce? }` from the bundle row;
+ *   `harness` defaults to DSH_KITTY_PERSIST_HARNESS, which the fleet wrapper
+ *   exports per hand-run profile (`dsh-<profile>`).
  * @param env - the process environment (a test passes its own).
  * @param spawnImpl - node:child_process spawn, or a test double.
  */
@@ -204,6 +204,9 @@ export function apply(ctx, config = {}, env = process.env, spawnImpl = spawn) {
     ctx.logger?.debug?.('kitty-persist-hooks: no valid harness name or command; not reporting')
     return
   }
+  // `coalesce: false` sends every tool result (checks.kitty-persist-dsh-hooks
+  // uses it to see each event dsh emits).
+  const coalesce = config?.coalesce !== false
   const reporter = createReporter({ command, harness, env: hookEnv(env), spawnImpl })
   // session id -> { session, transcript, last, ended }
   const sessions = new Map()
@@ -221,7 +224,7 @@ export function apply(ctx, config = {}, env = process.env, spawnImpl = spawn) {
 
   function send(entry, event, extra = {}) {
     if (entry.ended) return
-    if (event === EVENTS.toolResult && WORKING.has(entry.last)) return
+    if (coalesce && event === EVENTS.toolResult && WORKING.has(entry.last)) return
     entry.last = event
     if (event === EVENTS.sessionEnd) entry.ended = true
     const header = entry.session.header
