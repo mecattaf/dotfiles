@@ -794,9 +794,10 @@
           dsh = self.nixosConfigurations.nas.pkgs.dsh;
         };
         # kitty-persist-hooks in real dsh turns: a mock provider, a stub
-        # `kitty-persist`, the event order, the hook's parent and environment,
-        # the typed resume and the state parity with Claude Code and Codex
-        # (home/kitty-persist-agents.nix, pkgs/dsh-plugins/kitty-persist-hooks).
+        # `kitty-persist`, the event order (a permission question included),
+        # the hook's parent and environment, the typed resume and the state
+        # parity with Claude Code and Codex (home/kitty-persist-agents.nix,
+        # pkgs/dsh-plugins/kitty-persist-hooks).
         kitty-persist-dsh-hooks = import ./tests/kitty-persist-dsh-hooks {
           inherit pkgs;
           dsh = self.nixosConfigurations.nas.pkgs.dsh;

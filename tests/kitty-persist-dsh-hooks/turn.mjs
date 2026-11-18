@@ -9,8 +9,11 @@
 //      with the allowlisted environment only and identifiers only on stdin.
 //   3. The typed resume (`dsh native --session-id ID -`, the instruction on
 //      stdin): the same session id, source `resume`.
+//   3b. A permission question (a write outside the workspace with a sandbox
+//      escalation, which the fleet policy asks about and headless denies):
+//      approval-asked and approval-decided before the tool result.
 //   4. The states those events give through the generated definition are the
-//      ones the specification gives Claude Code and Codex for the same turn.
+//      ones the specification gives Claude Code and Codex for the same turns.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -54,7 +57,17 @@ const server = createServer(async (request, response) => {
   })
   response.writeHead(200, { 'content-type': 'text/event-stream' })
   const send = value => response.write(`data: ${JSON.stringify(value)}\n\n`)
-  if (step === 'tool') {
+  if (step === 'write-outside') {
+    // A write outside the workspace with a sandbox escalation: the fleet
+    // policy asks, and headless has no answerer, so the ask fails closed.
+    const args = {
+      file_path: join(process.env.HOME, 'outside.txt'), content: 'x\n',
+      sandbox_permissions: 'danger-full-access', justification: 'The check needs one permission question.',
+    }
+    send(chunk({ role: 'assistant', tool_calls: [{ index: 0, id: 'call_kp_2', type: 'function', function: { name: 'write', arguments: '' } }] }))
+    send(chunk({ tool_calls: [{ index: 0, function: { arguments: JSON.stringify(args) } }] }))
+    send(chunk({}, 'tool_calls'))
+  } else if (step === 'tool') {
     const names = (parsed.tools ?? []).map(t => t.function?.name).filter(Boolean)
     const preferred = ['read_file', 'fs_read', 'read', 'view', 'list_dir', 'ls', 'glob', 'grep']
     const name = preferred.find(n => names.includes(n)) ?? names.find(n => /read|list|glob|grep|view/.test(n)) ?? names[0]
@@ -169,6 +182,14 @@ try {
   assert.equal(JSON.parse(second[0].stdin).source, 'resume')
   for (const call of second) assert.equal(JSON.parse(call.stdin).session_id, id)
 
+  // 3b. A permission question: dsh's approval events around the tool result.
+  script = ['write-outside', 'answer']
+  run = await dsh(['native', '--patch', patch, 'Write the file, then reply KP_MOCK_DONE.'], inside)
+  const third = calls().slice(first.length + second.length)
+  const asked = third.map(c => c.argv[2])
+  assert.deepEqual(asked, ['session-start', 'turn-start', 'approval-asked', 'approval-decided', 'tool-result', 'stop', 'session-end'], run.stderr)
+  assert.ok(!existsSync(join(process.env.HOME, 'outside.txt')), 'the denied write happened')
+
   // 4. Parity of states with the two shipped harnesses (S22.11).
   const state = word => (definition.events[word]?.ended ? 'ended' : definition.events[word]?.state)
   const collapse = states => states.filter((s, i) => s !== undefined && s !== states[i - 1])
@@ -176,7 +197,10 @@ try {
   const scenario = ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'Stop', 'SessionEnd']
   assert.deepEqual(collapse(words.map(state)), collapse(scenario.map(e => claude[e])))
   assert.deepEqual(collapse(words.map(state)), ['idle', 'working', 'done', 'ended'])
-  console.log(`kitty-persist dsh hooks: ${words.join(' ')} | resume: ${second.map(c => c.argv[2]).join(' ')} | parent argv0 dsh, comm ${first[0].parentComm}`)
+  const withPermission = ['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PostToolUse', 'Stop', 'SessionEnd']
+  const claudeAll = { ...claude, PermissionRequest: 'waiting' }
+  assert.deepEqual(collapse(asked.map(state)), collapse(withPermission.map(e => claudeAll[e])))
+  console.log(`kitty-persist dsh hooks: ${words.join(' ')} | resume: ${second.map(c => c.argv[2]).join(' ')} | permission: ${asked.join(' ')} | parent argv0 dsh, comm ${first[0].parentComm}`)
 } finally {
   server.closeAllConnections()
   await new Promise(resolve => server.close(resolve))
