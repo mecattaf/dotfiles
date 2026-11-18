@@ -72,6 +72,10 @@ in
     agencyKitty.enable = false;
     agencyEditor.enable = false;
   };
+  # Persistent terminals: this host holds the sessions. Enabling it adds the
+  # holder binary and an idle template unit; no session exists until one is
+  # asked for, and Herdr and the ordinary ssh entry are untouched.
+  home-manager.users.tom.programs.kittyPersist.holder.enable = true;
   # The live skill roots are writable directories. Keep them frozen for the
   # separate DSH ownership work; activation must not back them up or replace
   # them with the older whole-directory links.

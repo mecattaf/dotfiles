@@ -100,6 +100,7 @@ in
     ./downloads-mirror.nix
     ./harness-records.nix
     ./herdr.nix
+    ./kitty-persist.nix
     ./nvim.nix
     ./paper.nix
     ./scheduled.nix

@@ -642,6 +642,28 @@
       },
       "parent": []
     },
+    "kitty-persist": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs-fresh"
+        ]
+      },
+      "locked": {
+        "lastModified": 1794991258,
+        "narHash": "sha256-f2I99M8nnAOnqDOwDnHpUU23QRLKh40D+ErHaX0WAgU=",
+        "ref": "lane/H",
+        "rev": "c27ac8853c1e80430b54320b5b271891917ad530",
+        "revCount": 3,
+        "type": "git",
+        "url": "https://github.com/mecattaf/kitty-persist"
+      },
+      "original": {
+        "ref": "lane/H",
+        "rev": "c27ac8853c1e80430b54320b5b271891917ad530",
+        "type": "git",
+        "url": "https://github.com/mecattaf/kitty-persist"
+      }
+    },
     "linux-src": {
       "flake": false,
       "locked": {
@@ -1160,6 +1182,7 @@
         "home-manager": "home-manager",
         "home-manager-nas": "home-manager-nas",
         "imagine": "imagine",
+        "kitty-persist": "kitty-persist",
         "llm-agents": "llm-agents",
         "microvm": "microvm",
         "nix-amd-ai": "nix-amd-ai",

@@ -61,6 +61,23 @@
       inputs.home-manager.follows = "home-manager";
     };
 
+    # kitty-persist — persistent native Kitty terminals. A holder daemon on the
+    # brain host owns each PTY and a libghostty-vt model of it; a seat's Kitty
+    # window attaches over ssh through the `persist` kitten and gets the exact
+    # screen back. Consumed as packages plus Home Manager modules
+    # (home/kitty-persist.nix); nothing is enabled by the input alone.
+    # libghostty-vt is that flake's own derivation, built offline from its
+    # vendored tree (its nix/README.md records which tree and why), so no host
+    # carries a hand-built copy.
+    # Follows nixpkgs-fresh: that is the revision its lock pins and its
+    # packages are built against, and the modules take packages from the input,
+    # not from the host's pkgs. Pinned by rev like project-cli; the repository
+    # is private, hence git+https.
+    kitty-persist = {
+      url = "git+https://github.com/mecattaf/kitty-persist?ref=lane/H&rev=c27ac8853c1e80430b54320b5b271891917ad530";
+      inputs.nixpkgs.follows = "nixpkgs-fresh";
+    };
+
     # Per-device hardware quirks. No nixpkgs.follows — it's just module files.
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
 
