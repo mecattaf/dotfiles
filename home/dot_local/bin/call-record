@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# call-record — capture both sides of a call (INZONE Buds) into per-speaker
+# call-record — capture the selected output and microphone into per-speaker
 # WAVs plus a mixed track for diarization testing.
 #
 #   call-record start <slug>   begin capturing far (call audio) + near (mic)
@@ -7,8 +7,8 @@
 #   call-record status         show current session, levels sanity
 #   call-record handoff <dir>  thin client: retry a failed hand-off by hand
 #
-# Far side  = monitor of the INZONE Buds sink (what you hear).
-# Near side = INZONE Buds mono mic (what you say).
+# Far side  = monitor of the selected output (what you hear).
+# Near side = selected microphone (what you say).
 # Both mono s16 48 kHz; mix.wav is the diarization test input, the split
 # tracks are per-speaker ground truth. Evidence files, keep all three.
 #
@@ -155,13 +155,6 @@ summary() {
     done
 }
 
-find_node() { # $1 = media.class, $2 = case-insensitive description/name pattern
-    pw-dump | jq -r --arg class "$1" --arg pat "$2" '
-        .[] | select(.info.props["media.class"] == $class)
-            | select((.info.props["node.name"] + " " + (.info.props["node.description"] // "")) | test($pat; "i"))
-            | .info.props["node.name"]' | head -n1
-}
-
 case "${1:-}" in
 start)
     slug="${2:?usage: call-record start <slug>}"
@@ -175,10 +168,11 @@ start)
         exit 1
     fi
 
-    sink="$(find_node Audio/Sink 'INZONE')"
-    source="$(find_node Audio/Source 'INZONE')"
-    [[ -n "$sink" ]] || { echo "INZONE Buds sink not found — dongle plugged in?" >&2; exit 1; }
-    [[ -n "$source" ]] || { echo "INZONE Buds mic source not found" >&2; exit 1; }
+    # Capture the pair selected for the call, including an undocked laptop.
+    sink="$(timeout 5 wpctl inspect @DEFAULT_AUDIO_SINK@ | awk -F '\"' '/node.name =/ {print $2; exit}')"
+    source="$(timeout 5 wpctl inspect @DEFAULT_AUDIO_SOURCE@ | awk -F '\"' '/node.name =/ {print $2; exit}')"
+    [[ -n "$sink" ]] || { echo "Default audio output not found" >&2; exit 1; }
+    [[ -n "$source" ]] || { echo "Default microphone not found" >&2; exit 1; }
 
     dir="$OUT_ROOT/$(date +%F)-$slug"
     mkdir -p "$dir" "$STATE_DIR"
@@ -191,7 +185,7 @@ start)
     hold_owned=1
     hold_playback
 
-    # The Shift+F9 controller runs in a short-lived kitty popup. Start each
+    # The Shift+F9 controller lives in Imagine. Start each
     # capture in its own session with no terminal file descriptors so closing
     # that popup cannot send the recorders SIGHUP or hold the window open.
     : > "$dir/capture.log"
@@ -348,6 +342,28 @@ recover)
     ;;
 
 status)
+    if [[ "${2:-}" == --json ]]; then
+        state=idle session='' detail='Record the current audio output and microphone. Keep this pair selected during the call.'
+        if [[ -e "$CURRENT" ]]; then
+            mapfile -t capture < "$CURRENT"
+            session="${capture[0]:-}"
+            session="${session##*/}"
+            state=recording
+            detail='Both sides of the call are recording'
+            if ! [[ "${capture[1]:-}" =~ ^[0-9]+$ && "${capture[2]:-}" =~ ^[0-9]+$ ]] \
+                || ! capture_running "${capture[1]}" "${capture[3]:-}" \
+                || ! capture_running "${capture[2]}" "${capture[4]:-}"; then
+                state=interrupted
+                detail='A capture has stopped. Stop and save to close the session.'
+            fi
+        elif [[ -e "$HOLD_MARKER" ]]; then
+            state=held
+            detail='Speech playback is held after an interrupted capture. Inspect call-record status and recover before starting.'
+        fi
+        jq -n --arg state "$state" --arg session "$session" --arg detail "$detail" \
+            '{state: $state, session: $session, detail: $detail}'
+        exit 0
+    fi
     if [[ -e "$CURRENT" ]]; then
         { read -r dir; read -r far_pid; read -r near_pid; } < "$CURRENT"
         echo "recording in progress -> $dir (far pid $far_pid, near pid $near_pid)"

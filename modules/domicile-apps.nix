@@ -79,46 +79,10 @@
         name = "ROG Control Center";
         noDisplay = true;
       };
-      audio-speaker = {
-        name = "Audio: dock speakers and webcam microphone";
-        exec = "audio-route speaker";
+      audio-pairs = {
+        name = "Audio: output and microphone";
+        exec = "domicile send-shell agency audio menu";
         icon = "audio-speakers";
-        terminal = false;
-      };
-      audio-inzone = {
-        name = "Audio: INZONE Buds and microphone";
-        exec = "audio-route inzone";
-        icon = "audio-headphones";
-        terminal = false;
-      };
-      audio-internal = {
-        name = "Audio: laptop speakers and microphone";
-        exec = "audio-route internal";
-        icon = "audio-speakers";
-        terminal = false;
-      };
-      inzone-noise-cancelling = {
-        name = "INZONE: noise cancelling";
-        exec = "zoneout --device buds --set nc_mode 1";
-        icon = "audio-headphones";
-        terminal = false;
-      };
-      inzone-ambient = {
-        name = "INZONE: ambient sound";
-        exec = "zoneout --device buds --set nc_mode 2";
-        icon = "audio-headphones";
-        terminal = false;
-      };
-      inzone-noise-off = {
-        name = "INZONE: noise control off";
-        exec = "zoneout --device buds --set nc_mode 0";
-        icon = "audio-headphones";
-        terminal = false;
-      };
-      inzone-balance = {
-        name = "INZONE: center game and chat balance";
-        exec = "zoneout --device buds --set balance 50";
-        icon = "audio-headphones";
         terminal = false;
       };
       kitty-nvim = {

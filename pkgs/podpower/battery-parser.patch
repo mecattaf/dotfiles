@@ -1,0 +1,204 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index a08c43a..01dcde1 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -471,6 +471,7 @@ name = "podpower"
+ version = "0.1.1"
+ dependencies = [
+  "btleplug",
++ "libc",
+  "serde",
+  "serde_json",
+  "tokio",
+diff --git a/Cargo.toml b/Cargo.toml
+index 4b9194a..48e8b17 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -8,6 +8,7 @@ name = "podpower"
+ path = "src/main.rs"
+
+ [dependencies]
++libc = "0.2"
+ btleplug = "0.11"
+ tokio = { version = "1", features = ["rt-multi-thread", "time", "macros"] }
+ serde = { version = "1.0", features = ["derive"] }
+diff --git a/src/main.rs b/src/main.rs
+index c86557c..9c844ae 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,3 +1,4 @@
++mod connected;
+ use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
+ use btleplug::platform::Manager;
+ use serde::{Deserialize, Serialize};
+@@ -51,7 +52,13 @@ enum AirPodsStatus {
+ 
+ #[tokio::main]
+ async fn main() -> Result<(), Box<dyn std::error::Error>> {
+-    match scan_for_airpods().await {
++    let model = expected_model()?;
++    let args: Vec<String> = std::env::args().skip(1).collect();
++    if let Some(pair) = args.windows(2).find(|pair| pair[0] == "--address") {
++        println!("{}", serde_json::to_string(&connected::read(&pair[1], model)?)?);
++        return Ok(());
++    }
++    match scan_for_airpods(model).await {
+         Ok(Some(status)) => {
+             println!("{}", serde_json::to_string_pretty(&status)?);
+             Ok(())
+@@ -79,7 +86,7 @@ fn low_nibble(byte: u8) -> u8 {
+     byte & 0x0f
+ }
+ 
+-async fn scan_for_airpods() -> Result<Option<AirPodsStatus>, Box<dyn std::error::Error>> {
++async fn scan_for_airpods(expected_model: Option<u16>) -> Result<Option<AirPodsStatus>, Box<dyn std::error::Error>> {
+     let manager = Manager::new().await?;
+     let adapters = manager.adapters().await?;
+ 
+@@ -113,6 +120,10 @@ async fn scan_for_airpods() -> Result<Option<AirPodsStatus>, Box<dyn std::error:
+                 && let Some(data) = props.manufacturer_data.get(&APPLE_MANUFACTURER_ID)
+                 && data.len() == AIRPODS_DATA_LENGTH
+             {
++                let model_id = u16::from_be_bytes([data[3], data[4]]);
++                if expected_model.is_some_and(|expected| expected != model_id) {
++                    continue;
++                }
+                 // Check RSSI - only consider devices with strong signal (likely connected/nearby)
+                 // Connected AirPods typically have RSSI between -30 and -60 dBm
+                 // Distant/disconnected ones are usually below -70 dBm
+@@ -147,7 +158,8 @@ async fn scan_for_airpods() -> Result<Option<AirPodsStatus>, Box<dyn std::error:
+ ///   - High nibble (bits 4-7): Charging flags
+ ///   - Low nibble (bits 0-3): Case battery level
+ fn parse_airpods_data(data: &[u8]) -> Option<AirPodsStatus> {
+-    if data.len() != AIRPODS_DATA_LENGTH {
++    if data.len() != AIRPODS_DATA_LENGTH || data[0] != 0x07
++        || !matches!(data[1], 0x19 | 0x13) || data[2] != 0x01 {
+         return None;
+     }
+ 
+@@ -155,24 +167,13 @@ fn parse_airpods_data(data: &[u8]) -> Option<AirPodsStatus> {
+     let flip = (data[BYTE_FLIP] & MASK_FLIP_BIT) == 0;
+ 
+     // Detect model from 2-byte identifier
+-    let model_byte = low_nibble(data[BYTE_MODEL_HIGH]);
+     let model_full = ((data[BYTE_MODEL_HIGH] as u16) << 8) | (data[BYTE_MODEL_LOW] as u16);
+ 
+     // See: https://github.com/d4rken-org/capod/blob/5860bbffb6b2e59feca450bc234595314e842366/app/src/main/java/eu/darken/capod/pods/core/apple/airpods/AirPodsGen4.kt#L78
+-    let model = match model_full {
+-        0x0220 => "AirPods 1",
+-        0x0F20 => "AirPods 2",
+-        0x1320 => "AirPods 3",
+-        0x1920 => "AirPods 4",
+-        0x0E20 => "AirPods Pro",
+-        0x1420 | 0x2420 => "AirPods Pro 2",
+-        0x2720 => "AirPods Pro 3",
+-        0x0A20 | 0x1F20 => "AirPods Max",
+-        _ => "AirPods",
+-    };
++    let model = model_name(model_full);
+ 
+     // Check if this is a single-battery device (AirPods Max)
+-    let is_max_device = model_byte == 0x0A;
++    let is_max_device = matches!(model_full, 0x0A20 | 0x1F20);
+ 
+     let battery_byte = data[BYTE_BATTERY_PODS];
+ 
+@@ -211,9 +212,9 @@ fn parse_airpods_data(data: &[u8]) -> Option<AirPodsStatus> {
+ 
+         // Parse charging flags (respecting flip bit)
+         let (left_mask, right_mask) = if flip {
+-            (MASK_CHARGING_LEFT, MASK_CHARGING_RIGHT)
+-        } else {
+             (MASK_CHARGING_RIGHT, MASK_CHARGING_LEFT)
++        } else {
++            (MASK_CHARGING_LEFT, MASK_CHARGING_RIGHT)
+         };
+         let charging_left = (charging_flags & left_mask) != 0;
+         let charging_right = (charging_flags & right_mask) != 0;
+@@ -272,3 +273,86 @@ fn battery_level(raw: u8) -> Option<u8> {
+         _ => None,
+     }
+ }
++
++// Optional model filter is supplied from the currently connected PipeWire card,
++// never a configured MAC. The BLE address can rotate independently of pairing.
++fn expected_model() -> Result<Option<u16>, Box<dyn std::error::Error>> {
++    let args: Vec<String> = std::env::args().skip(1).collect();
++    if args.len() % 2 != 0 { return Err("usage: podpower [--address <connected device>] [--model-id <hex>]".into()); }
++    let mut model = None;
++    for pair in args.chunks_exact(2) {
++        match pair[0].as_str() {
++            "--model-id" => model = Some(u16::from_str_radix(&pair[1], 16)?),
++            "--address" => (),
++            _ => return Err("unknown podpower option".into()),
++        }
++    }
++    Ok(model)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    fn packet(model: u16, flip: u8, battery: u8, charging: u8) -> Vec<u8> {
++        let mut data = vec![0; 27];
++        data[..8].copy_from_slice(&[7, 0x19, 1, (model >> 8) as u8, model as u8, flip, battery, charging]);
++        data
++    }
++    fn value(data: &[u8]) -> serde_json::Value {
++        serde_json::to_value(parse_airpods_data(data).unwrap()).unwrap()
++    }
++    #[test]
++    fn validates_plaintext_status_header() {
++        assert!(parse_airpods_data(&[0; 27]).is_none());
++        let mut data = packet(0x1420, 0, 0x89, 0x4a);
++        data[2] = 7;
++        assert!(parse_airpods_data(&data).is_none());
++        assert!(parse_airpods_data(&[7, 0x19, 1]).is_none());
++    }
++    #[test]
++    fn sides_and_charging_follow_the_same_orientation() {
++        let flip = value(&packet(0x1420, 0, 0x89, 0x1a));
++        assert_eq!(flip["components"][0]["battery"], 85);
++        assert_eq!(flip["components"][1]["battery"], 95);
++        assert_eq!(flip["components"][0]["charging"], false);
++        assert_eq!(flip["components"][1]["charging"], true);
++        let normal = value(&packet(0x1420, 0x20, 0x89, 0x1a));
++        assert_eq!(normal["components"][0]["battery"], 95);
++        assert_eq!(normal["components"][0]["charging"], true);
++    }
++    #[test]
++    fn missing_components_remain_unknown_and_case_is_separate() {
++        let data = value(&packet(0x1420, 0, 0xff, 0x4a));
++        assert!(data.get("battery").is_none());
++        assert_eq!(data["components"].as_array().unwrap().len(), 1);
++        assert_eq!(data["components"][0]["name"], "case");
++        assert_eq!(data["components"][0]["battery"], 100);
++        assert_eq!(data["components"][0]["charging"], true);
++    }
++    #[test]
++    fn recognises_anc_and_usb_c_max_models() {
++        assert_eq!(value(&packet(0x1b20, 0, 0x89, 0xff))["model"], "AirPods 4 with ANC");
++        assert_eq!(value(&packet(0x1f20, 0, 0x89, 0xff))["type"], "over_ear");
++    }
++    #[test]
++    fn percentages_are_coarse_and_unknown_is_not_zero() {
++        assert_eq!(battery_level(0), Some(5));
++        assert_eq!(battery_level(10), Some(100));
++        for raw in 11..=15 { assert_eq!(battery_level(raw), None); }
++    }
++}
++
++fn model_name(model: u16) -> &'static str {
++    match model {
++        0x0220 => "AirPods 1",
++        0x0F20 => "AirPods 2",
++        0x1320 => "AirPods 3",
++        0x1920 => "AirPods 4",
++        0x1B20 => "AirPods 4 with ANC",
++        0x0E20 => "AirPods Pro",
++        0x1420 | 0x2420 => "AirPods Pro 2",
++        0x2720 => "AirPods Pro 3",
++        0x0A20 | 0x1F20 => "AirPods Max",
++        _ => "AirPods",
++    }
++}

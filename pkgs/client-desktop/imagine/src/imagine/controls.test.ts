@@ -71,7 +71,7 @@ describe("native Duo brightness", () => {
     await control.step("down");
     expect(f.panels.get("intel_backlight")?.raw).toBe(1);
   });
-  test("F10 explicitly blanks and restores the previously selected level", async () => {
+  test("explicit backlight blanking restores the previously selected level", async () => {
     const f = brightnessFixture(); const control = createBrightnessController(f.host);
     await control.set(0.4);
     expect(await control.toggle()).toMatchObject({ blanked: true, level: 0 });

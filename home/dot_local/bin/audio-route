@@ -1,185 +1,183 @@
-#!/usr/bin/env bash
-# Explicit paired audio route command, launched from Domicile. The DOCK era (2026-09-11): the Sound
-# Blaster GS3, the iContact webcam mic and the INZONE dongle hang off the
-# client's Thunderbolt dock, not off the strix, and hosts/client/audio.nix
-# pins the iContact as the default source at boot. This script is what moves off
-# that default for a call and back again.
-#
-# The four USB node names below are serial-based and therefore HOST-independent:
-# the same dock plugged into any box produces the same names, so this file needs
-# no host gate and keeps working if a device is moved. Node IDS are ephemeral,
-# so the stable names are resolved from the live graph on every invocation.
-set -euo pipefail
+#!/usr/bin/env python3
+"""Imagine paired routes: AirPods input/output or laptop speakers/camera mic."""
+import json
+import re
+import subprocess
+import sys
+import time
 
-readonly SPEAKER_SINK='alsa_output.usb-Creative_Technology_Ltd_Sound_Blaster_GS3_1120050704030604-01.analog-stereo'
-readonly WEBCAM_SOURCE='alsa_input.usb-DCX-241206-FAY_iContact_Camera_Pro_01.00.00-02.analog-stereo'
-# The PC-mode receiver's generic names hide two USB playback endpoints:
-# analog-stereo is Chat (PCM 0); iec958-stereo is Game/music (PCM 1).
-# Game takes ordinary stereo PCM, not an encoded S/PDIF stream.
-# hosts/client/audio.nix selects Game + the existing mono microphone.
-readonly INZONE_SINK='alsa_output.usb-Sony_INZONE_Buds-00.iec958-stereo'
-readonly INZONE_SOURCE='alsa_input.usb-Sony_INZONE_Buds-00.mono-fallback'
+# Apple Bluetooth product identifiers, not addresses. Names also cover models
+# introduced after this table and renamed devices retain their product identity.
+AIRPODS_PRODUCTS = {0x2002, 0x200F, 0x2013, 0x2019, 0x201B, 0x200E,
+                    0x2014, 0x2024, 0x2027, 0x200A, 0x201F}
 
-# The laptop's OWN card — the route that needs no dock at all: undock, or take
-# one call on the couch. Matched by REGEX, not by an exact name. The Zenbook
-# Duo's internal card is `sof-hda-dsp` (card0, metal facts 2026-09-11), and the
-# PipeWire node built on it carries the PCI address plus whatever UCM profile
-# wireplumber picked — "...pci-0000_xx_yy.z.analog-stereo" on one profile,
-# "...HiFi__hw_sofhdadsp__sink" on another — so the node NAME is not something
-# to hard-code. The pattern therefore tests node.name and the ALSA card name
-# together: a PCI node belonging to a card that calls itself sof-hda-dsp.
-#
-# Never read off a live pw-dump on the laptop, so it is written to MISS
-# SILENTLY: no match means no `internal` row, and the two dock rows are
-# untouched. On the strix, whose internal card announces itself as
-# "HD-Audio Generic", the row is correctly absent.
-readonly INTERNAL_SINK_PREFIX='^alsa_output\.pci-'
-readonly INTERNAL_SOURCE_PREFIX='^alsa_input\.pci-'
-readonly INTERNAL_CARD_RE='sof[-_]?hda[-_]?dsp'
 
-# The audible floor (2026-10-14). wpctl prints and accepts the CUBIC, perceptual
-# number; the linear gain PipeWire applies is that number cubed, so a displayed
-# 0.24 is 0.0138 linear, about -37 dB. A sink picked below AUDIBLE_FLOOR is
-# lifted to AUDIBLE_RESTORE (the level that brought the INZONE Buds back live).
-readonly AUDIBLE_FLOOR='0.30'   # displayed 30 % = 2.7 % linear gain, about -31 dB
-readonly AUDIBLE_RESTORE='0.50' # displayed 50 % = 12.5 % linear gain, -18 dB
+def run(*args, timeout=6):
+    return subprocess.run(args, check=True, capture_output=True, text=True, timeout=timeout).stdout
 
-if ! graph=$(timeout 5 pw-dump); then
-    printf '%s\n' 'PipeWire is not responding.' >&2
-    printf '%s\n' 'Reconnect the last USB audio device and try again.' >&2
-    read -r -t 3 || true
-    exit 1
-fi
 
-node_id() {
-    local media_class=$1
-    local node_name=$2
+def props(node):
+    return node.get("info", {}).get("props", {})
 
-    jq -er --arg media_class "$media_class" --arg node_name "$node_name" '
-        [
-          .[]
-          | select(
-              .type == "PipeWire:Interface:Node"
-              and .info.props["media.class"] == $media_class
-              and .info.props["node.name"] == $node_name
-            )
-          | .id
-        ]
-        | select(length == 1)
-        | .[0]
-    ' <<< "$graph"
-}
 
-# Glob sibling of node_id. node_id insists on EXACTLY one match because an exact
-# name that appears twice means the graph is confused; a pattern is expected to
-# be ambiguous (a laptop card publishes speaker and headphone sinks), so this one
-# takes the lowest-numbered match and prints nothing at all when there is none.
-node_id_match() {
-    local media_class=$1
-    local name_re=$2
-    local card_re=$3
+def paired_airpods():
+    result = []
+    try:
+        devices = run("bluetoothctl", "devices", "Paired")
+        for line in devices.splitlines():
+            found = re.match(r"Device ((?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}) (.*)", line)
+            if not found:
+                continue
+            address, name = found.groups()
+            info = run("bluetoothctl", "info", address)
+            model = re.search(r"Modalias: bluetooth:v004Cp([0-9a-fA-F]{4})", info)
+            product = int(model[1], 16) if model else 0
+            if product not in AIRPODS_PRODUCTS and "airpods" not in name.lower():
+                continue
+            model_id = f"{((product & 255) << 8) | (product >> 8):04X}" if product else None
+            result.append({"address": address, "name": name, "modelId": model_id})
+    except (OSError, subprocess.SubprocessError):
+        pass  # An unavailable radio never hides the laptop route.
+    return result
 
-    jq -er \
-        --arg media_class "$media_class" \
-        --arg name_re "$name_re" \
-        --arg card_re "$card_re" '
-        [
-          .[]
-          | select(
-              .type == "PipeWire:Interface:Node"
-              and .info.props["media.class"] == $media_class
-              and ((.info.props["node.name"] // "") | test($name_re))
-              and (
-                ((.info.props["node.name"] // "") | test($card_re))
-                or ((.info.props["alsa.card_name"] // "") | test($card_re; "i"))
-                or ((.info.props["api.alsa.card.name"] // "") | test($card_re; "i"))
-              )
-            )
-          | .id
-        ]
-        | sort
-        | .[0]
-        | values
-    ' <<< "$graph"
-}
 
-speaker_sink_id=$(node_id Audio/Sink "$SPEAKER_SINK" 2>/dev/null || true)
-webcam_source_id=$(node_id Audio/Source "$WEBCAM_SOURCE" 2>/dev/null || true)
-inzone_sink_id=$(node_id Audio/Sink "$INZONE_SINK" 2>/dev/null || true)
-inzone_source_id=$(node_id Audio/Source "$INZONE_SOURCE" 2>/dev/null || true)
-internal_sink_id=$(node_id_match Audio/Sink "$INTERNAL_SINK_PREFIX" "$INTERNAL_CARD_RE" 2>/dev/null || true)
-internal_source_id=$(node_id_match Audio/Source "$INTERNAL_SOURCE_PREFIX" "$INTERNAL_CARD_RE" 2>/dev/null || true)
-case "${1:-}" in
-speaker|inzone|internal) choice=$1 ;;
-*) printf 'Usage: %s speaker|inzone|internal\n' "${0##*/}" >&2; exit 2 ;;
-esac
+def discover(graph, paired=(), include_fallback=False):
+    nodes = [node for node in graph if node.get("type") == "PipeWire:Interface:Node"]
+    devices = {node["id"]: props(node) for node in graph
+               if node.get("type") == "PipeWire:Interface:Device"}
+    defaults = {item["key"]: item.get("value", {}).get("name")
+                for node in graph if node.get("type") == "PipeWire:Interface:Metadata"
+                and node.get("props", {}).get("metadata.name") == "default"
+                for item in node.get("metadata", []) if isinstance(item.get("value"), dict)}
 
-case "$choice" in
-speaker)
-    sink_id=$speaker_sink_id
-    source_id=$webcam_source_id
-    label='Sound Blaster GS3 + webcam mic'
-    ;;
-inzone)
-    sink_id=$inzone_sink_id
-    source_id=$inzone_source_id
-    label='Sony INZONE stereo + INZONE mic'
-    ;;
-internal)
-    sink_id=$internal_sink_id
-    source_id=$internal_source_id
-    label='Laptop speakers + laptop mic'
-    ;;
-esac
+    def internal(node, media):
+        p = props(node)
+        card = " ".join(str(p.get(key, "")) for key in
+                        ("node.name", "alsa.card_name", "api.alsa.card.name"))
+        return (p.get("media.class") == media and ".pci-" in p.get("node.name", "") and
+                not re.search("hdmi", p.get("node.name", ""), re.I) and
+                re.search(r"sof[-_]?hda[-_]?dsp", card, re.I))
 
-if [[ -z "$sink_id" || -z "$source_id" ]]; then
-    printf '%s is not fully available.\n' "$label" >&2
-    read -r -t 3 || true
-    exit 1
-fi
+    microphones = sorted([node for node in nodes if internal(node, "Audio/Source")], key=lambda n: n["id"])
+    webcam = sorted([node for node in nodes if props(node).get("media.class") == "Audio/Source"
+                     and "icontact" in (props(node).get("node.name", "") + " " +
+                                        props(node).get("node.description", "")).lower()], key=lambda n: n["id"])
+    sinks = sorted([node for node in nodes if internal(node, "Audio/Sink")],
+                   key=lambda n: ("speaker" not in props(n).get("node.name", "").lower(), n["id"]))
+    routes = []
 
-# Preserve each device's stored volume, with two exceptions the picker lifts
-# because F9 is the one deliberate "hear this device now" act: a retained mute,
-# and, since 2026-10-14, a near-silent level. The second came from the INZONE
-# Buds "not playing sound" while the sink was the running default with Chrome
-# linked and wpctl showing 0.24: wpctl prints the cubic value, and the stored
-# channelVolumes in ~/.local/state/wireplumber/default-routes was 0.0138
-# (about -37 dB), inaudible at listening level. The Buds dongle has no ALSA
-# volume element (amixer shows only 'PCM Playback Switch' booleans), so every
-# dB of that is software attenuation before 16-bit output and nothing else can
-# lift it. WirePlumber re-applies the stored route volume whenever the route
-# becomes active again (replug, boot, profile change), so a level walked down
-# once with `volume down` is still there at the next pick. The level is read
-# from the resolved node id, never @DEFAULT_AUDIO_SINK@, which races WirePlumber's
-# default-nodes module right after set-default. `wpctl get-volume` exits 0 on
-# "not found" and "does not support volume" (wpctl 0.5.15), so the stdout shape
-# is the only check: anything but "Volume: <number>" skips the floor and the
-# route switch goes ahead regardless. Bash has no float compare, so awk does it.
-#
-# WirePlumber moves existing streams when the configured default changes, so
-# an already-playing browser follows the selection immediately.
-wpctl set-mute "$sink_id" 0
-wpctl set-mute "$source_id" 0
-was_pct=''
-lifted_pct=''
-vol=$(wpctl get-volume "$sink_id" 2>/dev/null \
-    | awk '$1 == "Volume:" && $2 ~ /^[0-9]+(\.[0-9]+)?$/ { print $2 }' || true)
-if [[ -n "$vol" ]] \
-    && awk -v v="$vol" -v floor="$AUDIBLE_FLOOR" 'BEGIN { exit !(v + 0 < floor + 0) }' \
-    && wpctl set-volume "$sink_id" "$AUDIBLE_RESTORE"; then
-    was_pct=$(awk -v v="$vol" 'BEGIN { printf "%d", v * 100 + 0.5 }')
-    lifted_pct=$(awk -v r="$AUDIBLE_RESTORE" 'BEGIN { printf "%d", r * 100 + 0.5 }')
-fi
-wpctl set-default "$sink_id"
-wpctl set-default "$source_id"
+    def route(identity, label, sink, source, **extra):
+        return {"id": identity, "label": label, "sink": sink["id"], "source": source["id"],
+                "sinkName": props(sink)["node.name"], "sourceName": props(source)["node.name"],
+                "selected": (defaults.get("default.audio.sink") == props(sink)["node.name"] and
+                             defaults.get("default.audio.source") == props(source)["node.name"]), **extra}
 
-printf '\n✓ %s\n' "$label"
-hold=1.2
-if [[ -n "$lifted_pct" ]]; then
-    # Same single-slot popup F7/F8 raise (bin/osd), so the jump into the ears is
-    # announced where every other volume change on the box is.
-    printf '↑ volume %s%% → %s%% (was below the audible floor)\n' "$was_pct" "$lifted_pct"
-    osd "Volume" "${lifted_pct}%" "$lifted_pct" 2>/dev/null || true
-    hold=2.5
-fi
-read -r -t "$hold" || true
+    mic = next(iter(webcam or (microphones if include_fallback else [])), None)
+    if sinks and mic:
+        extra = {}
+        # Some SOF/UCM cards publish separate Speaker and Headphones profiles.
+        # A headphone-only node with an unplugged jack cannot be our fallback.
+        if "speaker" not in props(sinks[0]).get("node.name", "").lower():
+            device_id = props(sinks[0]).get("device.id")
+            card = next((n for n in graph if n.get("id") == device_id), {})
+            profiles = card.get("info", {}).get("params", {}).get("EnumProfile", [])
+            speaker = next((p for p in profiles if "speaker" in p.get("name", "").lower()
+                            and p.get("available") != "no"), None)
+            if speaker is not None:
+                extra = {"profileDevice": device_id, "profileIndex": speaker["index"]}
+        routes.append(route("internal", "Laptop speakers + " + ("USB camera mic" if webcam else "laptop mic"),
+                            sinks[0], mic, **extra))
+    for node in nodes:
+        p = props(node)
+        device = devices.get(p.get("device.id"), {})
+        if p.get("media.class") != "Audio/Sink" or not p.get("node.name", "").startswith("bluez_output."):
+            continue
+        try:
+            product = int(str(device.get("device.product.id", "0")), 0)
+        except ValueError:
+            product = 0
+        name = device.get("device.alias") or p.get("node.description", "AirPods")
+        apple = str(device.get("device.vendor.id", "")).lower() == "bluetooth:004c"
+        if not ((apple and product in AIRPODS_PRODUCTS) or "airpods" in str(name).lower()):
+            continue
+        address = device.get("api.bluez5.address") or p.get("api.bluez5.address")
+        if not address or not re.fullmatch(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", address):
+            continue
+        inputs = [entry for entry in nodes if props(entry).get("media.class") == "Audio/Source"
+                  and props(entry).get("device.id") == p.get("device.id")]
+        if not inputs:
+            continue
+        model_id = f"{((product & 255) << 8) | (product >> 8):04X}" if product else None
+        entry = route("airpods:" + address, str(name) + " input + output", node, inputs[0],
+                      modelId=model_id, connected=True,
+                      detail="Connected · " + str(p.get("api.bluez5.codec", "Bluetooth")).upper())
+        routes.append(entry)
+    available = {entry["id"] for entry in routes}
+    for device in paired:
+        identity = "airpods:" + device["address"]
+        if identity not in available:
+            routes.append({"id": identity, "label": f"{device['name']} input + output",
+                           "modelId": device["modelId"], "connected": False, "selected": False,
+                           "detail": "Disconnected · select to connect"})
+    return routes
+
+
+def select(route):
+    # Resolve again on each selection: reconnects may replace every PipeWire ID.
+    if "profileDevice" in route:
+        run("wpctl", "set-profile", str(route["profileDevice"]), str(route["profileIndex"]))
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            ready = next((entry for entry in discover(json.loads(run("pw-dump")), include_fallback=True)
+                          if entry["id"] == "internal" and "profileDevice" not in entry), None)
+            if ready is not None:
+                route = ready
+                break
+            time.sleep(0.1)
+        else:
+            raise ValueError("Laptop speaker profile did not become ready.")
+    if route.get("connected") is False:
+        address = route["id"].removeprefix("airpods:")
+        # A BlueZ Connected signal can precede PipeWire's audio nodes. Wait
+        # for them without racing the connection already in progress.
+        if not re.search(r"Connected:\s+yes", run("bluetoothctl", "info", address)):
+            run("bluetoothctl", "--timeout", "8", "connect", address, timeout=10)
+            if not re.search(r"Connected:\s+yes", run("bluetoothctl", "info", address)):
+                raise ValueError("AirPods are not connected. Open their case nearby and select them again.")
+        deadline = time.monotonic() + 6
+        while time.monotonic() < deadline:
+            connected = next((entry for entry in discover(json.loads(run("pw-dump")))
+                              if entry["id"] == route["id"]), None)
+            if connected is not None:
+                route = connected
+                break
+            time.sleep(0.2)
+        else:
+            raise ValueError("AirPods connected but their audio output is not ready. Reopen F9 to retry.")
+    run("wpctl", "set-mute", str(route["sink"]), "0")
+    run("wpctl", "set-mute", str(route["source"]), "0")
+    run("wpctl", "set-default", str(route["sink"]))
+    run("wpctl", "set-default", str(route["source"]))
+    return route["label"]
+
+
+def main():
+    try:
+        fallback = sys.argv[1:] == ["fallback"]
+        routes = discover(json.loads(run("pw-dump")), paired_airpods(), include_fallback=fallback)
+        if sys.argv[1:] == ["list"]:
+            print(json.dumps({"choices": routes}))
+            return
+        if len(sys.argv) != 2:
+            raise ValueError("usage: audio-route list|<route id from list>")
+        selected = next((route for route in routes if route["id"] == ("internal" if fallback else sys.argv[1])), None)
+        if selected is None:
+            raise ValueError("That audio pair is no longer available. Reopen F9 to refresh devices.")
+        print(select(selected))
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

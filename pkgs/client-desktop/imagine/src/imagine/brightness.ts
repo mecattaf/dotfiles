@@ -17,7 +17,7 @@ export type BrightnessLevel = {
 export type BrightnessController = {
   step: (direction: "up" | "down", percent?: number) => Promise<BrightnessLevel | undefined>;
   set: (level: number) => Promise<BrightnessLevel | undefined>;
-  /** F10's explicit blank/restore is the only operation allowed to write zero. */
+  /** Legacy explicit backlight blank/restore is the only operation allowed to write zero. */
   toggle: () => Promise<BrightnessLevel | undefined>;
   dispose: () => void;
 };

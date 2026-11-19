@@ -625,6 +625,8 @@
             scheduled
             ;
 
+          podpower = self.nixosConfigurations.client.pkgs.callPackage ./pkgs/podpower { };
+
           # Explicit accelerator escape hatches. The host module installs the
           # operational subset safely; these aliases also make every requested
           # upstream output directly buildable with `nix build .#<name>` without
@@ -682,6 +684,20 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        audio-controls = pkgs.runCommand "audio-controls" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          export PYTHONDONTWRITEBYTECODE=1
+          export AUDIO_ROUTE_SCRIPT=${./home/dot_local/bin/audio-route}
+          export AUDIO_CONTROL_SCRIPT=${./home/dot_local/bin/imagine-audio-control}
+          python3 -m unittest discover -s ${./tests/audio-control} -v
+          touch "$out"
+        '';
+        domicile-airpods-policy =
+          pkgs.runCommand "domicile-airpods-policy"
+            { nativeBuildInputs = [ inputs.domicile.legacyPackages.${system}.bun ]; }
+            ''
+              bun test ${./pkgs/client-desktop/imagine/src/imagine}/AirPodsPolicy.test.ts
+              touch "$out"
+            '';
         domicile-config =
           self.nixosConfigurations.client.config.programs.domicilePhysical.checkedConfigPackage;
         domicile-display-temperatures =
@@ -1635,7 +1651,10 @@
           assert !(nas.systemd.services ? update-center);
           assert !(nas.services.nginx.virtualHosts ? fleet-candidates);
           assert !(nixpkgs.lib.hasInfix "8734" nas.networking.firewall.extraInputRules);
-          assert !(builtins.any (p: nixpkgs.lib.getName p == "update-center-publish") nas.environment.systemPackages);
+          assert
+            !(builtins.any (
+              p: nixpkgs.lib.getName p == "update-center-publish"
+            ) nas.environment.systemPackages);
           pkgs.runCommand "update-center" { } ''
             touch "$out"
           '';
@@ -2001,7 +2020,9 @@
             export FLEET_STATUS_PY=${pkgs.fleet-status}/share/fleet-status/fleet_status.py
             export FLEET_STATUS_OBSERVER_PY=${pkgs.fleet-status}/share/fleet-status/observer.py
             export FLEET_STATUS_PUBLISHER_PY=${pkgs.fleet-status}/share/fleet-status/publisher.py
-            export FLEET_STATUS_OBSERVER_CONFIG=${agentProbe.environment.etc."fleet-status/observer.json".source}
+            export FLEET_STATUS_OBSERVER_CONFIG=${
+              agentProbe.environment.etc."fleet-status/observer.json".source
+            }
             python3 -c 'import json, os; c=json.load(open(os.environ["FLEET_STATUS_OBSERVER_CONFIG"])); assert all(x > 0 for x in c["intervals"].values()); assert "--no-spend" in c["seatsCommand"]'
             mkdir -p "$HOME"
             python3 -m unittest discover -s ${./tests/fleet-status} -p 'test_*.py' -v

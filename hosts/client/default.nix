@@ -72,7 +72,8 @@
     ../../modules/local-models.nix
     ./hardware.nix
     ./disko.nix
-    ./audio.nix # pins the iContact webcam mic (on the dock) as the default source
+    ./audio.nix # prefer the USB camera microphone over the laptop microphone
+    ./airpods.nix # on-demand battery JSON for Imagine, no fixed AirPods address
     ./lid.nix # the lid does nothing to logind; Domicile owns the backlights
     ./strix-reachability.nix
     ./trackpad.nix
