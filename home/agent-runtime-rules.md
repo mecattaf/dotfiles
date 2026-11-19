@@ -22,7 +22,8 @@ to repair a test incident while live agent sessions must be preserved.
 Tom, 2026-10-31 (`~/notes/CLAUDE.md`): "Temporary experiments and worktrees
 belong under /tmp, never a new hidden workspace collection in home." Create
 worktrees and scratch clones under `${TMPDIR:-/tmp}`, never `~/.wt`. `/tmp` ages
-out after 10 days: push or bundle the branch, then `git worktree remove` it.
+out after 10 days and, on the NAS, is emptied at every boot: push or bundle the
+branch, then `git worktree remove` it.
 
 That only holds if GitHub stays current. Tom, 2026-11-10: "keep everythig
 uptodate with github which is quite a large thing to do.. that i dnt want to
