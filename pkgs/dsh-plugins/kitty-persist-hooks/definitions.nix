@@ -4,11 +4,11 @@
 # ~/.config/kitty-persist/harness/dsh-<profile>.json on the session host; the
 # plugin's tests and checks.kitty-persist-dsh-hooks replay events through it.
 #
-# DRAFT FIELD NAMES. The definition schema is not published yet; this follows
-# the four parts and the optional fifth that the kitty-persist specification
-# fixes (recognition, event to state, resume, install, conversation file).
-# When the program ships its schema, rename the keys here and run
-# `kitty-persist harness check` on every generated file.
+# Shape: kitty-persist's published harness definition schema
+# (schema/harness-definition.schema.json in the kitty-persist repository): the
+# four parts recognize/fields/events, resume and install, plus the optional
+# conversation part. checks.kitty-persist-dsh-hooks runs `kitty-persist
+# harness check` on every generated file when it is given the program.
 #
 # One definition per profile, because the resume must name the same profile:
 # dsh refuses to adopt a session whose recorded preset the profile does not
@@ -26,9 +26,19 @@ in
 rec {
   harnessName = profile: "dsh-${profile}";
 
-  # Event words of ./index.js (EVENTS) -> state, or the agent's end.
+  # Event words of ./index.js (EVENTS) -> a state (S22.1) or the agent's end
+  # (S9.8). The plugin already sends a distinct word per case (and nothing
+  # for a subagent); only session-start needs a condition, as in the shipped
+  # Claude Code and Codex definitions: a start after a compaction happens
+  # inside a turn, so it is working, every other start is idle.
   events = {
-    session-start.state = "idle";
+    session-start = [
+      {
+        when.source = "compact";
+        state = "working";
+      }
+      { state = "idle"; }
+    ];
     turn-start.state = "working";
     tool-result.state = "working";
     approval-asked.state = "waiting";
@@ -43,8 +53,8 @@ rec {
 
   definition = profile: {
     # The dsh process is node started as `exec -a dsh`: argv0 is `dsh`, the
-    # kernel's comm is the thread name `MainThread`. Recognition must match
-    # the argv0 basename.
+    # kernel's comm is the thread name `MainThread`. kitty-persist matches the
+    # base name of argv[0] as well as comm, so `dsh` finds it.
     recognize.commands = [ "dsh" ];
     # The payload fields ./index.js sends.
     fields = {
@@ -74,28 +84,41 @@ rec {
     # dsh has no hook settings file: the plugin is the installation.
     install.manual = "dsh reports through the kitty-persist-hooks plugin, which the dotfiles select per hand-run profile (pkgs/dsh profilePlugins); there is no settings file to change.";
     # Session logs are plain JSONL (pkgs/dsh/sessions.patch.yml, compression
-    # none). A line's `type` says what it is; content sits in nested fields.
+    # none): a header line `{"type":"session","id":...}`, then one line per
+    # event with a `type` and nested `data`. Text is an array of parts, which
+    # the program renders like Claude's; `time` is epoch milliseconds, not a
+    # text stamp, so it is not named.
     conversation = {
       format = "jsonl";
-      kind = "type";
-      user = {
-        kind = "user/message";
-        text = "data.content[].text";
+      session = {
+        field = "id";
+        when.type = "session";
       };
-      assistant = {
-        kind = "assistant/message";
-        text = "data.message.content[].text";
-      };
-      toolCall = {
-        kind = "tool/call";
-        name = "data.name";
-        input = "data.arguments";
-      };
-      toolResult = {
-        kind = "tool/result";
-        text = "data.message.content[].text";
-        error = "data.message.isError";
-      };
+      entries = [
+        {
+          when.type = "user/message";
+          speaker = "data.role";
+          role = "user";
+          text = "data.content";
+          id = "data.id";
+        }
+        {
+          when.type = "assistant/message";
+          speaker = "data.message.role";
+          role = "assistant";
+          text = "data.message.content";
+          id = "data.message.id";
+        }
+        {
+          when.type = "tool/call";
+          tool_name = "data.name";
+          tool_input = "data.arguments";
+        }
+        {
+          when.type = "tool/result";
+          tool_result = "data.message.content";
+        }
+      ];
     };
   };
 }
