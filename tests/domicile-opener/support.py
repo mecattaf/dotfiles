@@ -82,8 +82,12 @@ class Fakes:
     def env(self, **extra):
         env = dict(os.environ, FAKE_ROOT=str(self.root), DOMICILE_PERSIST_PROGRAM=str(self.program),
                    DOMICILE_PERSIST_KITTY=str(self.kitty))
-        for key in ("DOMICILE_PERSIST_ON_EXIT", "DOMICILE_PERSIST_ON_GONE", "DOMICILE_PERSIST_HOST"):
+        for key in ("DOMICILE_PERSIST_ON_EXIT", "DOMICILE_PERSIST_ON_GONE", "DOMICILE_PERSIST_HOST",
+                    "DOMICILE_PERSIST_LOG"):
             env.pop(key, None)
+        # A fake that ends with 255 ends at once; only the tests of the
+        # first-connection wait give it time.
+        env["DOMICILE_PERSIST_CONNECT_WAIT"] = "0"
         env.update(extra)
         return env
 

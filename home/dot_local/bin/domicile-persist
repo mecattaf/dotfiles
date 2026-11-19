@@ -18,21 +18,27 @@ Kitty OS window class is `kitty-persist-<id>`. Inventory is `list --json` and
 
 Policy, from the environment of the window (Domicile's choices, not the
 product's):
-  DOMICILE_PERSIST_ON_EXIT  close (default) | forget   after code 10
-  DOMICILE_PERSIST_ON_GONE  prompt (default) | new | close   after 11, 13, 14
+  DOMICILE_PERSIST_ON_EXIT       close (default) | forget   after code 10
+  DOMICILE_PERSIST_ON_GONE       prompt (default) | new | close   after 11, 13, 14
+  DOMICILE_PERSIST_CONNECT_WAIT  seconds (default 60) a window keeps trying
+                                 when ssh cannot connect at all (code 255 at once)
 Stand-ins for tests: DOMICILE_PERSIST_PROGRAM, DOMICILE_PERSIST_KITTY,
-DOMICILE_PERSIST_HOST (default nas).
+DOMICILE_PERSIST_HOST (default nas). DOMICILE_PERSIST_LOG, an absolute file
+path, gets one JSON line per kitty-persist call of the window and its outcome.
 """
 import argparse
 import json
 import os
 from pathlib import Path
 import re
+import select
 import shlex
 import shutil
 import subprocess
 import sys
+import termios
 import time
+import tty
 import uuid
 
 HOST = "nas"
@@ -54,6 +60,16 @@ RESTORE_LIMIT = 24
 # Under DOMICILE_PERSIST_ON_GONE=new a window starts at most three new sessions
 # in a row by itself; a session that ran this long resets the count.
 SETTLED = 30.0
+# kitty-persist's `new --host H --attach` creates the session over one plain
+# ssh call before its attach client starts, so a window opened while the
+# remote host is not reachable yet ends with 255 within ssh's connection
+# timeout (10 s, its S15.21) instead of waiting as its attach does (S15.13).
+# A 255 that quick is retried here, with one waiting line, for CONNECT_WAIT;
+# the line is safe to repeat (S8.7). A 255 after a longer run is the attach
+# client giving up after its own wait, and is reported.
+CONNECT_WAIT = 60.0
+FAST_FAIL = 15.0
+BACKOFF = (0.5, 1.0, 2.0, 4.0)
 
 # kitty-persist exit codes (its specification, S13.1).
 MEANING = {
@@ -182,6 +198,49 @@ def say(text):
     print(text, file=sys.stderr, flush=True)
 
 
+def note(env, **fields):
+    """One JSON line per kitty-persist call, for tests and for a look afterwards."""
+    path = env.get("DOMICILE_PERSIST_LOG")
+    if not path or not Path(path).is_absolute():
+        return
+    try:
+        with open(path, "a") as log:
+            log.write(json.dumps(dict(fields, at=time.time())) + "\n")
+    except OSError:
+        pass
+
+
+def connect_wait(env):
+    try:
+        return max(0.0, float(env.get("DOMICILE_PERSIST_CONNECT_WAIT", CONNECT_WAIT)))
+    except ValueError:
+        return CONNECT_WAIT
+
+
+def pause(seconds, line):
+    """Show the waiting line and wait. False when q or Ctrl+D was typed."""
+    say_inline(line)
+    if not sys.stdin.isatty():
+        time.sleep(seconds)
+        return True
+    fd = sys.stdin.fileno()
+    saved = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        end = time.monotonic() + seconds
+        while (left := end - time.monotonic()) > 0:
+            ready, _, _ = select.select([fd], [], [], left)
+            if ready and os.read(fd, 64)[:1] in (b"q", b"Q", b"\x04"):
+                return False
+        return True
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+
+
+def say_inline(text):
+    print("\r\x1b[K" + text, end="", file=sys.stderr, flush=True)
+
+
 def ask(question):
     """True on Enter; False on end of input, Ctrl+C or a typed 'q'."""
     try:
@@ -203,7 +262,7 @@ def call(line, env):
             continue
 
 
-def run_window(command, sid, cwd, cwd_of, env, ask=ask):
+def run_window(command, sid, cwd, cwd_of, env, ask=ask, pause=pause):
     remote = host(env)
     binary = program(env)
     if binary is None:
@@ -213,30 +272,56 @@ def run_window(command, sid, cwd, cwd_of, env, ask=ask):
     on_exit = env.get("DOMICILE_PERSIST_ON_EXIT", "close")
     on_gone = env.get("DOMICILE_PERSIST_ON_GONE", "prompt")
     on_gone = on_gone if on_gone in ("prompt", "new", "close") else "prompt"
+    patience = connect_wait(env)
     line = new_line(binary, remote, sid, cwd, cwd_of) if command == "new" else attach_line(binary, remote, sid)
-    first, bursts, automatic = line, [], 0
+    first, bursts, automatic, waiting = line, [], 0, None
     while True:
         started = time.monotonic()
         code = call(line, env)
-        if time.monotonic() - started > SETTLED:
+        lasted = time.monotonic() - started
+        if lasted > SETTLED:
             automatic = 0
+        if code != 255 or lasted >= FAST_FAIL:
+            if waiting is not None:
+                say_inline("")
+            waiting = None
+        note(env, line=line[1:], code=code, lasted=round(lasted, 3))
         if code == 0 or code == 15:
             # Closed, detached on purpose, or shown in another window now.
+            note(env, action="close", code=code)
             return 0
         if code == 10:
             if on_exit == "forget":
                 subprocess.run([binary, "forget", "--host", remote, sid], env=env,
                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL, timeout=30, check=False)
+            note(env, action="forget" if on_exit == "forget" else "close", code=code)
             return 0
         if code == 75:
             now = time.monotonic()
             bursts = [t for t in bursts if now - t < REATTACH_WINDOW] + [now]
             if len(bursts) <= REATTACH_BURST:
                 line = attach_line(binary, remote, sid)
+                note(env, action="reattach", code=code)
                 continue
+        if code == 255 and lasted < FAST_FAIL:
+            now = time.monotonic()
+            waiting = now if waiting is None else waiting
+            if now - waiting < patience:
+                delay = BACKOFF[min(int((now - waiting) // 4), len(BACKOFF) - 1)]
+                note(env, action="wait", code=code, waited=round(now - waiting, 3))
+                if pause(min(delay, max(0.0, patience - (now - waiting))) or 0.1,
+                         f"Waiting for {remote}: ssh cannot connect yet "
+                         f"({int(now - waiting)} s of {int(patience)}; q closes this window)"):
+                    continue
+                say("")
+                note(env, action="close", code=code)
+                return code
+            say("")
+            waiting = None
         if code in GONE:
             if on_gone == "close":
+                note(env, action="close", code=code)
                 return 0
             old = record_of(binary, remote, env, sid) if code != 11 else None
             place = printable((old or {}).get("cwd") or (old or {}).get("launch_cwd") or cwd or "")
@@ -246,6 +331,7 @@ def run_window(command, sid, cwd, cwd_of, env, ask=ask):
                 say(f"\nkitty-persist: {MEANING[code]} ({sid}).")
                 if not ask("Press Enter for a new NAS session" + (f" in {place}" if place else "")
                            + ", or Ctrl+D to close this window. "):
+                    note(env, action="close", code=code)
                     return 0
             # A new id in this same window. The OS window keeps its first
             # class; the persist_id user variable names what it shows now.
@@ -253,6 +339,7 @@ def run_window(command, sid, cwd, cwd_of, env, ask=ask):
             line = (new_line(binary, remote, sid, cwd_of=old["id"]) if old is not None
                     else new_line(binary, remote, sid, cwd=cwd))
             first, bursts = line, []
+            note(env, action="new", code=code, id=sid)
             continue
         say(f"\nkitty-persist ended with code {code}: {MEANING.get(code, 'unknown code')}.")
         if code == 255 or code == 75:
@@ -260,9 +347,12 @@ def run_window(command, sid, cwd, cwd_of, env, ask=ask):
             # (it attaches when the session runs).
             if ask("Press Enter to attach again, or Ctrl+D to close this window. "):
                 line, bursts = first, []
+                note(env, action="again", code=code)
                 continue
+            note(env, action="close", code=code)
             return code
         ask("Press Enter to close this window. ")
+        note(env, action="report", code=code)
         return code
 
 

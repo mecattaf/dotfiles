@@ -34,11 +34,19 @@ class Window(unittest.TestCase):
         self.fake = support.Fakes()
         self.addCleanup(lambda: self.fake.close())
 
-    def run_window(self, codes, command="new", answers=(), cwd="/srv/project", cwd_of=None, **env):
+    def run_window(self, codes, command="new", answers=(), cwd="/srv/project", cwd_of=None, pauses=None, **env):
         self.fake.codes(codes)
         self.answers = Answers(*answers)
-        with mock.patch.object(persist, "say"):
-            return persist.run_window(command, SID, cwd, cwd_of, self.fake.env(**env), ask=self.answers)
+        self.pauses = []
+        replies = list(pauses or [])
+
+        def pause(seconds, line):
+            self.pauses.append((seconds, line))
+            time.sleep(min(seconds, 0.02))
+            return replies.pop(0) if replies else True
+        with mock.patch.object(persist, "say"), mock.patch.object(persist, "say_inline"):
+            return persist.run_window(command, SID, cwd, cwd_of, self.fake.env(**env), ask=self.answers,
+                                      pause=pause)
 
     def sessions_started(self):
         return [c for c in self.fake.calls() if c[0] in ("new", "attach")]
@@ -139,6 +147,55 @@ class Window(unittest.TestCase):
 
     def test_255_declined_ends_with_255(self):
         self.assertEqual(self.run_window([255], answers=(False,)), 255)
+
+    def test_255_at_once_is_the_first_connection_wait(self):
+        # Opened before the remote host is reachable: no prompt, the same line
+        # again until it connects (its S15.13, for the create step too).
+        code = self.run_window([255, 255, 0], DOMICILE_PERSIST_CONNECT_WAIT="60")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.answers.questions, [])
+        self.assertEqual(len(self.pauses), 2)
+        self.assertIn("Waiting for nas", self.pauses[0][1])
+        first, second, third = self.sessions_started()
+        self.assertEqual(first, second)
+        self.assertEqual(first, third)
+        self.assertEqual(first[-1], "--attach")
+
+    def test_first_connection_wait_ends_with_the_prompt(self):
+        code = self.run_window([255] * 400, DOMICILE_PERSIST_CONNECT_WAIT="0.3", answers=(False,))
+        self.assertEqual(code, 255)
+        self.assertGreaterEqual(len(self.pauses), 2)
+        self.assertEqual(len(self.answers.questions), 1)
+        self.assertIn("attach again", self.answers.questions[0])
+
+    def test_first_connection_wait_q_closes(self):
+        code = self.run_window([255, 255, 0], DOMICILE_PERSIST_CONNECT_WAIT="60", pauses=(True, False))
+        self.assertEqual(code, 255)
+        self.assertEqual(len(self.sessions_started()), 2)
+        self.assertEqual(self.answers.questions, [])
+
+    def test_255_after_a_long_run_is_reported_not_waited(self):
+        # The attach client already waited its own connect_wait, or q was
+        # pressed while it reconnected: ask, do not retry by itself.
+        with mock.patch.object(persist, "FAST_FAIL", 0.0):
+            self.assertEqual(self.run_window([255, 0], DOMICILE_PERSIST_CONNECT_WAIT="60", answers=(True,)), 0)
+        self.assertEqual(self.pauses, [])
+        self.assertIn("attach again", self.answers.questions[0])
+
+    def test_reopen_waits_too(self):
+        code = self.run_window([255, 0], command="attach", cwd=None, DOMICILE_PERSIST_CONNECT_WAIT="60")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.sessions_started(), [["attach", "--host", "nas", SID]] * 2)
+
+    def test_log_names_each_call_and_outcome(self):
+        log = self.fake.root / "window.jsonl"
+        self.fake.listing([support.record(SID, state="exited", cwd="/srv/project")])
+        self.assertEqual(self.run_window([13, 10], answers=(True,), DOMICILE_PERSIST_LOG=str(log)), 0)
+        lines = [json.loads(line) for line in log.read_text().splitlines()]
+        self.assertEqual([(entry.get("code"), entry.get("action")) for entry in lines],
+                         [(13, None), (13, "new"), (10, None), (10, "close")])
+        self.assertEqual(lines[0]["line"][:4], ["new", "--host", "nas", "--id"])
+        self.assertRegex(lines[1]["id"], persist.UUID4)
 
     def test_78_reports_and_does_not_retry(self):
         self.assertEqual(self.run_window([78, 0], answers=(True,)), 78)
