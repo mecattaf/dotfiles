@@ -167,6 +167,7 @@ in
   # it means the house router does not come up.
   myNas.nixOnNvme.enable = true;
   myNas.homeDisk.enable = true;
+  myNas.systemOffEmmc.enable = true; # O1 phase 2 (REBOOT-ONLY, see ./system-off-emmc.nix)
 
   # Outbound public observations only; the scoped token cannot control the fleet.
   services.fleet-status.observer = {

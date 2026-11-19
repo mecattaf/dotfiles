@@ -127,11 +127,9 @@ assert lib.hasInfix "SystemMaxUse=16T" nas.services.journald.extraConfig;
 assert lib.hasInfix "SystemMaxFiles=1000000" nas.services.journald.extraConfig;
 assert nas.services.journald.remote.settings.Remote.MaxUse == "16T";
 assert nas.services.journald.remote.settings.Remote.MaxFiles == 1000000;
-# O1: merging the gate OFF changes no mount (delete these four lines in the flip commit).
-assert !nas.myNas.systemOffEmmc.enable;
-assert !(nas.fileSystems ? "/var") && !(nas.fileSystems ? "/tmp");
-assert !nas.boot.tmp.cleanOnBoot;
-assert nas.system.switch.inhibitors.nas-var-tmp-backing == "eMMC root";
+# O1 phase 2: the NAS runs with /var and /tmp on the 1TB pool.
+assert nas.myNas.systemOffEmmc.enable;
+assert nas.system.switch.inhibitors.nas-var-tmp-backing == "1TB pool @var and @tmp";
 assert
   !(onEmmc.fileSystems ? "/var") && !(onEmmc.fileSystems ? "/tmp") && !onEmmc.boot.tmp.cleanOnBoot;
 # Gate on: @var is boot-critical and initrd-mounted, @tmp is not.
