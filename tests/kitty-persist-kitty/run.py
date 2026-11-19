@@ -452,9 +452,16 @@ def main() -> int:
                {'ready': r['ready'], 'socket': r['socket'], 'exit': r['exit']}, r['ready'] and r['socket'] and r['exit'] == 0)
     noise = set(base['log'])
     record('load', 'baseline log (kitty-persist parts removed)', 'recorded as is', base['log'], True)
-    extra = [x for x in full['log'] if x not in noise]
+    # The full variant opens more windows than the baseline (keys, dictation, a second tab), and
+    # their children end when the test stops them. Kitty may then log that it could not resize a
+    # window whose child is already gone. That is a window's life, not configuration: it is kept
+    # in its own row and not counted as a warning.
+    gone = re.compile(r'^Failed to send resize signal to child with id: \d+ \(children count: 0\)')
+    extra = [x for x in full['log'] if x not in noise and not gone.match(x)]
     record('load', 'the generated configuration loads without warning', "nothing in Kitty's log beyond the baseline's",
            extra or 'none', not extra)
+    record('load', "full: lines about a test window whose child had ended (not counted)", 'recorded as is',
+           [x for x in full['log'] if x not in noise and gone.match(x)] or 'none', True)
     extra_off = [x for x in off['log'] if x not in noise]
     record('load', 'module off: the include line with its file absent (no such seat today: only the client is one)',
            "only Kitty's own line for a missing include, which it then skips", extra_off or 'none',
