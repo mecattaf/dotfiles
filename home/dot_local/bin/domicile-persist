@@ -34,6 +34,7 @@ import re
 import select
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import termios
@@ -195,7 +196,10 @@ def record_of(binary, remote, env, sid):
 # ------------------------------------------------------------ in-window side
 
 def say(text):
-    print(text, file=sys.stderr, flush=True)
+    try:
+        print(text, file=sys.stderr, flush=True)
+    except OSError:
+        pass  # the window has gone
 
 
 def note(env, **fields):
@@ -230,22 +234,31 @@ def pause(seconds, line):
         end = time.monotonic() + seconds
         while (left := end - time.monotonic()) > 0:
             ready, _, _ = select.select([fd], [], [], left)
-            if ready and os.read(fd, 64)[:1] in (b"q", b"Q", b"\x04"):
+            # q, Ctrl+D, or the window went away (end of input).
+            if ready and os.read(fd, 64)[:1] in (b"", b"q", b"Q", b"\x04"):
                 return False
         return True
+    except OSError:
+        return False
     finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+        try:
+            termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+        except OSError:
+            pass
 
 
 def say_inline(text):
-    print("\r\x1b[K" + text, end="", file=sys.stderr, flush=True)
+    try:
+        print("\r\x1b[K" + text, end="", file=sys.stderr, flush=True)
+    except OSError:
+        pass
 
 
 def ask(question):
     """True on Enter; False on end of input, Ctrl+C or a typed 'q'."""
     try:
         answer = input(question)
-    except (EOFError, KeyboardInterrupt):
+    except (EOFError, KeyboardInterrupt, OSError):
         return False
     return answer.strip().lower() not in ("q", "quit", "n", "no")
 
@@ -457,6 +470,11 @@ def main(argv=None):
         if not sys.stdin.isatty() or not sys.stdout.isatty():
             say("domicile-persist: interactive terminal required")
             return 2
+        # Closing the window hangs up its whole process group. The attach
+        # client ends with 0 on that (its S15.8); the wrapper outlives the
+        # hang-up to see that code. A handler, not SIG_IGN, which the client
+        # would inherit across exec.
+        signal.signal(signal.SIGHUP, lambda *_: None)
         sid = args.id or fresh_id()
         return run_window(args.command, sid, getattr(args, "cwd", None), getattr(args, "cwd_of", None), env)
     if args.command == "open":
