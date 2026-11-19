@@ -1,7 +1,9 @@
 # Client-side helpers that Imagine calls by name. Neither needs a NAS chat
 # service, a Host restart or provider credentials.
-# - agent windows: NAS agents open a fresh NAS terminal on this desktop
-#   without taking focus (kitty-dsh agent-windows protocol, version 1).
+# - agent windows: NAS agents open a fresh persistent NAS terminal (a
+#   kitty-persist session, window class kitty-persist-<id>) on this desktop
+#   without taking focus (kitty-dsh agent-windows protocol, version 1; the
+#   request and reply are unchanged, so the NAS server needs no new copy).
 # - layout identity: the running desktop's incarnation key, which Imagine's
 #   layout persistence uses (~/.local/bin/agency-layout-identity).
 { ... }:

@@ -61,6 +61,24 @@
       inputs.home-manager.follows = "home-manager";
     };
 
+    # kitty-persist — persistent native Kitty terminals over ssh. One program,
+    # `kitty-persist` (attach client, holder, hooks, helpers), plus two
+    # modules: homeManagerModules.laptop (home/kitty-persist.nix, on in
+    # hosts/client) and nixosModules.remote-host (on in hosts/nas). Nothing is
+    # enabled by the input alone. Its terminal library is that flake's own
+    # derivation, built offline from its vendored tree, so no host carries a
+    # hand-built copy.
+    # Follows nixpkgs-fresh: that is the revision its lock pins and its
+    # package is built against (the modules take the package from the input,
+    # not from the host's pkgs, so the NAS's stable base does not rebuild it).
+    # Pinned by rev on main like project-cli; the repository is private, hence
+    # git+https. Re-pin with `nix flake lock` after editing rev=, never
+    # `nix flake update`, so no other input moves.
+    kitty-persist = {
+      url = "git+https://github.com/mecattaf/kitty-persist?ref=main&rev=da534822d8e2c9dfc9455f5610b190f3f50deb31";
+      inputs.nixpkgs.follows = "nixpkgs-fresh";
+    };
+
     # Per-device hardware quirks. No nixpkgs.follows — it's just module files.
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
 
@@ -694,6 +712,67 @@
               touch "$out"
             '';
 
+        # The desktop opener of persistent terminals (kitty-persist): domicile-apps,
+        # domicile-persist, the agent-window helper and the NAS workflow path,
+        # against a fake kitty, a fake kitty-persist, a fake Domicile and a fake
+        # ssh. No desktop, Kitty, ssh or kitty-persist is reached.
+        domicile-opener =
+          pkgs.runCommand "domicile-opener"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+              ];
+            }
+            ''
+              set -euo pipefail
+              export PYTHONDONTWRITEBYTECODE=1
+              cp -R ${./home/dot_local/bin} bin
+              chmod -R u+w bin
+              patchShebangs bin
+              export DOMICILE_OPENER_BIN=$PWD/bin
+              export DOMICILE_AGENT_WINDOWS=${./modules/imagine-helpers/agent-windows}
+              export DOMICILE_IMAGINE_SRC=${./pkgs/client-desktop/imagine/src/imagine}
+              python3 -m unittest discover -s ${./tests/domicile-opener} -v
+              touch "$out"
+            '';
+        # The same opener's command lines (create, repeat, list --json fields,
+        # forget, --cwd-of, attach without a terminal) against the pinned
+        # kitty-persist program itself, on the build machine (--host local):
+        # no Kitty, no ssh. The real-Kitty cases of the same file need the
+        # product's end-to-end harness and run outside the sandbox.
+        domicile-opener-program =
+          pkgs.runCommand "domicile-opener-program"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+              ];
+            }
+            ''
+              set -euo pipefail
+              export PYTHONDONTWRITEBYTECODE=1
+              cp -R ${./home/dot_local/bin} bin
+              chmod -R u+w bin
+              patchShebangs bin
+              export DOMICILE_OPENER_BIN=$PWD/bin
+              export KP_CLIENT=${inputs.kitty-persist.packages.${system}.kitty-persist}/bin/kitty-persist
+              cd ${./tests/domicile-opener}
+              python3 -m unittest -v test_real_program.ProgramContract
+              touch "$out"
+            '';
+        # Imagine keeps agent-requested windows quiet by their class alone; the
+        # owner's own kitty-persist windows must not match.
+        domicile-agent-identity =
+          pkgs.runCommand "domicile-agent-identity"
+            {
+              nativeBuildInputs = [ inputs.domicile.legacyPackages.${system}.bun ];
+            }
+            ''
+              bun test ${./pkgs/client-desktop/imagine/src/imagine}/agentIdentity.test.ts
+              touch "$out"
+            '';
+
         # #734: the client's exact greetd guard binary, with stub session and
         # rescue. initial_session starts Domicile; default_session hands back.
         domicile-greetd-guard =
@@ -775,6 +854,28 @@
           inherit pkgs;
           dsh = self.nixosConfigurations.nas.pkgs.dsh;
         };
+        # kitty-persist-hooks in real dsh turns: a mock provider, a stub
+        # `kitty-persist`, the event order (a permission question included),
+        # the hook's parent and environment, the typed resume, the
+        # conversation part and the state parity with Claude Code and Codex;
+        # then `harness check` and one turn in a session held by the program
+        # the session host installs (home/kitty-persist-agents.nix,
+        # pkgs/dsh-plugins/kitty-persist-hooks).
+        kitty-persist-dsh-hooks = import ./tests/kitty-persist-dsh-hooks {
+          inherit pkgs;
+          dsh = self.nixosConfigurations.nas.pkgs.dsh;
+          kitty-persist = self.nixosConfigurations.nas.config.home-manager.users.tom.programs.kittyPersist.agents.package;
+        };
+        # The Claude Code and Codex hook installs: home/kitty-persist-hooks.py
+        # around that program's own `harness install --dir`, on copies of the
+        # seat layout in a temp home.
+        kitty-persist-hooks = pkgs.runCommand "kitty-persist-hooks" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          export KITTY_PERSIST_HOOKS_MODULE=${./home/kitty-persist-hooks.py}
+          export KP_PROGRAM=${self.nixosConfigurations.nas.config.home-manager.users.tom.programs.kittyPersist.agents.package}/bin/kitty-persist
+          cp -r ${./tests/kitty-persist-hooks} tests
+          python3 tests/test_install.py
+          touch "$out"
+        '';
         strix-reachability =
           pkgs.runCommand "strix-reachability"
             {

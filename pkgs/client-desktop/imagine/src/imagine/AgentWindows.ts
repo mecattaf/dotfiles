@@ -5,9 +5,10 @@ import type { WindowAction, WindowState } from "@domicile-desktop/manganese-wind
 import { appWindowId } from "@domicile-desktop/manganese-window-management/window";
 import type { Windows } from "./useAgencyWindows";
 import type { ChatPlacement } from "./ChatWindow";
+import { isAgentDesktopId, isAgentTerminalTag } from "./agentIdentity";
+export { isAgentDesktopId } from "./agentIdentity";
 
 const ROOT = ".local/state/kitty-dsh/agent-windows";
-export const isAgentDesktopId = (value: string) => /agencyagent[0-9a-f]{32}|agencychata6e17a11[0-9a-f]{24}/.test(value);
 
 /** Runs inside the existing native-announcement reducer transaction. Never
  * render a frame with the new window holding focus on Tom's workspace. */
@@ -30,7 +31,7 @@ function valid(value: any, nonce: string, desktop: string): boolean {
     value.requestId.replaceAll("-", "") !== nonce || !isAgentDesktopId(value.tag)) return false;
   if (value.kind === "terminal") return Object.keys(value).sort().join() === "cwd,desktop,kind,requestId,tag" &&
     typeof value.cwd === "string" && value.cwd.startsWith("/") && !/[\x00-\x1f\x7f]/.test(value.cwd) &&
-    value.tag === "agencyagent" + nonce;
+    isAgentTerminalTag(value.tag);
   return value.kind === "chat" && Object.keys(value).sort().join() === "desktop,kind,requestId,sessionId,tag" &&
     /^session-[A-Za-z0-9-]{1,100}$/.test(value.sessionId) && /^agencychata6e17a11[0-9a-f]{24}$/.test(value.tag);
 }

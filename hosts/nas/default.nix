@@ -11,6 +11,8 @@ let
 in
 {
   imports = [
+    # kitty-persist's remote-host module (services.kitty-persist below).
+    inputs.kitty-persist.nixosModules.remote-host
     ./agent-host.nix
     ./unstable-pkgs.nix
     ./kernel.nix # retain the validated kernel series during the network move
@@ -71,6 +73,68 @@ in
   home-manager.users.tom.programs = {
     agencyKitty.enable = false;
     agencyEditor.enable = false;
+  };
+  # Persistent terminals: this host holds the sessions (the remote-host module
+  # of the kitty-persist input). It puts the one program on every user's ssh
+  # PATH (/run/current-system/sw/bin) and adds the user unit
+  # kitty-persist-resume.service, a oneshot `kitty-persist resume` at each
+  # start of the user manager that brings back the agents that ran when the
+  # host went down. No session exists until one is asked for; each holder is
+  # its own transient user unit, and Herdr and the ordinary ssh entry are
+  # untouched. The agents' hooks are set further down, with the agent
+  # integration.
+  services.kitty-persist = {
+    enable = true;
+    # Sessions outlive logout only with lingering. modules/common.nix already
+    # sets it for tom fleet-wide; naming it here keeps the dependency visible
+    # (both definitions are `true`).
+    linger = [ "tom" ];
+    # The microphone path of an agent that records through ALSA: ALSA's pulse
+    # plugin compiled into the program (the closure gains the PulseAudio
+    # client library). The laptop forwards its microphone with forward_audio
+    # (home/kitty-persist.nix).
+    alsaPulsePlugin = true;
+  };
+  # Agent hooks (S21 of the kitty-persist specification), prepared and not
+  # active until the owner switches this host. Claude Code and Codex: the
+  # module's user unit kitty-persist-hooks.service runs the program's own
+  # `kitty-persist harness install NAME --dir DIR` once per configuration
+  # directory, at each start of the user manager (installing twice changes
+  # nothing; an entry dropped from this list is uninstalled by the next run).
+  # Every entry runs the bare `kitty-persist hook NAME EVENT` on PATH. Both
+  # Claude seats' settings.json are links to one shared file
+  # (home/claude-settings.py): the program follows the link and replaces its
+  # target, so the second seat finds the entries there and the links stay.
+  services.kitty-persist.hooks.tom =
+    let
+      home = config.users.users.tom.home;
+    in
+    [
+      {
+        harness = "claude";
+        dir = "${home}/.claude";
+      }
+      {
+        harness = "claude";
+        dir = "${home}/.claude-work";
+      }
+      {
+        harness = "codex";
+        dir = "${home}/.codex";
+      }
+    ];
+  # dsh, which has no settings file, and the resume overrides
+  # (home/kitty-persist-agents.nix): the kitty-persist-hooks plugin in the
+  # hand-run profiles, one checked harness definition per profile, and the
+  # shipped Claude Code and Codex definitions with the launchers' flags in
+  # their resume. Checked with the program as the module above installs it.
+  home-manager.users.tom.programs.kittyPersist.agents = {
+    enable = true;
+    package =
+      let
+        kp = config.services.kitty-persist;
+      in
+      if kp.alsaPulsePlugin then kp.package.override { withAlsaPulsePlugin = true; } else kp.package;
   };
   # The live skill roots are writable directories. Keep them frozen for the
   # separate DSH ownership work; activation must not back them up or replace

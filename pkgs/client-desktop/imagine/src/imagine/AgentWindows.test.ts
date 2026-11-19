@@ -23,5 +23,7 @@ test("quiet native identities survive shell reload without an in-memory reservat
   expect(isAgentDesktopId('agencyagent'+'a'.repeat(32))).toBe(true);
   expect(isAgentDesktopId('chrome_agencychata6e17a11'+'b'.repeat(24))).toBe(true);
   expect(isAgentDesktopId('domicile-terminal')).toBe(false);
+  expect(isAgentDesktopId('kitty-persist-a6e17a12-3b1c-4d2e-9f00-0123456789ab')).toBe(true);
+  expect(isAgentDesktopId('kitty-persist-0f3b2a11-3b1c-4d2e-9f00-0123456789ab')).toBe(false);
   expect(isAgentDesktopId('agencychat'+'c'.repeat(32))).toBe(false);
 });

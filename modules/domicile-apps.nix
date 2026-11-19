@@ -1,7 +1,17 @@
-{ pkgs, lib, ... }:
+{ config, pkgs, lib, ... }:
 # Import beside modules/domicile.nix. No session, server unit or key ownership.
 # home/home.nix already installs every file in dot_local/bin.
 {
+  # domicile-apps terminal (Meta+Return), attach, restore and the agent-window
+  # terminals run domicile-persist, which runs kitty-persist on this desktop:
+  # without the laptop module every such window says "kitty-persist is not
+  # installed". domicile-apps nas-shell and rescue need nothing.
+  assertions = [
+    {
+      assertion = config.home-manager.users.tom.programs.kitty-persist.enable;
+      message = "modules/domicile-apps.nix opens persistent terminals through kitty-persist: set home-manager.users.tom.programs.kitty-persist.enable = true (home/kitty-persist.nix) on this host.";
+    }
+  ];
   home-manager.users.tom = { lib, ... }: {
     # Reuse home/home.nix's Python environment and common.nix's fish. A second
     # bare Python would collide with the existing Python-with-packages profile.
@@ -137,10 +147,31 @@
         ];
         terminal = false;
       };
+      # Persistent NAS sessions (kitty-persist, home/kitty-persist.nix): a
+      # session outlives its window, the network and a restart of this
+      # desktop. domicile-persist is the window program.
       domicile-terminal = {
         name = "NAS terminal";
-        comment = "Fresh NAS shell in Kitty over SSH";
+        comment = "Persistent NAS session in Kitty";
         exec = "domicile-apps terminal";
+        icon = "utilities-terminal";
+        categories = [
+          "System"
+          "TerminalEmulator"
+        ];
+        terminal = false;
+      };
+      domicile-restore = {
+        name = "NAS sessions: reopen windows";
+        comment = "One Kitty window per running NAS session that no window shows";
+        exec = "domicile-apps restore";
+        icon = "utilities-terminal";
+        terminal = false;
+      };
+      domicile-nas-shell = {
+        name = "NAS shell (not kept)";
+        comment = "Fresh NAS shell in Kitty over SSH; it ends with its window";
+        exec = "domicile-apps nas-shell";
         icon = "utilities-terminal";
         categories = [
           "System"
