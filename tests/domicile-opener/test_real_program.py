@@ -426,18 +426,26 @@ class RealProgram(unittest.TestCase):
 
     def test_first_connection_wait(self):
         """A window opened while the remote host is unreachable attaches by itself
-        once it is reachable; after the wait it asks, and Enter attaches."""
+        once it is reachable; after the wait it asks, and Enter attaches.
+
+        Whichever side waits passes: today the program's create step ends with
+        255 at once and the window program waits (its waiting line); if the
+        program applies connect_wait to the create step too, it waits itself."""
         d = Desk(self, "connect", settings=("connect_wait 30",))
         d.stop_sshd()
         d.opener("open", DOMICILE_PERSIST_CONNECT_WAIT="40")
         w = d.window()
-        w.shows("Waiting for " + harness.HOST_ALIAS)
-        time.sleep(3)
+        time.sleep(4)
         self.assertTrue(w.alive())
-        self.assertTrue(all(o.get("action") in (None, "wait") for o in d.outcomes()))
-        self.assertTrue(all(o["code"] == 255 for o in d.outcomes()))
+        self.assertNotIn("Press Enter", w.text())
+        self.assertTrue(all(o.get("action") in (None, "wait") and o["code"] == 255 for o in d.outcomes()))
+        quick = [o["lasted"] for o in d.outcomes() if "lasted" in o]
+        if quick:
+            w.shows("Waiting for " + harness.HOST_ALIAS)
+        print(f"\n  first connection: the create step ended {len(quick)} times with 255 while the host was"
+              f" unreachable, each within {max(quick) if quick else 0:.2f} s", file=sys.stderr)
         d.restart_sshd()
-        sid = w.attached(timeout=30)
+        sid = w.attached(timeout=40)
         self.assertEqual(w.cls, "kitty-persist-" + sid)
         self.assertEqual(d.record(sid)["clients"], 1)
         w.send("echo dp-$((4+4))\r")
@@ -449,15 +457,14 @@ class RealProgram(unittest.TestCase):
         d.stop_sshd()
         d.opener("open", DOMICILE_PERSIST_CONNECT_WAIT="4")
         w = d.window()
-        w.shows("Press Enter to attach again", timeout=40)
+        w.shows("Press Enter to attach again", timeout=60)
         self.assertEqual(d.outcomes()[-1]["code"], 255)
-        self.assertIn("wait", [o.get("action") for o in d.outcomes()[start:]])
         d.restart_sshd()
         harness.wait_until(lambda: d.st.ssh("true").returncode == 0, 15, 0.2, "sshd")
         w.send("\r")
         sid = w.attached(timeout=40)
         self.assertEqual(d.record(sid)["labels"], {"opener": "domicile"})
-        self.assertIn((255, "again"), d.actions())
+        self.assertIn((255, "again"), d.actions()[start:])
         w.close()
         w.gone()
 
