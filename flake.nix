@@ -736,6 +736,31 @@
               python3 -m unittest discover -s ${./tests/domicile-opener} -v
               touch "$out"
             '';
+        # The same opener's command lines (create, repeat, list --json fields,
+        # forget, --cwd-of, attach without a terminal) against the pinned
+        # kitty-persist program itself, on the build machine (--host local):
+        # no Kitty, no ssh. The real-Kitty cases of the same file need the
+        # product's end-to-end harness and run outside the sandbox.
+        domicile-opener-program =
+          pkgs.runCommand "domicile-opener-program"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+              ];
+            }
+            ''
+              set -euo pipefail
+              export PYTHONDONTWRITEBYTECODE=1
+              cp -R ${./home/dot_local/bin} bin
+              chmod -R u+w bin
+              patchShebangs bin
+              export DOMICILE_OPENER_BIN=$PWD/bin
+              export KP_CLIENT=${inputs.kitty-persist.packages.${system}.kitty-persist}/bin/kitty-persist
+              cd ${./tests/domicile-opener}
+              python3 -m unittest -v test_real_program.ProgramContract
+              touch "$out"
+            '';
         # Imagine keeps agent-requested windows quiet by their class alone; the
         # owner's own kitty-persist windows must not match.
         domicile-agent-identity =

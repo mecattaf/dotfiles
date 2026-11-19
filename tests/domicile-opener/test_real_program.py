@@ -14,6 +14,11 @@ Run it only inside runtime-test, never against a live desktop or session:
 
 Without KP_E2E and KP_CLIENT every case is skipped, so the stand-in suite (and
 its flake check) is unchanged.
+
+ProgramContract needs only KP_CLIENT: the command lines domicile-persist
+builds, run against the built program on this machine (`--host local`), with
+no Kitty and no ssh. The flake check domicile-opener-program runs it in the
+build sandbox against the pinned kitty-persist package.
 """
 import json
 import os
@@ -35,6 +40,8 @@ CLIENT = os.environ.get("KP_CLIENT")
 WRAPPER = str(support.BIN / "domicile-persist")
 UUID4 = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 MARKER = "a6e17a12"
+
+persist = support.load(support.BIN / "domicile-persist", "domicile_persist_real")
 
 harness = None
 if E2E and CLIENT and os.path.isdir(os.path.join(E2E, "kpe2e")):
@@ -152,10 +159,13 @@ class Desk:
             if len(lines) <= self.seen:
                 return None
             pid, sock, *argv = lines[self.seen].split(" ")
-            if not os.path.exists(sock):
-                return None
             w = Window(self, int(pid), sock, argv)
-            w.user_vars()
+            if w.alive():
+                # Ready once its remote control answers; one that has already
+                # closed (an exited session) is returned as it is.
+                if not os.path.exists(sock):
+                    return None
+                w.user_vars()
             self.seen += 1
             return w
         return wait_for(next_launch, timeout, "a Kitty window from the opener")
@@ -185,6 +195,19 @@ class Desk:
                 out.append(pid)
         return out
 
+    def drop_connections(self, holder):
+        """The remote side drops every ssh connection: each connection's sshd
+        processes and the commands under them, never the session's holder."""
+        keep = harness.descendants([holder]) | {holder}
+        victims = harness.descendants([self.st.sshd_proc.pid]) - keep
+        self.test.assertTrue(victims)
+        for pid in victims:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        return victims
+
     def restart_sshd(self):
         """The remote host is reachable again: the same sshd on the same port."""
         cfg = os.path.join(self.st.d["ssh"], "sshd_config")
@@ -200,6 +223,109 @@ class Desk:
             except ProcessLookupError:
                 pass
         self.st.sshd_proc.wait(10)
+
+
+@unittest.skipIf(not CLIENT, "needs KP_CLIENT (the built kitty-persist program)")
+class ProgramContract(unittest.TestCase):
+    """create, list, the repeat rules, forget and the cwd-of line, as
+    domicile-persist builds them, accepted by the real program."""
+
+    def setUp(self):
+        base = os.environ.get("TMPDIR", "/tmp")
+        self.dir = tempfile.TemporaryDirectory(prefix="dpc-", dir=base if len(base) < 40 else "/tmp")
+        root = Path(self.dir.name)
+        for name in ("home", "run", "state", "cache", "conf"):
+            (root / name).mkdir(mode=0o700)
+        self.home = str(root / "home")
+        conf = root / "conf" / "kitty-persist.conf"
+        # Detached by setsid: a test has no user manager to start units in.
+        conf.write_text(f"holder_launch setsid\nlogin_shell {os.path.realpath(harness_free_sh())}\n")
+        self.env = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home, "LC_ALL": "C.UTF-8",
+            "TMPDIR": str(root), "SHELL": harness_free_sh(),
+            "KITTY_PERSIST_RUNTIME_DIR": str(root / "run"), "KITTY_PERSIST_STATE_DIR": str(root / "state"),
+            "KITTY_PERSIST_CACHE_DIR": str(root / "cache"), "KITTY_PERSIST_CONFIG": str(conf),
+            "XDG_CONFIG_HOME": str(root / "conf"), "XDG_STATE_HOME": str(root / "state"),
+            "XDG_RUNTIME_DIR": str(root / "run"),
+            "DOMICILE_PERSIST_PROGRAM": CLIENT, "DOMICILE_PERSIST_HOST": "local",
+        }
+        self.addCleanup(self.cleanup)
+
+    def cleanup(self):
+        try:
+            for r in persist.records(CLIENT, "local", self.env, everything=True):
+                self.kp("kill", "--host", "local", r["id"], "--signal", "KILL")
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and any(
+                    r.get("state") == "running" for r in persist.records(CLIENT, "local", self.env)):
+                time.sleep(0.1)
+        finally:
+            self.dir.cleanup()
+
+    def kp(self, *args):
+        return subprocess.run([CLIENT, *args], env=self.env, stdin=subprocess.DEVNULL, capture_output=True,
+                              text=True, timeout=60)
+
+    def run_line(self, line):
+        """A window line without its --attach: the create half, on its own."""
+        self.assertEqual(line[-1], "--attach")
+        return subprocess.run(line[:-1], env=self.env, stdin=subprocess.DEVNULL, capture_output=True,
+                              text=True, timeout=60)
+
+    def wait_state(self, sid, state):
+        return wait_for(lambda: (persist.record_of(CLIENT, "local", self.env, sid) or {}).get("state") == state,
+                        20, f"{sid} {state}")
+
+    def test_create_line_and_list_fields(self):
+        sid = persist.fresh_id()
+        cp = self.run_line(persist.new_line(CLIENT, "local", sid, cwd=self.home))
+        self.assertEqual((cp.returncode, cp.stdout.strip()), (0, sid), cp.stderr)
+        [r] = persist.records(CLIENT, "local", self.env)
+        # The fields the wrapper reads. `resumed` (S9.7: null or an object) is
+        # read with .get(): a record of a session never resumed may leave it out.
+        for field in ("id", "state", "clients", "labels", "cwd", "launch_cwd", "label", "title", "agent"):
+            self.assertIn(field, r)
+        self.assertEqual((r["id"], r["state"], r["clients"], r["labels"], r["launch_cwd"], r.get("resumed")),
+                         (sid, "running", 0, {"opener": "domicile"}, self.home, None))
+        self.assertTrue(persist.restorable(r))
+        listed = subprocess.run([sys.executable, WRAPPER, "sessions", "--all", "--json"], env=self.env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual([x["id"] for x in json.loads(listed.stdout)], [sid], listed.stderr)
+
+    def test_repeat_rules_exit_and_forget(self):
+        sid = persist.fresh_id()
+        line = persist.new_line(CLIENT, "local", sid, cwd=self.home)
+        self.assertEqual(self.run_line(line).returncode, 0)
+        again = self.run_line(line)  # running: the same line changes nothing (S8.7)
+        self.assertEqual((again.returncode, again.stdout.strip()), (0, sid), again.stderr)
+        self.assertEqual(len(persist.records(CLIENT, "local", self.env, everything=True)), 1)
+        self.assertEqual(self.kp("kill", "--host", "local", sid).returncode, 0, "hang-up ends the shell")
+        self.wait_state(sid, "exited")
+        self.assertEqual(self.run_line(line).returncode, 13)  # exited: the opener chooses (13)
+        # The prompt's new session starts where the old one was.
+        new = persist.fresh_id()
+        cp = self.run_line(persist.new_line(CLIENT, "local", new, cwd_of=sid))
+        self.assertEqual(cp.returncode, 0, cp.stderr)
+        self.assertEqual(persist.record_of(CLIENT, "local", self.env, new)["launch_cwd"], self.home)
+        forget = self.kp("forget", "--host", "local", sid)  # the line of DOMICILE_PERSIST_ON_EXIT=forget
+        self.assertEqual(forget.returncode, 0, forget.stderr)
+        self.assertIsNone(persist.record_of(CLIENT, "local", self.env, sid))
+        self.assertEqual(self.kp("forget", "--host", "local", new).returncode, 13)  # running: never forgotten
+
+    def test_attach_line_needs_a_terminal_and_unknown_ids(self):
+        sid = persist.fresh_id()
+        cp = subprocess.run(persist.attach_line(CLIENT, "local", sid), env=self.env, stdin=subprocess.DEVNULL,
+                            capture_output=True, text=True, timeout=60)
+        self.assertEqual(cp.returncode, 64, cp.stderr)  # S15.2: no terminal
+        self.assertEqual(self.run_line(persist.new_line(CLIENT, "local", sid.upper()[:-1] + "x")).returncode, 64)
+        self.assertEqual(self.kp("forget", "--host", "local", sid).returncode, 11)
+
+
+def harness_free_sh():
+    for candidate in ("/bin/sh", "/usr/bin/sh"):
+        if os.path.exists(candidate):
+            return candidate
+    return subprocess.run(["sh", "-c", "command -v sh"], capture_output=True, text=True).stdout.strip()
 
 
 @unittest.skipIf(harness is None, "needs KP_E2E (kitty-persist's tests/e2e) and KP_CLIENT (the built program)")
@@ -345,13 +471,15 @@ class RealProgram(unittest.TestCase):
         sid = w.attached()
         w.send("echo before-$((5+5))\r")
         w.shows("before-10")
+        holder = d.record(sid)["daemon_pid"]  # asked before the freeze: list uses the shared connection
         frozen = d.processes("new") + d.st.ssh_client_pids()
         self.assertTrue(d.processes("new"), "the attach client is the window's kitty-persist new")
+        dropped = set(d.st.sshd_connection_pids())
+        self.assertTrue(dropped)
         for pid in frozen:
             os.kill(pid, signal.SIGSTOP)
         try:
-            for pid in d.st.sshd_connection_pids():
-                os.kill(pid, signal.SIGKILL)
+            d.drop_connections(holder)
             time.sleep(20)  # longer than the 15 s dead-link limit (its S15.17)
         finally:
             for pid in frozen:
@@ -359,14 +487,16 @@ class RealProgram(unittest.TestCase):
                     os.kill(pid, signal.SIGCONT)
                 except ProcessLookupError:
                     pass
+        # A new connection, made by the window's own client.
+        wait_for(lambda: set(d.st.sshd_connection_pids()) - dropped, 60, "a new connection after the wake")
         w.attached(sid, timeout=60)
         w.send("echo after-$((6+6))\r")
         w.shows("after-12")
         self.assertEqual(d.outcomes(), [])
 
-        for pid in d.st.sshd_connection_pids():
-            os.kill(pid, signal.SIGKILL)
-        wait_for(lambda: w.user_vars().get("persist_state") != "attached", 30, "the loss noticed")
+        dropped = set(d.st.sshd_connection_pids())
+        d.drop_connections(holder)
+        wait_for(lambda: set(d.st.sshd_connection_pids()) - dropped, 60, "a new connection after the loss")
         w.attached(sid, timeout=60)
         w.send("echo again-$((7+7))\r")
         w.shows("again-14")
