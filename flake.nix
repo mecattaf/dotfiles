@@ -61,20 +61,21 @@
       inputs.home-manager.follows = "home-manager";
     };
 
-    # kitty-persist — persistent native Kitty terminals. A holder daemon on the
-    # brain host owns each PTY and a libghostty-vt model of it; a seat's Kitty
-    # window attaches over ssh through the `persist` kitten and gets the exact
-    # screen back. Consumed as packages plus Home Manager modules
-    # (home/kitty-persist.nix); nothing is enabled by the input alone.
-    # libghostty-vt is that flake's own derivation, built offline from its
-    # vendored tree (its nix/README.md records which tree and why), so no host
-    # carries a hand-built copy.
+    # kitty-persist — persistent native Kitty terminals over ssh. One program,
+    # `kitty-persist` (attach client, holder, hooks, helpers), plus two
+    # modules: homeManagerModules.laptop (home/kitty-persist.nix, on in
+    # hosts/client) and nixosModules.remote-host (on in hosts/nas). Nothing is
+    # enabled by the input alone. Its terminal library is that flake's own
+    # derivation, built offline from its vendored tree, so no host carries a
+    # hand-built copy.
     # Follows nixpkgs-fresh: that is the revision its lock pins and its
-    # packages are built against, and the modules take packages from the input,
-    # not from the host's pkgs. Pinned by rev like project-cli; the repository
-    # is private, hence git+https.
+    # package is built against (the modules take the package from the input,
+    # not from the host's pkgs, so the NAS's stable base does not rebuild it).
+    # Pinned by rev on main like project-cli; the repository is private, hence
+    # git+https. Re-pin with `nix flake lock` after editing rev=, never
+    # `nix flake update`, so no other input moves.
     kitty-persist = {
-      url = "git+https://github.com/mecattaf/kitty-persist?ref=main&rev=f58cfd32663568325c7ed4fc3290d307859a263e";
+      url = "git+https://github.com/mecattaf/kitty-persist?ref=main&rev=7e7662a31c30f318dbf86ace0ed15a22a55b1f65";
       inputs.nixpkgs.follows = "nixpkgs-fresh";
     };
 
