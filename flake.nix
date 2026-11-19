@@ -793,6 +793,28 @@
           inherit pkgs;
           dsh = self.nixosConfigurations.nas.pkgs.dsh;
         };
+        # kitty-persist-hooks in real dsh turns: a mock provider, a stub
+        # `kitty-persist`, the event order (a permission question included),
+        # the hook's parent and environment, the typed resume, the
+        # conversation part and the state parity with Claude Code and Codex;
+        # then `harness check` and one turn in a session held by the program
+        # the session host installs (home/kitty-persist-agents.nix,
+        # pkgs/dsh-plugins/kitty-persist-hooks).
+        kitty-persist-dsh-hooks = import ./tests/kitty-persist-dsh-hooks {
+          inherit pkgs;
+          dsh = self.nixosConfigurations.nas.pkgs.dsh;
+          kitty-persist = self.nixosConfigurations.nas.config.home-manager.users.tom.programs.kittyPersist.agents.package;
+        };
+        # The Claude Code and Codex hook installs: home/kitty-persist-hooks.py
+        # around that program's own `harness install --dir`, on copies of the
+        # seat layout in a temp home.
+        kitty-persist-hooks = pkgs.runCommand "kitty-persist-hooks" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          export KITTY_PERSIST_HOOKS_MODULE=${./home/kitty-persist-hooks.py}
+          export KP_PROGRAM=${self.nixosConfigurations.nas.config.home-manager.users.tom.programs.kittyPersist.agents.package}/bin/kitty-persist
+          cp -r ${./tests/kitty-persist-hooks} tests
+          python3 tests/test_install.py
+          touch "$out"
+        '';
         strix-reachability =
           pkgs.runCommand "strix-reachability"
             {

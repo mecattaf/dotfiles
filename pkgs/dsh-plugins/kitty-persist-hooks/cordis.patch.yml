@@ -1,0 +1,9 @@
+# kitty-persist-hooks' bundle layer: one row. The Nix build puts the program's
+# store path in `command` (./default.nix); without a package it stays the bare
+# name, found on PATH. The harness name comes from the wrapper's per-profile
+# DSH_KITTY_PERSIST_HARNESS (pkgs/dsh).
+- insert:
+    - id: kitty-persist-hooks
+      name: '@mecattaf/kitty-persist-hooks'
+      config:
+        command: '@KITTY_PERSIST_COMMAND@'
