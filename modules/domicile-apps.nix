@@ -1,7 +1,17 @@
-{ pkgs, lib, ... }:
+{ config, pkgs, lib, ... }:
 # Import beside modules/domicile.nix. No session, server unit or key ownership.
 # home/home.nix already installs every file in dot_local/bin.
 {
+  # domicile-apps terminal (Meta+Return), attach, restore and the agent-window
+  # terminals run domicile-persist, which runs kitty-persist on this desktop:
+  # without the laptop module every such window says "kitty-persist is not
+  # installed". domicile-apps nas-shell and rescue need nothing.
+  assertions = [
+    {
+      assertion = config.home-manager.users.tom.programs.kitty-persist.enable;
+      message = "modules/domicile-apps.nix opens persistent terminals through kitty-persist: set home-manager.users.tom.programs.kitty-persist.enable = true (home/kitty-persist.nix) on this host.";
+    }
+  ];
   home-manager.users.tom = { lib, ... }: {
     # Reuse home/home.nix's Python environment and common.nix's fish. A second
     # bare Python would collide with the existing Python-with-packages profile.
