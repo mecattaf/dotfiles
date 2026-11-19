@@ -5,13 +5,19 @@ Domicile is the only physical desktop. `hosts/client/default.nix` imports
 returns to a console shell after exit. No Sway, Niri, Vicinae, Mako, Waybar,
 Kanshi, external launcher, clipboard daemon or gamma relay is installed.
 
-The client config is `home/dot_config/domicile/domicile.tsx`. It uses the
-maintained Imagine shell through public Domicile capabilities. A frozen copy of
-the previously running production shell lives in `pkgs/client-desktop/imagine`;
-its MIT notices and provenance remain with it. Domicile source, SDK and official
-engine are selected together by the upstream flake. The compositor has no local
-engine patches. The config and every relative production import are checked and
-bundled together before installation.
+The client config is `home/dot_config/domicile/domicile.tsx`. It uses the shared
+`agency-agency/imagine` input through public Domicile capabilities. Tom and
+Tarek's dotfiles consume that standalone repository, while device facts and
+account settings remain in their own configurations. The input follows this
+fleet's reviewed Domicile SDK/engine pair; a shared-shell update does not select
+a different compositor. The config and every relative production import are
+checked and bundled together before installation. The old payload under
+`pkgs/client-desktop/imagine` is retained only as frozen migration history.
+
+The shared repository is public. The locked revision can be fetched anonymously
+by Nix, CI and credential-free builders; no cross-repository token or archived
+source handoff is required. No GitHub credential belongs in the flake, the Nix
+store or a remote builder. Updates remain explicit changes to the pinned input.
 
 Domicile owns Finder/application launch, clipboard, notifications, screenshots,
 recording, native input settings and quick settings. Finder includes Quick
