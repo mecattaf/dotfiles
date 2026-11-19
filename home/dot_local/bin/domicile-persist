@@ -1,0 +1,501 @@
+#!/usr/bin/env python3
+"""Persistent NAS terminals in Kitty, through kitty-persist's public commands only.
+
+Opener side, on this desktop (each opens Kitty OS windows and returns):
+  domicile-persist open [--id UUID] [--cwd DIR | --cwd-of UUID]
+  domicile-persist reopen UUID
+  domicile-persist restore [--dry-run] [--any] [--limit N]
+  domicile-persist sessions [--all] [--json]
+
+In-window side, the program of a window (switches on kitty-persist's exit code):
+  domicile-persist new [--id UUID] [--cwd DIR | --cwd-of UUID]
+  domicile-persist attach UUID
+
+The window program is `kitty-persist new --host HOST --id UUID --attach`, with
+the id chosen here, and `kitty-persist attach --host HOST UUID` to reopen. The
+Kitty OS window class is `kitty-persist-<id>`. Inventory is `list --json` and
+`list --all --json`. Placement and workspaces stay with the desktop.
+
+Policy, from the environment of the window (Domicile's choices, not the
+product's):
+  DOMICILE_PERSIST_ON_EXIT       close (default) | forget   after code 10
+  DOMICILE_PERSIST_ON_GONE       prompt (default) | new | close   after 11, 13, 14
+  DOMICILE_PERSIST_CONNECT_WAIT  seconds (default 60) a window keeps trying
+                                 when ssh cannot connect at all (code 255 at once)
+Stand-ins for tests: DOMICILE_PERSIST_PROGRAM, DOMICILE_PERSIST_KITTY,
+DOMICILE_PERSIST_HOST (default nas). DOMICILE_PERSIST_LOG, an absolute file
+path, gets one JSON line per kitty-persist call of the window and its outcome.
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import select
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import termios
+import time
+import tty
+import uuid
+
+HOST = "nas"
+TITLE = "NAS terminal"
+CLASS_PREFIX = "kitty-persist-"
+# The opener marks the sessions it creates, so `restore` reopens those and not
+# sessions somebody started by hand and detached on purpose.
+OPENER_META = "opener=domicile"
+# Ids whose first group is this marker are derived for agent-requested windows
+# (modules/imagine-helpers/agent-windows/transport.py); Imagine keeps those
+# windows quiet by class. An id chosen here for the owner never starts with it.
+AGENT_SESSION_MARKER = "a6e17a12"
+UUID4 = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
+HOSTNAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}")
+# A slow-reader disconnect (75) is safe to repeat; a burst means something is
+# wrong, so after this many inside the window the wrapper reports instead.
+REATTACH_BURST, REATTACH_WINDOW = 5, 60.0
+RESTORE_LIMIT = 24
+# Under DOMICILE_PERSIST_ON_GONE=new a window starts at most three new sessions
+# in a row by itself; a session that ran this long resets the count.
+SETTLED = 30.0
+# kitty-persist's `new --host H --attach` creates the session over one plain
+# ssh call before its attach client starts, so a window opened while the
+# remote host is not reachable yet ends with 255 within ssh's connection
+# timeout (10 s, its S15.21) instead of waiting as its attach does (S15.13).
+# A 255 that quick is retried here, with one waiting line, for CONNECT_WAIT;
+# the line is safe to repeat (S8.7). A 255 after a longer run is the attach
+# client giving up after its own wait, and is reported.
+CONNECT_WAIT = 60.0
+FAST_FAIL = 15.0
+BACKOFF = (0.5, 1.0, 2.0, 4.0)
+
+# kitty-persist exit codes (its specification, S13.1).
+MEANING = {
+    0: "closed or detached",
+    10: "the session's program exited",
+    11: "there is no session with that id",
+    12: "the two kitty-persist programs share no protocol version",
+    13: "the id is taken by a session that is not running",
+    14: "the session is lost: its record exists but no holder answers",
+    15: "another window took the session over",
+    64: "wrong use of the kitty-persist command line",
+    65: "the image is not supported or too large",
+    66: "there is no conversation to show",
+    70: "kitty-persist internal error",
+    73: "a directory kitty-persist needs cannot be used",
+    75: "disconnected for reading too slowly",
+    78: "a requirement is not met (see the line above)",
+    255: "the ssh connection could not be made or was lost",
+}
+GONE = (11, 13, 14)
+
+
+def clean_environment(environ=None):
+    # A terminal launched by an agent must not inherit its pane or attach gate
+    # (the same scrub as domicile-terminal).
+    environ = os.environ if environ is None else environ
+    return {key: value for key, value in environ.items()
+            if not key.startswith(("HERDR_", "DOMICILE_HERDR_"))
+            and key not in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CODEX_THREAD_ID")}
+
+
+def session_id(value):
+    if not isinstance(value, str) or not UUID4.fullmatch(value):
+        raise argparse.ArgumentTypeError("a lower-case version-4 UUID is required")
+    return value
+
+
+def directory(value):
+    if not Path(value).is_absolute() or any(ord(c) < 32 or ord(c) == 127 for c in value):
+        raise argparse.ArgumentTypeError("an absolute path without control characters is required")
+    return value
+
+
+def fresh_id():
+    while True:
+        value = str(uuid.uuid4())
+        if not value.startswith(AGENT_SESSION_MARKER):
+            return value
+
+
+def host(env):
+    value = env.get("DOMICILE_PERSIST_HOST", HOST)
+    if not HOSTNAME.fullmatch(value):
+        raise ValueError("DOMICILE_PERSIST_HOST must be an ssh host name")
+    return value
+
+
+def program(env):
+    chosen = env.get("DOMICILE_PERSIST_PROGRAM")
+    if chosen:
+        if not Path(chosen).is_absolute():
+            raise ValueError("DOMICILE_PERSIST_PROGRAM must be an absolute path")
+        return chosen
+    found = shutil.which("kitty-persist", path=env.get("PATH"))
+    if found:
+        return found
+    fallback = Path("/etc/profiles/per-user") / os.environ.get("USER", "") / "bin/kitty-persist"
+    return str(fallback) if fallback.is_file() else None
+
+
+def kitty(env):
+    chosen = env.get("DOMICILE_PERSIST_KITTY")
+    if chosen:
+        if not Path(chosen).is_absolute():
+            raise ValueError("DOMICILE_PERSIST_KITTY must be an absolute path")
+        return chosen
+    return shutil.which("kitty", path=env.get("PATH")) or "kitty"
+
+
+# ---------------------------------------------------------------- the commands
+
+def new_line(binary, remote, sid, cwd=None, cwd_of=None):
+    line = [binary, "new", "--host", remote, "--id", sid]
+    if cwd is not None:
+        line += ["--cwd", cwd]
+    elif cwd_of is not None:
+        line += ["--cwd-of", cwd_of]
+    return line + ["--meta", OPENER_META, "--attach"]
+
+
+def attach_line(binary, remote, sid):
+    return [binary, "attach", "--host", remote, sid]
+
+
+def window_argv(kitty_binary, self_path, sid, program_args):
+    """Kitty OS window for one session. Kitty's own new window and new tab in
+    it start another persistent session (a fresh id), never a local shell."""
+    shell = shlex.join([self_path, "new"])
+    return [kitty_binary, "--class", CLASS_PREFIX + sid, "--title", TITLE,
+            "--override", "shell=" + shell, "-e", self_path, *program_args]
+
+
+def records(binary, remote, env, everything=False):
+    line = [binary, "list", "--host", remote] + (["--all"] if everything else []) + ["--json"]
+    result = subprocess.run(line, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, timeout=30, check=False)
+    if result.returncode:
+        raise RuntimeError(f"kitty-persist list ended with {result.returncode}: "
+                           f"{MEANING.get(result.returncode, 'unknown code')}")
+    value = json.loads(result.stdout)
+    if not isinstance(value, list) or not all(isinstance(r, dict) for r in value):
+        raise RuntimeError("kitty-persist list --json did not print an array of records")
+    return value
+
+
+def record_of(binary, remote, env, sid):
+    try:
+        return next((r for r in records(binary, remote, env, everything=True) if r.get("id") == sid), None)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        return None
+
+
+# ------------------------------------------------------------ in-window side
+
+def say(text):
+    try:
+        print(text, file=sys.stderr, flush=True)
+    except OSError:
+        pass  # the window has gone
+
+
+def note(env, **fields):
+    """One JSON line per kitty-persist call, for tests and for a look afterwards."""
+    path = env.get("DOMICILE_PERSIST_LOG")
+    if not path or not Path(path).is_absolute():
+        return
+    try:
+        with open(path, "a") as log:
+            log.write(json.dumps(dict(fields, at=time.time())) + "\n")
+    except OSError:
+        pass
+
+
+def connect_wait(env):
+    try:
+        return max(0.0, float(env.get("DOMICILE_PERSIST_CONNECT_WAIT", CONNECT_WAIT)))
+    except ValueError:
+        return CONNECT_WAIT
+
+
+def pause(seconds, line):
+    """Show the waiting line and wait. False when q or Ctrl+D was typed."""
+    say_inline(line)
+    if not sys.stdin.isatty():
+        time.sleep(seconds)
+        return True
+    fd = sys.stdin.fileno()
+    saved = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        end = time.monotonic() + seconds
+        while (left := end - time.monotonic()) > 0:
+            ready, _, _ = select.select([fd], [], [], left)
+            # q, Ctrl+D, or the window went away (end of input).
+            if ready and os.read(fd, 64)[:1] in (b"", b"q", b"Q", b"\x04"):
+                return False
+        return True
+    except OSError:
+        return False
+    finally:
+        try:
+            termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+        except OSError:
+            pass
+
+
+def say_inline(text):
+    try:
+        print("\r\x1b[K" + text, end="", file=sys.stderr, flush=True)
+    except OSError:
+        pass
+
+
+def ask(question):
+    """True on Enter; False on end of input, Ctrl+C or a typed 'q'."""
+    try:
+        answer = input(question)
+    except (EOFError, KeyboardInterrupt, OSError):
+        return False
+    return answer.strip().lower() not in ("q", "quit", "n", "no")
+
+
+def call(line, env):
+    """Run kitty-persist in this terminal and return its exit code. The window
+    closes with the wrapper, so a stray Ctrl+C must not end the wrapper while
+    the attach client keeps running."""
+    child = subprocess.Popen(line, env=env)
+    while True:
+        try:
+            return child.wait()
+        except KeyboardInterrupt:
+            continue
+
+
+def run_window(command, sid, cwd, cwd_of, env, ask=ask, pause=pause):
+    remote = host(env)
+    binary = program(env)
+    if binary is None:
+        say("kitty-persist is not installed on this desktop.")
+        ask("Press Enter to close this window. ")
+        return 78
+    on_exit = env.get("DOMICILE_PERSIST_ON_EXIT", "close")
+    on_gone = env.get("DOMICILE_PERSIST_ON_GONE", "prompt")
+    on_gone = on_gone if on_gone in ("prompt", "new", "close") else "prompt"
+    patience = connect_wait(env)
+    line = new_line(binary, remote, sid, cwd, cwd_of) if command == "new" else attach_line(binary, remote, sid)
+    first, bursts, automatic, waiting = line, [], 0, None
+    while True:
+        started = time.monotonic()
+        code = call(line, env)
+        lasted = time.monotonic() - started
+        if lasted > SETTLED:
+            automatic = 0
+        if code != 255 or lasted >= FAST_FAIL:
+            if waiting is not None:
+                say_inline("")
+            waiting = None
+        note(env, line=line[1:], code=code, lasted=round(lasted, 3))
+        if code == 0 or code == 15:
+            # Closed, detached on purpose, or shown in another window now.
+            note(env, action="close", code=code)
+            return 0
+        if code == 10:
+            if on_exit == "forget":
+                subprocess.run([binary, "forget", "--host", remote, sid], env=env,
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=30, check=False)
+            note(env, action="forget" if on_exit == "forget" else "close", code=code)
+            return 0
+        if code == 75:
+            now = time.monotonic()
+            bursts = [t for t in bursts if now - t < REATTACH_WINDOW] + [now]
+            if len(bursts) <= REATTACH_BURST:
+                line = attach_line(binary, remote, sid)
+                note(env, action="reattach", code=code)
+                continue
+        if code == 255 and lasted < FAST_FAIL:
+            now = time.monotonic()
+            waiting = now if waiting is None else waiting
+            if now - waiting < patience:
+                delay = BACKOFF[min(int((now - waiting) // 4), len(BACKOFF) - 1)]
+                note(env, action="wait", code=code, waited=round(now - waiting, 3))
+                if pause(min(delay, max(0.0, patience - (now - waiting))) or 0.1,
+                         f"Waiting for {remote}: ssh cannot connect yet "
+                         f"({int(now - waiting)} s of {int(patience)}; q closes this window)"):
+                    continue
+                say("")
+                note(env, action="close", code=code)
+                return code
+            say("")
+            waiting = None
+        if code in GONE:
+            if on_gone == "close":
+                note(env, action="close", code=code)
+                return 0
+            old = record_of(binary, remote, env, sid) if code != 11 else None
+            place = printable((old or {}).get("cwd") or (old or {}).get("launch_cwd") or cwd or "")
+            automatic += 1
+            if on_gone == "prompt" or automatic > 3:
+                # Never loop on new sessions that cannot start: ask after three.
+                say(f"\nkitty-persist: {MEANING[code]} ({sid}).")
+                if not ask("Press Enter for a new NAS session" + (f" in {place}" if place else "")
+                           + ", or Ctrl+D to close this window. "):
+                    note(env, action="close", code=code)
+                    return 0
+            # A new id in this same window. The OS window keeps its first
+            # class; the persist_id user variable names what it shows now.
+            sid = fresh_id()
+            line = (new_line(binary, remote, sid, cwd_of=old["id"]) if old is not None
+                    else new_line(binary, remote, sid, cwd=cwd))
+            first, bursts = line, []
+            note(env, action="new", code=code, id=sid)
+            continue
+        say(f"\nkitty-persist ended with code {code}: {MEANING.get(code, 'unknown code')}.")
+        if code == 255 or code == 75:
+            # The session itself may be fine; the same line is safe to repeat
+            # (it attaches when the session runs).
+            if ask("Press Enter to attach again, or Ctrl+D to close this window. "):
+                line, bursts = first, []
+                note(env, action="again", code=code)
+                continue
+            note(env, action="close", code=code)
+            return code
+        ask("Press Enter to close this window. ")
+        note(env, action="report", code=code)
+        return code
+
+
+# -------------------------------------------------------------- opener side
+
+def self_path():
+    return str(Path(__file__).resolve())
+
+
+def open_window(sid, program_args, env, spawn=False):
+    argv = window_argv(kitty(env), self_path(), sid, program_args)
+    if spawn:
+        return subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, start_new_session=True)
+    os.execvpe(argv[0], argv, env)
+
+
+def restorable(record, any_opener=False):
+    """Running, shown in no window, and created by this opener or brought back
+    by the remote host's resume step (an agent that came back)."""
+    if record.get("state", "running") != "running" or record.get("clients", 0) != 0:
+        return False
+    if not isinstance(record.get("id"), str) or not UUID4.fullmatch(record["id"]):
+        return False
+    labels = record.get("labels") if isinstance(record.get("labels"), dict) else {}
+    mine = labels.get(OPENER_META.split("=")[0]) == OPENER_META.split("=")[1]
+    return any_opener or mine or record.get("resumed") is not None
+
+
+def restore(args, env):
+    binary = program(env)
+    if binary is None:
+        raise RuntimeError("kitty-persist is not installed on this desktop")
+    chosen = [r for r in records(binary, host(env), env) if restorable(r, args.any)]
+    plan = chosen[:args.limit]
+    summary = {"open": [r["id"] for r in plan], "resumed": [r["id"] for r in plan if r.get("resumed") is not None],
+               "skipped": [r["id"] for r in chosen[args.limit:]]}
+    if not args.dry_run:
+        for r in plan:
+            open_window(r["id"], ["attach", r["id"]], env, spawn=True)
+    print(json.dumps(summary))
+    return 0
+
+
+def agent_text(agent):
+    if not isinstance(agent, dict):
+        return "-"
+    state = "ended" if agent.get("ended") else agent.get("state", "?")
+    return f"{agent.get('name', '?')}:{state}"
+
+
+def printable(text):
+    return "".join(c for c in str(text) if ord(c) >= 32 and ord(c) != 127)
+
+
+def sessions(args, env):
+    binary = program(env)
+    if binary is None:
+        raise RuntimeError("kitty-persist is not installed on this desktop")
+    value = records(binary, host(env), env, everything=args.all)
+    if args.json:
+        print(json.dumps(value))
+        return 0
+    for r in value:
+        resumed = r.get("resumed")
+        print("  ".join([
+            str(r.get("id", "?"))[:8], f"{r.get('state', '?'):8}", f"clients={r.get('clients', '?')}",
+            f"resumed={resumed.get('count', 1) if isinstance(resumed, dict) else 0}",
+            agent_text(r.get("agent")), printable(r.get("label") or r.get("title") or ""),
+            printable(r.get("cwd") or r.get("launch_cwd") or "")]))
+    return 0
+
+
+# ------------------------------------------------------------------- parsing
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(prog="domicile-persist", description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=True)
+    for name in ("open", "new"):
+        p = sub.add_parser(name)
+        p.add_argument("--id", type=session_id)
+        where = p.add_mutually_exclusive_group()
+        where.add_argument("--cwd", type=directory, help="absolute directory on the remote host")
+        where.add_argument("--cwd-of", type=session_id, help="start where that session last was")
+    for name in ("reopen", "attach"):
+        sub.add_parser(name).add_argument("id", type=session_id)
+    p = sub.add_parser("restore")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--any", action="store_true", help="also sessions this opener did not create")
+    p.add_argument("--limit", type=int, default=RESTORE_LIMIT)
+    p = sub.add_parser("sessions")
+    p.add_argument("--all", action="store_true")
+    p.add_argument("--json", action="store_true")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    env = clean_environment()
+    if args.command in ("new", "attach"):
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            say("domicile-persist: interactive terminal required")
+            return 2
+        # Closing the window hangs up its whole process group. The attach
+        # client ends with 0 on that (its S15.8); the wrapper outlives the
+        # hang-up to see that code. A handler, not SIG_IGN, which the client
+        # would inherit across exec.
+        signal.signal(signal.SIGHUP, lambda *_: None)
+        sid = args.id or fresh_id()
+        return run_window(args.command, sid, getattr(args, "cwd", None), getattr(args, "cwd_of", None), env)
+    if args.command == "open":
+        sid = args.id or fresh_id()
+        rest = ["new", "--id", sid] + (["--cwd", args.cwd] if args.cwd else []) + \
+            (["--cwd-of", args.cwd_of] if args.cwd_of else [])
+        open_window(sid, rest, env)
+        return 0
+    if args.command == "reopen":
+        open_window(args.id, ["attach", args.id], env)
+        return 0
+    if args.command == "restore":
+        return restore(args, env)
+    return sessions(args, env)
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        raise SystemExit(130)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        print(f"domicile-persist: {error}", file=sys.stderr)
+        raise SystemExit(2)
