@@ -649,17 +649,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1795060135,
-        "narHash": "sha256-Fy50Xv1JJ7R3rnyzrKkaDmtCE3R62dVVNnI+WE1JumQ=",
+        "lastModified": 1795062692,
+        "narHash": "sha256-VqvzW7Oano0b0hOu8CFPipIpy+AtxCK0UFkMvSV6p5o=",
         "ref": "main",
-        "rev": "da5b7f4584d574c9830b56a5064e28c2b9b81218",
-        "revCount": 2585,
+        "rev": "02f7bb9e7e3099e3875e514029c6c7cdf6d8650e",
+        "revCount": 2617,
         "type": "git",
         "url": "https://github.com/mecattaf/kitty-persist"
       },
       "original": {
         "ref": "main",
-        "rev": "da5b7f4584d574c9830b56a5064e28c2b9b81218",
+        "rev": "02f7bb9e7e3099e3875e514029c6c7cdf6d8650e",
         "type": "git",
         "url": "https://github.com/mecattaf/kitty-persist"
       }
