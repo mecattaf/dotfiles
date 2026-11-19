@@ -132,6 +132,28 @@ The MiniMax and MiMo pairs each passed a native DSH source-edit task and all
 sixteen independent boolean acceptance cases. These are route checks, not measured
 remaining quota or model-quality rankings.
 
+Both native-client rows set `narration = "reasoning"`. Tool activity, plans,
+adapter notices and context occupancy then go to reasoning blocks, and the
+final answer text holds only the native agent's message. A workflow node that
+asks for one JSON value parses that text strictly; without this setting a Zen
+answer carried a system-prompt notice and an occupancy line, and an
+Antigravity answer carried its tool narration, so neither parsed.
+
+### Worker directory and approvals
+
+A floor worker runs in its workflow run's directory (`dshd.cwd`, here home, is
+only the fallback). Two failures follow from a run started in home:
+
+- Zen: `--edit --cwd .` named home, which the launcher refused, so the client
+  exited before ACP started. The launcher now serves such a session read-only.
+  Start runs that need Zen edits in a project directory.
+- Antigravity: the floor passes `--approval-policy never`, so DSH rejects
+  every native permission request at once. `accept-edits` asks permission
+  for shell commands; the rejected command ends the native turn with no
+  answer. Reads and edits do not ask and work. A task that needs shell output
+  belongs on a DSH-tool pair, or needs a deliberate native mode decision; the
+  launcher does not widen it silently.
+
 ## Coverage and admission are different facts
 
 All existing API adapters remain declared in `pkgs/dsh/config.nix` and the

@@ -226,8 +226,20 @@ def main():
         cwd = (args.cwd or Path.cwd()).resolve(strict=True)
     except OSError as error:
         parser.error(str(error))
-    if not cwd.is_dir() or (args.edit and cwd in (Path.home(), Path("/"))):
+    if not cwd.is_dir():
         parser.error("select a workspace directory, not home or filesystem root")
+    edit_refused = None
+    if args.edit and cwd in (Path.home(), Path("/")):
+        if not args.acp:
+            parser.error("select a workspace directory, not home or filesystem root")
+        # An ACP server's cwd is its DSH conversation's directory, chosen by
+        # whoever started that conversation or workflow run, not by these
+        # arguments. Refusing here closes ACP before any session exists, which
+        # DSH reports only as a closed connection. Serve the session read-only
+        # instead: edits are never granted across home or the filesystem root.
+        args.edit = False
+        edit_refused = "home or filesystem root is not an edit workspace; serving this ACP session read-only"
+        print("zen: " + edit_refused, file=sys.stderr, flush=True)
     message = " ".join(prompt)
     if not args.acp and os.environ.get("ZEN_STDIN") == "1":
         message += "\n" + sys.stdin.read()
@@ -246,6 +258,9 @@ def main():
             "retry_of": args.retry_of, "cwd": str(cwd), "edit": args.edit, "acp": args.acp,
             "client_executable": os.path.realpath(shutil.which("opencode") or "opencode"),
             "timeout_seconds": args.timeout, "prompt_sha256": hashlib.sha256(message.encode()).hexdigest()}
+    if edit_refused:
+        base["edit_requested"] = True
+        base["edit_refused"] = edit_refused
     write_new(run / "invocation.json", base)
     key, status, rc, details = "", "error", 1, {}
     try:

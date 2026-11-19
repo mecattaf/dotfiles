@@ -22,7 +22,10 @@ let
   localModel = import ../lib/local-model.nix;
   openrouterFree = pkgs.callPackage ../pkgs/dsh-plugins/openrouter-free { };
   inherit (lib) mkOption types;
-  nativeClientPin = "github:mecattaf/dsh-gemini-cli#8aa44aa007a471aa1486ec0c84571656053518b0";
+  # 4338dd3: early native-client exits carry their exit status and stderr
+  # tail; `narration = "reasoning"` keeps tool narration out of the answer
+  # text a workflow node parses. Built on the previous pin 8aa44aa.
+  nativeClientPin = "github:mecattaf/dsh-gemini-cli#4338dd3f752a8f14bafb31cc7a3b792f1c3c6b03";
   antigravityPair = slot: {
     provider = "antigravity-cli-${slot}";
     model = "gemini-3.8-flash";
@@ -41,6 +44,7 @@ let
               terminalPrompts = false;
               defaultMode = "accept-edits";
               nativeThoughtLevel = "low";
+              narration = "reasoning";
               allowedModels = [ "gemini-3.8-flash" ];
               turnTimeoutMs = 600000;
               accounts = [
@@ -61,8 +65,10 @@ let
       }
     ];
   };
-  zenPair = slot: model: {
-    provider = "zen-cli-${slot}";
+  # Provider aliases remain compatible with an already running floor. Their
+  # suffix is a route identifier, not the selected credential identity.
+  zenPair = providerAlias: credentialSlot: model: {
+    provider = "zen-cli-${providerAlias}";
     inherit model;
     maxWorkers = 1;
     dependencies."@mecattaf/dsh-gemini-cli" = nativeClientPin;
@@ -79,16 +85,23 @@ let
               allowDirectProvider = true;
               allowedModels = [ model ];
               defaultMode = "zen-worker";
+              narration = "reasoning";
               turnTimeoutMs = 600000;
               accounts = [
                 {
-                  id = slot;
-                  name = "Zen fixed slot ${slot}";
+                  id = providerAlias;
+                  name = "Zen fixed credential ${credentialSlot} (route ${providerAlias})";
                   executablePath = "${home}/.local/bin/zen";
+                  # --model makes the launcher admit, pin as small model and
+                  # record the pair's own model, not its default DeepSeek.
+                  # In a home or root cwd (a workflow run started in home) the
+                  # launcher serves ACP read-only instead of refusing --edit.
                   cliArgs = [
                     "--acp"
                     "--slot"
-                    slot
+                    credentialSlot
+                    "--model"
+                    (lib.removePrefix "opencode/" model)
                     "--edit"
                     "--cwd"
                     "."
@@ -324,10 +337,10 @@ in
         antigravity = antigravityPair "1";
         antigravity-2 = antigravityPair "2";
         antigravity-3 = antigravityPair "3";
-        zen-deepseek = zenPair "1" "opencode/deepseek-v4.1-flash-free";
-        zen-glm = zenPair "1" "opencode/glm-5.3-flash-free";
-        zen-mimo = zenPair "1" "opencode/mimo-v2.6-flash-free";
-        zen-minimax = zenPair "2" "opencode/minimax-m3.1-flash-free";
+        zen-deepseek = zenPair "1" "3" "opencode/deepseek-v4.1-flash-free";
+        zen-glm = zenPair "1" "4" "opencode/glm-5.3-flash-free";
+        zen-mimo = zenPair "1" "1" "opencode/mimo-v2.6-flash-free";
+        zen-minimax = zenPair "2" "2" "opencode/minimax-m3.1-flash-free";
       };
       description = "Provider-harness pairs; each renders one headless folder master-<name>.";
     };
