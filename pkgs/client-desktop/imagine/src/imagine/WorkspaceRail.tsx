@@ -40,6 +40,7 @@ export type WorkspaceRailProps = {
   /** Real stock controls, provided with their native contexts by the shell. */
   nativeControls?: ReactNode;
   nativeChats?: ReactNode;
+  workspaceControls?: ReactNode;
   /** An actual data-source failure supplied by the shell, if any. */
   status?: string;
 };
@@ -70,6 +71,7 @@ export function WorkspaceRail({
   onOpenNotifications,
   nativeControls,
   nativeChats,
+  workspaceControls,
   status,
 }: WorkspaceRailProps) {
   if (!open) return null;
@@ -114,6 +116,7 @@ export function WorkspaceRail({
         <span>Workspaces</span>
         <button className="agency-icon-button" aria-label="Hide workspace rail" onClick={onClose} type="button">‹</button>
       </header>
+      {workspaceControls}
       {onNewChat && (
         <div className="agency-rail-action">
           <button className="agency-action-row" onClick={onNewChat} type="button">New chat</button>

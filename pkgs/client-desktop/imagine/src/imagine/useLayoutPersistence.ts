@@ -5,9 +5,11 @@ import { projectSnapshot } from "./ipc/snapshot";
 import type { Snapshot } from "./ipc/snapshot";
 import { runHelperRequest } from "./HelperRequest";
 import { restoreLayout } from "./LayoutRestore";
+import { decodeWorkspaceModes } from "./WorkspaceModes";
+import type { WorkspaceModeMemory } from "./WorkspaceModes";
 
 export type LayoutPersistenceOptions = { readonly identity: string; readonly restartRecovery?: boolean };
-export type LayoutRestoreAction = { readonly restoreLayout: true; readonly snapshot: Snapshot };
+export type LayoutRestoreAction = { readonly restoreLayout: true; readonly snapshot: Snapshot; readonly workspaceModes?: WorkspaceModeMemory };
 /** A process-incarnation key prevents reused native IDs matching an old desktop. */
 async function identity(domicile: Domicile, helper: string) {
   if (!helper || /[\s\0?#]/u.test(helper) || helper.includes("://")) throw Error("Invalid layout helper");
@@ -16,9 +18,9 @@ async function identity(domicile: Domicile, helper: string) {
   return value.key as string;
 }
 
-export function useLayoutPersistence(domicile: Domicile, state: WindowState, described: boolean,
+export function useLayoutPersistence(domicile: Domicile, state: WindowState & { readonly workspaceModes?: WorkspaceModeMemory }, described: boolean,
   config: LayoutPersistenceOptions | undefined, dispatch: (action: LayoutRestoreAction) => void) {
-  const [loaded, setLoaded] = useState<{ key: string; snapshot?: Snapshot }>();
+  const [loaded, setLoaded] = useState<{ key: string; snapshot?: Snapshot; workspaceModes?: WorkspaceModeMemory }>();
   const [ready, setReady] = useState(config === undefined);
   const [error, setError] = useState<string>();
   const failed = useRef(false);
@@ -32,7 +34,8 @@ export function useLayoutPersistence(domicile: Domicile, state: WindowState, des
         Ok: text => { if (text.length > 8 * 1024 * 1024) throw Error("Saved layout limit"); return JSON.parse(text); }, Err: () => undefined,
       });
       if (value && (value.version !== 1 || value.identity !== key)) throw Error("Saved layout identity mismatch");
-      if (!disposed) setLoaded({ key, snapshot: value?.snapshot });
+      const workspaceModes = value?.workspaceModes === undefined ? undefined : decodeWorkspaceModes(value.workspaceModes);
+      if (!disposed) setLoaded({ key, snapshot: value?.snapshot, workspaceModes });
     })().catch(() => { if (!disposed) { setError("Layout retention is unavailable"); setReady(true); } });
     return () => { disposed = true; };
   }, [domicile, config]);
@@ -42,7 +45,7 @@ export function useLayoutPersistence(domicile: Domicile, state: WindowState, des
     const ids = new Set(state.windows.map(w => w.id));
     if (domicile.windows.list.some(w => !ids.has("app:" + w.appId)) || domicile.browser.windows.some(w => !ids.has("browser:" + w.id))) return;
     if (loaded.snapshot !== undefined) {
-      try { restoreLayout(state, loaded.snapshot); dispatch({ restoreLayout: true, snapshot: loaded.snapshot }); }
+      try { restoreLayout(state, loaded.snapshot); dispatch({ restoreLayout: true, snapshot: loaded.snapshot, workspaceModes: loaded.workspaceModes }); }
       catch { failed.current = true; setError("Saved layout was rejected; the saved file is kept"); }
     }
     setReady(true);
@@ -54,7 +57,8 @@ export function useLayoutPersistence(domicile: Domicile, state: WindowState, des
     const save = async () => {
       if (writing.current || disposed || failed.current || domicile.session.locked !== false) return;
       const snapshot = projectSnapshot({ state: current.current, screens: [], browsers: domicile.browser.windows });
-      const text = JSON.stringify({ version: 1, identity: loaded.key, snapshot });
+      const text = JSON.stringify({ version: 1, identity: loaded.key, snapshot,
+        ...(current.current.workspaceModes === undefined ? {} : { workspaceModes: current.current.workspaceModes }) });
       if (text === signature.current) return;
       writing.current = true;
       try {

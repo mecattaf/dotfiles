@@ -2,6 +2,9 @@ import { isAgentDesktopId } from "./AgentWindows";
 import { restoreLayout } from "./LayoutRestore";
 import { useLayoutPersistence } from "./useLayoutPersistence";
 import type { LayoutRestoreAction, LayoutPersistenceOptions } from "./useLayoutPersistence";
+import { workspaceModeOf, setWorkspaceMode, reconcileWorkspaceModes, rememberFloatingGeometry, toggleWindowZoom } from "./WorkspaceModes";
+import type { WorkspaceMode, WorkspaceModeMemory } from "./WorkspaceModes";
+import type { Rect } from "@domicile-desktop/manganese-window-management/rect";
 // Agency's state/effects bridge, adapted from Manganese useWindows.ts,
 // window-changes.ts, window-requests.ts and open-command.ts at:
 // https://github.com/cprussin/domicile/tree/67c29a9906905bd5e1679803232c2f510b3fed9e
@@ -78,6 +81,9 @@ export type Windows = WindowState & {
   layoutReady: boolean;
   layoutIdentity?: string;
   recoverLayout: (snapshot: import("./ipc/snapshot").Snapshot) => void;
+  workspaceModes: WorkspaceModeMemory;
+  changeWorkspaceMode: (name: string, target: WorkspaceMode | "toggle", area: Rect) => void;
+  zoomWindow: (id: string, area: Rect) => void;
   layoutError?: string;
   /** The active window, floating or tiled. */
   activeId: string | undefined;
@@ -110,19 +116,50 @@ export const useAgencyWindows = (
   policy: AgencyPolicy = DEFAULT_AGENCY_POLICY,
   webBrowser?: WebBrowserOptions,
   layoutPersistence?: LayoutPersistenceOptions,
+  workspaceModesEnabled = false,
 ): Windows => {
+  type State = WindowState & { readonly workspaceModes: WorkspaceModeMemory };
+  type ModeAction = { readonly workspaceMode: true; readonly name: string; readonly target: WorkspaceMode | "toggle"; readonly area: Rect };
+  type ZoomAction = { readonly windowZoom: true; readonly id: string; readonly area: Rect };
   const reducer = useMemo(() => {
     const reduce = createAgencyReducer(policy);
-    return (before: WindowState, action: WindowAction | AmbientTransition | ChatPlacement | ChatNativeBatch | LayoutRestoreAction) =>
-      "restoreLayout" in action ? (() => { try { return restoreLayout(before, action.snapshot, policy); }
-        catch { console.error("Imagine rejected saved layout"); return before; } })()
-      : "ambient" in action ? reduceAmbient(before, action, reduce)
-      : "chatNativeBatch" in action ? reduceChatNativeBatch(before, action, reduce)
-      : "chatPlacement" in action ? placeChatWindow(before, action, reduce) : reduce(before, action);
-  }, [policy]);
-  const [state, dispatch] = useReducer(reducer, undefined, () => initialAgencyState(policy));
+    return (before: State, action: WindowAction | AmbientTransition | ChatPlacement | ChatNativeBatch | LayoutRestoreAction | ModeAction | ZoomAction): State => {
+      if ("workspaceMode" in action) {
+        if (!workspaceModesEnabled) return before;
+        const current = workspaceModeOf(before.workspaceModes, action.name);
+        const target = action.target === "toggle" ? current === "scrolling" ? "floating" : "scrolling" : action.target;
+        const result = setWorkspaceMode(before, before.workspaceModes, action.name, target, action.area);
+        return { ...result.state, workspaceModes: result.memory };
+      }
+      if ("windowZoom" in action) {
+        const result = toggleWindowZoom(before, before.workspaceModes, action.id, action.area);
+        return { ...result.state, workspaceModes: result.memory };
+      }
+      let after: WindowState;
+      let memory = before.workspaceModes;
+      if ("restoreLayout" in action) {
+        try { after = restoreLayout(before, action.snapshot, policy); }
+        catch { console.error("Imagine rejected saved layout"); return before; }
+        memory = action.workspaceModes ?? memory;
+      } else if ("ambient" in action) after = reduceAmbient(before, action, reduce);
+      else if ("chatNativeBatch" in action) after = reduceChatNativeBatch(before, action, reduce);
+      else if ("chatPlacement" in action) after = placeChatWindow(before, action, reduce);
+      else after = reduce(before, action);
+      if (!workspaceModesEnabled) return { ...after, workspaceModes: memory };
+      const result = reconcileWorkspaceModes(after, memory, name => {
+        const screen = after.screens.find(item => item.current === name)
+          ?? after.screens.find(item => item.name === after.homes[name]);
+        return screen === undefined ? undefined : { ...screen.box, x: 0, y: 0 };
+      });
+      return { ...result.state, workspaceModes: rememberFloatingGeometry(result.state, result.memory) };
+    };
+  }, [policy, workspaceModesEnabled]);
+  const [state, dispatch] = useReducer(reducer, undefined, () => ({ ...initialAgencyState(policy), workspaceModes: {} }));
   const layout = useLayoutPersistence(domicile, state, displays !== undefined, layoutPersistence, dispatch);
   const recoverLayout = useCallback((snapshot: import("./ipc/snapshot").Snapshot) => dispatch({ restoreLayout: true, snapshot }), []);
+  const changeWorkspaceMode = useCallback((name: string, target: WorkspaceMode | "toggle", area: Rect) =>
+    dispatch({ workspaceMode: true, name, target, area }), []);
+  const zoomWindow = useCallback((id: string, area: Rect) => dispatch({ windowZoom: true, id, area }), []);
   const transitionAmbient = useCallback((transition: AmbientTransition) => dispatch(transition), []);
   const placeChat = useCallback((placement: ChatPlacement) => dispatch(placement), []);
   const reservations = useRef(new Map<string, { placement: ChatReservation; expires: number }>());
@@ -292,9 +329,11 @@ export const useAgencyWindows = (
       layoutReady: layout.ready,
       layoutIdentity: layout.identity,
       recoverLayout,
+      changeWorkspaceMode,
+      zoomWindow,
       layoutError: layout.error,
     }),
-    [act, state, transitionAmbient, placeChat, reserveChat, recoverLayout, layout.ready, layout.error, layout.identity],
+    [act, state, transitionAmbient, placeChat, reserveChat, recoverLayout, changeWorkspaceMode, zoomWindow, layout.ready, layout.error, layout.identity],
   );
 };
 

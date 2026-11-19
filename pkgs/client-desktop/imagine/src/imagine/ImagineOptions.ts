@@ -21,4 +21,6 @@ export type ImagineOptions = {
   readonly webBrowser?: WebBrowserOptions;
   readonly sessionCatalogue?: import("./SessionCatalogue").CatalogueOptions;
   readonly layoutPersistence?: import("./useLayoutPersistence").LayoutPersistenceOptions;
+  /** Per-workspace scrolling columns or a floating desktop with tab groups. */
+  readonly workspaceModes?: boolean;
 };

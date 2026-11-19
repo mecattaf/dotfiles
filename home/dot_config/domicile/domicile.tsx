@@ -11,9 +11,11 @@ import {
   floating,
   focus,
   fullscreen,
+  group,
   layout,
   move,
   split,
+  scratchpad,
   volume,
 } from "@domicile-desktop/manganese-window-management/keyboard/commands";
 import { ownedChords } from "@domicile-desktop/sdk/own-keybindings";
@@ -52,6 +54,13 @@ const keybindings = {
   "Meta+Control+Shift+s": layout("stacking"),
   "Meta+Control+e": layout("toggle split"),
   "Meta+equal": fullscreen(),
+  "Meta+f": agency("size-preset", "width", "next"),
+  "Meta+Shift+f": agency("size-preset", "width", "prev"),
+  "Meta+g": agency("size-preset", "height", "next"),
+  "Meta+Shift+g": agency("size-preset", "height", "prev"),
+  "Meta+Control+g": group(),
+  "Meta+Control+space": agency("workspace-mode", "toggle"),
+  "Meta+minus": scratchpad(),
   "Meta+bracketleft": move("left"),
   "Meta+bracketright": move("right"),
   "Meta+o": clearNotifications(),
@@ -85,6 +94,8 @@ const imagineShell = runImagine({
   // the warmth the old external monitors used.
   displayTemperatures: { [upperPanel]: 3850, [lowerPanel]: 3350, [external5k]: 4000 },
   layoutPersistence: { identity: "agency-layout-identity" },
+  workspaceModes: true,
+  audioControls: true,
   webBrowser: { command: ["domicile-apps", "chrome"] },
   policy: {
     upperDisplay: upperPanel,
