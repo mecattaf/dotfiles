@@ -30,7 +30,8 @@
 #
 # KITTY-PERSIST.CONF (~/.config/kitty-persist/kitty-persist.conf, read on the
 # laptop): the default remote host is the fleet's ssh name for the brain host
-# (modules/fleet-hosts.nix), and each host whose block in
+# (modules/fleet-hosts.nix), the microphone is forwarded (forward_audio), and
+# each host whose block in
 # home/dot_config/kitty/ssh.conf sets `login_shell fish` gets the same line,
 # because the account shell is bash fleet-wide (modules/common.nix).
 #
@@ -56,7 +57,14 @@
       # line is in home/dot_config/kitty/kitty.conf.
       include = false;
     };
-    settings.host = lib.mkDefault "nas";
+    settings = {
+      host = lib.mkDefault "nas";
+      # The laptop's microphone reaches an agent in a session that records
+      # (Claude Code's voice mode on the brain host, which has the ALSA pulse
+      # plugin compiled in: hosts/nas). Read when a session is created and at
+      # each attach; the product's default is off.
+      forward_audio = lib.mkDefault true;
+    };
     hosts = {
       nas.login_shell = lib.mkDefault "fish";
       strix.login_shell = lib.mkDefault "fish";

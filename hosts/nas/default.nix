@@ -92,8 +92,8 @@ in
     linger = [ "tom" ];
     # The microphone path of an agent that records through ALSA: ALSA's pulse
     # plugin compiled into the program (the closure gains the PulseAudio
-    # client library). Whether the laptop forwards its microphone at all is
-    # the laptop's forward_audio, off unless set (home/kitty-persist.nix).
+    # client library). The laptop forwards its microphone with forward_audio
+    # (home/kitty-persist.nix).
     alsaPulsePlugin = true;
   };
   # The live skill roots are writable directories. Keep them frozen for the
