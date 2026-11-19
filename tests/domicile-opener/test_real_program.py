@@ -529,6 +529,49 @@ class RealProgram(unittest.TestCase):
         w.close()
         w.gone()
 
+    def test_other_entry_points(self):
+        """domicile-apps (Meta+Return and attach), and an agent-requested
+        terminal through the agent-window client, on the same wrapper."""
+        d = Desk(self, "entries")
+        apps = str(support.BIN / "domicile-apps")
+        d.st.spawn("apps-0", [apps], d.env())
+        w = d.window()
+        sid = w.attached()
+        self.assertEqual(w.cls, "kitty-persist-" + sid)
+        w.close()
+        w.gone()
+        d.st.spawn("apps-1", [apps, "attach", sid], d.env())
+        w = d.window()
+        w.attached(sid)
+        w.close()
+        w.gone()
+        cp = d.st.run([apps, "restore", "--dry-run"], d.env(), timeout=60)
+        self.assertEqual(json.loads(cp.stdout)["open"], [sid], cp.stderr)
+
+        sys.path.insert(0, str(support.AGENT_WINDOWS))
+        client = support.load(support.AGENT_WINDOWS / "client.py", "agent_windows_client_real")
+        home = Path(d.st.d["home"])
+        (home / ".local/bin").mkdir(parents=True)
+        (home / ".local/bin/domicile-persist").symlink_to(WRAPPER)
+        request = {"desktop": "zenbook", "requestId": "6f1c2b9e-0d4a-11ef-8b1a-0242ac120002",
+                   "kind": "terminal", "cwd": str(home)}
+        (home / client.ROOT / request["requestId"].replace("-", "")).mkdir(parents=True, mode=0o700)
+        value = dict(request, tag=client.tag(request))
+        agent = client.session_id(request["requestId"])
+        self.assertTrue(agent.startswith(MARKER))
+        from unittest import mock
+        for attempt in range(2):  # a retried request names the same session
+            with mock.patch.dict(os.environ, d.env(), clear=True), mock.patch.object(client, "KITTY", str(d.shim)):
+                self.assertEqual(client.launch(value)["tag"], "kitty-persist-" + agent)
+            w = d.window()
+            self.assertEqual(w.cls, "kitty-persist-" + agent)
+            w.attached(agent)
+            wait_for(lambda: w.cls in d.st.sway_app_ids(), 10, "the agent window's app id")
+            w.close()
+            w.gone()
+        self.assertEqual([r["id"] for r in d.records()].count(agent), 1)
+        self.assertEqual(d.record(agent)["launch_cwd"], str(home))
+
     def test_ten_windows_at_once(self):
         """Desk item 12, step 5: ten openers at the same moment all attach."""
         d = Desk(self, "ten")
