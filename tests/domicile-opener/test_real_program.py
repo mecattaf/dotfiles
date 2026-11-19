@@ -453,7 +453,7 @@ class RealProgram(unittest.TestCase):
         w.close()
         w.gone()
 
-        start = len(d.outcomes())
+        start = len(d.actions())
         d.stop_sshd()
         d.opener("open", DOMICILE_PERSIST_CONNECT_WAIT="4")
         w = d.window()
