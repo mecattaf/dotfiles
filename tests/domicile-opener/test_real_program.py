@@ -25,6 +25,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -81,9 +82,12 @@ class Window:
     def alive(self):
         return harness.proc_alive(self.pid)
 
-    def user_vars(self):
+    def windows(self):
         ls = json.loads(self.rc("ls").stdout)
-        return [w.get("user_vars") or {} for o in ls for t in o.get("tabs", []) for w in t.get("windows", [])][0]
+        return [w for o in ls for t in o.get("tabs", []) for w in t.get("windows", [])]
+
+    def user_vars(self):
+        return self.windows()[0].get("user_vars") or {}
 
     def text(self):
         return self.rc("get-text", "--extent", "all").stdout.decode("utf-8", "replace")
@@ -92,7 +96,7 @@ class Window:
         self.rc("send-text", "--stdin", data=text.encode())
 
     def close(self):
-        self.rc("close-window", check=False)
+        self.rc("close-window", "--match", "all", check=False)
 
     def attached(self, sid=None, timeout=40):
         def ok():
@@ -110,7 +114,7 @@ class Window:
 class Desk:
     """A private desktop: compositor, remote host, the opener and its windows."""
 
-    def __init__(self, test, case, sshd=True, settings=()):
+    def __init__(self, test, case, sshd=True, settings=(), home_files=None):
         self.test = test
         out = os.environ.get("DP_OUT") or tempfile.mkdtemp(prefix="dp-out-")
         self.st = harness.Stack(f"dp-{case}", os.path.join(out, case))
@@ -123,6 +127,9 @@ class Desk:
         self.log = self.root / "window.jsonl"
         self.launches = self.root / "launches"
         self.shim = Path(self.st.d["bin"]) / "kitty-shim"
+        kitty_conf = os.path.join(self.st.d["conf"], "kitty.conf")
+        if home_files:
+            kitty_conf = self.owner_home(Path(home_files))
         # The opener's kitty, with a private remote-control socket per instance
         # for the test; everything else on the line is the opener's own.
         q = shlex.quote
@@ -130,13 +137,33 @@ class Desk:
             "#!/bin/sh\n"
             f"sock={q(str(self.root))}/k-$$.sock\n"
             f"printf '%s\\n' \"$$ $sock $*\" >> {q(str(self.launches))}\n"
-            f"exec {q(self.st.kitty)} --config {q(self.st.d['conf'])}/kitty.conf --listen-on unix:$sock"
+            f"exec {q(self.st.kitty)} --config {q(kitty_conf)} --listen-on unix:$sock"
             " -o allow_remote_control=socket-only \"$@\"\n")
         self.shim.chmod(0o700)
         if sshd:
             self.st.start_sshd()
         self.st.start_sway()
         self.seen = 0
+
+    def owner_home(self, hf):
+        """The private home as the client's Home Manager files lay it out (the
+        owner's Kitty configuration with the product's lines and the personal
+        ones); kitty-persist itself still reads the stack's own file
+        (KITTY_PERSIST_CONFIG), so every ssh goes to the private sshd."""
+        cfg = Path(self.st.d["home"]) / ".config"
+        cfg.mkdir()
+        for entry in sorted((hf / ".config").iterdir()):
+            if entry.name == "kitty":
+                shutil.copytree(entry, cfg / "kitty", symlinks=False)
+                for top, dirs, files in os.walk(cfg / "kitty"):
+                    os.chmod(top, 0o755)
+                    for name in files:
+                        os.chmod(os.path.join(top, name), 0o644)
+            else:
+                (cfg / entry.name).symlink_to(entry)
+        if (hf / ".config/themes/noir").is_dir():
+            (cfg / "theme").symlink_to(hf / ".config/themes/noir")
+        return str(cfg / "kitty" / "kitty.conf")
 
     def env(self, **extra):
         env = self.st.laptop_env()
@@ -578,6 +605,65 @@ class RealProgram(unittest.TestCase):
             w.gone()
         self.assertEqual([r["id"] for r in d.records()].count(agent), 1)
         self.assertEqual(d.record(agent)["launch_cwd"], str(home))
+
+    def test_kitty_new_window_and_tab(self):
+        """Kitty's own new window and new tab inside a persistent window run the
+        shell option the opener set: each starts its own persistent session."""
+        d = Desk(self, "kittynew")
+        d.opener("open", "--cwd", d.st.d["home"])
+        w = d.window()
+        sid = w.attached()
+        w.rc("launch", "--type=window")
+        w.rc("launch", "--type=tab")
+
+        def three():
+            ids = [(x.get("user_vars") or {}).get("persist_id") for x in w.windows()]
+            states = [(x.get("user_vars") or {}).get("persist_state") for x in w.windows()]
+            return len(ids) == 3 and all(ids) and states == ["attached"] * 3 and ids
+        ids = wait_for(three, 40, "three attached windows in one Kitty")
+        self.assertEqual(ids[0], sid)
+        self.assertEqual(len(set(ids)), 3)
+        for other in ids[1:]:
+            self.assertRegex(other, UUID4)
+            self.assertFalse(other.startswith(MARKER))
+            self.assertEqual(d.record(other)["labels"], {"opener": "domicile"})
+            self.assertEqual(d.record(other)["clients"], 1)
+        w.close()
+        w.gone()
+        running = {r["id"]: r["clients"] for r in d.records(everything=False)}
+        self.assertEqual({i: running.get(i) for i in ids}, {i: 0 for i in ids})
+
+    @unittest.skipUnless(os.environ.get("DP_HOME_FILES"), "needs DP_HOME_FILES (the client's built home-files)")
+    def test_owner_kitty_configuration(self):
+        """The daily cycle in Kitty as the owner's configuration sets it up
+        (kitty.conf, the agency include, the product's lines, the personal
+        lines): open, type, Kitty's new window, close all, reopen, exit."""
+        d = Desk(self, "owner", home_files=os.environ["DP_HOME_FILES"])
+        d.opener("open", "--cwd", d.st.d["home"])
+        w = d.window()
+        sid = w.attached()
+        wait_for(lambda: w.cls in d.st.sway_app_ids(), 10, "the class as the compositor's app id")
+        w.send("echo dp-$((2+3))\r")
+        w.shows("dp-5")
+        w.rc("launch", "--type=window")
+
+        def two():
+            u = [(x.get("user_vars") or {}) for x in w.windows()]
+            return len(u) == 2 and all(v.get("persist_state") == "attached" for v in u) and [v["persist_id"] for v in u]
+        ids = wait_for(two, 40, "two attached windows")
+        self.assertEqual(ids[0], sid)
+        self.assertNotEqual(ids[1], sid)
+        w.close()
+        w.gone()
+        wait_for(lambda: all(d.record(i)["clients"] == 0 for i in ids), 15, "both detached")
+        self.assertEqual(d.actions(), [(0, "close"), (0, "close")])
+        d.opener("reopen", sid)
+        w = d.window()
+        w.attached(sid)
+        w.shows("dp-5")
+        w.send("exit\r")
+        w.gone()
+        self.assertEqual(d.actions()[-1], (10, "close"))
 
     def test_ten_windows_at_once(self):
         """Desk item 12, step 5: ten openers at the same moment all attach."""
