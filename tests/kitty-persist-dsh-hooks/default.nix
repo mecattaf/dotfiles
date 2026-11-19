@@ -73,7 +73,8 @@ pkgs.runCommand "kitty-persist-dsh-hooks"
     grep -qE "export DSH_KITTY_PERSIST_HARNESS='?dsh-native'?$" "$dsh"
 
     # The program accepts the definition (exit 0; 64 would be invalid).
-    XDG_CONFIG_HOME="$TMPDIR/check-config" ${kitty-persist}/bin/kitty-persist harness check ${definition}
+    cp ${definition} "$TMPDIR/dsh-native.json"
+    XDG_CONFIG_HOME="$TMPDIR/check-config" ${kitty-persist}/bin/kitty-persist harness check "$TMPDIR/dsh-native.json"
 
     export DSH_BIN="$dsh" KP_DEFINITION=${definition} KP_PROGRAM=${kitty-persist}/bin/kitty-persist
     export MOCK_GUFO_CONFIG=${pkgs.lib.escapeShellArg (builtins.toJSON dsh.localProviders.gufo)}
