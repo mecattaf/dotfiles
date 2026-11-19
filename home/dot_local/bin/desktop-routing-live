@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""Update only an owned Domicile session's xdg-open link, preserving its runtime."""
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+
+def apply(runtime,helper):
+    uid=os.getuid();changed=[]
+    root=runtime.lstat()
+    if not stat.S_ISDIR(root.st_mode) or root.st_uid!=uid or root.st_mode&0o077:
+        raise RuntimeError('private owned runtime directory required')
+    for directory in runtime.glob('domicile-*'):
+        match=re.fullmatch(r'domicile-(\d+)',directory.name)
+        if not match:continue
+        process=Path('/proc')/match[1]
+        try:
+            if process.stat().st_uid!=uid or not Path(os.readlink(process/'exe')).name.startswith('domicile'):continue
+            if directory.lstat().st_uid!=uid or directory.is_symlink():continue
+            parent=directory/'bin';entry=parent/'xdg-open'
+            if parent.lstat().st_uid!=uid or parent.is_symlink():continue
+            info=entry.lstat()
+            if info.st_uid!=uid or not stat.S_ISLNK(info.st_mode):continue
+            target=os.readlink(entry)
+            if target!=str(helper) and not (target.startswith('/nix/store/') and target.endswith('/bin/domicile-xdg-open')):continue
+            temporary=parent/'xdg-open.desktop-routing'
+            temporary.symlink_to(helper);os.replace(temporary,entry)
+            changed.append(str(entry))
+        except FileNotFoundError:continue
+    return changed
+
+if __name__=='__main__':
+    try:
+        helper=Path.home()/'.local/bin/desktop-open'
+        if not helper.is_file():raise RuntimeError('managed desktop-open is missing')
+        changed=apply(Path(os.environ['XDG_RUNTIME_DIR']),helper)
+        subprocess.run(['/run/current-system/sw/bin/systemctl','--user','set-environment',f'BROWSER={Path.home()}/.local/bin/desktop-web'],check=True)
+        print(json.dumps({'xdgOpenLinks':changed,'browserForNewUserServices':str(Path.home()/'.local/bin/desktop-web')}))
+    except (KeyError,OSError,RuntimeError,subprocess.SubprocessError) as error:
+        raise SystemExit(f'desktop-routing-live: {error}')

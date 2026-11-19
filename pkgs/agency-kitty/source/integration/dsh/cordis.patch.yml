@@ -1,5 +1,0 @@
-- insert:
-    - id: agency-kitty-native
-      name: '@agency/kitty-native'
-      config:
-        command: '@AGENCY_KITTY_COMMAND@'

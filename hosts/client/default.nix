@@ -18,12 +18,9 @@
 # the NetworkManager profiles all stay, and the Omarchy generation stays in
 # the boot menu as the rollback.
 #
-# WHAT IT IS, in one line: a thin client. It shows Tom Sway, kitty, Chrome and
-# the dock's peripherals. Herdr and the Claude/Codex/dsh sessions run on NAS;
-# builds and model inference run on the Strix compute pair. Mod+Return is a
-# herdr window INTO NAS (~/.local/bin/herdr-projector, `herdr --remote
-# nas`, driven by herdr-chord from sway/binds.conf, #385); `desk` is the fish
-# spelling of the same thing.
+# The physical Domicile seat owns Kitty, Chrome and the dock peripherals.
+# Herdr and agent sessions run on NAS; builds and inference run on compute.
+# Meta+Return opens a fresh NAS terminal through domicile-apps.
 #
 # WHAT IT IS NOT:
 #   * not an agent host — no herdr server (home/herdr.nix is brain-
@@ -68,7 +65,7 @@
 # hosts/zenbook-duo/hardware.nix merged with 77eac406^'s host module; each
 # omission is recorded where it would have gone.
 {
-  # Sway + Vicinae desktop (myDisplay.enable defaults to true); hardware
+  # Domicile desktop (myDisplay.enable defaults to true); hardware
   # stays host-specific.
 
   imports = [
@@ -76,7 +73,7 @@
     ./hardware.nix
     ./disko.nix
     ./audio.nix # pins the iContact webcam mic (on the dock) as the default source
-    ./lid.nix # the lid does nothing to logind; Sway (sway-local.conf) owns the backlight half
+    ./lid.nix # the lid does nothing to logind; Domicile owns the backlights
     ./strix-reachability.nix
     ./trackpad.nix
     ./huion.nix # the Huion Note X10 paper inbox: patched bluetoothd, hid-generic unbind
@@ -90,13 +87,17 @@
     inputs.nixos-hardware.nixosModules.common-pc-laptop-ssd
     ../../modules/zenbook-duo-daemon.nix
     ../../modules/keyring-autounlock.nix # TPM-sealed keyring unlock; greetd autologin types no password
+    ../../modules/domicile.nix
+    ../../modules/agency-web-client.nix
   ];
 
   networking.hostName = "client";
   myFleet.roles = [ "seat" ];
+  programs.agencyWebClient.enable = true;
+  programs.agencyWebClient.ambient.enable = true;
 
   # No dotfiles checkout on the thin client (Tom, 2026-10-11, about ~/dotfiles
-  # and ~/mecattaf here: "i dnt need here"). Every raw dotfile (sway, kitty,
+  # and ~/mecattaf here: "i dnt need here"). Every raw dotfile (Domicile, kitty,
   # fish, ~/.local/bin, herdr's config.toml, nvim) comes from the Nix store,
   # so a deploy from the strix carries both halves at one rev and nothing has
   # to be pulled here afterwards. This also turns off raw-dotfiles-guard and
@@ -267,16 +268,11 @@
   systemd.services."systemd-backlight@backlight:card1-eDP-2-backlight".enable = false;
   services.udev.extraRules = ''
     ACTION=="add", SUBSYSTEM=="backlight", KERNEL=="intel_backlight|card1-eDP-2-backlight", RUN+="${pkgs.bash}/bin/sh -c 'cat /sys/class/backlight/%k/max_brightness > /sys/class/backlight/%k/brightness'"
-    # touchpad-toggle lights the Caps LED while the touchpad is off; let the
-    # seat user (group video) write it without a logind round trip.
-    ACTION=="add", SUBSYSTEM=="leds", KERNEL=="*::capslock", RUN+="${pkgs.coreutils}/bin/chgrp video /sys/class/leds/%k/brightness", RUN+="${pkgs.coreutils}/bin/chmod g+w /sys/class/leds/%k/brightness"
   '';
 
   # The dock contract (modules/zenbook-duo-daemon.nix): keyboard on → eDP-2
-  # off, backlights synced, Fn keys. kanshi's `Duo` profile covers both panels
-  # lit; with the keyboard docked only eDP-1 remains and kanshi applies
-  # `DuoDocked` (home/dot_config/kanshi/config, one of the Duo's two profiles
-  # — the dock-monitor ones went on 2026-09-13, see that file's header).
+  # off, backlights synced, Fn keys. Domicile selects Duo with both panels
+  # present and DuoDocked with only the upper panel.
   services.zenbook-duo-daemon.enable = true;
 
   # ── the Duo's own quirks, all measured on this metal by omarchy-fleet ──────

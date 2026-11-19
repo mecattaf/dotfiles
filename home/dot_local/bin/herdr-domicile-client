@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Compatibility for already open Herdr projectors; new terminals use SSH."""
+import os
+from pathlib import Path
+import sys
+import termios
+import tomllib
+
+CONTEXT = ("HERDR_ENV", "HERDR_SOCKET_PATH", "HERDR_CLIENT_SOCKET_PATH", "HERDR_SESSION",
+           "HERDR_WORKSPACE_ID", "HERDR_TAB_ID", "HERDR_PANE_ID", "HERDR_TERMINAL_ID")
+
+def clean_environment():
+    return {k: v for k, v in os.environ.items() if k not in CONTEXT}
+
+def desktop_client_config(env):
+    # The console trial selects trusted store-backed TOML without moving XDG
+    # directories, HOME or the ordinary Chrome profile.
+    if "DOMICILE_DESKTOP_CLIENT_CONFIG" in env:
+        selected = env["DOMICILE_DESKTOP_CLIENT_CONFIG"]
+        if not selected or not Path(selected).is_absolute():
+            raise ValueError("DOMICILE_DESKTOP_CLIENT_CONFIG must be an absolute file path")
+        path = Path(selected)
+    else:
+        path = Path(env.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "herdr/desktop-client.toml"
+    try:
+        if not path.is_file():
+            raise ValueError(f"desktop client config must be a readable regular TOML file: {path}")
+        with path.open("rb") as source:
+            tomllib.load(source)
+    except OSError:
+        raise ValueError(f"cannot read desktop client config: {path}") from None
+    except (tomllib.TOMLDecodeError, UnicodeError):
+        raise ValueError(f"desktop client config is not valid TOML: {path}") from None
+    return str(path)
+
+def discard_typeahead():
+    termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+
+def gate(args):
+    # HERDR_BIN child: keep the projector child's PID for transport cleanup.
+    if args != ["--remote", "nas", "--remote-keybindings", "server"]:
+        print("Refusing unexpected Herdr arguments.", file=sys.stderr)
+        return 2
+    if os.environ.get("DOMICILE_HERDR_ATTACH") != "1":
+        print("Start the NAS projector through domicile-terminal.", file=sys.stderr)
+        return 2
+    env = clean_environment()
+    env.pop("DOMICILE_HERDR_ATTACH", None)
+    try:
+        env["HERDR_CONFIG_PATH"] = desktop_client_config(env)
+    except ValueError as error:
+        print(f"domicile-terminal: {error}", file=sys.stderr)
+        return 2
+    # Discard keys typed during SSH preflight on every attachment attempt.
+    discard_typeahead()
+    os.execvpe("herdr", ["herdr", *args], env)
+
+if __name__ == "__main__":
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        print("herdr-domicile-client: interactive terminal required", file=sys.stderr)
+        raise SystemExit(2)
+    raise SystemExit(gate(sys.argv[1:]))

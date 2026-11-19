@@ -1,0 +1,58 @@
+bun test v1.4.4 (38afee6c8)
+
+src/imagine/controls.test.ts:
+(pass) native Duo brightness > selects both DRM eDP panels, prioritizes intel and excludes screenpad [1.25ms]
+(pass) native Duo brightness > two percent fine steps and maximum use the same selected pair [0.34ms]
+(pass) native Duo brightness > normal controls keep the visible floor and synchronize different raw ranges [0.20ms]
+(pass) native Duo brightness > F10 explicitly blanks and restores the previously selected level [0.25ms]
+(pass) native Duo brightness > repeat presses are serialized without lost increments [0.15ms]
+(pass) native Duo brightness > partial failures reject and do not poison the next key [0.25ms]
+(pass) native Duo brightness > no DRM panels and disposed controls make no hardware calls [0.06ms]
+(pass) native Duo brightness > bad levels and invalid ranges fail before hardware writes [0.10ms]
+(pass) native MPRIS controls > prefers a playing player and returns fresh metadata/status [0.69ms]
+(pass) native MPRIS controls > next/previous return the track the player reports after invocation [0.13ms]
+(pass) native MPRIS controls > capabilities exclude a noncontrollable player or unsupported action [0.09ms]
+(pass) native MPRIS controls > an empty player list and disposal never invoke transport methods [0.06ms]
+(pass) native MPRIS controls > enumeration races skip only disappeared owners [0.11ms]
+(pass) native MPRIS controls > real permission failures surface instead of being called no player [0.07ms]
+(pass) native MPRIS controls > repeated play/pause calls are serialized in key order [0.10ms]
+
+src/imagine/layout.test.ts:
+(pass) Agency zero-gap public Stage placement > one window touches every output edge and keeps stock title/surface tuck [0.36ms]
+(pass) Agency zero-gap public Stage placement > nested horizontal/vertical splits meet with no margins or gaps [0.26ms]
+(pass) Agency zero-gap public Stage placement > nested tab groups retain tabs and remove the group well's margin [0.29ms]
+(pass) Agency zero-gap public Stage placement > group fullscreen keeps zero gaps and one copy of each window [0.13ms]
+(pass) Agency zero-gap public Stage placement > client fullscreen still fills the complete screen without title chrome [0.03ms]
+(pass) Agency zero-gap public Stage placement > scale-2 logical outputs reserve only the focused rail and no bar strip [0.87ms]
+
+src/imagine/policy.test.ts:
+(pass) fixed workspace homes > starts on upper1/lower10 and reserves every empty slot [0.77ms]
+(pass) fixed workspace homes > selecting empty1..9 from downstairs always goes upstairs [0.97ms]
+(pass) fixed workspace homes > keyboard focus survives native focus/list feedback, while actual output hover still follows the pointer [1.67ms]
+(pass) fixed workspace homes > repeating the slot chord does not invoke stock back-and-forth [0.06ms]
+(pass) fixed workspace homes > sending a window downstairs does not move the upper workspace [0.32ms]
+(pass) fixed workspace homes > empty homes survive close, hide and metadata transitions [0.24ms]
+(pass) fixed workspace homes > one-screen fallback keeps10 usable and restores lower on reconnect [0.23ms]
+(pass) fixed workspace homes > explicit identities outrank enumeration/geometry order [0.07ms]
+(pass) split insertion > each normal native window splits, including initial lists [0.51ms]
+(pass) split insertion > new workspaces and downstairs get the same insertion policy [0.37ms]
+(pass) split insertion > one browser batch splits every normal window in opening order [0.47ms]
+(pass) split insertion > browser popup/background entries retain stock floating/hidden behavior [0.52ms]
+(pass) split insertion > native dialogs and popups do not become tiled windows [0.49ms]
+(pass) split insertion > normal windows joining an explicitly floating group stay floating [0.27ms]
+(pass) split insertion > an explicit tab group remains available, while the next window splits [0.60ms]
+(pass) split insertion > replayed lists and metadata do not resplit intentional groups [0.28ms]
+(pass) split insertion > the chosen axis applies to each new split [0.22ms]
+(pass) owned request lifecycle > late-open request listeners are stopped once without dispatch [0.33ms]
+(pass) owned request lifecycle > owned streams stop dispatching after unmount and surface failures [0.23ms]
+(pass) bounded clipboard routing > keeps explicit URLs and recognizes local/domain copies [0.15ms]
+(pass) bounded clipboard routing > searches ordinary text and ignores an empty copy [0.01ms]
+(pass) direct vertical output focus > jumps past local vertical neighbors and restores the other output's selection [0.65ms]
+(pass) direct vertical output focus > dock mode and horizontal neighbors do not invent a vertical target [0.08ms]
+(pass) direct vertical output focus > uses logical geometry and chooses the nearest screen beyond the edge [0.05ms]
+(pass) direct vertical output focus > a disconnected or not-yet-described output is a no-op [0.03ms]
+
+ 46 pass
+ 0 fail
+ 178 expect() calls
+Ran 46 tests across 3 files. [92.00ms]

@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /etc/profiles/per-user/tom/bin/python3 /home/tom/.local/lib/agency-chat-window/client/chrome_launcher.py "$@"

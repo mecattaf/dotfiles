@@ -1,0 +1,15 @@
+{
+  "description": "Pinned generated shell-wide Panda stylesheet, copied byte-for-byte; not present in Git source. Required for public Manganese component class names. Imagine owns the extracted artifact; regenerate deliberately when upgrading the component pin.",
+  "source_workspace": "/nix/store/qwmanjgss4l2jpqbwlrwvrzw3fg3gygl-domicile-shell-workspace-0.0.0",
+  "source_path": "packages/shell-manganese/styled-system/styles.css",
+  "upstream_commit": "75708d7638002e1bba421cf83f6927298dbc1c3a",
+  "path": "src/styles/manganese-75708d7.css",
+  "sha256": "1aaf7eb076165e4a25dbc9415a98bc3d27dc616204ef6bdc57047773e3ca39f3",
+  "bytes": 343498,
+  "extracted_token": {
+    "source_path": "packages/shell-manganese/styled-system/tokens/index.mjs",
+    "key": "zIndex.toast",
+    "value": "199",
+    "variable": "var(--BtcyX)"
+  }
+}

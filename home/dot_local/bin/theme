@@ -74,20 +74,9 @@ reload_nvim() {
     printf '  nvim: %d instance(s) reloaded\n' "$n"
 }
 
-reload_sway() {
-    if [[ "${XDG_CURRENT_DESKTOP:-}" == sway-physical && -n "${SWAYSOCK:-}" ]]; then
-        swaymsg reload >/dev/null || echo '  sway: reload failed' >&2
-    fi
-}
-
-reload_desktop_tools() {
-    # Do not D-Bus-activate tools belonging to another desktop or launch a server.
-    if systemctl --user -q is-active mako.service; then
-        makoctl reload || echo '  mako: reload failed' >&2
-    fi
-    if systemctl --user -q is-active vicinae.service; then
-        # set rescans the theme files and reloads even when the ID is unchanged.
-        vicinae theme set dotfiles-current || echo '  vicinae: reload failed' >&2
+reload_domicile() {
+    if [[ -n "${DOMICILE_SOCK:-}" ]] && command -v domicile >/dev/null; then
+        domicile theme "$(meta polarity)"
     fi
 }
 
@@ -167,8 +156,7 @@ apply() {
     local name; name="$(current)" || die "no theme selected ($link missing)"
     echo "theme: $name"
     reload_kitty
-    reload_sway
-    reload_desktop_tools
+    reload_domicile
     reload_nvim
     apply_gtk
     set_claude_code "$(meta claude_code || echo dark)"

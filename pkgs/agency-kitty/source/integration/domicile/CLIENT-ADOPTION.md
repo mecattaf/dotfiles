@@ -1,9 +1,12 @@
 # Client adoption must preserve the current desktop
 
-This is a composition plan, not a deployment source or activation receipt.
-The native terminal, editor and actual three-chord proofs are ready. The live
-client has not adopted them. Deploying the canonical dotfiles client profile
-would currently restore a different desktop configuration.
+The 2026-11-08 Domicile-only dotfiles composition now owns the physical login,
+checked Imagine shell, official upstream Domicile and client app dispatchers.
+Sway is retired. Building this source does not activate the running client.
+See [the current desktop policy](../../../../../docs/client-domicile.md).
+
+The dated audit below explains the earlier source boundary. Its warnings about
+canonical main describe that measured revision, not the Domicile-only profile.
 
 ## Source boundaries checked on 2026-11-08
 

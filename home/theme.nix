@@ -15,7 +15,7 @@
 # confuse HM's link step. Switching a theme therefore needs no rebuild; only
 # adding a theme or changing a palette value does.
 #
-# The precedent this copies: kitty-scrollback-nix.conf and sway-local.conf
+# The precedent this copies: kitty-scrollback-nix.conf
 # (home.nix), generated files at a neutral ~/.config path pulled in by an
 # include from inside a whole-dir RAW symlink.
 let

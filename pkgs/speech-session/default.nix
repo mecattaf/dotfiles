@@ -17,8 +17,8 @@ stdenvNoCC.mkDerivation {
   dontBuild = true;
   installPhase = ''
     mkdir -p $out/lib $out/bin
-    cp *.py system.md $out/lib/
-    for spec in 'queue:speech-queue' 'play:speech-play' 'session:speech-session'; do
+    cp *.py $out/lib/
+    for spec in 'queue:speech-queue' 'play:speech-play'; do
       module="''${spec%%:*}"
       command="''${spec##*:}"
       makeWrapper ${python3}/bin/python3 $out/bin/$command \
@@ -33,12 +33,10 @@ stdenvNoCC.mkDerivation {
           ]
         }
     done
-    install -m755 projector.sh $out/bin/speech-projector
     install -Dm644 ${../../lib/python/utility_storage.py} $out/lib/utility_storage.py
-    patchShebangs $out/bin/speech-projector
   '';
   meta = {
-    description = "Markdown speech queue and dedicated persistent voice sessions";
+    description = "Markdown speech queue and playback";
     platforms = lib.platforms.linux;
   };
 }

@@ -18,7 +18,7 @@
 #
 # LIFECYCLE (ruling B6). Deliberately NOT PartOf=graphical-session.target. The
 # whole point of the server is that the PTYs outlive the surfaces attached to
-# them: restart Sway, log out, close the laptop lid on another host, and the
+# them: restart Domicile, log out, close the laptop lid on another host, and the
 # panes are still running when a client comes back. Binding it to the graphical
 # session would kill every session on a compositor restart, which is exactly
 # the failure the deleted home-grown tier had. `loginctl enable-linger tom`
@@ -58,7 +58,6 @@
 #   * The unit below must not change as a side effect of an edit elsewhere:
 #     a changed unit restarts on the next switch and kills every pane.
 let
-  hostName = osConfig.networking.hostName;
   system = pkgs.stdenv.hostPlatform.system;
   upstream = inputs.herdr.packages.${system}.herdr;
   # Upstream herdr, unpatched. Hold-Space dictation (pkgs/herdr-speech) was
@@ -76,18 +75,8 @@ in
     # assignment in that file precisely so herdr's first run never decides to
     # write its own config over a tracked path.
     xdg.configFile."herdr/config.toml".source = link "dot_config/herdr/config.toml";
-    # UI-only configuration for new Sway projectors. The running server keeps
-    # its original config and socket; no reload or server replacement occurs.
-    xdg.configFile."herdr/sway-client.toml" = {
-      text = builtins.replaceStrings [ "[ui]\n" ] [ "[ui]\nprompt_new_workspace_name = true\n" ] (
-        builtins.readFile ./dot_config/herdr/config.toml
-      );
-    };
     home.sessionVariables = {
       HERDR_PROJECTOR_TARGET = "nas";
-      HERDR_PICKER_HOSTNAME = "nas";
-      HERDR_SWAY_LOCAL = if osConfig.myFleet.has "brain" && osConfig.myDisplay.enable then "1" else "0";
-      HERDR_SWAY_SEAT = hostName;
     };
 
     systemd.user.services.herdr = lib.mkIf (osConfig.myFleet.has "brain") {
