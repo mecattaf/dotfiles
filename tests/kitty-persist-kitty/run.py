@@ -17,6 +17,11 @@ Rows:
 - load: what Kitty logs with the configuration as generated, against the same configuration
   with the kitty-persist parts removed; the same with the module off (the include line present,
   its file absent); a control with two bad lines proves the comparison sees what Kitty reports.
+- keys: with a virtual keyboard, the product's keys and the personal same-directory key in an
+  ordinary window reach the program and start nothing; in the persistent window the history,
+  prompt-editor and same-directory keys start `kitty-persist history|compose|new ...` with the
+  pressed window's id (the program on Kitty's PATH is a stub that records its words), and ctrl+v
+  sends the product's paste marker.
 - dictation call (O6): no dictation tool exists; a stand-in for it runs the call a dictation
   tool makes, `PROGRAM paste-text --focused --to unix:@kitty-<pid>`, from outside Kitty with no
   KITTY_ variable, against a window that carries the attached client's user variables: the
@@ -163,11 +168,33 @@ class Sway:
             ipc = [n for n in names if n.startswith('sway-ipc.') and n.endswith('.sock')]
             if way and ipc:
                 self.wayland, self.swaysock = way[0], os.path.join(rt, ipc[0])
-                return
+                break
             time.sleep(0.1)
-        raise SystemExit('sway did not start; see ' + os.path.join(root, 'sway.log'))
+        else:
+            raise SystemExit('sway did not start; see ' + os.path.join(root, 'sway.log'))
+        # The headless seat has no keyboard. Each wtype run adds a virtual keyboard and removes it
+        # on exit, and Kitty then reads every window as unfocused; one long-lived virtual keyboard
+        # keeps the seat's keyboard (the product battery's driver does the same).
+        self.env = dict(os.environ, WAYLAND_DISPLAY=self.wayland, SWAYSOCK=self.swaysock)
+        self.hold = subprocess.Popen(['wtype', '-k', 'Shift_L', '-s', '3600000'], env=self.env,
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.5)
+
+    def press(self, *keys: str) -> None:
+        *mods, key = keys
+        args = ['-k', 'Shift_L', '-s', '150']   # the first event after the keymap upload can be lost
+        for m in mods:
+            args += ['-M', m]
+        args += ['-k', key]
+        for m in reversed(mods):
+            args += ['-m', m]
+        subprocess.run(['wtype', *args], env=self.env, capture_output=True, timeout=10)
+        time.sleep(0.6)
 
     def stop(self) -> None:
+        if self.hold.poll() is None:
+            self.hold.terminate()
+            self.hold.wait(timeout=5)
         # Ask over its own socket first; a signalled headless sway has dumped core before.
         subprocess.run(['swaymsg', '-s', self.swaysock, 'exit'], capture_output=True, timeout=20)
         try:
@@ -255,9 +282,29 @@ def log_lines(path: str) -> list[str]:
     return out
 
 
+def stub_dir(root: str) -> str:
+    """A `kitty-persist` that only records its words: what Kitty's mappings start."""
+    d = os.path.join(root, 'stub')
+    if not os.path.isdir(d):
+        os.makedirs(d)
+        p = os.path.join(d, 'kitty-persist')
+        with open(p, 'w') as f:
+            f.write('#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$KP_STUB_LOG"\n')
+        os.chmod(p, 0o755)
+    return d
+
+
+def stub_calls(root: str) -> list[str]:
+    try:
+        return open(os.path.join(root, 'stub.log')).read().splitlines()
+    except OSError:
+        return []
+
+
 def run_kitty(root: str, sway: Sway, kitty: str, variant: str, home: str, persist: str | None, during=None) -> dict:
     d = os.path.join(root, variant)
     env = clean_env({
+        'PATH': stub_dir(root) + os.pathsep + os.environ.get('PATH', ''), 'KP_STUB_LOG': os.path.join(root, 'stub.log'),
         'HOME': home, 'XDG_CONFIG_HOME': os.path.join(home, '.config'), 'XDG_CACHE_HOME': os.path.join(d, 'cache'),
         'XDG_STATE_HOME': os.path.join(d, 'state'), 'XDG_DATA_HOME': os.path.join(d, 'data'),
         'WAYLAND_DISPLAY': sway.wayland, 'SWAYSOCK': sway.swaysock,
@@ -318,9 +365,14 @@ def main() -> int:
         off = run_kitty(root, sway, a.kitty, 'module-off', homes['module-off'], None)
 
         def o6(d: str, addr: str, kenv: dict) -> None:
-            ls = json.loads(subprocess.run([a.kitty, '@', '--to', addr, 'ls'], env=kenv, capture_output=True, timeout=20).stdout or '[]')
-            wins = [w for ow in ls for t in ow['tabs'] for w in t['windows']]
-            p = [w for w in wins if w.get('user_vars', {}).get('persist_id') == sid]
+            def persist_windows() -> list:
+                ls = json.loads(subprocess.run([a.kitty, '@', '--to', addr, 'ls'], env=kenv, capture_output=True,
+                                               timeout=20).stdout or '[]')
+                wins = [w for ow in ls for t in ow['tabs'] for w in t['windows']]
+                return [w for w in wins if w.get('user_vars', {}).get('persist_state') == 'attached'
+                        and w.get('user_vars', {}).get('persist_id') == sid]
+            # Kitty applies the window's escape codes on its own schedule: wait until it shows them.
+            p = wait_for(persist_windows, 10) or []
             record('o6', 'the persistent window as Kitty sees it', 'user variables persist_id/epoch/state set, focused',
                    [{k: w.get(k) for k in ('id', 'is_focused')} | {'vars': sorted(w.get('user_vars', {}))} for w in p],
                    len(p) == 1 and p[0].get('is_focused') and p[0]['user_vars'].get('persist_state') == 'attached')
@@ -348,6 +400,39 @@ def main() -> int:
             record('o6', 'an ordinary window has focus', 'exit 11; nothing typed anywhere',
                    {'exit': cp.returncode, 'stderr': cp.stderr.decode(errors='replace').strip(), 'O': got_text(d, 'O')},
                    cp.returncode == 11 and got_text(d, 'P') == before and got_text(d, 'O') == '')
+            # The keys, pressed with a virtual keyboard: first in the ordinary window O (focused now),
+            # then in the persistent window P. The program the mappings start is a stub that records
+            # its words.
+            wins = {w['id']: w for ow in json.loads(subprocess.run([a.kitty, '@', '--to', addr, 'ls'], env=kenv, capture_output=True,
+                    timeout=20).stdout or '[]') for t in ow['tabs'] for w in t['windows']}
+            pid_ = next(i for i, w in wins.items() if w.get('user_vars', {}).get('persist_id') == sid)
+            keys = {'ctrl+v': ('ctrl', 'v'), 'kitty_mod+alt+h': ('ctrl', 'shift', 'alt', 'h'),
+                    'kitty_mod+i': ('ctrl', 'shift', 'i'), 'kitty_mod+alt+n': ('ctrl', 'shift', 'alt', 'n')}
+            for name, k in keys.items():
+                n0, o0 = len(stub_calls(root)), got_text(d, 'O')
+                sway.press(*k)
+                record('keys', f'{name} in an ordinary window', 'reaches the program as a key; nothing started',
+                       {'started': stub_calls(root)[n0:], 'bytes': (got_text(d, 'O')[len(o0):]).encode().hex()},
+                       stub_calls(root)[n0:] == [] and got_text(d, 'O') != o0)
+            subprocess.run([a.kitty, '@', '--to', addr, 'focus-window', '--match', f'id:{pid_}'], env=kenv, capture_output=True, timeout=20)
+            time.sleep(0.5)
+            want = {'kitty_mod+alt+h': f'history {pid_}', 'kitty_mod+i': f'compose {pid_}',
+                    'kitty_mod+alt+n': f'new --attach --cwd-of-window {pid_} --window-type window'}
+            for name, line in want.items():
+                n0 = len(stub_calls(root))
+                sway.press(*keys[name])
+                got = wait_for(lambda: stub_calls(root)[n0:], 5) or []
+                record('keys', f'{name} in the persistent window', f'Kitty starts `kitty-persist {line}`', got, got == [line])
+                time.sleep(0.5)
+                subprocess.run([a.kitty, '@', '--to', addr, 'focus-window', '--match', f'id:{pid_}'], env=kenv,
+                               capture_output=True, timeout=20)
+                time.sleep(0.3)
+            p0 = got_text(d, 'P')
+            sway.press(*keys['ctrl+v'])
+            time.sleep(0.5)
+            new_p = got_text(d, 'P')[len(p0):]
+            record('keys', 'ctrl+v in the persistent window', "the product's marker reaches the window (then Kitty's paste)",
+                   new_p.encode().hex(), new_p.startswith('\x1b_kp-paste-key\x1b\\'))
             # A second tab, so the tab bar draws both titles through the program-status template (the
             # persistent window reported `working`); a template Kitty cannot render is logged.
             subprocess.run([a.kitty, '@', '--to', addr, 'launch', '--type=tab', sys.executable, WINDOW, '--dir', d, '--name', 'T'],
