@@ -173,10 +173,11 @@
       inputs.utils.follows = "flake-utils";
     };
 
-    # Match the SDK and official engine already loaded on the client.
-    # e2b4bc54 selects official f658eb3, series81e711f6038d; source-only
-    # Imagine updates retain that running pair and never restart the desktop.
-    domicile.url = "github:cprussin/domicile/e2b4bc54df6c377596dec3c8228aba64b3144a97";
+    # Latest Domicile (upstream stable == main on 2026-11-19, 1.3.0 line).
+    # The upstream flake selects the matching SDK and official prebuilt engine
+    # together. Moving this pin changes the engine: it takes effect only in a
+    # fresh physical Domicile session (docs/client-domicile.md).
+    domicile.url = "github:cprussin/domicile/6f4cabdcd3bb3b8992518a702e623972e1f07706";
     imagine = {
       url = "github:agency-agency/imagine/e9d0ab68d288f1a714ff4df4f29b3278a95fe603";
       flake = false;
