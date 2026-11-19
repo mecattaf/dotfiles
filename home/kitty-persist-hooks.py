@@ -1,28 +1,36 @@
 #!/usr/bin/env python3
 """Install kitty-persist's agent hooks into Claude Code and Codex, and check the result.
 
-The install itself is `kitty-persist harness install NAME` (the program owns
-the hook entries, the safe write and Codex's trust hashes). This wrapper adds
-what this fleet's layout needs around it:
+The install itself is the program's own `kitty-persist harness install NAME
+--dir DIR`, once per configuration directory: the program owns the hook
+entries (each runs the bare `kitty-persist hook NAME EVENT`, found on PATH), the
+format-keeping edit, the safe write and Codex's trust hashes. This wrapper adds
+the checks this fleet's layout needs around it:
 
-- Claude Code: both seats' settings.json are symlinks to one shared file
-  (home/claude-settings.py). The install is pointed at the directory of that
-  file, so its temp-file-and-rename lands on the real file and never replaces
-  a seat link (the next activation would back the file up and restore the
-  link without the hooks).
-- Codex: ~/.codex/config.toml is mutable and unmanaged. After the install,
-  every value outside `hooks` and every comment line must still be there.
-- Neither file may gain a notification override (Claude
-  `preferredNotifChannel`, Codex `notify` or `tui.notifications`).
+- Claude Code: every seat's settings.json is a link to one shared file
+  (home/claude-settings.py). The program follows the link and replaces its
+  target, so the install for the first seat writes the shared file and the
+  install for the next seat finds the entries and changes nothing. Afterwards
+  every seat link must still be a link to the same file.
+- Codex: ~/.codex/config.toml is mutable and unmanaged; the entries go to
+  hooks.json beside it and only the trust records (`hooks.state`) to
+  config.toml. Every value outside `hooks` and every comment line must still be
+  there.
+- Every entry the program wrote runs the bare program name, no store path
+  (a store path would change Codex's trust hash with every update).
+- No file may gain a notification override (Claude `preferredNotifChannel`,
+  Codex `notify` or `tui.notifications`), and hooks that were not ours stay
+  as they were.
 
-A failed check puts the previous bytes back (only if nothing else wrote the
-file meanwhile) and is reported; it never stops the rest of the activation.
-`--dry-run` runs the same install and checks on copies in a temporary
-directory and prints the difference, touching nothing.
+A failed check puts the previous bytes of every file back (only a file that
+nothing else wrote meanwhile) and exits 1; the activation step that runs this
+reports it and goes on. `--dry-run` runs the same installs and checks on
+copies (the seat links recreated around a copy of the shared file) and prints
+the difference, touching nothing.
 
 Usage:
   kitty-persist-hooks.py install|uninstall --program PATH --home HOME
-      [--claude-dir DIR] [--claude-seat DIR ...] [--codex-home DIR] [--dry-run]
+      [--claude-seat DIR ...] [--codex-home DIR] [--dry-run]
 """
 import argparse
 import difflib
@@ -43,113 +51,36 @@ class Refused(Exception):
     pass
 
 
-def comments(text):
-    """The comment lines of a TOML text, but the install's own (they name kitty-persist)."""
-    return sorted(
-        line.strip() for line in text.splitlines()
-        if line.strip().startswith("#") and "kitty-persist" not in line
-    )
+def ours(name, command):
+    """Whether a hook command is one the program writes for harness `name`."""
+    return isinstance(command, str) and command.startswith(f"kitty-persist hook {name} ")
+
+
+def written_by_us(name, command):
+    """A command naming our hook in any other way (a path before the program name, say)."""
+    return isinstance(command, str) and f"hook {name} " in command and "kitty-persist" in command
+
+
+def commands(value):
+    """Every `command` string anywhere under a JSON or TOML value."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if k == "command" and isinstance(v, str):
+                yield v
+            else:
+                yield from commands(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from commands(v)
 
 
 def without(mapping, key):
     return {k: v for k, v in mapping.items() if k != key}
 
 
-def run_program(program, verb, name, env):
-    """Run `kitty-persist harness VERB NAME`; its own lines go to stdout."""
-    result = subprocess.run(
-        [program, "harness", verb, name],
-        env=env,
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        timeout=TIMEOUT,
-    )
-    for line in (result.stdout + result.stderr).splitlines():
-        print(f"  {name}: {line}")
-    if result.returncode != 0:
-        raise Refused(f"kitty-persist harness {verb} {name} exited {result.returncode}")
-
-
-def check_claude(before, after_text, verb):
-    try:
-        after = json.loads(after_text)
-    except ValueError as error:
-        raise Refused(f"settings.json is no longer JSON: {error}")
-    if not isinstance(after, dict):
-        raise Refused("settings.json is no longer a JSON object")
-    old = json.loads(before) if before is not None else {}
-    for key in CLAUDE_NOTIFY:
-        if key in after and key not in old:
-            raise Refused(f"a notification override was added: {key}")
-    if without(after, "hooks") != without(old, "hooks"):
-        changed = sorted(k for k in set(after) | set(old) if k != "hooks" and after.get(k) != old.get(k))
-        raise Refused(f"settings outside `hooks` changed: {', '.join(changed)}")
-    # Every hook group that was there before is still there.
-    old_hooks = old.get("hooks") or {}
-    new_hooks = after.get("hooks") or {}
-    for event, groups in old_hooks.items():
-        for group in groups if isinstance(groups, list) else []:
-            if group_is_ours(group):
-                continue
-            if group not in (new_hooks.get(event) or []):
-                raise Refused(f"an existing {event} hook was removed or changed")
-    ours = [g for groups in new_hooks.values() if isinstance(groups, list) for g in groups if group_is_ours(g)]
-    if verb == "install" and not ours:
-        raise Refused("no `kitty-persist hook claude` entry was added")
-    if verb == "uninstall" and ours:
-        raise Refused("a `kitty-persist hook claude` entry is still there")
-
-
-def group_is_ours(group):
-    return isinstance(group, dict) and any(
-        isinstance(h, dict) and "kitty-persist hook claude" in str(h.get("command", ""))
-        for h in group.get("hooks") or []
-    )
-
-
-def codex_commands(value):
-    """Every `command` string anywhere under a TOML value."""
-    if isinstance(value, dict):
-        for k, v in value.items():
-            if k == "command" and isinstance(v, str):
-                yield v
-            else:
-                yield from codex_commands(v)
-    elif isinstance(value, list):
-        for v in value:
-            yield from codex_commands(v)
-
-
-def check_codex(before, after_text, verb):
-    try:
-        after = tomllib.loads(after_text)
-    except tomllib.TOMLDecodeError as error:
-        raise Refused(f"config.toml is no longer TOML: {error}")
-    old = tomllib.loads(before) if before is not None else {}
-    if "notify" in after and "notify" not in old:
-        raise Refused("a notification override was added: notify")
-    if "notifications" in (after.get("tui") or {}) and "notifications" not in (old.get("tui") or {}):
-        raise Refused("a notification override was added: tui.notifications")
-    if without(after, "hooks") != without(old, "hooks"):
-        changed = sorted(k for k in set(after) | set(old) if k != "hooks" and after.get(k) != old.get(k))
-        raise Refused(f"config outside `hooks` changed: {', '.join(changed)}")
-    lost = [c for c in comments(before or "") if comments(after_text).count(c) < comments(before or "").count(c)]
-    if lost:
-        raise Refused(f"{len(set(lost))} comment line(s) were dropped")
-    ours = [c for c in codex_commands(after.get("hooks") or {}) if "kitty-persist hook codex" in c]
-    theirs_before = [c for c in codex_commands(old.get("hooks") or {}) if "kitty-persist hook codex" not in c]
-    theirs_after = [c for c in codex_commands(after.get("hooks") or {}) if "kitty-persist hook codex" not in c]
-    if sorted(theirs_before) != sorted(theirs_after):
-        raise Refused("an existing Codex hook was removed or changed")
-    if verb == "install" and not ours:
-        raise Refused("no `kitty-persist hook codex` entry was added")
-    if verb == "uninstall" and ours:
-        raise Refused("a `kitty-persist hook codex` entry is still there")
-    if verb == "install":
-        state = (after.get("hooks") or {}).get("state") or {}
-        if not any(isinstance(v, dict) and str(v.get("trusted_hash", "")).startswith("sha256:") for v in state.values()):
-            print("  codex: no trusted_hash recorded; Codex asks to trust the new hooks on its next start")
+def comments(text):
+    """The comment lines of a TOML text."""
+    return sorted(line.strip() for line in (text or "").splitlines() if line.strip().startswith("#"))
 
 
 def read(path):
@@ -159,13 +90,115 @@ def read(path):
         return None
 
 
-def restore(path, before, after_text, mode):
+def run_program(program, verb, name, directory, env):
+    """`kitty-persist harness VERB NAME --dir DIR`; its own lines are printed."""
+    result = subprocess.run(
+        [program, "harness", verb, name, "--dir", str(directory)],
+        env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=TIMEOUT,
+    )
+    for line in (result.stdout + result.stderr).splitlines():
+        print(f"  {name} {directory}: {line}")
+    if result.returncode != 0:
+        raise Refused(f"kitty-persist harness {verb} {name} --dir {directory} exited {result.returncode}")
+
+
+def hook_groups(settings):
+    """Foreign hook groups (not ours), and our commands, of a hooks mapping."""
+    foreign, mine = [], []
+    for event, groups in (settings.get("hooks") or {}).items() if isinstance(settings, dict) else []:
+        for group in groups if isinstance(groups, list) else []:
+            cmds = list(commands(group))
+            if cmds and all(ours_any(c) for c in cmds):
+                mine.extend(cmds)
+            else:
+                foreign.append((event, group))
+    return foreign, mine
+
+
+def ours_any(command):
+    return ours("claude", command) or ours("codex", command) or written_by_us("claude", command) or written_by_us("codex", command)
+
+
+def check_entries(name, before, after, verb):
+    """Shared rules for a hooks file (Claude settings.json, Codex hooks.json)."""
+    foreign_before, _ = hook_groups(before)
+    foreign_after, mine = hook_groups(after)
+    if foreign_before != foreign_after:
+        raise Refused(f"an existing {name} hook was removed or changed")
+    stray = [c for c in mine if not ours(name, c)]
+    if stray:
+        raise Refused(f"an entry does not run the bare program name: {stray[0]!r}")
+    if verb == "install" and not mine:
+        raise Refused(f"no `kitty-persist hook {name}` entry was added")
+    if verb == "uninstall" and mine:
+        raise Refused(f"a `kitty-persist hook {name}` entry is still there")
+    return mine
+
+
+def parse_json(text, what):
+    if text is None:
+        return {}
+    try:
+        value = json.loads(text)
+    except ValueError as error:
+        raise Refused(f"{what} is not JSON: {error}")
+    if not isinstance(value, dict):
+        raise Refused(f"{what} is not a JSON object")
+    return value
+
+
+def check_claude(files, before, after, verb):
+    (path,) = files
+    old, new = parse_json(before[path], str(path)), parse_json(after[path], str(path))
+    for key in CLAUDE_NOTIFY:
+        if key in new and key not in old:
+            raise Refused(f"a notification override was added: {key}")
+    if without(new, "hooks") != without(old, "hooks"):
+        changed = sorted(k for k in set(new) | set(old) if k != "hooks" and new.get(k) != old.get(k))
+        raise Refused(f"settings outside `hooks` changed: {', '.join(changed)}")
+    mine = check_entries("claude", old, new, verb)
+    if verb == "install":
+        print(f"  claude: {len(mine)} kitty-persist hook entries")
+
+
+def check_codex(files, before, after, verb):
+    hooks_json, config = files
+    old_hooks = parse_json(before[hooks_json], str(hooks_json))
+    new_hooks = parse_json(after[hooks_json], str(hooks_json))
+    mine = check_entries("codex", old_hooks, new_hooks, verb)
+    try:
+        old = tomllib.loads(before[config] or "")
+        new = tomllib.loads(after[config] or "")
+    except tomllib.TOMLDecodeError as error:
+        raise Refused(f"config.toml is not TOML: {error}")
+    if "notify" in new and "notify" not in old:
+        raise Refused("a notification override was added: notify")
+    if "notifications" in (new.get("tui") or {}) and "notifications" not in (old.get("tui") or {}):
+        raise Refused("a notification override was added: tui.notifications")
+    if without(new, "hooks") != without(old, "hooks"):
+        changed = sorted(k for k in set(new) | set(old) if k != "hooks" and new.get(k) != old.get(k))
+        raise Refused(f"config.toml outside `hooks` changed: {', '.join(changed)}")
+    if without(new.get("hooks") or {}, "state") != without(old.get("hooks") or {}, "state"):
+        raise Refused("config.toml `hooks` changed outside the trust records")
+    lost = [c for c in set(comments(before[config])) if comments(after[config]).count(c) < comments(before[config]).count(c)]
+    if lost:
+        raise Refused(f"{len(lost)} comment line(s) were dropped from config.toml")
+    trusted = [v for v in ((new.get("hooks") or {}).get("state") or {}).values()
+               if isinstance(v, dict) and str(v.get("trusted_hash", "")).startswith("sha256:")]
+    if verb == "install":
+        print(f"  codex: {len(mine)} kitty-persist hook entries, {len(trusted)} trust records")
+        if len(trusted) < len(mine):
+            print("  codex: fewer trust records than entries; Codex asks to trust the rest on its next start")
+
+
+def restore(path, before, now, mode):
     """Put `before` back, unless the file changed again since the install."""
-    if read(path) != after_text:
+    if read(path) != now:
         print(f"  {path}: changed again since the install; left as it is")
         return
     if before is None:
         path.unlink()
+        print(f"  {path}: removed again")
         return
     fd, name = tempfile.mkstemp(prefix=".kitty-persist-restore-", dir=path.parent)
     with os.fdopen(fd, "w") as out:
@@ -177,43 +210,41 @@ def restore(path, before, after_text, mode):
     print(f"  {path}: previous content restored")
 
 
-def one(name, verb, program, path, env, check, dry_run, seats=()):
-    """Install or uninstall one harness on one file; True when it checked out."""
-    if path.is_symlink():
-        print(f"{name}: {path} is a symlink; refusing (the install must target the real file)")
-        return False
-    before = read(path)
-    if before is None and name == "claude":
-        print(f"{name}: {path} does not exist yet (home/claude-settings.py seeds it); skipped")
-        return True
-    mode = path.stat().st_mode & 0o7777 if before is not None else 0o600
-    links = {seat: os.path.realpath(seat) for seat in seats if seat.is_symlink()}
-    print(f"{name}: {verb} into {path}{' (dry run, on a copy)' if dry_run else ''}")
+def links_of(paths):
+    return {p: os.path.realpath(p) for p in paths if p.is_symlink()}
+
+
+def run_harness(name, verb, program, dirs, files, env, check, dry_run, seat_files=()):
+    """Install or uninstall harness `name` in each of `dirs`; `files` are the files it may write."""
+    before = {f: read(f) for f in files}
+    modes = {f: (f.stat().st_mode & 0o7777) for f in files if before[f] is not None}
+    links = links_of(seat_files)
+    print(f"{name}: {verb} in {', '.join(map(str, dirs))}{' (dry run, on copies)' if dry_run else ''}")
     try:
-        run_program(program, verb, name, env)
-        after_text = read(path)
-        if after_text is None:
-            raise Refused(f"{path} is gone")
-        check(before, after_text, verb)
-        if before is not None and path.stat().st_mode & 0o7777 != mode:
-            raise Refused(f"mode changed from {mode:o} to {path.stat().st_mode & 0o7777:o}")
+        for directory in dirs:
+            run_program(program, verb, name, directory, env)
+        after = {f: read(f) for f in files}
+        check(files, before, after, verb)
+        for f, mode in modes.items():
+            if after[f] is not None and f.stat().st_mode & 0o7777 != mode:
+                raise Refused(f"{f}: mode changed from {mode:o} to {f.stat().st_mode & 0o7777:o}")
         for seat, target in links.items():
             if not seat.is_symlink() or os.path.realpath(seat) != target:
                 raise Refused(f"{seat} is no longer the link to {target}")
     except (Refused, subprocess.TimeoutExpired, OSError) as error:
         print(f"{name}: FAILED: {error}")
-        after_text = read(path)
-        if after_text is not None and after_text != before:
-            restore(path, before, after_text, mode)
+        for f in files:
+            now = read(f)
+            if now != before[f]:
+                restore(f, before[f], now, modes.get(f, 0o600))
         return False
-    if dry_run:
-        diff = difflib.unified_diff(
-            (before or "").splitlines(True), (after_text or "").splitlines(True),
-            fromfile=f"{name} before", tofile=f"{name} after",
-        )
-        sys.stdout.writelines(diff)
-    elif before == after_text:
-        print(f"{name}: unchanged")
+    for f in files:
+        if after[f] == before[f]:
+            print(f"{name}: {f} unchanged")
+        elif dry_run:
+            sys.stdout.writelines(difflib.unified_diff(
+                (before[f] or "").splitlines(True), (after[f] or "").splitlines(True),
+                fromfile=f"{f.name} before", tofile=f"{f.name} after"))
     return True
 
 
@@ -222,40 +253,57 @@ def main(argv=None):
     parser.add_argument("verb", choices=["install", "uninstall"])
     parser.add_argument("--program", required=True)
     parser.add_argument("--home", type=Path, required=True)
-    parser.add_argument("--claude-dir", type=Path)
     parser.add_argument("--claude-seat", type=Path, action="append", default=[])
     parser.add_argument("--codex-home", type=Path)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
     program = shutil.which(args.program) or args.program
-    base = dict(os.environ, HOME=str(args.home))
-    base.pop("CLAUDE_CONFIG_DIR", None)
-    base.pop("CODEX_HOME", None)
+    env = dict(os.environ, HOME=str(args.home))
+    for key in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "KITTY_PERSIST_ID"):
+        env.pop(key, None)
     ok = True
     with tempfile.TemporaryDirectory(prefix="kitty-persist-hooks-") as scratch:
-        if args.claude_dir is not None:
-            directory = args.claude_dir
-            seats = [seat / "settings.json" for seat in args.claude_seat]
-            if args.dry_run:
-                directory = Path(scratch) / "claude"
-                directory.mkdir()
-                if (args.claude_dir / "settings.json").exists():
-                    shutil.copy2(args.claude_dir / "settings.json", directory / "settings.json")
-                seats = []
-            env = dict(base, CLAUDE_CONFIG_DIR=str(directory))
-            ok &= one("claude", args.verb, program, directory / "settings.json", env, check_claude, args.dry_run, seats)
+        scratch = Path(scratch)
+        if args.claude_seat:
+            seats = [s for s in args.claude_seat if (s / "settings.json").exists()]
+            for s in args.claude_seat:
+                if s not in seats:
+                    print(f"claude: {s}/settings.json does not exist yet (home/claude-settings.py seeds it); skipped")
+            if args.dry_run and seats:
+                # The same layout on copies: each seat's link (or file) recreated around a copy.
+                copies, targets = [], {}
+                for i, seat in enumerate(seats):
+                    real = Path(os.path.realpath(seat / "settings.json"))
+                    copy = scratch / f"seat{i}"
+                    copy.mkdir()
+                    if (seat / "settings.json").is_symlink():
+                        if real not in targets:
+                            targets[real] = scratch / f"shared{len(targets)}" / "settings.json"
+                            targets[real].parent.mkdir()
+                            shutil.copy2(real, targets[real])
+                        (copy / "settings.json").symlink_to(targets[real])
+                    else:
+                        shutil.copy2(real, copy / "settings.json")
+                    copies.append(copy)
+                seats = copies
+            files = sorted({Path(os.path.realpath(s / "settings.json")) for s in seats})
+            for target in files:
+                group = [s for s in seats if Path(os.path.realpath(s / "settings.json")) == target]
+                ok &= run_harness("claude", args.verb, program, group, [target], env, check_claude,
+                                  args.dry_run, [s / "settings.json" for s in group])
         if args.codex_home is not None:
             directory = args.codex_home
             if args.dry_run:
-                directory = Path(scratch) / "codex"
+                directory = scratch / "codex"
                 directory.mkdir()
-                if (args.codex_home / "config.toml").exists():
-                    shutil.copy2(args.codex_home / "config.toml", directory / "config.toml")
+                for f in ("config.toml", "hooks.json"):
+                    if (args.codex_home / f).exists():
+                        shutil.copy2(args.codex_home / f, directory / f)
             elif not directory.exists():
                 directory.mkdir(mode=0o700, parents=True)
-            env = dict(base, CODEX_HOME=str(directory))
-            ok &= one("codex", args.verb, program, directory / "config.toml", env, check_codex, args.dry_run)
+            files = [directory / "hooks.json", directory / "config.toml"]
+            ok &= run_harness("codex", args.verb, program, [directory], files, env, check_codex, args.dry_run)
     return 0 if ok else 1
 
 

@@ -304,7 +304,8 @@ test('a real stub program gets argv, the minimal env and the JSON on stdin', asy
 
 // --- Replay: the same scenario through each harness's event table. ---
 
-// S22.11, for the two shipped definitions.
+// S22.11, for the two shipped definitions (their SessionStart rule for a
+// compaction is not exercised here; the program-level replay covers it).
 const CLAUDE = {
   SessionStart: 'idle', UserPromptSubmit: 'working', PostToolUse: 'working', PermissionRequest: 'waiting',
   Stop: 'done', StopFailure: 'done', SessionEnd: 'ended',
@@ -313,11 +314,19 @@ const CODEX = {
   SessionStart: 'idle', UserPromptSubmit: 'working', PostToolUse: 'working', PermissionRequest: 'waiting',
   Stop: 'done', SessionEnd: 'ended',
 }
-// The stand-in for the hook's lookup in a definition (draft field names).
-const dshState = (definition, event) => {
+// The stand-in for the hook's lookup in a definition (the published shape:
+// one rule or a list tried in order; `when` holds when every named field has
+// its value or one of its values; an absent field counts as null).
+const holds = (when, data) => Object.entries(when ?? {}).every(([k, v]) => {
+  const got = data?.[k] ?? null
+  return Array.isArray(v) ? v.includes(got) : v === got
+})
+const dshState = (definition, event, data = {}) => {
   const entry = definition.events[event]
   if (entry === undefined) return undefined
-  return entry.ended === true ? 'ended' : entry.state
+  const rule = (Array.isArray(entry) ? entry : [entry]).find(r => holds(r.when, data) && !(r.unless && holds(r.unless, data)))
+  if (rule === undefined) return undefined
+  return rule.ended === true ? 'ended' : rule.state
 }
 const collapse = states => states.filter((s, i) => s !== undefined && s !== states[i - 1])
 
@@ -344,7 +353,7 @@ test('replay: dsh gives the same states as Claude Code and Codex', { skip: !proc
   on['session/event'](session, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
   on['agent/disposed']({ agent })
   await effects[0]()()
-  const dsh = collapse(words(calls).map(word => dshState(definition, word)))
+  const dsh = collapse(calls.map(c => dshState(definition, c.argv[2], c.payload)))
   const scenario = ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'SessionEnd']
   const claude = collapse(scenario.map(e => CLAUDE[e]))
   const codex = collapse(scenario.map(e => CODEX[e]))
@@ -354,4 +363,7 @@ test('replay: dsh gives the same states as Claude Code and Codex', { skip: !proc
 
   // A failed turn: Claude's StopFailure and dsh's stop-failure both give done.
   assert.equal(dshState(definition, 'stop-failure'), CLAUDE.StopFailure)
+  // A start after a compaction is inside a turn, as in the shipped definitions.
+  assert.equal(dshState(definition, 'session-start', { source: 'compact' }), 'working')
+  assert.equal(dshState(definition, 'session-start', { source: 'clear' }), 'idle')
 })

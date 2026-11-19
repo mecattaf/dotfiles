@@ -14,11 +14,15 @@
 //      approval-asked and approval-decided before the tool result.
 //   4. The states those events give through the generated definition are the
 //      ones the specification gives Claude Code and Codex for the same turns.
-//   The definition's draft conversation reader finds the real texts of the
-//   turn in the conversation file the hook was given.
+//   5. With KP_PROGRAM (the kitty-persist program): one more real turn run
+//      inside a session held by that program, the plugin calling its real
+//      `hook`; the holder's record then names the dsh-native agent, its
+//      conversation, the carried variables and the finished turn.
+//   The definition's conversation part (the program's published shape) finds
+//   the real texts of the turn in the conversation file the hook was given.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { basename, join } from 'node:path'
 
@@ -104,19 +108,88 @@ function dsh(args, env, input) {
   })
 }
 
-// A reader path: `a.b[].c` (`[]` steps into every element of an array).
-function pick(value, path) {
-  let values = [value]
-  for (const part of path.split('.')) {
-    const many = part.endsWith('[]')
-    const key = many ? part.slice(0, -2) : part
-    values = values.flatMap(v => (v !== null && typeof v === 'object' && key in v ? [v[key]] : []))
-    if (many) values = values.flatMap(v => (Array.isArray(v) ? v : []))
-  }
-  return values
-}
-
 const calls = () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)) : [])
+
+// One real turn inside a session held by the kitty-persist program (S21.8,
+// S22): the plugin runs the program's own `hook`, which reports to the
+// holder; the holder's record is read back with `info --json`.
+async function throughTheProgram (basePatch) {
+  const program = process.env.KP_PROGRAM
+  const holder = join(tmp, 'kp-bin', 'kitty-persist-holder')
+  mkdirSync(join(tmp, 'kp-bin'), { recursive: true })
+  symlinkSync(program, holder)
+  const harnessDir = join(tmp, 'kp-config', 'kitty-persist', 'harness')
+  mkdirSync(harnessDir, { recursive: true })
+  writeFileSync(join(harnessDir, 'dsh-native.json'), JSON.stringify(definition))
+  const env = {
+    ...process.env,
+    XDG_CONFIG_HOME: join(tmp, 'kp-config'),
+    KITTY_PERSIST_RUNTIME_DIR: join(tmp, 'kp-rt'),
+    KITTY_PERSIST_STATE_DIR: join(tmp, 'kp-state'),
+    KITTY_PERSIST_CACHE_DIR: join(tmp, 'kp-cache'),
+    KITTY_PERSIST_LAUNCH: 'setsid',
+    KITTY_PERSIST_SHELL_INTEGRATION_DIR: '',
+    SHELL: '/bin/sh',
+    DSH_KEY_SLOT: '1',
+  }
+  delete env.KITTY_PERSIST_ID
+  delete env.KITTY_PERSIST_SOCKET
+  for (const d of ['kp-rt', 'kp-state', 'kp-cache']) mkdirSync(join(tmp, d), { recursive: true, mode: 0o700 })
+  const patch = join(tmp, 'mock-real.json')
+  const rows = JSON.parse(readFileSync(basePatch, 'utf8')).filter(r => r.id !== 'kitty-persist-hooks')
+  writeFileSync(patch, JSON.stringify([...rows, { id: 'kitty-persist-hooks', config: { command: program } }]))
+  const done = join(tmp, 'held.rc')
+  const launcher = join(tmp, 'held.sh')
+  const q = v => `'${String(v).replaceAll("'", "'\\''")}'`
+  writeFileSync(launcher, [
+    '#!/bin/sh',
+    `cd ${q(process.cwd())}`,
+    ...['XDG_CONFIG_HOME', 'DSH_HOME', 'DSH_KEY_SLOT', 'HOME', 'TMPDIR', 'PATH'].map(k => `export ${k}=${q(env[k])}`),
+    `${q(process.env.DSH_BIN)} native --patch ${q(patch)} 'Use one tool, then reply KP_MOCK_DONE.' > ${q(done + '.out')} 2> ${q(done + '.err')}`,
+    `echo $? > ${q(done)}`,
+    'exec sleep 60',
+  ].join('\n') + '\n')
+  chmodSync(launcher, 0o755)
+  const holderRun = args => new Promise((resolve, reject) => {
+    const child = spawn(holder, args, { env, stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = '', stderr = ''
+    child.stdout.on('data', c => { stdout += c })
+    child.stderr.on('data', c => { stderr += c })
+    child.once('error', reject)
+    child.once('exit', code => resolve({ code, stdout, stderr }))
+  })
+  script = ['tool', 'answer']
+  const made = await holderRun(['new', '--', '/bin/sh', launcher])
+  assert.equal(made.code, 0, made.stderr)
+  const sid = made.stdout.trim()
+  try {
+    const sleep = ms => new Promise(r => setTimeout(r, ms))
+    for (let i = 0; i < 1200 && !existsSync(done); i++) await sleep(50)
+    assert.ok(existsSync(done), 'the dsh run in the session did not finish')
+    assert.equal(readFileSync(done, 'utf8').trim(), '0', readFileSync(done + '.err', 'utf8'))
+    let agent
+    for (let i = 0; i < 100; i++) {
+      const got = await holderRun(['info', sid, '--json'])
+      assert.equal(got.code, 0, got.stderr)
+      agent = JSON.parse(got.stdout).agent
+      if (agent?.ended) break
+      await sleep(50)
+    }
+    assert.equal(agent.name, 'dsh-native', JSON.stringify(agent))
+    assert.equal(agent.state, 'done', JSON.stringify(agent))
+    assert.equal(agent.ended?.reason, 'reported', JSON.stringify(agent))
+    assert.match(agent.session, /^session-[0-9a-f-]{36}$/)
+    assert.equal(agent.cwd, process.cwd())
+    assert.ok(agent.transcript.startsWith(process.env.DSH_HOME + '/sessions/'), agent.transcript)
+    // The variables the definition carries over a resume, as the run had them.
+    assert.equal(agent.env.DSH_HOME, process.env.DSH_HOME, JSON.stringify(agent.env))
+    assert.equal(agent.env.DSH_KEY_SLOT, '1', JSON.stringify(agent.env))
+    for (const k of Object.keys(agent.env)) assert.ok(definition.resume.env.includes(k), k)
+    return `${agent.name} ${agent.state} ended ${agent.ended.reason}`
+  } finally {
+    await holderRun(['kill', sid, '--signal', 'KILL', '--forget'])
+  }
+}
 
 try {
   writeFileSync(join(process.cwd(), 'note.txt'), 'a note for the read tool\n')
@@ -183,20 +256,35 @@ try {
   const transcript = JSON.parse(first.at(-1).stdin).transcript_path
   assert.ok(transcript?.startsWith(process.env.DSH_HOME + '/sessions/'), `transcript ${transcript}`)
   const lines = readFileSync(transcript, 'utf8').trim().split('\n').map(l => JSON.parse(l))
-  // The definition's draft conversation reader, applied to that file: each
-  // path finds the text the turn really had.
+  // The definition's conversation part, applied to that file as the
+  // program's reader does: the session line names this conversation, each
+  // line takes the first entry whose `when` holds, and the entry's paths find
+  // the text the turn really had.
   const conv = definition.conversation
+  assert.equal(conv.format, 'jsonl')
+  const get = (v, path) => path.split('.').reduce((o, k) => (o !== null && typeof o === 'object' && k in o ? o[k] : undefined), v)
+  const matches = (line, when) => Object.entries(when ?? {}).every(([k, v]) => get(line, k) === v)
   const shape = v => (Array.isArray(v) ? [v.length ? shape(v[0]) : []] : v && typeof v === 'object'
     ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shape(x)])) : typeof v)
-  const of = kind => lines.filter(l => pick(l, conv.kind)[0] === kind)
-  const texts = (kind, path) => of(kind).flatMap(l => pick(l, path)).map(v => (typeof v === 'string' ? v : JSON.stringify(v))).join('\n')
-  const why = kind => JSON.stringify(of(kind).map(shape))
-  assert.match(texts(conv.user.kind, conv.user.text), /Use one tool/, `user: ${why(conv.user.kind)}`)
-  assert.match(texts(conv.assistant.kind, conv.assistant.text), /KP_MOCK_DONE/, `assistant: ${why(conv.assistant.kind)}`)
-  assert.match(texts(conv.toolCall.kind, conv.toolCall.name), /^read$/m, `tool call: ${why(conv.toolCall.kind)}`)
-  assert.match(texts(conv.toolCall.kind, conv.toolCall.input), /note\.txt/, `tool input: ${why(conv.toolCall.kind)}`)
-  assert.match(texts(conv.toolResult.kind, conv.toolResult.text), /a note for the read tool/, `tool result: ${why(conv.toolResult.kind)}`)
-  assert.deepEqual(of(conv.toolResult.kind).flatMap(l => pick(l, conv.toolResult.error)).filter(v => v === true), [], `tool error: ${why(conv.toolResult.kind)}`)
+  const why = JSON.stringify(lines.map(shape)).slice(0, 4000)
+  const header = lines.find(l => matches(l, conv.session.when))
+  assert.equal(get(header, conv.session.field), id, `session line: ${why}`)
+  const flat = v => (typeof v === 'string' ? v : Array.isArray(v)
+    ? v.map(p => (typeof p === 'string' ? p : typeof p?.text === 'string' ? p.text : JSON.stringify(p))).join('\n')
+    : JSON.stringify(v ?? null))
+  const read = lines.flatMap(line => {
+    const e = conv.entries.find(x => matches(line, x.when) && !(x.unless && matches(line, x.unless)))
+    if (e === undefined) return []
+    if (e.text) return [{ kind: 'turn', who: get(line, e.speaker ?? '') ?? e.role, text: flat(get(line, e.text)) }]
+    if (e.tool_name) return [{ kind: 'call', name: get(line, e.tool_name), input: flat(get(line, e.tool_input ?? '')) }]
+    return [{ kind: 'result', text: flat(get(line, e.tool_result)) }]
+  })
+  const turn = who => read.filter(r => r.kind === 'turn' && r.who === who).map(r => r.text).join('\n')
+  assert.match(turn('user'), /Use one tool/, `user: ${why}`)
+  assert.match(turn('assistant'), /KP_MOCK_DONE/, `assistant: ${why}`)
+  assert.deepEqual(read.filter(r => r.kind === 'call').map(r => r.name), ['read'], `tool call: ${why}`)
+  assert.match(read.filter(r => r.kind === 'call').map(r => r.input).join('\n'), /note\.txt/, `tool input: ${why}`)
+  assert.match(read.filter(r => r.kind === 'result').map(r => r.text).join('\n'), /a note for the read tool/, `tool result: ${why}`)
 
   // 3. The typed resume from the definition, the instruction on stdin.
   const resume = definition.resume.command.map(word => (word === '{id}' ? id : word))
@@ -217,17 +305,33 @@ try {
   assert.deepEqual(asked, ['session-start', 'turn-start', 'approval-asked', 'approval-decided', 'tool-result', 'stop', 'session-end'], run.stderr)
   assert.ok(!existsSync(join(process.env.HOME, 'outside.txt')), 'the denied write happened')
 
-  // 4. Parity of states with the two shipped harnesses (S22.11).
-  const state = word => (definition.events[word]?.ended ? 'ended' : definition.events[word]?.state)
+  // 4. Parity of states with the two shipped harnesses (S22.11), through the
+  // definition's rules (one rule or a list; `when` against the event data).
+  const holds = (when, data) => Object.entries(when ?? {}).every(([k, v]) => {
+    const got = data?.[k] ?? null
+    return Array.isArray(v) ? v.includes(got) : v === got
+  })
+  const state = call => {
+    const entry = definition.events[call.argv[2]]
+    const data = JSON.parse(call.stdin)
+    const rule = entry === undefined ? undefined
+      : (Array.isArray(entry) ? entry : [entry]).find(r => holds(r.when, data) && !(r.unless && holds(r.unless, data)))
+    return rule === undefined ? undefined : rule.ended === true ? 'ended' : rule.state
+  }
   const collapse = states => states.filter((s, i) => s !== undefined && s !== states[i - 1])
   const claude = { SessionStart: 'idle', UserPromptSubmit: 'working', PostToolUse: 'working', Stop: 'done', SessionEnd: 'ended' }
   const scenario = ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'Stop', 'SessionEnd']
-  assert.deepEqual(collapse(words.map(state)), collapse(scenario.map(e => claude[e])))
-  assert.deepEqual(collapse(words.map(state)), ['idle', 'working', 'done', 'ended'])
+  assert.deepEqual(collapse(first.map(state)), collapse(scenario.map(e => claude[e])))
+  assert.deepEqual(collapse(first.map(state)), ['idle', 'working', 'done', 'ended'])
+  assert.deepEqual(collapse(second.map(state)), ['idle', 'working', 'done', 'ended'])
   const withPermission = ['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PostToolUse', 'Stop', 'SessionEnd']
   const claudeAll = { ...claude, PermissionRequest: 'waiting' }
-  assert.deepEqual(collapse(asked.map(state)), collapse(withPermission.map(e => claudeAll[e])))
-  console.log(`kitty-persist dsh hooks: ${words.join(' ')} | resume: ${second.map(c => c.argv[2]).join(' ')} | permission: ${asked.join(' ')} | parent argv0 dsh, comm ${first[0].parentComm}`)
+  assert.deepEqual(collapse(third.map(state)), collapse(withPermission.map(e => claudeAll[e])))
+
+  // 5. The real program: a session held by it, the plugin calling its hook.
+  let held = 'not run (no KP_PROGRAM)'
+  if (process.env.KP_PROGRAM) held = await throughTheProgram(patch)
+  console.log(`kitty-persist dsh hooks: ${words.join(' ')} | resume: ${second.map(c => c.argv[2]).join(' ')} | permission: ${asked.join(' ')} | parent argv0 dsh, comm ${first[0].parentComm} | held: ${held}`)
 } finally {
   server.closeAllConnections()
   await new Promise(resolve => server.close(resolve))

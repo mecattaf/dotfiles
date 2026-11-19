@@ -1,10 +1,18 @@
-{ pkgs, dsh }:
+{
+  pkgs,
+  dsh,
+  # The kitty-persist program the session host installs: `harness check` on
+  # the generated definition, and one turn in a session it holds (./turn.mjs
+  # part 5).
+  kitty-persist,
+}:
 # kitty-persist-hooks in real dsh turns (see ./turn.mjs): the `native`
 # profile with only the log sink and the plugin, a mock OpenAI provider on
-# loopback, a stub `kitty-persist` program. Also: the plugin row mounts in
-# that profile with the bare program name, the wrapper exports its harness
-# name, and the stock headless profile mounts no such row. No network, no
-# holder, no key: the wrapper of this check reads no key file.
+# loopback, a stub `kitty-persist` program that logs each call, then the real
+# program and a holder of its own. Also: the plugin row mounts in that
+# profile with the bare program name, the wrapper exports its harness name,
+# and the stock headless profile mounts no such row. No network, no key: the
+# wrapper of this check reads no key file.
 let
   withHooks = dsh.override {
     qwenKeyFile = null;
@@ -64,7 +72,10 @@ pkgs.runCommand "kitty-persist-dsh-hooks"
     EOF
     grep -qE "export DSH_KITTY_PERSIST_HARNESS='?dsh-native'?$" "$dsh"
 
-    export DSH_BIN="$dsh" KP_DEFINITION=${definition}
+    # The program accepts the definition (exit 0; 64 would be invalid).
+    XDG_CONFIG_HOME="$TMPDIR/check-config" ${kitty-persist}/bin/kitty-persist harness check ${definition}
+
+    export DSH_BIN="$dsh" KP_DEFINITION=${definition} KP_PROGRAM=${kitty-persist}/bin/kitty-persist
     export MOCK_GUFO_CONFIG=${pkgs.lib.escapeShellArg (builtins.toJSON dsh.localProviders.gufo)}
     export MOCK_MODEL_ID=${(builtins.head dsh.localProviders.gufo.models).id}
     node ${./turn.mjs}

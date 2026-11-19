@@ -9,50 +9,61 @@
 # specification), and a restarted host brings running agents back through
 # each harness definition's resume command.
 #
-#   Claude Code   `kitty-persist harness install claude`, once, into the
-#                 settings file both seats share: ~/.claude/settings.json and
-#                 ~/.claude-work/settings.json are links to
-#                 ~/.local/state/claude/settings.json (home/claude-settings.py).
-#                 The install is pointed at that file's own directory, so its
-#                 temp-file-and-rename replaces the file, never a seat link.
-#   Codex         `kitty-persist harness install codex` into the mutable,
-#                 unmanaged ~/.codex/config.toml; the program keeps comments and
-#                 records the trust hashes Codex asks for.
+#   Claude Code   hook entries written by the program's own
+#   and Codex     `kitty-persist harness install NAME [--dir DIR]`, run by the
+#                 remote-host module's user unit kitty-persist-hooks.service
+#                 (services.kitty-persist.hooks in hosts/nas). Every entry
+#                 runs the bare `kitty-persist hook NAME EVENT` found on PATH,
+#                 so an update of the program never changes an entry or
+#                 Codex's trust hash. Both Claude seats' settings.json are
+#                 links to ~/.local/state/claude/settings.json
+#                 (home/claude-settings.py); the program follows the link and
+#                 replaces its target, so the links stay as they are, and the
+#                 second seat's install finds the entries already there.
 #   dsh           no settings file: the kitty-persist-hooks plugin
-#                 (pkgs/dsh-plugins) is selected for each hand-run profile, and
-#                 one harness definition per profile goes to
-#                 ~/.config/kitty-persist/harness/dsh-<profile>.json.
+#                 (pkgs/dsh-plugins) is selected for each hand-run profile,
+#                 and one harness definition per profile goes to
+#                 ~/.config/kitty-persist/harness/dsh-<profile>.json. Each
+#                 file is checked with `kitty-persist harness check` when it
+#                 is built: a definition the program refuses fails the build.
 #
-# home/kitty-persist-hooks.py wraps both installs and checks that nothing else
-# in either file changed, that no notification override appeared and that the
-# seat links survived; it puts the previous bytes back otherwise. The agents'
-# own notifications are never forced or silenced here: the hooks report state
-# only. The launchers (cc, cc2, cac, cac2, cx, cax) need no wrapper.
-#
-# Hooks are harmless outside a kitty-persist session (the hook exits at once
-# when KITTY_PERSIST_ID is unset), so they are installed once and left in
-# place. Removing them: `harness uninstall` through the same wrapper (see the
-# activation step below with `uninstall`).
-#
-# DRAFT. The kitty-persist program with `hook` and `harness install` is not in
-# the flake input yet: `package` stays null until it is, and then only the
-# dsh plugin and the dsh definitions are in effect (the plugin finds the
-# program on PATH). See the follow-up notes at `package` and `resumeFlags`.
+# This module adds the dsh half and the resume overrides; it writes no agent
+# settings itself. home/kitty-persist-hooks.py is the owner's dry run (the
+# same installs on copies) and the after-activation check. The agents' own
+# notifications are never forced or silenced: the hooks report state only.
+# The launchers (cc, cc2, cac, cac2, cx, cax) need no wrapper.
 let
   cfg = config.programs.kittyPersist.agents;
   hooksPlugin = pkgs.dsh-plugins.kitty-persist-hooks;
   defs = hooksPlugin.definitions;
-  home = config.home.homeDirectory;
+  program = lib.getExe' cfg.package "kitty-persist";
+
+  # A dsh definition as a file the program accepts: `harness check` runs on
+  # it at build time, with the program the host installs.
+  checked =
+    profile:
+    let
+      name = defs.harnessName profile;
+    in
+    pkgs.runCommand "kitty-persist-${name}.json"
+      {
+        definition = builtins.toJSON (defs.definition profile) + "\n";
+        passAsFile = [ "definition" ];
+      }
+      ''
+        export HOME="$TMPDIR" XDG_CONFIG_HOME="$TMPDIR/config"
+        cp "$definitionPath" ${name}.json
+        ${program} harness check ${name}.json
+        cp ${name}.json "$out"
+      '';
 
   # A shipped definition with the launcher's flags put back into its resume
-  # command, built from the program's own copy so recognition and events never
-  # drift. A file named like a shipped definition replaces it (S21.5).
-  # FOLLOW-UP: the subcommand and field paths (`harness show NAME`,
-  # .resume.command, .resume.env) are the draft names; match them to the
-  # published schema.
+  # command, made from the program's own copy (`harness show NAME`) so that
+  # recognition, events and install never drift from it. A file named like a
+  # shipped definition replaces it (S21.5); it is checked like the dsh ones.
   override =
     name: flags: env:
-    pkgs.runCommand "kitty-persist-${name}-definition.json"
+    pkgs.runCommand "kitty-persist-${name}.json"
       {
         nativeBuildInputs = [ pkgs.jq ];
         flags = builtins.toJSON flags;
@@ -60,89 +71,27 @@ let
       }
       ''
         export HOME="$TMPDIR" XDG_CONFIG_HOME="$TMPDIR/config"
-        ${lib.getExe' cfg.package "kitty-persist"} harness show ${name} > shipped.json
+        ${program} harness show ${name} > shipped.json
         jq --argjson flags "$flags" --argjson env "$carried" '
           .resume.command = [.resume.command[0]] + $flags + .resume.command[1:]
           | .resume.env = ((.resume.env // []) + $env | unique)
-        ' shipped.json > "$out"
+        ' shipped.json > ${name}.json
+        ${program} harness check ${name}.json
+        cp ${name}.json "$out"
       '';
-
-  # One run of home/kitty-persist-hooks.py, as an activation command line.
-  wrapper =
-    verb:
-    lib.concatStringsSep " " (
-      [
-        "${pkgs.python3}/bin/python3"
-        "-I"
-        "${./kitty-persist-hooks.py}"
-        verb
-        "--program"
-        (lib.getExe' cfg.package "kitty-persist")
-        "--home"
-        ''"$HOME"''
-      ]
-      ++ lib.optionals cfg.claude.enable (
-        [
-          "--claude-dir"
-          (lib.escapeShellArg cfg.claude.settingsDir)
-        ]
-        ++ lib.concatMap (seat: [
-          "--claude-seat"
-          (lib.escapeShellArg seat)
-        ]) cfg.claude.seats
-      )
-      ++ lib.optionals cfg.codex.enable [
-        "--codex-home"
-        ''"''${CODEX_HOME:-${home}/.codex}"''
-      ]
-    );
 in
 {
   options.programs.kittyPersist.agents = {
-    enable = lib.mkEnableOption "kitty-persist agent hooks and harness definitions on the session host";
+    enable = lib.mkEnableOption "the dsh half of kitty-persist's agent hooks and the resume overrides on the session host";
 
     package = lib.mkOption {
-      type = lib.types.nullOr lib.types.package;
-      default = null;
+      type = lib.types.package;
       description = ''
-        The kitty-persist program with the `hook` and `harness` commands. null
-        until the flake input exposes it (the pinned input's packages predate
-        the one-program build); then the Claude and Codex installs and the
-        resume overrides are skipped with a warning.
+        The kitty-persist program the host installs (the remote-host module's
+        package). It checks the generated definitions and prints the shipped
+        ones the overrides are made from; the hooks themselves call the bare
+        `kitty-persist` on PATH.
       '';
-    };
-
-    installHooks = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = "Run the hook installs for Claude Code and Codex at every activation (idempotent: an unchanged file is not written).";
-    };
-
-    claude = {
-      enable = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Install the Claude Code hooks.";
-      };
-      settingsDir = lib.mkOption {
-        type = lib.types.str;
-        default = "${home}/.local/state/claude";
-        description = "Directory of the settings file every seat links to; the install targets it directly.";
-      };
-      seats = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [
-          "${home}/.claude"
-          "${home}/.claude-work"
-        ];
-        description = "Seat directories whose settings.json link must survive the install.";
-      };
-    };
-
-    codex.enable = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = "Install the Codex hooks into $CODEX_HOME/config.toml (default ~/.codex).";
     };
 
     dsh.profiles = lib.mkOption {
@@ -163,7 +112,7 @@ in
           "--dangerously-bypass-approvals-and-sandbox"
         ];
       };
-      description = "Flags put after the program name in a shipped definition's resume command (an override definition per name). Needs `package`.";
+      description = "Flags put after the program name in a shipped definition's resume command (one override definition per name).";
     };
 
     resumeEnv = lib.mkOption {
@@ -175,45 +124,26 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable (
-    lib.mkMerge [
-      {
-        # Added to each profile's default plugins (same priority as the
-        # default, so the lists merge); an explicit programs.dsh.plugins still
-        # wins.
-        programs.dsh.plugins = lib.mkOptionDefault (
-          lib.genAttrs cfg.dsh.profiles (_: [ "kitty-persist-hooks" ])
-        );
-        xdg.configFile = lib.listToAttrs (
-          map (
-            profile:
-            lib.nameValuePair "kitty-persist/harness/${defs.harnessName profile}.json" {
-              text = builtins.toJSON (defs.definition profile) + "\n";
-            }
-          ) cfg.dsh.profiles
-        );
-      }
-      (lib.mkIf (cfg.package == null) {
-        warnings = [
-          "programs.kittyPersist.agents: no kitty-persist package with `hook` and `harness` yet; the Claude Code and Codex hook installs and the resume overrides are skipped."
-        ];
-      })
-      (lib.mkIf (cfg.package != null) {
-        xdg.configFile = lib.mapAttrs' (
-          name: flags:
-          lib.nameValuePair "kitty-persist/harness/${name}.json" {
-            source = override name flags (cfg.resumeEnv.${name} or [ ]);
+  config = lib.mkIf cfg.enable {
+    # Added to each profile's default plugins (same priority as the default,
+    # so the lists merge); an explicit programs.dsh.plugins still wins.
+    programs.dsh.plugins = lib.mkOptionDefault (
+      lib.genAttrs cfg.dsh.profiles (_: [ "kitty-persist-hooks" ])
+    );
+    xdg.configFile =
+      lib.listToAttrs (
+        map (
+          profile:
+          lib.nameValuePair "kitty-persist/harness/${defs.harnessName profile}.json" {
+            source = checked profile;
           }
-        ) (lib.filterAttrs (_: flags: flags != [ ]) cfg.resumeFlags);
-      })
-      (lib.mkIf (cfg.package != null && cfg.installHooks) {
-        # After the seeder made the shared Claude file and the seat links.
-        home.activation.kittyPersistHooks = lib.hm.dag.entryAfter [ "linkGeneration" "claudeSettings" ] ''
-          if ! run ${wrapper "install"}; then
-            echo "kitty-persist hooks: not installed; see the lines above (the previous files were kept)" >&2
-          fi
-        '';
-      })
-    ]
-  );
+        ) cfg.dsh.profiles
+      )
+      // lib.mapAttrs' (
+        name: flags:
+        lib.nameValuePair "kitty-persist/harness/${name}.json" {
+          source = override name flags (cfg.resumeEnv.${name} or [ ]);
+        }
+      ) (lib.filterAttrs (_: flags: flags != [ ]) cfg.resumeFlags);
+  };
 }
