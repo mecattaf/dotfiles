@@ -75,7 +75,7 @@
     # git+https. Re-pin with `nix flake lock` after editing rev=, never
     # `nix flake update`, so no other input moves.
     kitty-persist = {
-      url = "git+https://github.com/mecattaf/kitty-persist?ref=main&rev=94a7d5e003164140bfe763a35d744a4336e0f989";
+      url = "git+https://github.com/mecattaf/kitty-persist?ref=main&rev=94f8cc0234f5973244cb0b2c0a2b3abd9c7a9049";
       inputs.nixpkgs.follows = "nixpkgs-fresh";
     };
 
