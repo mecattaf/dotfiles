@@ -11,6 +11,8 @@ let
 in
 {
   imports = [
+    # kitty-persist's remote-host module (services.kitty-persist below).
+    inputs.kitty-persist.nixosModules.remote-host
     ./agent-host.nix
     ./unstable-pkgs.nix
     ./kernel.nix # retain the validated kernel series during the network move
@@ -72,10 +74,28 @@ in
     agencyKitty.enable = false;
     agencyEditor.enable = false;
   };
-  # Persistent terminals: this host holds the sessions. Enabling it adds the
-  # holder binary and an idle template unit; no session exists until one is
-  # asked for, and Herdr and the ordinary ssh entry are untouched.
-  home-manager.users.tom.programs.kittyPersist.holder.enable = true;
+  # Persistent terminals: this host holds the sessions (the remote-host module
+  # of the kitty-persist input). It puts the one program on every user's ssh
+  # PATH (/run/current-system/sw/bin) and adds the user unit
+  # kitty-persist-resume.service, a oneshot `kitty-persist resume` at each
+  # start of the user manager that brings back the agents that ran when the
+  # host went down. No session exists until one is asked for; each holder is
+  # its own transient user unit, and Herdr and the ordinary ssh entry are
+  # untouched. The agents' hooks are not the module's `hooks` option: they
+  # come with the agent integration (its own change on this branch), which
+  # also keeps the shared Claude settings link intact.
+  services.kitty-persist = {
+    enable = true;
+    # Sessions outlive logout only with lingering. modules/common.nix already
+    # sets it for tom fleet-wide; naming it here keeps the dependency visible
+    # (both definitions are `true`).
+    linger = [ "tom" ];
+    # The microphone path of an agent that records through ALSA: ALSA's pulse
+    # plugin compiled into the program (the closure gains the PulseAudio
+    # client library). Whether the laptop forwards its microphone at all is
+    # the laptop's forward_audio, off unless set (home/kitty-persist.nix).
+    alsaPulsePlugin = true;
+  };
   # The live skill roots are writable directories. Keep them frozen for the
   # separate DSH ownership work; activation must not back them up or replace
   # them with the older whole-directory links.

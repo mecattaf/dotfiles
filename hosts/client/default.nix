@@ -93,8 +93,9 @@
   networking.hostName = "client";
   myFleet.roles = [ "seat" ];
 
-  # Persistent terminals: this host shows them (home/kitty-persist.nix).
-  home-manager.users.tom.programs.kittyPersist.client.enable = true;
+  # Persistent terminals: this host shows them (home/kitty-persist.nix): the
+  # kitty-persist program, its Kitty lines and kitty-persist.conf.
+  home-manager.users.tom.programs.kitty-persist.enable = true;
 
   # No dotfiles checkout on the thin client (Tom, 2026-10-11, about ~/dotfiles
   # and ~/mecattaf here: "i dnt need here"). Every raw dotfile (Domicile, kitty,
