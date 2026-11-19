@@ -6,9 +6,10 @@ returns to a console shell after exit. No Sway, Niri, Vicinae, Mako, Waybar,
 Kanshi, external launcher, clipboard daemon or gamma relay is installed.
 
 The client config is `home/dot_config/domicile/domicile.tsx`. It uses the
-maintained Imagine shell through public Domicile capabilities. A frozen copy of
-the previously running production shell lives in `pkgs/client-desktop/imagine`;
-its MIT notices and provenance remain with it. Domicile source, SDK and official
+bespoke Imagine shell from [agency-agency/imagine](https://github.com/agency-agency/imagine) through public Domicile
+capabilities. Its implementation, tests and provenance live in that repository;
+dotfiles pins the source and supplies shortcuts and device configuration.
+Domicile source, SDK and official
 engine are selected together by the upstream flake. The compositor has no local
 engine patches. The config and every relative production import are checked and
 bundled together before installation.
@@ -24,6 +25,27 @@ Meta+Return opens a fresh NAS terminal; Meta+Shift+Return opens a local recovery
 terminal. Meta+j/k switch outputs. The existing Imagine workspace, chat and
 terminal policy is retained. NAS continues to own Herdr and agent sessions.
 Client notification clients use the desktop's notification service.
+
+Meta+F cycles column width and Meta+G cycles window height through one third,
+one half, two thirds and full size; Shift reverses the cycle. These are genuine
+scrolling sizes: full-width columns retain their neighbors beside the viewport.
+Meta+Ctrl+Space switches the current workspace between Scrolling and Floating;
+the workspace rail also provides an explicit selector. Meta-wheel pans the
+ribbon horizontally and Meta+Shift-wheel pans vertically. Scrolling removes
+tab chrome and overlapping tabs. Floating retains tab groups and provides
+left-side close, minimize and geometric zoom controls. Meta+minus restores
+minimized windows; Meta+Ctrl+G retains the grouping command. Meta+= remains
+real fullscreen. Fake fullscreen is a separate future shell feature.
+
+The mode choice survives desktop starts without carrying native window IDs
+between compositor processes. Layout topology, floating geometry and ribbon
+sizes/offsets remain scoped to the current desktop for shell-only recovery.
+Solo workspaces suppress focus-border paint without changing content bounds.
+
+The complete requested behavior, qualified Domicile pair and remaining
+latest-Domicile/physical checks are recorded in Imagine's
+[desktop intent](https://github.com/agency-agency/imagine/blob/feat/scrolling-workspace-modes/docs/DESKTOP-INTENT.md).
+This integration does not activate or reload a running desktop.
 
 Duo uses two native DRM displays at scale 2, stacked at (0,0) and (0,900).
 DuoDocked uses only the upper panel. With the ASUS PA27JCV attached, Duo5k
