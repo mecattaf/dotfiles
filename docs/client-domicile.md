@@ -41,8 +41,10 @@ window border when focus moves. No separate near-black focus outline is used.
 
 Meta+Ctrl+Space switches between Tiling and Floating; the rail also offers both.
 Floating retains its geometric size presets and tab groups. Controls are on the
-right: green zoom, yellow minimize, red close, with room reserved beside tabs
-and the new-tab button. Meta+minus restores minimized windows; Meta+Ctrl+G keeps
+right: green zoom, yellow minimize, red close, including manually floated
+windows on a Tiling workspace. Room is reserved beside tabs
+and the new-tab button. Titles use the stylesheet paired with the installed
+Domicile SDK, including its active-title text rule. Meta+minus restores minimized windows; Meta+Ctrl+G keeps
 grouping. Meta+= remains real fullscreen. Fake fullscreen remains future work.
 
 Old saved scrolling mode choices migrate to tiling. No ribbon, viewport clipping,

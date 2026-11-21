@@ -179,7 +179,7 @@
     # fresh physical Domicile session (docs/client-domicile.md).
     domicile.url = "github:cprussin/domicile/6f4cabdcd3bb3b8992518a702e623972e1f07706";
     imagine = {
-      url = "github:agency-agency/imagine/7c14f719d1ff9b7b72f738c3b52889c4677c3a45";
+      url = "github:agency-agency/imagine/929f1751948ea9632730ace9e0c68eee149cce08";
       flake = false;
     };
     dsh-domicile = {
