@@ -40,13 +40,15 @@ roles as `window-borders.json` and passes them to Imagine; it paints the actual
 window border when focus moves. No separate near-black focus outline is used.
 
 Meta+Ctrl+Space switches between Tiling and Floating; the rail also offers both.
-Floating retains its geometric size presets and tab groups. Window controls
-use Manganese's native float/tile, maximize/restore and close icons, including
-explicit floats on a Tiling workspace. The close X uses the existing Noir red
-role from `home/themes/noir.nix`; there are no custom three-circle controls.
+Floating retains its geometric size presets and tab groups. Every decorated
+float has three circles at the top right: green zoom, yellow minimize and red
+close. Their centered SVG icons come from Manganese (maximize, four squares and
+X); their existing actions are preserved. Tab strips reserve room beside tabs
+and the new-tab button. The separate per-tab close X uses its original
+Manganese color, without a red override.
 Titles use the stylesheet paired with the installed Domicile SDK, including
 its active-title text rule. Meta+minus restores minimized windows;
-Meta+Ctrl+G keeps grouping. Meta+= and native Maximize remain true fullscreen.
+Meta+Ctrl+G keeps grouping. Meta+= remains true fullscreen.
 Fake fullscreen remains future work.
 
 Old saved scrolling mode choices migrate to tiling. No ribbon, viewport clipping,

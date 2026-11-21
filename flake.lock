@@ -633,17 +633,17 @@
     "imagine": {
       "flake": false,
       "locked": {
-        "lastModified": 1795286251,
-        "narHash": "sha256-fKsmAEF9xvP1TUOuS7jpuaJq6ULwesWzUQhmWMPwrsI=",
+        "lastModified": 1795287070,
+        "narHash": "sha256-k/U97gJbca+C4MbqLf3kQU7otKHtwkUrAzmmiNoOlzY=",
         "owner": "agency-agency",
         "repo": "imagine",
-        "rev": "653eb2254ca828e8ee3694efd331663467ec8893",
+        "rev": "2127b80b75f91974af5512685e457ceb1710b322",
         "type": "github"
       },
       "original": {
         "owner": "agency-agency",
         "repo": "imagine",
-        "rev": "653eb2254ca828e8ee3694efd331663467ec8893",
+        "rev": "2127b80b75f91974af5512685e457ceb1710b322",
         "type": "github"
       }
     },
