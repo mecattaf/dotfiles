@@ -1,0 +1,250 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Mechanical nightly package discovery input; scheduling and activation policy remain in the agency protocol.",
+  "discovery": {
+    "requiresLlm": false,
+    "judgmentProvider": "optional-local-gufo-only",
+    "cloudLlmAllowed": false,
+    "reportStates": [
+      "current",
+      "update-available",
+      "blocked",
+      "unknown"
+    ],
+    "compare": [
+      "upstream",
+      "packaged-candidate",
+      "installed",
+      "running-when-applicable"
+    ]
+  },
+  "activation": {
+    "userspace": "switch-without-reboot",
+    "preserveLiveSessions": true,
+    "kernel": "Stage changed kernels separately for a supervised reboot; do not withhold safe userspace updates.",
+    "client": "Require fresh home-presence proof immediately before automatic flash; away or unknown defers. Tailscale reachability alone is not home proof."
+  },
+  "excluded": [
+    "strix-worker",
+    "pi",
+    "halogen",
+    "retired desktop packages"
+  ],
+  "packages": [
+    {
+      "id": "claude-code",
+      "hosts": [
+        "nas",
+        "client"
+      ],
+      "provider": {
+        "input": "llm-agents",
+        "repository": "numtide/llm-agents.nix",
+        "channel": "catalog"
+      },
+      "versionAttributes": [
+        "nixosConfigurations.{host}.pkgs.llm-agents.claude-code.version"
+      ],
+      "updateMechanism": "Refresh llm-agents, build and switch affected host configurations.",
+      "activationNotes": "Preserve running sessions; verify the normal command path for fresh launches.",
+      "intentDates": [
+        "2026-10-10",
+        "2026-10-26",
+        "2026-11-07"
+      ]
+    },
+    {
+      "id": "codex",
+      "hosts": [
+        "nas",
+        "client"
+      ],
+      "provider": {
+        "input": "llm-agents",
+        "repository": "numtide/llm-agents.nix",
+        "channel": "catalog"
+      },
+      "versionAttributes": [
+        "nixosConfigurations.{host}.pkgs.llm-agents.codex.version"
+      ],
+      "updateMechanism": "Refresh llm-agents, build and switch affected host configurations.",
+      "activationNotes": "Preserve running sessions; verify the normal command path for fresh launches.",
+      "intentDates": [
+        "2026-10-10",
+        "2026-10-26",
+        "2026-11-07"
+      ]
+    },
+    {
+      "id": "dsh",
+      "hosts": [
+        "nas"
+      ],
+      "provider": {
+        "input": "llm-agents",
+        "repository": "numtide/llm-agents.nix",
+        "channel": "catalog"
+      },
+      "versionAttributes": [
+        "nixosConfigurations.{host}.pkgs.llm-agents.dsh.version"
+      ],
+      "updateMechanism": "Refresh llm-agents and rebuild the existing DSH wrapper/release.",
+      "activationNotes": "Keep accounts, writable user state and running instances; report package and each daemon instance release separately.",
+      "intentDates": [
+        "2026-10-28",
+        "2026-11-07",
+        "2026-11-10"
+      ]
+    },
+    {
+      "id": "herdr",
+      "hosts": [
+        "nas",
+        "strix-coordinator",
+        "client"
+      ],
+      "provider": {
+        "input": "herdr",
+        "channel": "latest-stable-release",
+        "repository": "herdrdev/herdr"
+      },
+      "versionAttributes": [],
+      "updateMechanism": "Resolve the upstream stable release and update the explicit input revision and lock together.",
+      "activationNotes": "Preserve the PTY-owning server and protocol compatibility. Package installation must not kill live sessions; report retained running server separately.",
+      "intentDates": [
+        "2026-10-10",
+        "2026-10-21"
+      ],
+      "inputVersionAttributes": {
+        "herdr": "packages.x86_64-linux.herdr.version"
+      }
+    },
+    {
+      "id": "fish",
+      "hosts": [
+        "nas",
+        "strix-coordinator",
+        "client"
+      ],
+      "provider": {
+        "input": "host-base-nixpkgs",
+        "channel": "latest-stable-release"
+      },
+      "versionAttributes": [
+        "nixosConfigurations.{host}.pkgs.fish.version"
+      ],
+      "updateMechanism": "Compare latest stable upstream with the candidate; update an explicit package provider without refreshing the whole base/kernel pin.",
+      "activationNotes": "Existing shells continue; fresh shells use the updated package. Current base pin may prevent a plain nixpkgs-fresh refresh advancing fish.",
+      "intentDates": [
+        "2026-10-10"
+      ]
+    },
+    {
+      "id": "kitty",
+      "hosts": [
+        "client"
+      ],
+      "provider": {
+        "recipe": "pkgs/kitty-0.50.nix",
+        "repository": "kovidgoyal/kitty",
+        "channel": "latest-stable-release"
+      },
+      "versionAttributes": [
+        "nixosConfigurations.{host}.pkgs.kitty.version"
+      ],
+      "updateMechanism": "Update the source recipe version, exact source hash, Go vendor hash and compatible toolchain; qualify existing patches and adapters.",
+      "activationNotes": "Input refresh alone does not update this recipe. Preserve running terminals and their retained helper packages; new terminals use the new package.",
+      "intentDates": [
+        "2026-10-10",
+        "2026-11-07",
+        "2026-11-15"
+      ]
+    },
+    {
+      "id": "google-chrome",
+      "hosts": [
+        "client"
+      ],
+      "provider": {
+        "input": "nixpkgs-fresh",
+        "channel": "stable-package"
+      },
+      "versionAttributes": [
+        "nixosConfigurations.client.pkgs.google-chrome.version"
+      ],
+      "updateMechanism": "Refresh nixpkgs-fresh and verify the packaged stable Chrome version against upstream.",
+      "activationNotes": "Preserve the running browser and profile; new browser process adopts the update. Do not add Chrome to headless hosts.",
+      "intentDates": [
+        "2026-10-10",
+        "2026-10-26",
+        "2026-11-15"
+      ]
+    },
+    {
+      "id": "tailscale",
+      "hosts": [
+        "nas",
+        "strix-coordinator",
+        "client"
+      ],
+      "provider": {
+        "input": "host-base-nixpkgs",
+        "channel": "latest-stable-release"
+      },
+      "versionAttributes": [
+        "nixosConfigurations.{host}.pkgs.tailscale.version"
+      ],
+      "updateMechanism": "Compare stable upstream and candidate versions; update an explicit package provider without broad base/kernel churn.",
+      "activationNotes": "Preserve active transport. Inspect actual tailscaled unit effects and report a specific unresolved blocker; do not silently omit this package.",
+      "intentDates": [
+        "2026-10-26",
+        "2026-10-28"
+      ]
+    },
+    {
+      "id": "domicile",
+      "hosts": [
+        "client"
+      ],
+      "provider": {
+        "input": "domicile",
+        "repository": "cprussin/domicile",
+        "channel": "latest-compatible-published-build"
+      },
+      "versionAttributes": [
+        "nixosConfigurations.client.config.programs.domicile.package.version"
+      ],
+      "updateMechanism": "Update the explicit Domicile revision and lock together, keeping SDK and prebuilt engine matched.",
+      "activationNotes": "Automatic flash is home-only. Preserve live desktop work; separately report installed and running compositor revisions.",
+      "intentDates": [
+        "2026-11-07",
+        "2026-11-12",
+        "2026-11-15"
+      ]
+    },
+    {
+      "id": "gufo",
+      "hosts": [
+        "strix-coordinator"
+      ],
+      "provider": {
+        "inputs": [
+          "gufo",
+          "gufo-embedding"
+        ],
+        "repository": "gufo-org/gufo",
+        "channel": "latest-stable-release"
+      },
+      "versionAttributes": [
+        "nixosConfigurations.strix-coordinator.config.services.gufo.package.version",
+        "nixosConfigurations.strix-coordinator.config.services.gufo-embedding.package.version"
+      ],
+      "updateMechanism": "Resolve stable upstream, update the relevant input pins and qualify the existing inference and embedding routes.",
+      "activationNotes": "Wait for actual idle/checkpoint proof. No model acquisition, pruning, worker resurrection or inference-configuration change is implied. Report incompatible releases as blocked.",
+      "intentDates": [
+        "2026-10-10",
+        "2026-11-12"
+      ]
+    }
+  ]
+}
