@@ -27,7 +27,6 @@ let
       in
       {
         inherit (palette.border) active inactive;
-        close = palette.red;
       }
     )
   );
