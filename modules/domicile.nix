@@ -18,6 +18,18 @@ let
   home = config.home-manager.users.tom;
   domicile = config.programs.domicile.package;
   keyTable = config.programs.domicilePhysical.configSource;
+  # Reuse the selected Noir border roles that the former Sway fragment used.
+  # Keep palette values in home/themes, rather than choosing colors in Imagine.
+  windowBorders = pkgs.writeText "imagine-window-borders.json" (
+    builtins.toJSON (
+      let
+        palette = import ../home/themes/noir.nix;
+      in
+      {
+        inherit (palette.border) active inactive;
+      }
+    )
+  );
   # Keep the maintained package's relative imports together. Its reference
   # baseline, tests and proof fixtures are never part of the production source.
   imagineRoot = toString (builtins.toPath (toString inputs.imagine));
@@ -59,6 +71,7 @@ let
     # generation change cannot reuse the old shell bundle.
     printf '%s\n' '// Imagine bundle: ${imagineSource}' > config/domicile.tsx
     cat ${keyTable} >> config/domicile.tsx
+    cp ${windowBorders} config/window-borders.json
     cp -R ${imagineSource} config/imagine
     chmod -R u+w config
     # Runs the builder and prints `field` of its `step` line.
@@ -72,6 +85,7 @@ let
     run built .root --entry config/domicile.tsx
     mkdir -p "$out"
     cp config/domicile.tsx "$out/domicile.tsx"
+    cp config/window-borders.json "$out/window-borders.json"
     cp -R config/imagine "$out/imagine"
   '';
   # Nix keeps these schemas outside the profile's share.
@@ -340,6 +354,8 @@ in
     # Relative imports resolve beside its checked store target, including Imagine.
     # The explicit console-trial route remains immutable for recovery.
     home-manager.users.tom.xdg.configFile."domicile/domicile.tsx".source = checkedKeyTable;
+    home-manager.users.tom.xdg.configFile."domicile/window-borders.json".source =
+      "${checkedKeyTableDirectory}/window-borders.json";
     # The stock import graph resolves beside the user link, while Vite resolves
     # beside its real target. Both locations need the same bundled dependencies;
     # the entry stamp above prevents stale-cache reuse during link replacement.
