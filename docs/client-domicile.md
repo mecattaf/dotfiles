@@ -34,6 +34,10 @@ share the remaining space proportionally. No split on that axis means no change.
 `tiling: { gap: 13 }` adds about 3 mm between windows on the scale-2 5K output,
 with no outer margin. Plain tiles have no individual title bar and restore all
 four border edges. Tabbed and stacked groups retain their tab strips.
+Window focus uses the existing Noir/Sway border roles from `home/themes/noir.nix`:
+active `#555451`, inactive `#373735`, at 1px. The checked config bundles those
+roles as `window-borders.json` and passes them to Imagine; it paints the actual
+window border when focus moves. No separate near-black focus outline is used.
 
 Meta+Ctrl+Space switches between Tiling and Floating; the rail also offers both.
 Floating retains its geometric size presets and tab groups. Controls are on the

@@ -3,6 +3,7 @@
 import type { ThemeConfig } from "@domicile-desktop/sdk/config";
 import { KeyAction } from "@domicile-desktop/sdk/key-action";
 import { runImagine } from "./imagine/src/index";
+import windowBorders from "./window-borders.json";
 import {
   DEFAULT_KEYBINDINGS,
   clearNotifications,
@@ -100,6 +101,7 @@ const imagineShell = runImagine({
   layoutPersistence: { identity: "agency-layout-identity" },
   workspaceModes: true,
   tiling: { gap: 13 },
+  windowBorders,
   audioControls: true,
   webBrowser: { command: ["domicile-apps", "chrome"] },
   policy: {
