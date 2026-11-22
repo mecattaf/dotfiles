@@ -1,0 +1,365 @@
+#!/usr/bin/env python3
+"""An on-demand, passive Linux Domicile power/rendering measurement."""
+import argparse
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path
+import pwd
+import resource
+import shlex
+import statistics
+import subprocess
+import sys
+import time
+import uuid
+
+SCHEMA = 1
+
+
+def read(path):
+    return Path(path).read_text().strip()
+
+
+def number(path):
+    try:
+        return int(read(path))
+    except (OSError, ValueError):
+        return None
+
+
+def process(pid):
+    root = Path('/proc') / str(pid)
+    fields = read(root / 'stat').rsplit(')', 1)[1].split()
+    return {
+        'pid': int(pid), 'start_ticks': int(fields[19]),
+        'exe': str((root / 'exe').resolve(strict=True)),
+        'argv': read(root / 'cmdline').split('\0'),
+        'uid': root.stat().st_uid,
+    }
+
+
+def drm_fields(text):
+    return dict((k, v.strip()) for k, v in
+                (line.split(':', 1) for line in text.splitlines() if ':' in line))
+
+
+def drm_clients(pid):
+    """One fd per DRM client; duplicated descriptors share the same counter."""
+    clients = {}
+    for path in (Path('/proc') / str(pid) / 'fdinfo').iterdir():
+        try:
+            fields = drm_fields(read(path))
+            key = (fields['drm-pdev'], fields['drm-client-id'])
+            if 'drm-engine-render' in fields:
+                clients.setdefault(key, path)
+        except (OSError, KeyError):
+            continue
+    if not clients:
+        raise RuntimeError('No render-engine counters for the selected GPU process')
+    return clients
+
+
+def render_counters(clients):
+    result = {}
+    for key, path in clients.items():
+        fields = drm_fields(read(path))
+        if key != (fields.get('drm-pdev'), fields.get('drm-client-id')):
+            raise RuntimeError('A DRM client changed during measurement; rerun')
+        result['/'.join(key)] = int(fields['drm-engine-render'].split()[0])
+    return result
+
+
+def counter_delta(before, after, modulus=None):
+    if after >= before:
+        return after - before
+    if modulus:
+        return modulus - before + after
+    raise RuntimeError('Counter reset during measurement; rerun')
+
+
+def metrics(before, after, energy_range):
+    seconds = after['monotonic'] - before['monotonic']
+    ticks = [counter_delta(a, b) for a, b in zip(before['cpu'], after['cpu'])]
+    if before['render_ns'].keys() != after['render_ns'].keys():
+        raise RuntimeError('DRM client set changed during measurement')
+    result = {
+        'seconds': seconds,
+        'cpu_total_pct': 100 * (sum(ticks) - ticks[3] - ticks[4]) / sum(ticks),
+        'gpu_render_pct': sum(counter_delta(before['render_ns'][k], v)
+                              for k, v in after['render_ns'].items()) / seconds / 1e7,
+        'package_watts': None,
+        'temperature_c': after['temperature_c'], 'fan_rpm': after['fan_rpm'],
+    }
+    if before['energy_uj'] is not None and after['energy_uj'] is not None:
+        result['package_watts'] = counter_delta(before['energy_uj'], after['energy_uj'],
+                                                energy_range) / seconds / 1e6
+    return result
+
+
+def summarize(samples):
+    result = {}
+    for key in ['gpu_render_pct', 'package_watts', 'cpu_total_pct', 'temperature_c', 'fan_rpm']:
+        values = [s[key] for s in samples if s[key] is not None]
+        if not values:
+            result[key] = None
+            continue
+        weighted = sum(s[key] * s['seconds'] for s in samples if s[key] is not None)
+        duration = sum(s['seconds'] for s in samples if s[key] is not None)
+        result[key] = {'mean': weighted / duration, 'median': statistics.median(values),
+                       'min': min(values), 'max': max(values)}
+    return result
+
+
+def collect(args):
+    if os.geteuid() != 0:
+        raise RuntimeError('Collector needs root for RAPL and process counters; use record')
+    candidates = []
+    processes = []
+    for path in Path('/proc').glob('[0-9]*'):
+        try:
+            p = process(path.name)
+            processes.append(p)
+            # Chromium can rewrite argv into one space-separated /proc entry.
+            if '--type=gpu-process' in ' '.join(p['argv']).split() and 'domicile-engine-' in p['exe']:
+                candidates.append(p)
+        except (OSError, ValueError, IndexError):
+            continue
+    if args.pid:
+        candidates = [p for p in candidates if p['pid'] == args.pid]
+    if len(candidates) != 1:
+        raise RuntimeError(f'Found {len(candidates)} Domicile GPU processes; select one with --pid')
+    gpu = candidates[0]
+    clients = drm_clients(gpu['pid'])
+    account = pwd.getpwuid(gpu['uid'])
+    sockets = set()
+    for p in processes:
+        if p['uid'] == gpu['uid'] and 'domicile-compositor' in p['exe']:
+            for item in Path(f"/proc/{p['pid']}/environ").read_bytes().split(b'\0'):
+                if item.startswith(b'DOMICILE_SOCK='):
+                    sockets.add(item.decode().split('=', 1)[1])
+    if len(sockets) != 1:
+        raise RuntimeError('Cannot identify one desktop control socket; no socket guessing')
+    supervisors = [p for p in processes if p['uid'] == gpu['uid']
+                   and Path(p['exe']).name in ('domicile-real', 'domicile')]
+    if len(supervisors) != 1:
+        raise RuntimeError('Cannot identify one running Domicile supervisor')
+    supervisor = supervisors[0]
+    env = {'DOMICILE_SOCK': sockets.pop(), 'HOME': account.pw_dir,
+           'XDG_RUNTIME_DIR': f'/run/user/{gpu["uid"]}',
+           'PATH': f'/etc/profiles/per-user/{account.pw_name}/bin:/run/current-system/sw/bin'}
+
+    def query(*words):
+        p = subprocess.run([supervisor['exe'], *words], env=env, user=gpu['uid'],
+                           group=account.pw_gid, capture_output=True, text=True, timeout=10)
+        if p.returncode:
+            raise RuntimeError('Domicile metadata query failed: ' + p.stderr.strip())
+        return p.stdout.strip()
+
+    def context():
+        displays = json.loads(query('list-displays', '--json'))
+        windows = json.loads(query('list-windows', '--json'))
+        return {
+            'displays': [{k: d.get(k) for k in ['name', 'mode', 'scale', 'position',
+                         'size', 'refresh_mhz', 'lit']} for d in displays],
+            # Window contents, URLs, titles and process argv stay private.
+            'windows': [{k: w.get(k) for k in ['kind', 'app', 'pid', 'size', 'focused']}
+                        for w in windows],
+            'idle_seconds': json.loads(query('idle-time', '--json'))['seconds'],
+            'shell': query('which-shell'),
+        }
+
+    hwmon = {read(p / 'name'): p for p in Path('/sys/class/hwmon').glob('hwmon*')}
+    core = hwmon.get('coretemp')
+    fan = hwmon.get('asus', hwmon.get('acpi_fan'))
+    energy = next((p for p in Path('/sys/class/powercap').glob('intel-rapl:*')
+                   if (p / 'name').exists() and read(p / 'name') == 'package-0'), None)
+    energy_range = number(energy / 'max_energy_range_uj') if energy else None
+
+    def snapshot():
+        start = time.monotonic()
+        if process(gpu['pid'])['start_ticks'] != gpu['start_ticks']:
+            raise RuntimeError('The GPU process restarted during measurement; rerun')
+        temperature = number(core / 'temp1_input') if core else None
+        data = {'monotonic': time.monotonic(),
+                'cpu': list(map(int, read('/proc/stat').splitlines()[0].split()[1:9])),
+                'energy_uj': number(energy / 'energy_uj') if energy else None,
+                'render_ns': render_counters(clients),
+                'temperature_c': temperature / 1000 if temperature is not None else None,
+                'fan_rpm': number(fan / 'fan1_input') if fan else None}
+        data['read_ms'] = (time.monotonic() - start) * 1000
+        return data
+
+    metadata = {
+        'host': os.uname().nodename, 'kernel': os.uname().release,
+        'product': read('/sys/class/dmi/id/product_name'),
+        'cpu': next(line.split(':', 1)[1].strip() for line in read('/proc/cpuinfo').splitlines()
+                    if line.startswith('model name')),
+        'running_version': query('--version'), 'gpu_pid': gpu['pid'], 'gpu_exe': gpu['exe'],
+        'supervisor_exe': supervisor['exe'], 'system': str(Path('/run/current-system').resolve()),
+        'profile': read('/sys/firmware/acpi/platform_profile'),
+        'epp': read('/sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference'),
+        'battery': {p.name: {k: read(p / k) for k in ['status', 'capacity', 'power_now']
+                            if (p / k).exists()} for p in Path('/sys/class/power_supply').glob('*')
+                    if (p / 'type').exists() and read(p / 'type') == 'Battery'
+                    and (not (p / 'scope').exists() or read(p / 'scope') == 'System')},
+    }
+    time.sleep(args.delay)
+    start_context = context()
+    metadata['session_age_seconds'] = float(read('/proc/uptime').split()[0]) - (
+        supervisor['start_ticks'] / os.sysconf('SC_CLK_TCK'))
+    started = dt.datetime.now(dt.timezone.utc).isoformat()
+    cpu_start = resource.getrusage(resource.RUSAGE_SELF)
+    snapshots = [snapshot()]
+    deadline = snapshots[0]['monotonic'] + args.seconds
+    while time.monotonic() < deadline:
+        time.sleep(max(0, min(args.interval, deadline - time.monotonic())))
+        snapshots.append(snapshot())
+    cpu_end = resource.getrusage(resource.RUSAGE_SELF)
+    samples = [metrics(a, b, energy_range) for a, b in zip(snapshots, snapshots[1:])]
+    end_context = context()
+    if drm_clients(gpu['pid']).keys() != clients.keys():
+        raise RuntimeError('DRM client set changed during measurement; rerun')
+    warnings = []
+    if start_context != end_context:
+        for key in ['displays', 'windows', 'shell']:
+            if start_context[key] != end_context[key]:
+                warnings.append(key + ' changed during observation')
+    for key in ['package_watts', 'temperature_c', 'fan_rpm']:
+        if any(s[key] is None for s in samples):
+            warnings.append(key + ' unavailable in one or more samples')
+    return {'schema': SCHEMA, 'started_at': started, 'metadata': metadata,
+            'context_start': start_context, 'context_end': end_context,
+            'samples': samples, 'summary': summarize(samples), 'warnings': warnings,
+            'method': {'gpu': 'sum of unique DRM client render-engine counter deltas',
+                       'power': 'RAPL processor package, not whole-laptop watts',
+                       'sampling_read_ms_max': max(s['read_ms'] for s in snapshots),
+                       'sampler_cpu_ms': 1000 * (cpu_end.ru_utime + cpu_end.ru_stime
+                                                - cpu_start.ru_utime - cpu_start.ru_stime)}}
+
+
+def state_root():
+    return Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state'))) / 'domicile-perf'
+
+
+def show(report, path):
+    print(f"{report['started_at']}  {report.get('label', '')}")
+    print(report['metadata']['running_version'])
+    for key, stats in report['summary'].items():
+        if stats is None:
+            print(f'{key}: unavailable')
+        else:
+            print(f"{key}: {stats['mean']:.2f} mean ({stats['min']:.2f}–{stats['max']:.2f})")
+    for warning in report['warnings']:
+        print('NOTE: ' + warning)
+    print(f'Result: {path}')
+
+
+def parser():
+    p = argparse.ArgumentParser(description=__doc__)
+    subs = p.add_subparsers(dest='command', required=True)
+    for name in ['record', '_collect']:
+        r = subs.add_parser(name, help='measure the existing desktop' if name == 'record' else argparse.SUPPRESS)
+        r.add_argument('--seconds', type=float, default=30)
+        r.add_argument('--interval', type=float, default=5)
+        r.add_argument('--delay', type=float, default=0)
+        r.add_argument('--pid', type=int)
+        if name == 'record':
+            r.add_argument('--host', default='client', help='SSH target, or local')
+            r.add_argument('--label', required=True, help='workload being observed; not an automatic classification')
+    for name in ['latest', 'compare']:
+        r = subs.add_parser(name)
+        if name == 'latest':
+            r.add_argument('--json', action='store_true')
+        else:
+            r.add_argument('before', type=Path)
+            r.add_argument('after', type=Path, nargs='?', default=state_root() / 'latest.json')
+    r = subs.add_parser('animate', help='run a deterministic one-line terminal animation')
+    r.add_argument('--seconds', type=float, default=60)
+    r.add_argument('--hz', type=float, default=10)
+    return p
+
+
+def main():
+    p = parser()
+    args = p.parse_args()
+    if args.command in ['record', '_collect']:
+        if not (1 <= args.seconds <= 600 and .5 <= args.interval <= args.seconds and 0 <= args.delay <= 600):
+            p.error('seconds must be 1–600, interval .5–seconds, delay 0–600')
+    if args.command == 'animate':
+        if not sys.stdout.isatty():
+            p.error('animate needs a visible terminal')
+        if not (1 <= args.seconds <= 600 and 1 <= args.hz <= 60):
+            p.error('seconds must be 1–600 and hz 1–60')
+        start = time.monotonic()
+        frame = 0
+        try:
+            while time.monotonic() - start < args.seconds:
+                print('\rDomicile terminal fixture: ' + '|/-\\'[frame % 4], end='', flush=True)
+                frame += 1
+                time.sleep(max(0, start + frame / args.hz - time.monotonic()))
+        finally:
+            print('\rDomicile terminal fixture: done')
+    elif args.command == '_collect':
+        print(json.dumps(collect(args)))
+    elif args.command == 'record':
+        flags = ['_collect', '--seconds', str(args.seconds), '--interval', str(args.interval),
+                 '--delay', str(args.delay)]
+        if args.pid:
+            flags += ['--pid', str(args.pid)]
+        source = Path(__file__).resolve().read_text()
+        if args.host == 'local':
+            command = ['sudo', '-n', sys.executable, '-', *flags]
+        else:
+            if args.host.startswith('-'):
+                p.error('host must not start with a dash')
+            command = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
+                       '-o', 'ConnectTimeout=10', args.host,
+                       shlex.join(['sudo', '-n', 'python3', '-', *flags])]
+        result = subprocess.run(command, input=source, capture_output=True, text=True,
+                                timeout=args.seconds + args.delay + 120)
+        if result.returncode:
+            raise RuntimeError('No result saved: ' + result.stderr.strip())
+        report = json.loads(result.stdout)
+        report.update(label=args.label, collector_sha256=hashlib.sha256(source.encode()).hexdigest())
+        root = state_root()
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        collector = root / ('collector-' + report['collector_sha256'] + '.py')
+        collector.write_text(source)
+        collector.chmod(0o700)
+        runner = root / ('.run-' + uuid.uuid4().hex)
+        runner.symlink_to(collector.name)
+        runner.replace(root / 'run')
+        path = root / (dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8] + '.json')
+        path.write_text(json.dumps(report, indent=2) + '\n')
+        temp = root / ('.latest-' + uuid.uuid4().hex)
+        temp.symlink_to(path.name)
+        temp.replace(root / 'latest.json')
+        show(report, path)
+    elif args.command == 'latest':
+        path = state_root() / 'latest.json'
+        report = json.loads(path.read_text())
+        print(json.dumps(report, indent=2)) if args.json else show(report, path.resolve())
+    else:
+        before, after = [json.loads(path.read_text()) for path in [args.before, args.after]]
+        for key in ['product', 'profile', 'epp']:
+            if before['metadata'][key] != after['metadata'][key]:
+                print('NOTE: changed ' + key)
+        for key in ['displays', 'shell']:
+            if before['context_start'][key] != after['context_start'][key]:
+                print('NOTE: changed ' + key)
+        if before.get('label') != after.get('label'):
+            print('NOTE: different workload labels; this is not a matched regression comparison')
+        for key in before['summary']:
+            a, b = before['summary'][key], after['summary'][key]
+            if a is not None and b is not None:
+                print(f"{key}: {a['mean']:.2f} -> {b['mean']:.2f} ({b['mean']-a['mean']:+.2f})")
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+        print('domicile-perf: ' + str(error), file=sys.stderr)
+        sys.exit(1)
