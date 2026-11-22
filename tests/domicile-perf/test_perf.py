@@ -100,6 +100,22 @@ class PerformanceMeasurement(unittest.TestCase):
             self.assertEqual((root / 'run').resolve().name, 'collector-' + saved['collector_sha256'] + '.py')
             self.assertEqual((root / 'run').read_text(), SCRIPT.read_text())
 
+    def test_comparison_flags_changed_windows_and_retains_capture_warnings(self):
+        report = {'metadata': {'product': 'fixture', 'profile': 'quiet', 'epp': 'power'},
+                  'context_start': {'displays': [], 'shell': 'fixture', 'windows': []},
+                  'summary': {}, 'warnings': [], 'label': 'same-label'}
+        with tempfile.TemporaryDirectory() as directory:
+            before, after = Path(directory) / 'before.json', Path(directory) / 'after.json'
+            before.write_text(json.dumps(report))
+            report['context_start']['windows'] = [{'pid': 1}]
+            report['warnings'] = ['windows changed during observation']
+            after.write_text(json.dumps(report))
+            with patch.object(sys, 'argv', ['domicile-perf', 'compare', str(before), str(after)]), \
+                    patch('sys.stdout', new_callable=io.StringIO) as output:
+                perf.main()
+            self.assertIn('NOTE: changed windows', output.getvalue())
+            self.assertIn('NOTE: after capture: windows changed during observation', output.getvalue())
+
 
 if __name__ == '__main__':
     unittest.main()

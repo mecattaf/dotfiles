@@ -346,9 +346,12 @@ def main():
         for key in ['product', 'profile', 'epp']:
             if before['metadata'][key] != after['metadata'][key]:
                 print('NOTE: changed ' + key)
-        for key in ['displays', 'shell']:
+        for key in ['displays', 'shell', 'windows']:
             if before['context_start'][key] != after['context_start'][key]:
                 print('NOTE: changed ' + key)
+        for label, report in [('before', before), ('after', after)]:
+            for warning in report['warnings']:
+                print('NOTE: ' + label + ' capture: ' + warning)
         if before.get('label') != after.get('label'):
             print('NOTE: different workload labels; this is not a matched regression comparison')
         for key in before['summary']:
