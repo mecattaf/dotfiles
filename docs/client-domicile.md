@@ -31,7 +31,7 @@ on 2026-11-19 ("i retract the scrolling window mgmt logic. prefer good old tilin
 Meta+F cycles the nearest horizontal split and Meta+G the nearest vertical split
 through one quarter, one half and three quarters; Shift reverses. Other siblings
 share the remaining space proportionally. No split on that axis means no change.
-`tiling: { gap: 13 }` adds about 3 mm between windows on the scale-2 5K output,
+`tiling: { gap: 10 }` adds 10 logical pixels between windows,
 with no outer margin. Plain tiles have no individual title bar and restore all
 four border edges. Tabbed and stacked groups retain their tab strips.
 Window focus uses the existing Noir/Sway border roles from `home/themes/noir.nix`:

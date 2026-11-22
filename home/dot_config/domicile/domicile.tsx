@@ -100,7 +100,7 @@ const imagineShell = runImagine({
   displayTemperatures: { [upperPanel]: 3850, [lowerPanel]: 3350, [external5k]: 4000 },
   layoutPersistence: { identity: "agency-layout-identity" },
   workspaceModes: true,
-  tiling: { gap: 13 },
+  tiling: { gap: 10 },
   windowBorders,
   audioControls: true,
   webBrowser: { command: ["domicile-apps", "chrome"] },
