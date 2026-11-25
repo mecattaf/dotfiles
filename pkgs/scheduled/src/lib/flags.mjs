@@ -1,16 +1,16 @@
-// flags.mjs — the location flags shared by `tick` and `run`: --inbox, --state-dir, --home, --floor-instance.
+// flags.mjs — the location flags shared by `tick` and `run`: --inbox, --state-dir, --home, --floor-unit.
 
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const VALUE_FLAGS = { '--inbox': 'inbox', '--state-dir': 'stateDir', '--home': 'home', '--floor-instance': 'floorInstance', '--now': 'now' };
+const VALUE_FLAGS = { '--inbox': 'inbox', '--state-dir': 'stateDir', '--home': 'home', '--floor-unit': 'floorUnit', '--now': 'now' };
 
 /**
  * Parse `args` against `allowed` value flags plus `--json`; the flag wins over ctx's environment default.
  * @returns {{ opts: object, positional: string[], json: boolean } | { error: string }}
  */
 export function parseLocationFlags(args, ctx, allowed) {
-  const opts = { inbox: ctx.inbox, stateDir: ctx.stateDir, home: ctx.home, floorInstance: ctx.floorInstance ?? null };
+  const opts = { inbox: ctx.inbox, stateDir: ctx.stateDir, home: ctx.home, floorUnit: ctx.floorUnit ?? null };
   const positional = [];
   let json = false;
   for (let i = 0; i < args.length; i++) {

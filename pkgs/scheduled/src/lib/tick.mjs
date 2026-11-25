@@ -2,8 +2,9 @@
 //
 // A nudger only: it decodes the cron times of every agency's .agency/scheduled/*.jsonc, links one
 // occurrence record per due item into the superagent's inbox, withdraws its own records of items no longer
-// enabled, and starts the floor instance when records wait. It holds no superagent logic: it opens no
-// orchestrator database, calls no floor API, runs no `dshd run` and runs no item command.
+// enabled, and starts the floor's systemd user unit when records wait. It holds no superagent logic: it
+// opens no orchestrator database, calls no floor API, runs no item command, and asks systemctl only to
+// show and start that one unit.
 
 import { join, dirname, basename, sep } from 'node:path';
 import { statSync } from 'node:fs';
@@ -12,7 +13,7 @@ import { performance } from 'node:perf_hooks';
 import { discover } from './discover.mjs';
 import { validateFile } from './validate.mjs';
 import { instantsBetween } from './cron.mjs';
-import { dshdRunner, floorState, wake, LIVE } from './floor.mjs';
+import { unitRunner, floorState, wake, LIVE } from './floor.mjs';
 import { writeAtomic } from './atomic.mjs';
 import { HEARTBEAT, handOff, makeRecord, readRecord, recordProblem, waiting, withdraw } from './inbox.mjs';
 
@@ -212,16 +213,16 @@ const sameStat = (prev, st) => prev && prev.dev === String(st.dev) && prev.ino =
  * @param {Date|string} [opts.now] Clock override
  * @param {string} [opts.stateDir] Heartbeat state (heartbeat.json, intake.json, .tick.lock)
  * @param {string} [opts.inbox] The superagent's inbox (required)
- * @param {string|null} [opts.floorInstance] The floor's dshd instance; null: never call dshd
+ * @param {string|null} [opts.floorUnit] The floor's systemd user unit; null: never call systemctl
  * @param {string} [opts.home] Agency discovery root, agency id `master`
- * @param {(argv: string[]) => Promise<{code: number, stdout: string, stderr: string}>} [opts.run] dshd runner
+ * @param {(argv: string[]) => Promise<{code: number, stdout: string, stderr: string}>} [opts.run] systemctl runner
  * @returns {Promise<{code: number, lines: string[]}>}
  */
-export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inboxOpt, floorInstance: floorOpt, home: homeOpt, run: runOpt } = {}) {
+export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inboxOpt, floorUnit: floorOpt, home: homeOpt, run: runOpt } = {}) {
   const passStart = performance.now();
   const stateDir = stateDirOpt || ctx.stateDir;
   const inbox = inboxOpt || ctx.inbox;
-  const floorInstance = floorOpt === undefined ? (ctx.floorInstance ?? null) : floorOpt;
+  const floorUnit = floorOpt === undefined ? (ctx.floorUnit ?? null) : floorOpt;
   const home = homeOpt || ctx.home;
   if (!inbox) throw new Error('--inbox is required');
 
@@ -231,7 +232,7 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
   if (Number.isNaN(now.getTime())) throw new Error(`Invalid now timestamp: ${nowOpt}`);
 
   const lines = [];
-  const run = runOpt || dshdRunner(ctx.dshd, { ...process.env, ...(ctx.env || {}) });
+  const run = runOpt || unitRunner(ctx.systemctl, { ...process.env, ...(ctx.env || {}) });
 
   // Phase 0: lock.
   await mkdir(stateDir, { recursive: true, mode: 0o700 });
@@ -438,7 +439,7 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
 
     // Phase 6: floor state, read once and only when a record waits.
     let floor = null;
-    if (floorInstance && waiting(inbox).length > 0) floor = await floorState(floorInstance, run);
+    if (floorUnit && waiting(inbox).length > 0) floor = await floorState(floorUnit, run);
 
     // Phase 7: withdraw this heartbeat's records of items no longer valid and enabled, unless the Source reads now.
     if (!(floor && LIVE.has(floor.state))) {
@@ -474,7 +475,7 @@ export async function tick(ctx, { now: nowOpt, stateDir: stateDirOpt, inbox: inb
     const waitingCount = waiting(inbox).length;
     let floorFaulted = false;
     try {
-      const res = await wake({ instance: floorInstance, waiting: waitingCount, floor, run });
+      const res = await wake({ unit: floorUnit, waiting: waitingCount, floor, run });
       lines.push(...res.lines);
       floorFaulted = res.fault;
     } catch (err) {

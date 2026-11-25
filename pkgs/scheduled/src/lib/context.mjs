@@ -18,7 +18,7 @@ export function stateDirOf(env, home) {
 }
 
 /**
- * Build the ctx object used by every verb. Flags (--inbox, --state-dir, --home, --floor-instance,
+ * Build the ctx object used by every verb. Flags (--inbox, --state-dir, --home, --floor-unit,
  * --now) are parsed by the verbs that take them and win over these defaults.
  *
  * @param {string[]} argv  process.argv.slice(2) or equivalent
@@ -33,13 +33,13 @@ export function makeContext(argv) {
     home,
     stateDir: stateDirOf(env, home),
     inbox: env.SCHEDULED_INBOX || null,
-    floorInstance: env.SCHEDULED_FLOOR_INSTANCE || null,
+    // The floor's systemd user unit (`factory-floor.service`); empty or unset: no floor is woken.
+    floorUnit: env.SCHEDULED_FLOOR_UNIT || null,
     env,
     now: () => new Date(),
     out: (s) => process.stdout.write(s),
     err: (s) => process.stderr.write(s),
     uid: process.getuid(),
-    dshd: env.SCHEDULED_DSHD ?? '/run/current-system/sw/bin/dshd',
     systemctl: env.SCHEDULED_SYSTEMCTL ?? '/run/current-system/sw/bin/systemctl',
     machineIdFile: env.SCHEDULED_MACHINE_ID_FILE ?? '/etc/machine-id',
   };

@@ -1,4 +1,4 @@
-// scheduled run ID [--home DIR] [--inbox DIR] [--floor-instance NAME] [--json] (docs/scheduled.md, Everyday commands)
+// scheduled run ID [--home DIR] [--inbox DIR] [--floor-unit NAME] [--json] (docs/scheduled.md, Everyday commands)
 //
 // Run now: validates the item (enabled or not), links one `manual` occurrence record into the inbox, then
 // applies the wake table with that record waiting. No database, no waiting for the work: the floor's
@@ -9,13 +9,13 @@ import { validateFile } from '../lib/validate.mjs';
 import { formatProblems } from '../lib/schema.mjs';
 import { ulid } from '../lib/ids.mjs';
 import { RUN, handOff, makeRecord, recordProblem, waiting } from '../lib/inbox.mjs';
-import { dshdRunner, wake } from '../lib/floor.mjs';
+import { unitRunner, wake } from '../lib/floor.mjs';
 import { parseLocationFlags } from '../lib/flags.mjs';
 
-const USAGE = 'usage: scheduled run ID [--home DIR] [--inbox DIR] [--floor-instance NAME] [--json]';
+const USAGE = 'usage: scheduled run ID [--home DIR] [--inbox DIR] [--floor-unit NAME] [--json]';
 
 export async function main(args, ctx, { run: runOpt } = {}) {
-  const parsed = parseLocationFlags(args, ctx, ['--inbox', '--home', '--floor-instance']);
+  const parsed = parseLocationFlags(args, ctx, ['--inbox', '--home', '--floor-unit']);
   if (parsed.error || parsed.positional.length !== 1) {
     ctx.err(`scheduled run: ${parsed.error ?? USAGE}\n`);
     return 2;
@@ -50,13 +50,13 @@ export async function main(args, ctx, { run: runOpt } = {}) {
   }
   const { name, result } = await handOff(opts.inbox, record);
 
-  const runner = runOpt || dshdRunner(ctx.dshd, { ...process.env, ...(ctx.env || {}) });
-  const woke = await wake({ instance: opts.floorInstance, waiting: Math.max(1, waiting(opts.inbox).length), floor: null, run: runner });
-  const floor = !opts.floorInstance ? 'none' : (woke.lines[0] ?? '').replace(/^<\d>/, '');
+  const runner = runOpt || unitRunner(ctx.systemctl, { ...process.env, ...(ctx.env || {}) });
+  const woke = await wake({ unit: opts.floorUnit, waiting: Math.max(1, waiting(opts.inbox).length), floor: null, run: runner });
+  const floor = !opts.floorUnit ? 'none' : (woke.lines[0] ?? '').replace(/^<\d>/, '');
   for (const line of woke.lines) ctx.err(line.replace(/^<\d>/, 'scheduled run: ') + '\n');
-  // Never a silent skip: the record waits, and the next heartbeat tick wakes the floor it names.
-  if (!opts.floorInstance) {
-    ctx.err('scheduled run: no floor instance, so no floor was woken; the record waits for the next tick. Pass --floor-instance NAME or set SCHEDULED_FLOOR_INSTANCE\n');
+  // Never a silent skip: say that nothing was woken, and where the record waits.
+  if (!opts.floorUnit) {
+    ctx.err('scheduled run: no floor unit, so no floor was woken; the record waits in the inbox until a floor reads it. Pass --floor-unit NAME or set SCHEDULED_FLOOR_UNIT\n');
   }
 
   const occurrence = name.slice(0, -'.json'.length);

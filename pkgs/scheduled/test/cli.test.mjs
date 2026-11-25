@@ -20,10 +20,10 @@ function run(...args) {
 // ---------------------------------------------------------------------------
 
 describe('--version', () => {
-  it('prints "scheduled 0.2.0" and exits 0', () => {
+  it('prints "scheduled 0.3.0" and exits 0', () => {
     const r = run('--version');
     assert.equal(r.status, 0);
-    assert.match(r.stdout, /^scheduled 0\.2\.0\n?$/);
+    assert.match(r.stdout, /^scheduled 0\.3\.0\n?$/);
     assert.equal(r.stderr, '');
   });
 });
@@ -38,6 +38,8 @@ describe('--help', () => {
     assert.equal(r.status, 0);
     assert.ok(r.stdout.includes('scheduled ls'), '--help should include verb list');
     assert.ok(r.stdout.includes('scheduled tick'), '--help should include tick');
+    assert.ok(r.stdout.includes('SCHEDULED_FLOOR_UNIT') && r.stdout.includes('--floor-unit'), '--help names the floor unit');
+    assert.ok(!/instance/i.test(r.stdout), '--help names no floor instance');
   });
 });
 

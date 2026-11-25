@@ -88,14 +88,14 @@ test('C6.1: the fixture items cover a daily and an hourly cron, prompt lines, a 
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 
-test('R-S5: with every item enabled false, ticks hand off nothing and call no dshd', async () => {
+test('R-S5: with every item enabled false, ticks hand off nothing and call no systemctl', async () => {
   const h = home();
   try {
     const inbox = join(h, '.agency/state/master/inbox/scheduled');
     const calls = [];
-    const ctx = { home: h, stateDir: join(h, 'state'), inbox, floorInstance: 'floor', env: {}, uid: process.getuid(),
-      machineIdFile: '/nonexistent', dshd: '/nonexistent', now: () => new Date() };
-    const run = async (argv) => { calls.push(argv); return { code: 0, stdout: '{"state":"stopped"}', stderr: '' }; };
+    const ctx = { home: h, stateDir: join(h, 'state'), inbox, floorUnit: 'floor.service', env: {}, uid: process.getuid(),
+      machineIdFile: '/nonexistent', systemctl: '/nonexistent', now: () => new Date() };
+    const run = async (argv) => { calls.push(argv); return { code: 0, stdout: 'LoadState=loaded\nActiveState=inactive\n', stderr: '' }; };
     for (const now of ['2026-11-12T20:00:00Z', '2026-11-13T06:00:00Z', '2026-11-14T06:00:00Z']) {
       const res = await tick(ctx, { now: new Date(now), run });
       assert.equal(res.code, 0, res.lines.join('\n'));
