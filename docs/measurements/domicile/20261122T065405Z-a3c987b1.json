@@ -1,0 +1,281 @@
+{
+  "schema": 1,
+  "started_at": "2026-11-22T06:53:34.748733+00:00",
+  "metadata": {
+    "host": "client",
+    "kernel": "7.3.4",
+    "product": "ASUS Zenbook Duo UX8406MA_UX8406MA",
+    "cpu": "Intel(R) Core(TM) Ultra 9 185H",
+    "running_version": "domicile 1.2.0\ncommit   6f4cabdcd3bb3b8992518a702e623972e1f07706\nengine   s4f0e5cae80d7, official build of Chromium 77036342787cb7cf0928d759097c0918bd4dc0c8 at e7fa166f70ee, built 2026-11-19T10:08:27Z",
+    "gpu_pid": 2594,
+    "gpu_exe": "/nix/store/gsq9cba2rqyadgf7y7m1ii67ixcflvjf-domicile-engine-e7fa166/.chrome-unwrapped",
+    "supervisor_exe": "/nix/store/c9y1p1icyxhv48yccrax14ii2r5b0sax-domicile-external-open/bin/domicile-real",
+    "system": "/nix/store/600azmgbg8md2abi75gyikrrkkh3gcmn-nixos-system-client-26.11.20260723.e2587ca",
+    "profile": "quiet",
+    "epp": "power",
+    "battery": {
+      "BAT0": {
+        "status": "Not charging",
+        "capacity": "60",
+        "power_now": "0"
+      }
+    },
+    "session_age_seconds": 80571.84
+  },
+  "context_start": {
+    "displays": [
+      {
+        "name": "drm-21536134253248512",
+        "mode": [
+          2880,
+          1800
+        ],
+        "scale": 2,
+        "position": [
+          0,
+          0
+        ],
+        "size": [
+          1440,
+          900
+        ],
+        "refresh_mhz": 120000,
+        "lit": true
+      },
+      {
+        "name": "drm-21536134253248513",
+        "mode": [
+          2880,
+          1800
+        ],
+        "scale": 2,
+        "position": [
+          0,
+          900
+        ],
+        "size": [
+          1440,
+          900
+        ],
+        "refresh_mhz": 120000,
+        "lit": true
+      },
+      {
+        "name": "drm-1886053529622275",
+        "mode": [
+          5120,
+          2880
+        ],
+        "scale": 2,
+        "position": [
+          1440,
+          0
+        ],
+        "size": [
+          2560,
+          1440
+        ],
+        "refresh_mhz": 60000,
+        "lit": true
+      }
+    ],
+    "windows": [
+      {
+        "kind": "native",
+        "app": "domicile-terminal",
+        "pid": 76093,
+        "size": [
+          2558.0,
+          1438.0
+        ],
+        "focused": false
+      },
+      {
+        "kind": "native",
+        "app": "domicile-terminal",
+        "pid": 166011,
+        "size": [
+          1438.0,
+          898.0
+        ],
+        "focused": true
+      }
+    ],
+    "idle_seconds": 285,
+    "shell": "/home/tom/.cache/domicile/shells/e3287a675eb9b5c94b02f86457f2f50ca0d3ce587dedcc100b77f99ad8b45d05/shell.js"
+  },
+  "context_end": {
+    "displays": [
+      {
+        "name": "drm-21536134253248512",
+        "mode": [
+          2880,
+          1800
+        ],
+        "scale": 2,
+        "position": [
+          0,
+          0
+        ],
+        "size": [
+          1440,
+          900
+        ],
+        "refresh_mhz": 120000,
+        "lit": true
+      },
+      {
+        "name": "drm-21536134253248513",
+        "mode": [
+          2880,
+          1800
+        ],
+        "scale": 2,
+        "position": [
+          0,
+          900
+        ],
+        "size": [
+          1440,
+          900
+        ],
+        "refresh_mhz": 120000,
+        "lit": true
+      },
+      {
+        "name": "drm-1886053529622275",
+        "mode": [
+          5120,
+          2880
+        ],
+        "scale": 2,
+        "position": [
+          1440,
+          0
+        ],
+        "size": [
+          2560,
+          1440
+        ],
+        "refresh_mhz": 60000,
+        "lit": true
+      }
+    ],
+    "windows": [
+      {
+        "kind": "native",
+        "app": "domicile-terminal",
+        "pid": 76093,
+        "size": [
+          2558.0,
+          1438.0
+        ],
+        "focused": false
+      },
+      {
+        "kind": "native",
+        "app": "domicile-terminal",
+        "pid": 166011,
+        "size": [
+          1438.0,
+          898.0
+        ],
+        "focused": true
+      }
+    ],
+    "idle_seconds": 315,
+    "shell": "/home/tom/.cache/domicile/shells/e3287a675eb9b5c94b02f86457f2f50ca0d3ce587dedcc100b77f99ad8b45d05/shell.js"
+  },
+  "samples": [
+    {
+      "seconds": 5.003504544001771,
+      "cpu_total_pct": 1.866449216272538,
+      "gpu_render_pct": 15.545801331038517,
+      "package_watts": 6.5380520218007465,
+      "temperature_c": 59.0,
+      "fan_rpm": 2800
+    },
+    {
+      "seconds": 5.0032074530026875,
+      "cpu_total_pct": 0.6434073402809243,
+      "gpu_render_pct": 14.331693953039345,
+      "package_watts": 5.915709128198746,
+      "temperature_c": 58.0,
+      "fan_rpm": 2900
+    },
+    {
+      "seconds": 5.003232495000702,
+      "cpu_total_pct": 0.6884057971014492,
+      "gpu_render_pct": 15.242709683430231,
+      "package_watts": 5.9922044458171415,
+      "temperature_c": 58.0,
+      "fan_rpm": 2900
+    },
+    {
+      "seconds": 5.0022111919970484,
+      "cpu_total_pct": 0.625,
+      "gpu_render_pct": 12.661693073121524,
+      "package_watts": 5.76279307161588,
+      "temperature_c": 58.0,
+      "fan_rpm": 2900
+    },
+    {
+      "seconds": 5.002007656003116,
+      "cpu_total_pct": 0.6072691017855524,
+      "gpu_render_pct": 14.91332559446877,
+      "package_watts": 5.698954491960546,
+      "temperature_c": 57.0,
+      "fan_rpm": 2900
+    },
+    {
+      "seconds": 4.98681446199771,
+      "cpu_total_pct": 0.5814481693467793,
+      "gpu_render_pct": 13.133981723026068,
+      "package_watts": 5.992031431630536,
+      "temperature_c": 57.0,
+      "fan_rpm": 2900
+    }
+  ],
+  "summary": {
+    "gpu_render_pct": {
+      "mean": 14.305550653463884,
+      "median": 14.622509773754057,
+      "min": 12.661693073121524,
+      "max": 15.545801331038517
+    },
+    "package_watts": {
+      "mean": 5.983310183577257,
+      "median": 5.953870279914641,
+      "min": 5.698954491960546,
+      "max": 6.5380520218007465
+    },
+    "cpu_total_pct": {
+      "mean": 0.8354948557141323,
+      "median": 0.6342036701404621,
+      "min": 0.5814481693467793,
+      "max": 1.866449216272538
+    },
+    "temperature_c": {
+      "mean": 57.833828163638515,
+      "median": 58.0,
+      "min": 57.0,
+      "max": 59.0
+    },
+    "fan_rpm": {
+      "mean": 2883.322195106362,
+      "median": 2900.0,
+      "min": 2800,
+      "max": 2900
+    }
+  },
+  "warnings": [],
+  "method": {
+    "gpu": "sum of unique DRM client render-engine counter deltas",
+    "power": "RAPL processor package, not whole-laptop watts",
+    "sampling_read_ms_max": 3.186117988661863,
+    "sampler_cpu_ms": 17.311
+  },
+  "label": "two-codex",
+  "collector_sha256": "b4b78a170c1cdeb98e0bb16ee9ebaa7f2b934d1566e7681a1535340a45c10678",
+  "evidence_note": "On-demand observation, not a controlled benchmark. Non-system peripheral battery entries omitted from this public copy."
+}

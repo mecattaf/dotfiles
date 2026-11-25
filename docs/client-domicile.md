@@ -104,3 +104,75 @@ From a physical recovery console, use `domicile-recover status`,
 `domicile-recover check`, or `domicile-recover rescue`. Run `domicile` to enter
 the installed desktop. `domicile-console-trial` uses the checked immutable
 candidate without changing the installed system or kernel.
+
+## Repeating the fan and rendering measurements
+
+From the NAS, run a passive observation of the existing client desktop:
+
+```sh
+domicile-perf record --label two-codex --seconds 30
+domicile-perf latest
+domicile-perf latest --json
+domicile-perf compare /path/to/earlier-run.json
+```
+
+Runs are timestamped JSON files in `$XDG_STATE_HOME/domicile-perf` (normally
+`~/.local/state/domicile-perf` on NAS). `latest.json` points to the last successful
+run. A failed SSH connection, GPU restart or counter reset leaves it intact.
+`~/.local/state/domicile-perf/run` retains the latest successful runner, so
+`~/.local/state/domicile-perf/run latest` also works before the PATH command
+is installed. The exact sampler source is retained by its SHA256 beside each run.
+The JSON includes interval samples, means/ranges, actual running Domicile/engine
+provenance, session age, display modes/scales, shell path, window sizes, power
+profile, battery state and measurement CPU/read overhead. Window text, titles,
+URLs and process arguments are omitted. The source SHA256 identifies the sampler.
+The label describes what the caller observed; it does not certify a static screen.
+
+The SSH target defaults to `client`; `--host local` measures the local desktop.
+Both need passwordless `sudo -n` to read RAPL and DRM counters. The collector
+runs as root, but desktop CLI queries run as the desktop's user against the
+socket found in its compositor environment. It refuses ambiguous desktops.
+Nothing is installed on the target. There is no resident service or schedule.
+It reads the real desktop, so this diagnostic is deliberately outside
+`runtime-test`; it never starts a compositor, sources shell fragments, cleans
+runtime directories, changes the shell, or changes window placement. Fixture
+tests of the utility run under `runtime-test`.
+
+For a reproducible workload, run this in an otherwise quiet visible Kitty:
+
+```sh
+domicile-perf animate --hz 10 --seconds 60
+```
+
+It changes one terminal character ten times per second and exits. Measure from
+another agent or terminal with `record --label one-spinner-10hz --seconds 30`.
+Keep the measurement terminal static or hidden. A busy agent's progress indicator
+can itself cause redraws; keyboard idle time is not proof of a static screen.
+The fixture is a proposed repeatable workload, not a completed equivalence test
+against Codex's rendering behavior.
+
+Use the same display layout/scales, power profile, shell, terminal geometry,
+workload rate and warm-up for each comparison. Measure a fully static desktop,
+one animated terminal on an internal display, one on the 5K, then both displays.
+Allow the temperature to settle and repeat conditions in reverse order to check
+thermal history. `--delay 30` allows a one-shot settling interval before sampling.
+Do not stop live sessions to obtain a static baseline: wait until they finish.
+Each record is one labelled observation, not an automated pass/fail verdict.
+
+GPU percentages are render-engine activity from unique DRM clients of Domicile's
+Chromium GPU process, not total CPU or whole-GPU utilization. RAPL watts cover
+the processor package, not wall power or the monitor. Temperature and RPM are
+device-specific lagging outcomes; the software regression metrics should be
+matched-workload render activity, package power and eventually damage/frame cost.
+Missing sensors remain unavailable, never zero. A comparison of two different
+labels or layouts is diagnostic, not proof of a regression. This passive sampler
+does not record frame latency, damaged area or optical input-to-photon latency.
+Those require an owning-layer trace or a controlled upstream benchmark.
+
+Historical observations (project dotfiles T-156, Nov 14–22, 2026): the Nov 12
+build sustained 45–55% Domicile render activity and 11–13.5 W with fan noise.
+After the Nov 19 update, a truly static desktop reached 0%, 3.5–4 W and fan off;
+one animated 5K terminal measured 16–20%, about 7.5 W and fan cycling. On Nov 22,
+two active Codex terminals on separate displays measured about 31.7%, 10.24 W,
+61–63°C and 2900 RPM. These are different observed workloads, not a controlled
+version-by-version benchmark or proof of an uptime leak.
