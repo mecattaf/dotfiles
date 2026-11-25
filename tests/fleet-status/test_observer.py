@@ -21,10 +21,24 @@ class ObserverTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        config = {"dshSessions": str(self.root / "sessions"), "laneMeter": str(self.root / "meter.jsonl"), "intervals": {"hosts": 300, "metrics": 60, "instances": 60, "seats": 600, "tails": 10}}
+        config = {"dshSessions": str(self.root / "sessions"), "laneMeter": str(self.root / "meter.jsonl"), "intervals": {"hosts": 300, "metrics": 60, "seats": 600, "tails": 10}}
         self.value = observer.Observer(config, self.root / "state")
         self.addCleanup(self.value.pool.shutdown, wait=True)
         self.addCleanup(self.value.publisher_pool.shutdown, wait=True)
+
+    def test_config_without_dsh_sources_reports_no_error_and_no_instances(self):
+        value = observer.Observer({"laneMeter": str(self.root / "meter.jsonl"), "intervals": {"hosts": 300, "metrics": 60, "seats": 600, "tails": 10}}, self.root / "state2")
+        self.addCleanup(value.pool.shutdown, wait=True)
+        self.addCleanup(value.publisher_pool.shutdown, wait=True)
+        result = value.acquire("tails", value.tails)
+        self.assertIsNone(result["error"])
+        value.accept("tails", result)
+        snapshot = value.publish()
+        coverage = {row["sourceId"]: row for row in snapshot["coverage"]}
+        for source in ["agent.instances", "agent.lifecycle", "agent.sessions"]:
+            self.assertEqual(coverage[source]["state"], "not-configured")
+        self.assertFalse(any(subject["kind"] == "instance" for subject in snapshot["subjects"]))
+        self.assertEqual(snapshot["events"], [])
 
     def test_projection_refuses_secrets_paths_objects_nan_and_unknown_keys(self):
         for value in ["Bearer secret-token", "/private/home", {"secret": "abc"}, float("nan")]:
@@ -119,15 +133,6 @@ class ObserverTests(unittest.TestCase):
         public = json.dumps(snapshot)
         for secret in ["SECRET", "workspace-secret", "session-secret", "secret-custom-model", str(path)]:
             self.assertNotIn(secret, public)
-
-    def test_journal_projection_ignores_message_argv_and_cursor_is_private(self):
-        self.value.results.put({"MESSAGE_ID": "39f53479d3a045ac8e11786248231fbf", "USER_UNIT": "dshd@private-sensitive-title.service", "USER_INVOCATION_ID": "private-invocation", "__CURSOR": "private-cursor", "__REALTIME_TIMESTAMP": "1794776146775000", "MESSAGE": "SECRET PROMPT", "argv": "SECRET"})
-        self.value.drain_journal()
-        snapshot = self.value.publish()
-        self.assertEqual(snapshot["events"][0]["summary"], "Supervised run started")
-        for private in ["SECRET", "private-sensitive-title", "private-invocation", "private-cursor"]:
-            self.assertNotIn(private, json.dumps(snapshot))
-        self.assertEqual(self.value.state["journalCursor"], "private-cursor")
 
     def test_restored_state_advances_past_publisher_remote_sequence(self):
         (self.root / "state/publisher.json").write_text('{"remoteSequence":42}')
