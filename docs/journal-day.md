@@ -11,11 +11,11 @@ and optionally `timezone` (default `Europe/Paris`), `state_dir` and
 paths are private machine settings. The default state directory is
 `$XDG_STATE_HOME/journal-day`, or `~/.local/state/journal-day`.
 
-Fresh `cc`/`cc2` launches from home run `journal-day --seat cc|cc2`. Continue and
-resume flags use `--resume-seat` to retain the last fresh physical cwd for that
-seat. The old alias target is retained as a fallback for pre-migration sessions.
-An explicit project cwd or custom `CLAUDE_ENVELOPE` is untouched. To resume a
-specific older project conversation, use its original directory as before.
+The `cc`/`cc2` launchers no longer call this helper (Tom, 2026-11-25): they start
+Claude Code in the current directory. `--seat` and `--resume-seat` remain for any
+caller that wants a seat's day directory. Claude Code finds a session by id from
+any directory. Chats reach the journal through the chats protocol in the agency,
+never through this helper.
 
 The helper refuses to replace a real directory or a symlink outside the dated
 journal. If old work occupies the alias, preserve and triage it explicitly before

@@ -38,13 +38,12 @@ config file `~/.claude-work/.claude.json`), selected only by `CLAUDE_CONFIG_DIR`
 in the fish launchers (`home/dot_config/fish/config.fish`). Both share skills and writable settings at
 `~/.local/state/claude/settings.json`; no model or effort is pinned by Nix.
 The initializer preserves existing choices and never resets them on activation; login, history, sessions and trust are per seat, so a
-session id resumes only on the seat and from the cwd that created it
-(`claude-sessions` fans out over the seats). Claude never saves workspace trust
-for `$HOME`, so fresh launches from `~` resolve the default `~/today` alias
-through `journal-day` into a permanent Europe/Paris journal-day cwd. Host-local
-`~/.config/journal-day.json` supplies the journal root and alias. Continue/resume
-uses that seat's recorded cwd without rotating the alias; explicit project cwd
-and custom `CLAUDE_ENVELOPE` are preserved. No timer or generated brief is added.
+session id resumes only on the seat that created it (`claude-sessions` fans out
+over the seats). `cc`, `cac`, `cc2` and `cac2` are plain shortcuts for
+`claude --dangerously-skip-permissions` on their seat: they start in the current
+directory and never call `journal-day` or cd into `~/today` (Tom, 2026-11-25).
+Claude never saves workspace trust for `$HOME`, so a launch from `~` asks for
+trust each time. No timer or generated brief is added.
 `~/today` carries no brief file (the stale brief was retired on 2026-10-13), and
 there is no third seat (Tom, 2026-09-22: "no more cc3"). Logins are hand
 `/login`s, never a delivered secret (the old claude-credentials seed was removed

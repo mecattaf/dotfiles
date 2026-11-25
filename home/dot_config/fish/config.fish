@@ -40,66 +40,20 @@ alias l.="eza -a | grep -E \"^\.\""
 alias cd='z'
 # zi command
 
-# Claude Code: two seats, one launcher shape (2026-09-22).
+# Claude Code: two seats (2026-09-22), plain launchers (Tom, 2026-11-25: "cc and
+# cc2 shortcuts must be regular fish shell shortcuts that do claude
+# --dangerously-skip-permissions not cd into ~/today etc.").
 #   cc  / cac   -> ~/.claude       the personal Claude Max login (gmail org)
 #   cc2 / cac2  -> ~/.claude-work  the leger.run Claude Max login
-# CLAUDE_CONFIG_DIR isolates login, history and state per seat; skills and
-# settings are the same dotfiles links for both (home.nix). Claude Code never
-# saves workspace trust for $HOME (docs, security: "trust acceptance is held
-# for the current session only and is not written to disk"), so a seat started
-# in ~ shows "Accessing workspace" on every launch. Both launchers therefore
-# select a permanent dated cwd when typed from ~. ~/today is only an alias;
-# rotating it never moves an existing chat. Continue/resume uses the last cwd
-# for that seat, and an explicit project cwd or custom envelope stays intact.
-set -q CLAUDE_ENVELOPE; or set -gx CLAUDE_ENVELOPE $HOME/today
-function __claude_seat --description 'start one Claude seat outside $HOME'
-    set -l seat $argv[1]
-    set -l config_dir $argv[2]
-    set -l args $argv[3..]
-    if test (pwd) = $HOME
-        set -l envelope $CLAUDE_ENVELOPE
-        if test "$envelope" = "$HOME/today"
-            set -l workspace_args --seat $seat
-            for arg in $args
-                if contains -- $arg --continue --resume -c -r; or string match -q -- '--resume=*' $arg
-                    set workspace_args --resume-seat $seat
-                    break
-                end
-            end
-            set envelope (journal-day $workspace_args)
-            or return 1
-        end
-        if not test -d "$envelope"
-            echo "$seat: workspace ($envelope) does not exist; cd into a project first" >&2
-            return 1
-        end
-        builtin cd "$envelope"
-        or return 1
-        echo "($seat: started in $envelope, not in ~)" >&2
-    end
-    # Agent view off for both seats (2026-10-12): finished background sessions
-    # sat in "Needs input" for weeks. The 2.1.287
-    # binary describes the switch as "Disable agent view (`claude agents`,
-    # `--bg`, /background, the on-demand daemon)". The env var form needs no
-    # edit to the seeded ~/.local/state/claude/settings.json.
-    set -lx CLAUDE_CODE_DISABLE_AGENT_VIEW 1
-    # A terminal opened from inside a cc2 session already carries
-    # CLAUDE_CONFIG_DIR, so `cc` must clear it explicitly or it silently starts
-    # cc2 (measured 2026-09-22). Each seat sets its own value or none.
-    set -l runner claude
-    if set -q AGENCY_KITTY_SESSION; and test -n "$AGENCY_KITTY_SESSION"; and set -q AGENCY_KITTY_COMMAND
-        set runner $AGENCY_KITTY_COMMAND harness claude --
-    end
-    if test -n "$config_dir"
-        env CLAUDE_CONFIG_DIR=$config_dir $runner --dangerously-skip-permissions $args
-    else
-        env -u CLAUDE_CONFIG_DIR $runner --dangerously-skip-permissions $args
-    end
-end
-function cc;   __claude_seat cc  "" $argv; end
-function cac;  __claude_seat cc  "" --continue $argv; end
-function cc2;  __claude_seat cc2 $HOME/.claude-work $argv; end
-function cac2; __claude_seat cc2 $HOME/.claude-work --continue $argv; end
+# Each starts in the current directory. Chats reach the journal by hard links
+# made by the chats protocol in the agency, whatever the cwd, so no launch-time
+# cd is needed. CLAUDE_CONFIG_DIR isolates login, history and state per seat;
+# a terminal opened inside a cc2 session already carries it, so cc clears it
+# (measured 2026-09-22). Agent view stays off for both seats (2026-10-12).
+function cc;   env -u CLAUDE_CONFIG_DIR CLAUDE_CODE_DISABLE_AGENT_VIEW=1 claude --dangerously-skip-permissions $argv; end
+function cac;  cc --continue $argv; end
+function cc2;  env CLAUDE_CONFIG_DIR=$HOME/.claude-work CLAUDE_CODE_DISABLE_AGENT_VIEW=1 claude --dangerously-skip-permissions $argv; end
+function cac2; cc2 --continue $argv; end
 # Codex, same shape: cx starts, cax resumes the newest session. codex 0.160.0
 # auto-starts a shared app-server daemon that copies its install into
 # ~/.codex/packages and needs a codex-package.json manifest the Nix build did

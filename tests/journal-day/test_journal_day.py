@@ -99,62 +99,53 @@ class JournalDay(unittest.TestCase):
         state = json.loads((self.root / 'state/state.json').read_text())
         self.assertEqual(len(state['seats']), 8)
 
-    def test_real_fish_launchers_preserve_projects_overrides_seats_and_resume(self):
+    def test_plain_fish_launchers_start_in_the_current_directory(self):
+        # Tom, 2026-11-25: cc and cc2 are plain shortcuts; they never cd into ~/today.
         fish = shutil.which('fish')
         self.assertIsNotNone(fish, 'fish is required for actual launcher integration')
         source = SOURCE.parents[2] / 'dot_config/fish/config.fish'
         text = source.read_text()
-        # Extract exactly the named function, stopping at the next declaration.
-        # Do not source the surrounding interactive config or a trailing range.
-        function = text.split('function __claude_seat ', 1)[1].split('function cc;', 1)[0]
-        function = 'function __claude_seat ' + function
-        self.assertTrue(function.rstrip().endswith('end'))
-        self.assertNotIn('atuin', function)
-        self.assertEqual(function.count('function '), 1)
+        # Extract exactly the four one-line launchers. Do not source the
+        # surrounding interactive config or a trailing range.
+        lines = [line for line in text.splitlines()
+                 if line.startswith(('function cc;', 'function cac;', 'function cc2;', 'function cac2;'))]
+        self.assertEqual(len(lines), 4)
+        self.assertTrue(all(line.rstrip().endswith('end') for line in lines))
+        self.assertFalse(any('journal-day' in line or ' cd ' in line for line in lines))
         fixture = self.root / 'seat.fish'
-        fixture.write_text(function)
+        fixture.write_text('\n'.join(lines) + '\n')
         tools = self.root / 'bin'
         tools.mkdir()
-        (tools / 'journal-day').symlink_to(SOURCE)
         runner = tools / 'claude'
         runner.write_text('#!' + sys.executable + '\nimport os,json,sys\n'
                           'open(os.environ["SEAT_RESULT"],"w").write(json.dumps('
                           '{"cwd":os.getcwd(),"config":os.environ.get("CLAUDE_CONFIG_DIR"),'
+                          '"view":os.environ.get("CLAUDE_CODE_DISABLE_AGENT_VIEW"),'
                           '"args":sys.argv[1:]}))\n')
         runner.chmod(0o700)
-        config_path = self.root / 'journal-day.json'
-        config_path.write_text(json.dumps(self.config))
         result_path = self.root / 'result.json'
-        env = dict(os.environ, HOME=str(self.root), JOURNAL_DAY_CONFIG=str(config_path),
-                   SEAT_RESULT=str(result_path), PATH=str(tools) + ':' + os.environ['PATH'],
-                   CLAUDE_CONFIG_DIR='inherited-seat')
-        env.pop('AGENCY_KITTY_SESSION', None)
-        env.pop('AGENCY_KITTY_COMMAND', None)
+        env = dict(os.environ, HOME=str(self.root), SEAT_RESULT=str(result_path),
+                   PATH=str(tools) + ':' + os.environ['PATH'], CLAUDE_CONFIG_DIR='inherited-seat')
 
-        def launch(cwd, seat='cc', args='', envelope=None):
-            command = f'set -gx CLAUDE_ENVELOPE "{envelope or self.alias}"; '
-            command += f'source "{fixture}"; __claude_seat {seat} '
-            command += ('""' if seat == 'cc' else '"' + str(self.root / '.claude-work') + '"')
-            subprocess.run([fish, '--no-config', '-c', command + ' ' + args],
+        def launch(cwd, name, args=''):
+            subprocess.run([fish, '--no-config', '-c', f'source "{fixture}"; {name} {args}'],
                            cwd=cwd, env=env, check=True, capture_output=True, text=True)
             return json.loads(result_path.read_text())
 
-        old = self.journal / '2026/11/03'
-        old.mkdir(parents=True)
-        self.alias.symlink_to(old)
-        fresh = launch(self.root)
-        expected = self.journal / datetime.now(ZoneInfo('Europe/Paris')).strftime('%Y/%m/%d')
-        self.assertEqual(fresh['cwd'], str(expected))
-        self.assertIsNone(fresh['config'])
-        self.assertEqual(launch(self.root, args='--continue')['cwd'], str(expected))
-        self.assertEqual(launch(self.root, 'cc2', '--resume example')['cwd'], str(old))
-        self.assertEqual(launch(self.root, 'cc2')['config'], str(self.root / '.claude-work'))
-        custom = self.root / 'custom'
-        custom.mkdir()
-        self.assertEqual(launch(self.root, envelope=custom)['cwd'], str(custom))
         project = self.root / 'project'
         project.mkdir()
-        self.assertEqual(launch(project, args='--resume project-id')['cwd'], str(project))
+        for cwd in (self.root, project):
+            first = launch(cwd, 'cc')
+            self.assertEqual(first['cwd'], str(cwd))
+            self.assertIsNone(first['config'])
+            self.assertEqual(first['view'], '1')
+            self.assertEqual(first['args'], ['--dangerously-skip-permissions'])
+            second = launch(cwd, 'cc2', '--resume example')
+            self.assertEqual(second['cwd'], str(cwd))
+            self.assertEqual(second['config'], str(self.root / '.claude-work'))
+            self.assertEqual(second['args'], ['--dangerously-skip-permissions', '--resume', 'example'])
+        self.assertEqual(launch(project, 'cac')['args'], ['--dangerously-skip-permissions', '--continue'])
+        self.assertEqual(launch(project, 'cac2')['config'], str(self.root / '.claude-work'))
 
 
 class Rollover(unittest.TestCase):
