@@ -12,12 +12,6 @@
   # As with nvim's plugin table: Nix delivers packages; this explicit list
   # selects what each hand-run profile loads. No runtime installer.
   profilePlugins ? {
-    herdr = [
-      "stderr-log"
-      "herdr-guard"
-      "dsh-herdr"
-      "jevcore"
-    ];
     mnemon = [
       "stderr-log"
       "mnemon"
@@ -79,7 +73,7 @@
 #      after the profile word, where `--patch` must go, so they are the last
 #      config layer whatever DSH_HOME is. Overlays the caller passes come after
 #      them (the gate's smoke overlay relies on that);
-#   5. for a Nix-declared profile (`herdr`, `mnemon`, `zen`, below): adds its
+#   5. for a Nix-declared profile (`mnemon`, `zen`, `native`, below): adds its
 #      own overlay and environment, and rewrites
 #      $DSH_HOME/profiles/<name>/package.json (0600) and its node_modules
 #      links to the store plugins, every boot, before dsh reads them. dsh's
@@ -129,20 +123,18 @@ let
   };
   sessions = ./sessions.patch.yml;
 
-  # Profiles declared here rather than shipped by dsh. `herdr` is the stock
-  # headless tuple plus the three plugins of pkgs/dsh-plugins and their
-  # stderr log sink, for Tom to run by hand inside a Herdr pane
-  # (`dsh herdr "<task>"`). `zen` is the same tuple plus jiesou's OpenCode
-  # Zen free-model provider and the log sink (`dsh zen "<task>"`). Substrate
-  # drives the stock `headless` profile, which never mounts any of them. The
-  # guard comes before dsh-herdr, which cannot load without it either way.
+  # Profiles declared here rather than shipped by dsh. `zen` is the stock
+  # headless tuple plus jiesou's OpenCode Zen free-model provider and the
+  # stderr log sink (`dsh zen "<task>"`). Substrate drives the stock
+  # `headless` profile, which never mounts any of them. The hand-run `herdr`
+  # profile (dsh-herdr, herdr-guard and jevcore on its mock) left with
+  # Herdr v1; jevcore stays packaged in pkgs/dsh-plugins, selected by no
+  # profile, until a real Jev route exists.
   # The owned plugins carry a private npm scope: dsh resolves a bundle name
   # from its own installation before the profile, so a generic name could one
   # day be shadowed by a dependency of a bump.
   pluginNames = {
     stderr-log = "@mecattaf/stderr-log";
-    herdr-guard = "@mecattaf/herdr-guard";
-    dsh-herdr = "@dsh-external/dsh-herdr-toolkit";
     jevcore = "jevcore-dsh";
     mnemon = "dsh-mnemon";
     opencode-zen-free = "@jiesou/dsh-opencode-zen-free-provider";
@@ -171,13 +163,6 @@ let
         }
       )
       {
-        herdr = {
-          patch = config.herdr;
-          # No herdr call outlives 10 minutes (an unbounded `pane wait-output`
-          # or `agent wait` included). DSH_HERDR_PREVIEW_REQUIRED stays unset: it
-          # is the model checking itself, not a human gate.
-          env.DSH_HERDR_CLI_TIMEOUT_MS = "600000";
-        };
         mnemon = {
           patch = config.mnemon;
           # Gufo has no embeddings API. Keep the optional CLI probe local and
@@ -246,18 +231,16 @@ assert lib.assertMsg (lib.all
   (
     name:
     builtins.elem name [
-      "herdr"
       "mnemon"
       "zen"
       "native"
     ]
   )
   (builtins.attrNames profilePlugins)
-) "DSH plugins can be selected only for the declared herdr, mnemon, zen and native profiles";
+) "DSH plugins can be selected only for the declared mnemon, zen and native profiles";
 assert lib.assertMsg
   (
     !(builtins.any (name: builtins.elem "opencode-zen-free" (profilePlugins.${name} or [ ])) [
-      "herdr"
       "mnemon"
       "native"
     ])
@@ -265,7 +248,6 @@ assert lib.assertMsg
   "The OpenCode Zen provider belongs in its dedicated zen profile, where credentials are re-enabled for it";
 assert lib.assertMsg (
   !(builtins.any (name: builtins.elem "mnemon" (profilePlugins.${name} or [ ])) [
-    "herdr"
     "native"
   ])
 ) "Mnemon belongs in its dedicated profile, where the fleet memory policy is applied";
@@ -294,8 +276,6 @@ writeShellApplication {
     inherit (config)
       policy
       acp
-      herdr
-      herdrRows
       localProviders
       cloudProviders
       defaultRoute

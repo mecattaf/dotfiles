@@ -6,10 +6,11 @@
   jq,
 }:
 # jevcore-dsh 0.4.2 (PerryLink/jevcore): TypeSafe Jev as a dsh service plus
-# three tools (jev_ask, jev_rank, jev_check) and a skill. Mounted only in the
-# hand-run `herdr` profile, on its offline mock provider (the profile row in
-# ../../dsh/config.nix). On the mock every answer is SYNTHETIC hash noise; it
-# is here so the plugin path is proven before a real Jev route exists.
+# three tools (jev_ask, jev_rank, jev_check) and a skill. It was mounted only
+# in the hand-run `herdr` profile, on its offline mock provider; that profile
+# left with Herdr v1, so no profile selects it now and checks.dsh-plugins pins
+# only its build. On the mock every answer is SYNTHETIC hash noise; it is kept
+# so a real Jev route is one profile row away.
 #
 # Built from git: npm's jevcore-dsh 0.4.1 declares engines.dsh <0.2.0, and
 # 0.4.2 (which admits 0.2.x) was never published. Transpile-only, core first,

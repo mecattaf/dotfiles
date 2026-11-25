@@ -2,7 +2,7 @@
   stdenvNoCC,
   nodejs,
 }:
-# stderr-log: the `herdr` profile's log sink, owned here (./index.js, plain
+# stderr-log: the hand-run profiles' log sink, owned here (./index.js, plain
 # ESM, no dependencies, no build step). dsh 0.2.1 prints no ctx.logger
 # message, so without it jevcore's `[jevcore] ready · provider=mock` line and
 # every plugin warning are lost. It prints error, info and warn, never debug.

@@ -1,5 +1,0 @@
-# herdr-guard's bundle layer: one row. dsh-herdr's own row injects the
-# `herdrGuard` service this plugin provides.
-- insert:
-    - id: herdr-guard
-      name: '@mecattaf/herdr-guard'

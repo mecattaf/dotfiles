@@ -506,9 +506,6 @@
 
       overlays.default = import ./overlays {
         torchRocm = inputs.nix-strix-halo.packages.${system}.torch-rocm;
-        # The herdr home/herdr.nix installs, for pkgs/dsh-plugins to pin by
-        # store path (dsh-herdr never looks `herdr` up on PATH).
-        herdr = inputs.herdr.packages.${system}.herdr;
       };
 
       nixosConfigurations = {
@@ -2219,19 +2216,18 @@
               touch "$out"
             '';
 
-        # dsh-plugins (T-31): the hand-run `herdr` profile. Its plugins' own
-        # check phases are part of this closure: dsh-herdr's node tests (argv,
-        # runtime, preview, the 23-tool registration against the real
-        # dsh-tools) and the herdr-guard unit test (foreign pane_run, malformed
-        # ids, writes without HERDR_ENV=1) and the stderr-log unit test. Here:
-        # jevcore's $out has the pinned build and no network path, the wrapper
-        # composes `herdr` with every plugin row mounted and none skipped, the
-        # stock headless profile mounts none of them, and a boot
-        # of `herdr` with a blank task (it stops before any model call) prints
-        # the ready lines of herdr-guard, dsh-herdr and jevcore on stderr.
-        # Same sandbox as dsh-config: no network, a private DSH_HOME, no herdr,
-        # and no key by construction: the wrapper here is built without a key
-        # file and the key variable is unset, whatever the sandbox exposes.
+        # dsh-plugins (T-31): the Nix-declared plugin set outside the zen and
+        # mnemon profiles, which have their own checks. The hand-run `herdr`
+        # profile (dsh-herdr, herdr-guard, jevcore on its mock) left with
+        # Herdr v1; its rows must not come back into any dump. Here: jevcore's
+        # $out still has the pinned build and no network path (it is packaged,
+        # selected by no profile), the stderr-log check phase passed, the
+        # wrapper composes `native` with its rows and the stock headless
+        # profile mounts none of them, `herdr` is refused as a profile name,
+        # and the native profile's sync drops a store link no longer declared.
+        # Same sandbox as dsh-config: no network, a private DSH_HOME, and no
+        # key by construction: the wrapper here is built without a key file
+        # and the key variable is unset, whatever the sandbox exposes.
         dsh-plugins =
           let
             dshNoKey = self.nixosConfigurations.nas.pkgs.dsh.override { qwenKeyFile = null; };
@@ -2243,23 +2239,13 @@
               disabled = dshNoKey.disabledIds;
               runner = "${dshNoKey.runner}/bin/dsh-bwrap";
             };
-            pluginRows = [
-              "stderr-log"
+            retiredRows = [
               "herdr-guard"
               "dsh-herdr-toolkit"
               "jev"
             ];
-            expectHerdr = pkgs.writeText "dsh-plugins-herdr.json" (
-              builtins.toJSON (
-                base
-                // {
-                  rows = dshNoKey.herdrRows;
-                  present = pluginRows;
-                }
-              )
-            );
             expectHeadless = pkgs.writeText "dsh-plugins-headless.json" (
-              builtins.toJSON (base // { absent = pluginRows ++ [ "agency-kitty-native" ]; })
+              builtins.toJSON (base // { absent = retiredRows ++ [ "stderr-log" "agency-kitty-native" ]; })
             );
             expectNative = pkgs.writeText "dsh-plugins-native.json" (
               builtins.toJSON (
@@ -2270,10 +2256,7 @@
                     "stderr-log"
                     "agency-kitty-native"
                   ];
-                  absent = [
-                    "herdr-guard"
-                    "dsh-herdr-toolkit"
-                    "jev"
+                  absent = retiredRows ++ [
                     "mnemon"
                     "opencode-zen-free"
                   ];
@@ -2282,6 +2265,9 @@
             );
             semver = "${dshNoKey.unwrapped}/lib/node_modules/@deepseek-ai/dsh/node_modules/semver";
           in
+          assert !(plugins ? dsh-herdr);
+          assert !(plugins ? herdr-guard);
+          assert !(builtins.elem "herdr" dshNoKey.profiles);
           pkgs.runCommand "dsh-plugins"
             {
               nativeBuildInputs = [
@@ -2291,8 +2277,8 @@
             }
             ''
               set -euo pipefail
-              # Built, so their check phases passed.
-              : ${plugins.dsh-herdr} ${plugins.herdr-guard} ${plugins.stderr-log}
+              # Built, so its check phase passed.
+              : ${plugins.stderr-log}
 
               # jevcore: the git 0.4.2 that admits this dsh, core beside it,
               # the skill, and no TypeSafe SDK or network call in the JS.
@@ -2321,7 +2307,6 @@
 
               build="$TMPDIR"
               export HOME="$build/home" DSH_HOME="$build/dsh-home" TMPDIR="$build/tmp"
-              export HERDR_SOCKET_PATH="$build/no-herdr.sock"
               export PYTHONDONTWRITEBYTECODE=1
               unset QWEN_TOKEN_PLAN_API_KEY GEMINI_API_KEY OPENCODE_ZEN_FREE_API_KEY
               mkdir -p "$HOME" "$build/cwd" "$TMPDIR"
@@ -2344,54 +2329,37 @@
                 fi
                 python3 -I ${./tests/dsh-config/check_dump.py} "$TMPDIR/$name.yml" "$expect"
               }
-              dump herdr ${expectHerdr} herdr --dump-config
               dump headless ${expectHeadless} headless --dump-config
               dump native ${expectNative} native --dump-config
               dump native-flag ${expectNative} --profile native --dump-config
 
+              # The retired profile name is refused, before any profile sync.
+              rc=0
+              "$dsh" herdr --dump-config > "$TMPDIR/herdr.out" 2> "$TMPDIR/herdr.err" || rc=$?
+              test "$rc" = 2
+              grep -qF "profile 'herdr' is not one of" "$TMPDIR/herdr.err"
+              test ! -e "$DSH_HOME/profiles/herdr"
+
               # Native metadata uses the rendered helper and remains isolated
-              # from the older Herdr/memory/provider plugin profiles.
+              # from the memory and provider plugin profiles.
               n="$DSH_HOME/profiles/native"
               test "$(stat -c %a "$n/package.json")" = 600
               test "$(readlink "$n/node_modules/@agency/kitty-native")" = ${plugins.kitty-native}
               test "$(readlink "$n/node_modules/@mecattaf/stderr-log")" = ${plugins.stderr-log}
               test ! -e "$n/node_modules/@dsh-external"
+              test ! -e "$n/node_modules/@mecattaf/herdr-guard"
               test ! -e "$n/node_modules/jevcore-dsh"
               test ! -e "$n/node_modules/@jiesou"
-              test -z "$(find "$n" -maxdepth 1 -name '.sync.*')"
-
-              # The synced profile: a private manifest and store links only.
-              p="$DSH_HOME/profiles/herdr"
-              test "$(stat -c %a "$p/package.json")" = 600
-              test "$(readlink "$p/node_modules/@mecattaf/stderr-log")" = ${plugins.stderr-log}
-              test "$(readlink "$p/node_modules/@mecattaf/herdr-guard")" = ${plugins.herdr-guard}
-              test "$(readlink "$p/node_modules/@dsh-external/dsh-herdr-toolkit")" = ${plugins.dsh-herdr}
-              test "$(readlink "$p/node_modules/jevcore-dsh")" = ${plugins.jevcore}
-              test ! -e "$p/node_modules/@jiesou"
               test ! -e "$DSH_HOME/profiles/headless/node_modules"
               # A store link no longer declared goes on the next boot; a
               # profile file dsh owns stays.
-              ln -s ${plugins.jevcore} "$p/node_modules/dropped-plugin"
-              echo '[]' > "$p/cordis.patch.yml"
-              dump herdr-again ${expectHerdr} --profile herdr --dump-config
-              test ! -e "$p/node_modules/dropped-plugin"
-              test "$(cat "$p/cordis.patch.yml")" = '[]'
+              ln -s ${plugins.jevcore} "$n/node_modules/dropped-plugin"
+              echo '[]' > "$n/cordis.patch.yml"
+              dump native-again ${expectNative} --profile native --dump-config
+              test ! -e "$n/node_modules/dropped-plugin"
+              test "$(cat "$n/cordis.patch.yml")" = '[]'
               # No per-boot staging directory is left behind.
-              test -z "$(find "$p" -maxdepth 1 -name '.sync.*')"
-
-              # The whole tree boots: an unknown --session-id fails in headless
-              # after the loader settled and before any model call. The guard,
-              # dsh-herdr (which loads only with the guard's service) and jevcore
-              # (on the offline mock) each print a ready line through stderr-log.
-              rc=0
-              "$dsh" herdr --session-id session-none "reply OK" > "$TMPDIR/boot.out" 2> "$TMPDIR/boot.err" || rc=$?
-              cat "$TMPDIR/boot.err" >&2
-              echo "dsh herdr boot: exit $rc" >&2
-              test "$rc" = 1
-              grep -qF 'dsh: session "session-none" does not exist' "$TMPDIR/boot.err"
-              grep -qF '[jevcore] ready · provider=mock · gates: safety=off context=off' "$TMPDIR/boot.err"
-              grep -qF 'info: herdr-guard ready' "$TMPDIR/boot.err"
-              grep -qF 'info: dsh-herdr ready: 23 tools' "$TMPDIR/boot.err"
+              test -z "$(find "$n" -maxdepth 1 -name '.sync.*')"
               touch "$out"
             '';
 
