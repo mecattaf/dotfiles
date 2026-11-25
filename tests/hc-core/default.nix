@@ -44,7 +44,8 @@ assert svc.Service.WorkingDirectory == "%h";
 # core fights them (home/herdr-core.nix).
 assert !(svc.Service ? Restart);
 assert !(svc.Service ? ExecStop);
-assert !(svc.Service ? Environment);
+# Home Manager fills Environment with [ ] by default: no value may be set.
+assert (svc.Service.Environment or [ ]) == [ ];
 assert !(svc.Service ? ManagedOOMPreference);
 assert !(svc.Service ? MemoryMax) && !(svc.Service ? MemoryHigh);
 assert exec == [ "${herdr-core}/bin/herdr-core server start" ];
