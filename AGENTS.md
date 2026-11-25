@@ -115,8 +115,9 @@ has no timer and no `OnCalendar` (tests/closet-topology asserts both).
 **Updates (Tom, 2026-11-10 and 2026-11-12).** Fleet and CLI updates are
 protocols of the master agency under `~/.agency/protocols/`, outside this
 repository. This repository holds only the mechanism: the Scheduled heartbeat
-and CLI. The nightly `update-check` program, its watch list and its rolling
-`update/<input>` PRs are retired.
+and CLI, and the hc core unit (`home/herdr-core.nix`). The nightly
+`update-check` program, its watch list and its rolling `update/<input>` PRs
+are retired.
 
 In any generated PR body or comment, imported release notes must stay in
 collision-safe literal text fences, with only their release-page links

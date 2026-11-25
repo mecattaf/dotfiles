@@ -1,0 +1,428 @@
+#!/usr/bin/env python3
+"""hc-station: what a NAS Kitty window runs.
+
+  hc-station new [--cwd D] [--label k=v]... [--kitty-version V] [--no-fallback] [-- argv...]
+  hc-station attach ADDR [--history N]
+
+`new` asks this machine's one hc core (the default session, declared as
+hc-core.service) for a NEW terminal, a "station", and becomes
+`herdr-core attach` on it. Closing the Kitty window or ctrl+\\ only detaches:
+the station keeps running on the NAS. `exit` in it ends it. With no argv the
+station runs the hc config `shell` (fish --login on the NAS).
+
+The rules, each one load-bearing (plan P1 D12, orchestrator ruling R-7):
+
+- The fleet binary only: $HC_BIN, else /etc/profiles/per-user/$USER/bin/herdr-core.
+  Never bare `hc`: on the NAS ~/bin/hc was a hand-installed 0.1.21.
+- It never starts a core with this shell's environment. A core passes its own
+  environment to every terminal it opens, and this one comes from an ssh login
+  (SSH_*, agent variables, maybe tokens). So terminal.run goes straight to the
+  socket, not through `herdr-core connect`, which autostarts a core when the
+  socket is stale (client.rs connect_or_start). If no core answers, systemd
+  starts hc-core.service once (systemd gives that core a clean environment).
+  The attach is exec'd with a clean environment too, because `hc attach`
+  autostarts as well (attach.rs) if the core vanished in between.
+- Any failure before the attach (no core, an error reply, a missing binary,
+  a 5 s timeout, a bad argument) prints one line on stderr and execs a plain
+  fish here instead, not persistent. Tom always gets a terminal. --no-fallback
+  turns that into exit 69, for tests and the D20 rehearsal.
+- Identity: TERM=xterm-kitty, TERM_PROGRAM=kitty, COLORTERM=truecolor (and
+  TERM_PROGRAM_VERSION when the seat sent a clean version) only when
+  xterm-kitty resolves here; otherwise hc's own default identity. Herdr v1's
+  forced xterm-256color is what broke Shift+Enter (#334).
+- No KITTY_* variable is passed (they name one window on one machine), no
+  `keep` (kept shells come back as idle PTYs after a loss), no parent, no notes.
+
+The window is marked with Kitty's user variable hc_addr (OSC 1337 SetUserVar),
+so `kitten @ ls` and Kitty mappings can find the station behind a window.
+"""
+# Only light imports: this runs on every Mod+Enter, and argparse, subprocess
+# and shutil together cost about 40 ms on the NAS (measured 26 Nov).
+import binascii
+import json
+import os
+import pwd
+import re
+import socket
+import sys
+import time
+
+VERSION = re.compile(r"[0-9]+(\.[0-9]+)*")
+LABEL_KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+HISTORY = 2000
+IDENTITY = {"TERM": "xterm-kitty", "TERM_PROGRAM": "kitty", "COLORTERM": "truecolor"}
+# What `hc attach` keeps: enough to find the same core, and nothing a core
+# started by accident should inherit (no SSH_*, no CLAUDE*, no tokens).
+ATTACH_KEEP = ("HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM",
+               "XDG_RUNTIME_DIR", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "HC_SESSION", "HC_SOCKET")
+EX_UNAVAILABLE = 69
+USAGE = """usage: hc-station new [--cwd D] [--label k=v]... [--kitty-version V] [--no-fallback] [-- argv...]
+       hc-station attach ADDR [--history N]"""
+
+
+class Unavailable(Exception):
+    """hc cannot give this window a station; `kind` is the short reason."""
+
+    def __init__(self, kind, detail=""):
+        super().__init__(kind)
+        self.kind = kind
+        self.detail = detail
+
+
+class Options:
+    def __init__(self, verb):
+        self.verb, self.cwd, self.label, self.kitty_version = verb, None, [], None
+        self.no_fallback, self.argv, self.address, self.history = False, [], None, HISTORY
+
+
+def parse(argv):
+    """The two verbs. A bad argument raises Unavailable("usage"), never exits:
+    a version skew between the seat and the NAS (a flag one side does not
+    know yet) must still open a terminal."""
+    if not argv or argv[0] in ("-h", "--help"):
+        print(USAGE)
+        raise SystemExit(0 if argv else 2)
+    options, rest, index = Options(argv[0]), argv[1:], 0
+    if options.verb not in ("new", "attach"):
+        raise Unavailable("usage", f"unknown verb {options.verb!r}")
+    takes = ("--cwd", "--label", "--kitty-version") if options.verb == "new" else ("--history",)
+    while index < len(rest):
+        word = rest[index]
+        index += 1
+        if word in ("-h", "--help"):
+            print(USAGE)
+            raise SystemExit(0)
+        if options.verb == "new" and word == "--":
+            options.argv = rest[index:]
+            break
+        if options.verb == "new" and word == "--no-fallback":
+            options.no_fallback = True
+            continue
+        name, equals, value = word.partition("=")
+        if name in takes:
+            if not equals:
+                if index >= len(rest):
+                    raise Unavailable("usage", f"{name} wants a value")
+                value, index = rest[index], index + 1
+            if name == "--label":
+                options.label.append(value)
+            elif name == "--history":
+                if not value.isdigit():
+                    raise Unavailable("usage", f"--history wants a number, not {value!r}")
+                options.history = int(value)
+            else:
+                setattr(options, name[2:].replace("-", "_"), value)
+            continue
+        if word.startswith("-"):
+            raise Unavailable("usage", f"unknown option {word}")
+        if options.verb == "new":
+            options.argv = rest[index - 1:]
+            break
+        if options.address is not None:
+            raise Unavailable("usage", f"attach takes one address, not {word!r} too")
+        options.address = word
+    if options.verb == "attach" and not options.address:
+        raise Unavailable("usage", "attach wants an address (t7, a name, machine/t7)")
+    return options
+
+
+def which(name, path):
+    for directory in (path or "").split(os.pathsep):
+        candidate = os.path.join(directory, name)
+        if directory and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def run_quiet(argv, env, timeout):
+    """Exit status of argv run with stdio on /dev/null, or None (not run, or killed at timeout)."""
+    program = which(argv[0], env.get("PATH")) if os.sep not in argv[0] else argv[0]
+    if not program:
+        return None
+    quiet = [(os.POSIX_SPAWN_OPEN, fd, os.devnull, os.O_RDWR, 0) for fd in (0, 1, 2)]
+    try:
+        pid = os.posix_spawn(program, argv, env, file_actions=quiet)
+    except OSError:
+        return None
+    deadline = time.monotonic() + timeout
+    while True:
+        done, status = os.waitpid(pid, os.WNOHANG)
+        if done:
+            return os.waitstatus_to_exitcode(status)
+        if time.monotonic() > deadline:
+            os.kill(pid, 9)
+            os.waitpid(pid, 0)
+            return None
+        time.sleep(0.002)
+
+
+def user_name(env):
+    return env.get("USER") or pwd.getpwuid(os.getuid()).pw_name
+
+
+def home_dir(env):
+    return env.get("HOME") or pwd.getpwuid(os.getuid()).pw_dir
+
+
+def hc_bin(env):
+    return env.get("HC_BIN") or f"/etc/profiles/per-user/{user_name(env)}/bin/herdr-core"
+
+
+def timeout_s(env):
+    try:
+        return max(0.1, float(env.get("HC_STATION_TIMEOUT", "5")))
+    except ValueError:
+        return 5.0
+
+
+def endpoint(env):
+    """(socket path, whether hc-core.service is the core that owns it).
+
+    A port of herdr-core 0.1.22 paths.rs Paths::from_env + platform/unix.rs
+    endpoints: HC_SOCKET, else config `socket`, else <run>/herdr-core/<session>.sock
+    with run = XDG_RUNTIME_DIR or /run/user/<uid>, else the state dir.
+    """
+    session = (env.get("HC_SESSION") or "").strip() or "default"
+    if session in (".", "..") or any(ord(c) < 32 or ord(c) == 127 or c in '/\\:*?"<>|' for c in session):
+        raise Unavailable("usage", f"HC_SESSION {session!r} can't be a folder name")
+    home = home_dir(env)
+    state_home = env.get("XDG_STATE_HOME") or os.path.join(home, ".local/state")
+    config_home = env.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
+    chosen = env.get("HC_SOCKET") or config_socket(os.path.join(config_home, "herdr-core", "config.toml"))
+    if chosen:
+        return chosen, False
+    run = env.get("XDG_RUNTIME_DIR") or ""
+    if not run:
+        fallback = f"/run/user/{os.getuid()}"
+        run = fallback if os.path.isdir(fallback) else ""
+    where = os.path.join(run, "herdr-core") if run else os.path.join(state_home, "herdr-core", session)
+    return os.path.join(where, f"{session}.sock"), session == "default"
+
+
+def config_socket(path):
+    # hc reads `socket` from config.toml and ignores a config it cannot parse.
+    if not os.path.isfile(path):
+        return None
+    try:
+        import tomllib
+        with open(path, "rb") as handle:
+            value = tomllib.load(handle).get("socket")
+    except Exception:
+        return None
+    return value if isinstance(value, str) and value else None
+
+
+def connect(path, timeout):
+    peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    peer.settimeout(timeout)
+    try:
+        peer.connect(path)
+    except BaseException:
+        peer.close()
+        raise
+    return peer
+
+
+def open_core(env, path, ours, may_start):
+    """A connection to a running core. Never starts one in this environment."""
+    def attempt():
+        try:
+            return connect(path, timeout_s(env))
+        except (FileNotFoundError, ConnectionRefusedError):
+            return None
+        except socket.timeout:
+            raise Unavailable("timeout", f"no answer on {path}")
+        except OSError as error:
+            raise Unavailable("connect", f"{path}: {error.strerror or error}")
+
+    peer = attempt()
+    if peer is not None:
+        return peer
+    if not (ours and may_start):
+        raise Unavailable("no core", f"nothing listens on {path}")
+    run_quiet(["systemctl", "--user", "start", "--no-block", "hc-core.service"], env, 3)
+    deadline = time.monotonic() + min(3.0, timeout_s(env))
+    while time.monotonic() < deadline:
+        time.sleep(0.05)
+        peer = attempt()
+        if peer is not None:
+            return peer
+    raise Unavailable("no core", f"hc-core.service gave no socket at {path} within 3 s")
+
+
+def rpc(peer, method, params, timeout):
+    """One plain-mode JSON-RPC call (one JSON message per line)."""
+    request = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    deadline = time.monotonic() + timeout
+    buffer = b""
+    try:
+        peer.settimeout(timeout)
+        peer.sendall(json.dumps(request).encode() + b"\n")
+        while True:
+            while b"\n" not in buffer:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    raise socket.timeout()
+                peer.settimeout(left)
+                chunk = peer.recv(65536)
+                if not chunk:
+                    raise Unavailable("no answer", "the core closed the connection")
+                buffer += chunk
+            line, buffer = buffer.split(b"\n", 1)
+            if not line.strip():
+                continue
+            reply = json.loads(line)
+            if reply.get("id") != 1:
+                continue
+            if "error" in reply:
+                error = reply["error"] or {}
+                kind = (error.get("data") or {}).get("kind") or "error"
+                raise Unavailable(kind, error.get("message", ""))
+            return reply.get("result") or {}
+    except socket.timeout:
+        raise Unavailable("timeout", f"{method} took more than {timeout:g} s")
+    except (OSError, ValueError) as error:
+        raise Unavailable("protocol", str(error))
+    finally:
+        peer.close()
+
+
+def xterm_kitty_resolves(env):
+    return run_quiet(["infocmp"], dict(env, TERM="xterm-kitty"), 2) == 0
+
+
+def tty_size():
+    for stream in (sys.stdout, sys.stdin, sys.stderr):
+        try:
+            size = os.get_terminal_size(stream.fileno())
+        except (OSError, ValueError):
+            continue
+        if size.columns > 0 and size.lines > 0:
+            return {"cols": size.columns, "rows": size.lines}
+    return None
+
+
+def resolve_cwd(requested, env):
+    home = home_dir(env)
+    if not requested:
+        return home
+    path = os.path.abspath(os.path.expanduser(requested))
+    if os.path.isdir(path):
+        return path
+    # hc does not check cwd: a missing one fails as "cannot start <shell>".
+    print(f"hc-station: {requested} is not a directory here; starting in {home}",
+          file=sys.stderr, flush=True)
+    return home
+
+
+def run_params(options, env, cwd):
+    argv = options.argv
+    labels = {"owner": user_name(env), "ui": "kitty", "kind": "agent" if argv else "shell"}
+    for pair in options.label:
+        key, sep, value = pair.partition("=")
+        if not sep or not LABEL_KEY.fullmatch(key):
+            raise Unavailable("usage", f"--label wants k=v, not {pair!r}")
+        labels[key] = value
+    params = {"cwd": cwd, "no_parent": True, "no_notify": True, "labels": labels}
+    if argv:
+        params["argv"] = argv
+    size = tty_size()
+    if size:
+        params["size"] = size
+    if xterm_kitty_resolves(env):
+        identity = dict(IDENTITY)
+        version = options.kitty_version or ""
+        if VERSION.fullmatch(version):
+            identity["TERM_PROGRAM_VERSION"] = version
+        params["env"] = identity
+    return params
+
+
+def attach_env(env):
+    clean = {key: env[key] for key in ATTACH_KEEP if env.get(key)}
+    clean["PATH"] = f"/run/current-system/sw/bin:/etc/profiles/per-user/{user_name(env)}/bin"
+    return clean
+
+
+def attach(binary, address, history, env):
+    if sys.stdout.isatty():
+        mark = binascii.b2a_base64(address.encode(), newline=False).decode()
+        sys.stdout.write(f"\033]1337;SetUserVar=hc_addr={mark}\033\\")
+        sys.stdout.flush()
+    os.execve(binary, [binary, "attach", "--history", str(history), address], attach_env(env))
+
+
+def fallback(kind, cwd, env):
+    print(f"hc-station: hc unavailable ({kind}): plain fish, not persistent", file=sys.stderr, flush=True)
+    shell_env = {key: value for key, value in env.items()
+                 if not key.startswith(("HERDR_", "DOMICILE_HERDR_"))}
+    for directory in (cwd, home_dir(env), "/"):
+        try:
+            os.chdir(directory)
+            break
+        except (OSError, TypeError):
+            continue
+    for argv in (["fish", "--login", "--interactive"], ["bash", "--login", "-i"], ["sh", "-i"]):
+        try:
+            os.execvpe(argv[0], argv, shell_env)
+        except OSError:
+            continue
+    print("hc-station: no shell could be started", file=sys.stderr)
+    return 127
+
+
+def requested_cwd(argv):
+    # For a fallback after an argument error: the --cwd the caller meant.
+    options = argv[:argv.index("--")] if "--" in argv else argv
+    for index, word in enumerate(options):
+        if word == "--cwd" and index + 1 < len(options):
+            return options[index + 1]
+        if word.startswith("--cwd="):
+            return word[len("--cwd="):]
+    return None
+
+
+def main(argv=None, env=None):
+    argv = sys.argv[1:] if argv is None else argv
+    env = dict(os.environ) if env is None else env
+    before_program = argv[:argv.index("--")] if "--" in argv else argv
+    strict = "--no-fallback" in before_program
+    is_attach = argv[:1] == ["attach"]
+    cwd = None
+    try:
+        options = parse(argv)
+        if options.verb == "new":
+            cwd = resolve_cwd(options.cwd, env)
+        binary = hc_bin(env)
+        if not (os.path.isfile(binary) and os.access(binary, os.X_OK)):
+            raise Unavailable("missing binary", binary)
+        path, ours = endpoint(env)
+        if options.verb == "attach":
+            open_core(env, path, ours, may_start=False).close()
+            attach(binary, options.address, options.history, env)
+        params = run_params(options, env, cwd)
+        peer = open_core(env, path, ours, may_start=True)
+        result = rpc(peer, "terminal.run", params, timeout_s(env))
+        address = result.get("address")
+        if not isinstance(address, str) or not address:
+            raise Unavailable("protocol", "terminal.run answered without an address")
+        attach(binary, address, HISTORY, env)
+    except Unavailable as error:
+        kind, detail = error.kind, error.detail
+    except OSError as error:
+        kind, detail = "exec", str(error)
+    except Exception as error:  # a bug here must still leave Tom a terminal
+        kind, detail = "internal", f"{type(error).__name__}: {error}"
+    if strict or is_attach:
+        print(f"hc-station: hc unavailable ({kind}): {detail}", file=sys.stderr)
+        return 2 if kind == "usage" else EX_UNAVAILABLE
+    if cwd is None:
+        cwd = resolve_cwd(requested_cwd(argv), env)
+    return fallback(kind, cwd, env)
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        raise SystemExit(130)

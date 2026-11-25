@@ -24,8 +24,9 @@ Claude Desktop is installed on the Zenbook only. It and herdr-core (`hc` /
 `herdr-core`, installed on all four configured hosts) come from the shared
 `numtide/llm-agents.nix` input. `nix flake update llm-agents` refreshes their
 locked versions alongside the catalog's other selected tools. Classic Herdr
-keeps its separate pin and protected NAS service while it holds live sessions;
-installing herdr-core adds no service or session migration.
+keeps its separate pin and protected NAS service while it holds live sessions,
+unchanged. herdr-core has one declared core on the NAS (`hc-core.service`,
+`home/herdr-core.nix`); classic Herdr still runs beside it.
 
 ```
 flake.nix        four NixOS hosts wired through one mkHost
