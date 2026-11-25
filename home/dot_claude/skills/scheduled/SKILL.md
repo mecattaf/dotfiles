@@ -20,8 +20,9 @@ For Tom's work, never use any of these:
 - systemd timers or crontab.
 
 The heartbeat only nudges: when an item is due, it writes one record into
-the superagent's inbox and starts the floor. The main Session reads the
-item's prompt and decides. So write conditions, checks and context
+the superagent's inbox and wakes the floor when one is configured (while
+none is, the record waits). The main Session reads the item's prompt and
+decides. So write conditions, checks and context
 ("skip if the journal already exists", "only on workdays") into
 `job.prompt` in words. There are no `if`, `window`, `outcome` or
 `context` keys, and no `model`, `pair` or `priority`: scheduled work runs
@@ -47,16 +48,15 @@ on the floor's default pair.
   disabled, check the result, then enable it.
 
 ## Run and inspect
-- `scheduled run ID` writes one manual record now and starts the floor
-  if it is stopped. It does not wait. The work shows up in the
-  superagent, not here.
+- `scheduled run ID` writes one manual record now. While no floor unit is
+  configured it wakes nothing and says so; the record waits in the inbox.
 - `scheduled ls`, `scheduled show ID`, `scheduled history ID [-n N]`.
   history lists what the floor received (done) or refused (bad, with
   the error).
-- The work itself: `dshd ls` (units `sa-…-a<k>`), `dshd read <unit>`,
-  the Claude session under `~/.claude-work/projects/<agency path with / and . as ->/`,
-  the floor's panel (`dshd attach floor`). A failed run is not retried;
-  the next occurrence runs on its own.
+- The work itself is shown by the floor (the `agency` CLI, once
+  `factory-floor.service` runs). dshd and its `sa-…` units were retired on
+  2026-11-26. A failed run is not retried; the next occurrence runs on its
+  own.
 - Edits take effect at the next hourly pass. Say so.
 
 ## Workflows
@@ -67,7 +67,7 @@ prompt is that request: "This is a request to you, the superagent, not
 work for a worker. Do not accept it as a ticket. Call
 orchestrator_workflow_start with script <abs path> and cwd <agency
 folder>. Then ignore this trigger with the reason: started workflow <the
-run id you got>." (dotfiles `docs/scheduled.md`, `docs/dsh-master.md`).
+run id you got>." (dotfiles `docs/scheduled.md`).
 
 ## Never
 - Never edit the inbox, `.done/`, `.bad/` or `~/.local/state/scheduled`

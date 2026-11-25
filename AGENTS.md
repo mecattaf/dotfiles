@@ -73,13 +73,15 @@ See `docs/antigravity-cli.md` and `docs/gemini-cli.md`.
 **Scheduled work (Tom, 2026-09-30; amended 2026-11-10).** No scheduled
 agent work is declared in dotfiles. It is written as JSONC scheduled
 items in an agency's `.agency/scheduled/` (the master agency is `~`) and
-runs on the factory floor, the superagent fork in the dsh config
-(`docs/scheduled.md`). The one exception is the Scheduled heartbeat
-(D52). Tom, 2026-11-10: "one systemd timer cnfigured in the dotfiels,
-the rest are not timers at all." The heartbeat holds no schedule of its
-own: each hourly tick decodes the cron times in those files, hands due
-work to the floor and wakes it. dshd stays free of clocks (Tom: "NO
-SCHEDULES EVER"). Substrate does not decide what is due (Tom,
+runs on the factory floor (`docs/scheduled.md`). The one exception is
+the Scheduled heartbeat (D52). Tom, 2026-11-10: "one systemd timer
+cnfigured in the dotfiels, the rest are not timers at all." The
+heartbeat holds no schedule of its own: each hourly tick decodes the
+cron times in those files, hands due work to the floor and wakes it.
+dshd and the Master dsh profiles were retired on 2026-11-26; until a
+floor unit takes the wake (`SCHEDULED_FLOOR_UNIT`), the heartbeat
+links records and wakes nothing. The floor stays free of clocks (Tom:
+"NO SCHEDULES EVER"). Substrate does not decide what is due (Tom,
 2026-11-10: `re: "substrate decides what's due" NO.`). Silent-hours
 releases (paper 06:05, speech 06:05) stay. Reactive triggers (a Huion
 scan drops → process when there is bandwidth) are fine. A midnight
@@ -113,8 +115,8 @@ has no timer and no `OnCalendar` (tests/closet-topology asserts both).
 **Updates (Tom, 2026-11-10 and 2026-11-12).** Fleet and CLI updates are
 protocols of the master agency under `~/.agency/protocols/`, outside this
 repository. This repository holds only the mechanism: the Scheduled heartbeat
-and CLI, dshd, dsh-master. The nightly `update-check` program, its watch list
-and its rolling `update/<input>` PRs are retired.
+and CLI. The nightly `update-check` program, its watch list and its rolling
+`update/<input>` PRs are retired.
 
 In any generated PR body or comment, imported release notes must stay in
 collision-safe literal text fences, with only their release-page links
