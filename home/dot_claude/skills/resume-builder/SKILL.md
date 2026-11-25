@@ -16,9 +16,9 @@ Works from any cwd. Default output: input path with `.pdf`. `--keep-html`
 keeps the intermediate HTML next to the PDF for debugging.
 
 Canonical content (as of 2026-07-13):
-`~/mecattaf/notes/references/personal/resumes-essays/2026-cognition-resume.md`.
+`~/notes/references/personal/resumes-essays/2026-cognition-resume.md`.
 Layout parity reference (old content, right look):
-`~/mecattaf/notes/references/personal/resumes-essays/Thomas Mecattaf Resume 2021.pdf`.
+`~/notes/references/personal/resumes-essays/Thomas Mecattaf Resume 2021.pdf`.
 
 **Division of labor: this skill owns the FORMAT; the notes repo owns the
 CONTENT.** Tailoring a resume = editing the markdown, never the CSS.

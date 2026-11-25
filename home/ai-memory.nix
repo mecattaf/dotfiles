@@ -18,7 +18,7 @@ in
 {
   options.programs.ai-memory.journalDir = lib.mkOption {
     type = lib.types.str;
-    default = "${config.home.homeDirectory}/mecattaf/notes/journal";
+    default = "${config.home.homeDirectory}/notes/journal";
     description = ''
       Sole routing destination for manually drained AI-session journal notes.
     '';
