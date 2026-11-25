@@ -127,11 +127,12 @@ assert builtins.all (path: !lib.hasInfix "strix.tail8dd1.ts.net" (builtins.readF
 assert builtins.all
   (port: builtins.elem port nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts)
   [
-    443
     2283
     4533
     32400
   ];
+# herdr-web-ui's :443 left with Herdr v1.
+assert !builtins.elem 443 nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
 assert nas.nix.distributedBuilds && nas.nix.settings.max-jobs == 0;
 assert nas.nix.settings.builders-use-substitutes;
 assert map (b: b.hostName) nas.nix.buildMachines == targets;
