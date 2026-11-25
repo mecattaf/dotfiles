@@ -19,7 +19,11 @@ let
   # would wake.
   cli = lib.findFirst (p: p ? floorUnit && p ? unwrapped) null hm.home.packages;
   servicesOf = name: configurations.${name}.config.home-manager.users.tom.systemd.user.services;
-  timersOf = name: builtins.attrNames (configurations.${name}.config.home-manager.users.tom.systemd.user.timers or { });
+  timersOf =
+    name:
+    builtins.attrNames (
+      configurations.${name}.config.home-manager.users.tom.systemd.user.timers or { }
+    );
   home = "/home/tom";
   # The two flips Tom keeps for himself (docs/factory-floor.md), evaluated
   # once so the day they are made is not their first evaluation.
@@ -59,7 +63,8 @@ assert cfg.package == null;
 assert cfg.checkout == "${home}/mecattaf/factory-floor";
 assert cfg.entry == "${home}/mecattaf/factory-floor/bin/agency-service";
 assert svc.Unit.ConditionPathExists == cfg.entry;
-assert lib.hasPrefix builtins.storeDir launcher && lib.hasSuffix "/bin/factory-floor-service" launcher;
+assert
+  lib.hasPrefix builtins.storeDir launcher && lib.hasSuffix "/bin/factory-floor-service" launcher;
 # The environment the floor's defaults must equal (docs/factory-floor.md).
 assert
   environment == [
