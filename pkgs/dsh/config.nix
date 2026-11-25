@@ -474,7 +474,7 @@ let
     (off "otel")
     (off "command-feedback") # /feedback; mints $DSH_HOME/.anonymous-user-id
     # 3. No runtime plugin installs in the hand-run profiles; their plugins come
-    #    from Nix only (D-51 extensions go into master, docs/dsh-master.md).
+    #    from Nix only (the wrapper refuses `dsh plugin`).
     (off "plugin-manager")
     (off "tool-plugin-manager")
     # 4. Inference: Gemini (free tier) is the default; the other keyed lanes
@@ -675,9 +675,9 @@ in
   );
   # Row ids the policy touches, for checks.dsh-config.
   policyIds = map (row: row.id) policy;
-  # The policy rows as data, for profiles that carry the policy in their own
-  # layer instead of the wrapper's overlay (pkgs/dsh-master: dshd runs the
-  # unwrapped dsh, which never adds the overlays).
+  # The policy rows as data, for a profile that carries the policy in its own
+  # layer instead of the wrapper's overlay (an unwrapped dsh never adds the
+  # overlays). Its one reader, the Master profiles, was retired on 2026-11-26.
   policyRows = policy;
   disabledIds = map (row: row.id) (lib.filter (row: row.disabled or false) policy);
 }

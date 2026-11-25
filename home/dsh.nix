@@ -23,8 +23,8 @@
 # $DSH_HOME/profiles/<name> when it boots (pkgs/dsh, pkgs/dsh-plugins).
 #
 # No units, no timers here: this is the hand-run wrapper. Unattended
-# runs are dshd instances that the Scheduled floor starts
-# (home/scheduled.nix, docs/scheduled.md).
+# runs belong to the factory floor, not to this wrapper (home/scheduled.nix,
+# docs/scheduled.md).
 let
   cfg = config.programs.dsh;
   link = config.lib.rawDotfiles.link;
