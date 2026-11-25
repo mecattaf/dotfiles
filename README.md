@@ -20,6 +20,13 @@ Internet route goes directly through BE550; private service DNS uses NAS.
 One Strix carries all compute; local DeepSeek (ds4) was retired on 2026-11-08.
 See `docs/closet-cutover.md` for the staged rollout.
 
+Claude Desktop is installed on the Zenbook only. It and herdr-core (`hc` /
+`herdr-core`, installed on all four configured hosts) come from the shared
+`numtide/llm-agents.nix` input. `nix flake update llm-agents` refreshes their
+locked versions alongside the catalog's other selected tools. Classic Herdr
+keeps its separate pin and protected NAS service while it holds live sessions;
+installing herdr-core adds no service or session migration.
+
 ```
 flake.nix        four NixOS hosts wired through one mkHost
 modules/         common.nix (every host) + strix.nix (AMD Strix Halo compute host)

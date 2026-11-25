@@ -17,7 +17,8 @@ in
     # Speech queue playback (speech-wake and Parakeet were
     # removed on 2026-09-30).
     pkgs.speech-session
-    # No Claude Desktop or ChatGPT desktop apps (Tom, 2026-10-12: "installed
-    # chatgp and claude apps must also be gone").
+    # Claude Desktop Electron, restored on the Zenbook (Tom, 2026-11-25).
+    # Use the same upstream catalog as the fleet's agent tools.
+    pkgs.llm-agents.claude-desktop
   ];
 }

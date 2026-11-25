@@ -70,8 +70,13 @@ let
 in
 {
   config = {
-    # `herdr` client + server on PATH, every interactive host.
-    home.packages = [ herdr ];
+    # Both terminal tools are available on every configured host. herdr-core
+    # supplies `hc` and `herdr-core` from the shared llm-agents input; installing
+    # it does not replace classic Herdr or change the live server's lifecycle.
+    home.packages = [
+      herdr
+      pkgs.llm-agents.herdr-core
+    ];
 
     # RAW single-file symlink; see CONFIG above. `onboarding = false` is the first
     # assignment in that file precisely so herdr's first run never decides to
