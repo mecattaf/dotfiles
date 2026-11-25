@@ -653,9 +653,6 @@
               modules = [ { disko.rootMountPoint = "/mnt/strix-worker-install"; } ];
             }).config.system.build.diskoScript;
           nas-home-migrate = self.nixosConfigurations.nas.config.system.build.nas-home-migrate;
-          # `nix build .#dsh-master`: NAS's rendered Master profiles and the
-          # dsh-master CLI, byte-identical to what switch activation renders.
-          dsh-master = self.nixosConfigurations.nas.config.home-manager.users.tom.programs.dsh.master.package;
         };
 
       # `nix build .#models.<id>` retired with the 2026-08-21 "weights leave
@@ -2055,14 +2052,6 @@
         # and carry the policy rows; tests/dsh-config/check_dump.py reads its
         # expectations from pkgs.dsh's passthru.
         dshd-nas = import ./tests/dshd-nas {
-          inherit pkgs;
-          configurations = self.nixosConfigurations;
-        };
-
-        # The Master profile folders (home/dsh-master.nix): rendered shape,
-        # confined idempotent render, and a config dump of each folder's
-        # first-party half by the dsh dshd runs (tests/dsh-master).
-        dsh-master = import ./tests/dsh-master {
           inherit pkgs;
           configurations = self.nixosConfigurations;
         };

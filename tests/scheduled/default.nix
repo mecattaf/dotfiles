@@ -51,6 +51,8 @@ assert
   ];
 assert cli != null && cli.unwrapped == scheduled;
 assert cli.inbox == inbox && cli.floorUnit == null;
+# The Master dsh profiles that owned the inbox and the port are gone.
+assert !(hm.programs.dsh ? master);
 assert !(hm.home.sessionVariables ? SCHEDULED_INBOX);
 assert !(hm.home.sessionVariables ? SCHEDULED_FLOOR_UNIT);
 assert tick.Service.Nice == 10;
