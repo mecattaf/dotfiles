@@ -2201,7 +2201,15 @@
               "jev"
             ];
             expectHeadless = pkgs.writeText "dsh-plugins-headless.json" (
-              builtins.toJSON (base // { absent = retiredRows ++ [ "stderr-log" "agency-kitty-native" ]; })
+              builtins.toJSON (
+                base
+                // {
+                  absent = retiredRows ++ [
+                    "stderr-log"
+                    "agency-kitty-native"
+                  ];
+                }
+              )
             );
             expectNative = pkgs.writeText "dsh-plugins-native.json" (
               builtins.toJSON (

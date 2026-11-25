@@ -79,60 +79,60 @@ in
   config = lib.mkMerge [
     { home.packages = [ pkgs.llm-agents.herdr-core ]; }
     (lib.mkIf (osConfig.myFleet.has "brain") {
-    # RAW single-file symlink into the checkout, like Herdr v1's config.toml was:
-    # ~/.config/herdr-core/ itself stays a real directory (templates/, and
-    # hand-made files such as pulse-client.conf, live next to it).
-    xdg.configFile."herdr-core/config.toml".source = link "dot_config/herdr-core/config.toml";
+      # RAW single-file symlink into the checkout, like Herdr v1's config.toml was:
+      # ~/.config/herdr-core/ itself stays a real directory (templates/, and
+      # hand-made files such as pulse-client.conf, live next to it).
+      xdg.configFile."herdr-core/config.toml".source = link "dot_config/herdr-core/config.toml";
 
-    systemd.user.services.hc-core = {
-      Unit = {
-        Description = "hc core for this machine (default session)";
-        # sd-switch: once active, a switch never re-runs it (see SWITCH above).
-        X-SwitchMethod = "keep-old";
+      systemd.user.services.hc-core = {
+        Unit = {
+          Description = "hc core for this machine (default session)";
+          # sd-switch: once active, a switch never re-runs it (see SWITCH above).
+          X-SwitchMethod = "keep-old";
+        };
+        Service = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          KillMode = "process";
+          OOMPolicy = "continue";
+          # Becomes the transient core's WorkingDirectory, so the default cwd of
+          # a terminal started through the API is ~.
+          WorkingDirectory = "%h";
+          # Per-launch values of whatever shell last imported its environment
+          # into the user manager (a Claude Code session, a DSH tool shell), and
+          # the one token the NAS login shell exports. The list modules/dshd.nix
+          # carried for dshd instances, plus hc's own selectors: this unit always
+          # means the default session on its default socket, and a core is never
+          # a terminal's child.
+          UnsetEnvironment = [
+            "CLOUDFLARE_API_TOKEN"
+            "CLAUDECODE"
+            "CLAUDE_CODE_ENTRYPOINT"
+            "CLAUDE_CODE_CHILD_SESSION"
+            "CLAUDE_CODE_SESSION_ID"
+            "CLAUDE_CODE_SESSION_ATTENDED"
+            "CLAUDE_CODE_MESSAGING_SOCKET"
+            "CLAUDE_CODE_MESSAGING_TOKEN"
+            "CLAUDE_CODE_EXECPATH"
+            "CLAUDE_PID"
+            "CLAUDE_EFFORT"
+            "CLAUDE_ENVELOPE"
+            "CODEX_THREAD_ID"
+            "DSH_SESSION_ID"
+            "DSH_SHELL"
+            "DSH_PROFILE_DIR"
+            "DSH_WEB_URL"
+            "HC_SESSION"
+            "HC_SOCKET"
+            "HC_TERMINAL_ID"
+            "HC_TERMINAL_SOCKET"
+          ];
+          ExecStart = "${pkgs.llm-agents.herdr-core}/bin/herdr-core server start";
+        };
+        # default.target, not graphical-session.target: under linger the core
+        # comes up at boot with no login session.
+        Install.WantedBy = [ "default.target" ];
       };
-      Service = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        KillMode = "process";
-        OOMPolicy = "continue";
-        # Becomes the transient core's WorkingDirectory, so the default cwd of
-        # a terminal started through the API is ~.
-        WorkingDirectory = "%h";
-        # Per-launch values of whatever shell last imported its environment
-        # into the user manager (a Claude Code session, a DSH tool shell), and
-        # the one token the NAS login shell exports. The list modules/dshd.nix
-        # carried for dshd instances, plus hc's own selectors: this unit always
-        # means the default session on its default socket, and a core is never
-        # a terminal's child.
-        UnsetEnvironment = [
-          "CLOUDFLARE_API_TOKEN"
-          "CLAUDECODE"
-          "CLAUDE_CODE_ENTRYPOINT"
-          "CLAUDE_CODE_CHILD_SESSION"
-          "CLAUDE_CODE_SESSION_ID"
-          "CLAUDE_CODE_SESSION_ATTENDED"
-          "CLAUDE_CODE_MESSAGING_SOCKET"
-          "CLAUDE_CODE_MESSAGING_TOKEN"
-          "CLAUDE_CODE_EXECPATH"
-          "CLAUDE_PID"
-          "CLAUDE_EFFORT"
-          "CLAUDE_ENVELOPE"
-          "CODEX_THREAD_ID"
-          "DSH_SESSION_ID"
-          "DSH_SHELL"
-          "DSH_PROFILE_DIR"
-          "DSH_WEB_URL"
-          "HC_SESSION"
-          "HC_SOCKET"
-          "HC_TERMINAL_ID"
-          "HC_TERMINAL_SOCKET"
-        ];
-        ExecStart = "${pkgs.llm-agents.herdr-core}/bin/herdr-core server start";
-      };
-      # default.target, not graphical-session.target: under linger the core
-      # comes up at boot with no login session.
-      Install.WantedBy = [ "default.target" ];
-    };
     })
   ];
 }
