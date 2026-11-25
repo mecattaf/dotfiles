@@ -103,34 +103,11 @@
       "https://cache.numtide.com"
       "https://nix-amd-ai.cachix.org"
       "https://cache.hellas.ai"
-      # Fleet binary cache — atticd on the NAS since 2026-08-21 (ws5,
-      # hosts/nas/attic.nix; state MOVED from the strix, signing key
-      # intact). `nas` resolves via the fleet-wide hosts pin below. On the
-      # home LAN every device pulls directly at 2.5GbE/6GHz speed; a host
-      # away from home finds this substituter dead and falls back to the
-      # public caches (the connect-timeout hardening above makes that cheap).
-      # The cache is public, so pulls need only the signing key below. A cold
-      # host substitutes the ~7,744 llm-agents paths instead of rebuilding
-      # them. refs #42.
-      "http://nas:8080/fleet"
     ];
     extra-trusted-public-keys = [
       "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
       "nix-amd-ai.cachix.org-1:F4OU4vw/lV2oiG6SBHZ+nqjl4EFJuqI4X9A7pvaBmhQ="
       "cache.hellas.ai-1:PYolh95U/Ms5fKE+NQTcNZUHyEv4QikaNocg9I9iy0g="
-      # fleet cache signing key — the `fleet:...=` line from `attic cache info fleet`.
-      # RUNTIME BOOTSTRAP: unknown until the cache is created on first server boot
-      # (attic generates the keypair server-side), so it is added here once, after:
-      #   attic cache create fleet && attic cache configure fleet --public
-      #   attic cache info fleet   # copy the public key line below, then rebuild
-      # Until then the substituter above is inert (nix won't trust its signatures) —
-      # safe: hosts just fall back to building. See hosts/strix/attic.nix.
-      # Rotated 2026-08-03: the atticd DB was recreated schema-only at the
-      # Jul 26 12:02 restart, losing the cache AND its server-side keypair —
-      # every pull 401'd and every nightly push failed for a week, silently.
-      # The old key (fleet:G5pAUpKmPtVsYbhFZAQsUUcuKHGsrHo9CFAJG7x5jNM=) signs
-      # nothing that still exists; the storage was empty.
-      "fleet:igImm/3XfdWs2g7L0j94HKcCh9ndv1WtJ5fVK6Svwz4="
     ];
   };
 
@@ -464,10 +441,6 @@
     # sox provides `rec`/`play` — Claude Code's /voice records through sox on
     # Linux; without it voice input fails ("check your microphone").
     sox
-    # attic client — `attic login`/`attic push` against the fleet cache (#42).
-    # Present fleet-wide so any host can pull-login or explicitly push a built
-    # closure. Server pkg is pulled by hosts/strix.
-    attic-client
   ];
 
   system.stateVersion = "26.05";

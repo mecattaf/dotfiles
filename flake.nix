@@ -548,7 +548,7 @@
         autoRollback = true;
         magicRollback = true;
         remoteBuild = false; # every selected profile is built locally on strix
-        fastConnection = false; # let each destination substitute from Attic
+        fastConnection = false; # let each destination substitute from the public caches
         activationTimeout = 1200;
         confirmTimeout = 90;
 
@@ -1125,9 +1125,6 @@
           # interface-scoped rather than global. On enp191s0: the worker is
           # WIRED into the BE550 and has no wifi profile at all.
 
-          # Attic moved to the NAS at ws5 — the strix serves no :8080 and
-          # every host, worker included, dials http://nas:8080/fleet instead.
-
           # NAS gateway/DNS .1 forwards on Ethernet to BE550 .3.
           assert nas.services.dnsmasq.enable;
           assert nixpkgs.lib.toList nas.services.dnsmasq.settings.port == [ 0 ];
@@ -1214,9 +1211,10 @@
           # created live with compression=none, gate + export + receipt
           # discipline landed together, per this block's own instructions.
           assert nas.myNas.models.enable; # model Library (was ws4 archive) hosts/nas/models.nix
-          # ws5 EXECUTED 2026-08-21: atticd runs on the NAS M.2, no relay —
-          # every host dials http://nas:8080/fleet directly.
-          assert nas.myNas.attic.enable; # ws5  hosts/nas/attic.nix
+          # Attic is retired (Tom, 2026-11-25): no host serves or trusts the
+          # old fleet cache.
+          assert !nas.services.atticd.enable;
+          assert !(nixpkgs.lib.elem "http://nas:8080/fleet" nas.nix.settings.extra-substituters);
           # Paperless was removed on 2026-10-13 (Tom 2026-09-29: "i m removing
           # paperless fully"); nothing on the NAS or the strix may bring it back.
           assert !nas.services.paperless.enable;
@@ -1239,7 +1237,6 @@
             && nixpkgs.lib.hasInfix "exit 1" text;
           assert builtins.elem "NetworkManager-ensure-profiles.service" nas.systemd.services.caddy.after;
           assert !(builtins.elem "tailscale0" nas.networking.firewall.trustedInterfaces);
-          assert !strix.myNasClient.relayAttic;
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
           # 2026-08-03: the staged Jellyfin alternative was deleted, not kept
           # as a decoy). It must never be silently displaced.
@@ -1247,15 +1244,6 @@
           # Cross-host invariants. Each relay and its backend must flip
           # together: a relay pointing at a service that is off is a black
           # hole, and a backend with no relay is unreachable from the tailnet.
-          # (The attic relay pairing died with the 2026-08-21 direct-serve
-          # move: the NAS serves 8080 itself and relayAttic must stay off.)
-          assert nas.myNas.attic.enable && !strix.myNasClient.relayAttic;
-          # The binary cache can only live in one place: moving it to the NAS
-          # requires the strix's own atticd to go away in the same
-          # commit, because both bind tcp/8080 on the strix (the relay
-          # socket there, the server here). Enforced host-locally too, by an
-          # assertion in hosts/strix/nas-client.nix.
-          assert nas.myNas.attic.enable -> !strix.services.atticd.enable;
           # (ws2b borg deleted 2026-08-21 — Tom ruled it redundant against
           # the physical-redundancy stack; its asserts died with it.)
           pkgs.runCommand "nas-topology" { } ''
