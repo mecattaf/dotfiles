@@ -22,8 +22,8 @@ let
   # pointed. tests/scheduled asserts the path.
   inbox = "${config.home.homeDirectory}/.agency/state/master/inbox/scheduled";
   # The systemd user unit a tick starts when records wait (pkgs/scheduled,
-  # SCHEDULED_FLOOR_UNIT). null is the supported no-floor mode (orchestrator
-  # resolution R-9, 2026-11-26): the tick links records and wakes nothing.
+  # SCHEDULED_FLOOR_UNIT). null is the supported no-floor mode, chosen at
+  # the 2026-11-26 dshd retirement: the tick links records and wakes nothing.
   # home/factory-floor.nix sets it once the factory floor is trusted to be
   # woken.
   floorUnit = null;
@@ -51,7 +51,7 @@ let
     meta.mainProgram = "scheduled";
   };
 in
-# The heartbeat follows the brain role, never a floor (R-9): until the
+# The heartbeat follows the brain role, never a floor: until the
 # 2026-11-26 dshd retirement it was gated on the dshd module's enable.
 lib.mkIf (osConfig.myFleet.has "brain") {
   home.packages = [ cli ];
@@ -118,7 +118,7 @@ lib.mkIf (osConfig.myFleet.has "brain") {
 
   # The factory floor's panel on the Zenbook's loopback (docs/scheduled.md).
   # The port is the one the retired Master floor's dsh-web served on, kept
-  # literal for the new floor's loopback panel (R-10, 2026-11-26). Treat
+  # literal for the new floor's loopback panel (2026-11-26). Treat
   # the port as granting control equal to the owner's own shell: a floor
   # panel that takes no token lets any local process on the Zenbook steer
   # the floor through this forward. With nothing listening on the NAS the
@@ -128,7 +128,7 @@ lib.mkIf (osConfig.myFleet.has "brain") {
   # openssh bump never makes fleet-update hold a switch for it.
   systemd.user.services.scheduled-panel-tunnel =
     let
-      # The factory floor's loopback panel port (docs/factory-floor.md).
+      # The factory floor's loopback panel port.
       webPort = "3082";
     in
     {

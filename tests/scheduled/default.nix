@@ -39,7 +39,7 @@ assert tick.Unit.X-RestartIfChanged == false;
 assert tick.Unit.StartLimitIntervalSec == 0;
 assert lib.toList tick.Service.ExecStart == [ "${lib.getExe scheduled} tick" ];
 # The heartbeat links records into the inbox and wakes nothing: no floor
-# unit is named (R-9, the supported no-floor mode), so the unit's whole
+# unit is named (the supported no-floor mode), so the unit's whole
 # environment is PATH and the inbox.
 assert tick.Unit.ConditionPathIsDirectory == "%h/.agency";
 assert builtins.elem "SCHEDULED_INBOX=${inbox}" environment;
@@ -62,7 +62,7 @@ assert tick.Service.Nice == 10;
 assert tick.Service.StateDirectory == "scheduled";
 assert tick.Service.StateDirectoryMode == "0700";
 # The tunnel forwards the factory floor's loopback panel port, a literal
-# since the Master web profile that owned it was retired (R-10).
+# since the Master web profile that owned it was retired.
 assert lib.hasInfix "-R 127.0.0.1:3082:127.0.0.1:3082 " (toString tunnel.Service.ExecStart);
 assert !(lib.any (e: lib.hasPrefix "SCHEDULED_STATE_DIR=" e) environment);
 assert !(lib.hasInfix "--state-dir" (toString tick.Service.ExecStart));
