@@ -3,34 +3,40 @@
 Scheduled is work that happens later, on a cron time, without a systemd
 timer per job. The dotfiles declare exactly one clock for it: the
 `scheduled-heartbeat.service`/`.timer` pair (D52, hourly, OnStartupSec
-2min, Persistent, `home/scheduled.nix`, NAS only).
+2min, Persistent, `home/scheduled.nix`, on the brain host, the NAS).
 
 The heartbeat is a nudger. Each tick:
 - reads the item files at `<agency>/.agency/scheduled/<item>.jsonc` (one
   item per file; the master agency is `~`);
 - decodes their cron times against the present hour;
 - links one occurrence record per due item into the superagent's inbox;
-- starts the `floor` dshd instance when records wait.
+- starts the floor's systemd user unit, named by `SCHEDULED_FLOOR_UNIT`,
+  when records wait and the unit is stopped or failed. While no unit is
+  named it wakes nothing ([No floor configured](#no-floor-configured)).
 
 It holds no superagent logic. The floor's scheduled Source turns each
-record into a Trigger, and the main Session reads the item's text and
-decides what, if anything, to do. The heartbeat never:
-- runs `dshd run` or `dshd update`;
+record into work, and the floor decides what, if anything, to do. The
+heartbeat never:
+- stops, restarts, reloads or masks the floor unit, or waits for it;
 - calls the floor's HTTP API;
 - opens `orchestrator.sqlite`;
 - runs a command from an item.
 
-dshd itself stays free of clocks ("NO SCHEDULES EVER"). The superagent
-and its profiles are described in [dsh-master.md](dsh-master.md);
-workflow scripts start there, never from an item.
+The floor itself stays free of clocks ("NO SCHEDULES EVER"): this
+heartbeat is the one clock, and it only links records and starts one
+unit. Workflow scripts start on the floor, never from an item. The floor
+meant for it is the factory floor (`factory-floor.service` from
+`home/factory-floor.nix`, the `agency` CLI). The Master superagent on
+dshd that this heartbeat woke until then (`dshd@floor`) was retired on
+2026-11-26, with dshd and the Master dsh profiles.
 
 ## From the seat: the first item
 
 Run these on the NAS as the user who owns the agencies. The `scheduled`
-program and the two environment variables it needs (`SCHEDULED_INBOX`,
-`SCHEDULED_FLOOR_INSTANCE`) come together: the installed command carries
-the inbox and floor as defaults (a wrapper), so Claude Code, a Herdr pane,
-dsh-web's terminal and a plain shell all reach the same inbox and floor
+program and the environment it needs (`SCHEDULED_INBOX`, and
+`SCHEDULED_FLOOR_UNIT` once a floor unit is named) come together: the
+installed command carries them as defaults (a wrapper), so Claude Code, a
+Herdr or hc pane and a plain shell all reach the same inbox and floor
 with nothing exported. Herdr panes and Claude Code never run a login
 shell, so Home Manager's session variables cannot be relied on there; the
 wrapper does not need them. A variable set by hand still wins.
@@ -46,8 +52,9 @@ scheduled set master:weekly-review enabled true   # arm it
 
 1. `new` writes `~/.agency/scheduled/weekly-review.jsonc` with
    `"enabled": false`. A new item is always off.
-2. `run` writes one manual record into the inbox and starts the floor if
-   it is stopped. It does not wait for the work.
+2. `run` writes one manual record into the inbox and starts the floor
+   unit if one is named and it is stopped. It does not wait for the work.
+   With no floor unit it says so, and the record waits in the inbox.
 3. Read the result where the work went
    ([Where the results are](#where-the-results-are)).
 4. When the trial run did what was meant, arm the item. The first
@@ -128,28 +135,26 @@ is skipped or repeated at a DST change.
    due instant since the last tick (or since the item was armed). It
    writes one record, for the latest, and counts the rest in `missed`.
    An hourly item after a 3-hour outage gives one record with
-   `missed: 2`, never three runs. The floor applies the same rule when
-   it reads: of two waiting records of one item, only the newest becomes
-   work.
+   `missed: 2`, never three runs. A floor's Source applies the same rule
+   when it reads (the occurrence-record contract): of two waiting records
+   of one item, only the newest becomes work.
 3. **The record.** One JSON file, occurrence record v1, is linked into
    `<stateDir>/inbox/scheduled/` as
    `<namespace>~<item>@<yyyymmddThhmmZ>.json`. It carries the agency
    folder (`cwd`), the item file, the revision and the prompt text as
    read now.
-4. **The wake.** If records wait and the `floor` instance is stopped,
-   the tick runs `dshd start floor`. It never reads the instance's
-   `enabled` flag, and never stops, restarts or updates it.
-5. **The floor.** The scheduled Source reads the inbox every 10 s,
-   raises one Trigger per record on its own Thread, and moves the file
-   to `.done/` (or to `.bad/` with a `.error` beside it).
-6. **The judgement.** The main Session (Claude Opus through dsh-claude,
-   accept mode `auto`) assesses the Trigger under the `scheduled` rule
-   and accepts it as one Ticket, or ignores it when the prompt itself
-   says it no longer applies.
-7. **The work.** The Ticket runs as one dshd unit,
-   `sa-<words>-a1`, in the agency folder, on the default pair, with full
-   permissions. The Ticket ends when the unit ends: exit 0 is completed,
-   anything else is failed.
+4. **The wake.** If records wait and the floor unit is stopped (or
+   failed), the tick runs `systemctl --user start --no-block <unit>`.
+   It queues the start job and does not wait for it. It never stops,
+   restarts or reloads the unit. With no floor unit named, nothing is
+   woken and the record waits.
+5. **The floor.** Its scheduled Source reads the inbox, turns each
+   record into one Trigger, and moves the file to `.done/` (or to `.bad/`
+   with a `.error` beside it).
+6. **The judgement and the work** are the floor's: its superagent
+   assesses the Trigger, and accepts it as work in the agency folder or
+   ignores it when the prompt itself says it no longer applies. See the
+   factory floor's own documentation (`docs/factory-floor.md`).
 
 An edit to an item takes effect at the next hourly pass, never sooner.
 A record already written keeps the text it froze.
@@ -161,29 +166,26 @@ The work is the report: there is no report file and no result table.
 | What | Where |
 |---|---|
 | Did the floor get the record? | `scheduled history [ID]`: `done` or `bad` with the error |
-| Which unit ran it | `dshd ls` lists units named `sa-…-a<k>`; `dshd get --json <unit>` shows the labels `superagent.ticket`, `superagent.assignment` and `superagent.pair`, the cwd and the exit |
-| What the worker printed | `dshd read <unit>` (last 200 lines; `-n N`, `-f` while it runs) |
-| The worker's full session, Claude pairs | `~/.claude-work/projects/<cwd slug>/<session>.jsonl`, the cc2 seat. The slug is the agency path with every `/` and `.` as `-`: `/home/me/work/acme` is `-home-me-work-acme` |
-| The worker's full session, every pair | `~/.dsh/sessions/--<cwd with / as ->--/session-<id>/session.v4.jsonl` |
-| The superagent's decision and the Ticket | the floor's panel (`dshd attach floor`), Trigger and Execution tabs; see [dsh-master.md](dsh-master.md#the-panel) |
-| The superagent's own transcript | `~/.claude-work/projects/<slug of the stateDir>/`, such as `-home-me--agency-state-master`: the main Session works in the `stateDir` |
+| Is the floor unit up, and why not | `systemctl --user status <unit>`; `journalctl --user -u <unit>` |
+| The decision and the work | the floor's own record: the `agency` CLI and the floor's panel (NAS loopback 3082, forwarded to the Zenbook by `scheduled-panel-tunnel`) |
+| A Claude worker's full session | `~/.claude-work/projects/<cwd slug>/<session>.jsonl`, the cc2 seat. The slug is the agency path with every `/` and `.` as `-`: `/home/me/work/acme` is `-home-me-work-acme` |
 
 ## Failure is passive
 
-Nothing retries and nothing pages. A worker that exits non-zero leaves a
-failed Ticket in the panel and a failed unit in `dshd ls`; the next due
-occurrence runs as its own Ticket. An occurrence the superagent ignored
-is a Decision with its reason in the panel's Eval tab. A record the
+Nothing retries and nothing pages. Work that fails is the floor's to
+show; the next due occurrence arrives as its own record. A record the
 Source refused is in `.bad/` and in `scheduled history`. The heartbeat
 itself exits 1 only when it cannot hand off or wake the floor, which the
-user-unit tripwire surfaces ([Failure table](#failure-table)).
+user-unit tripwire surfaces ([Failure table](#failure-table)). With no
+floor unit named, a waiting record is not a fault: the tick exits 0.
 
 ## Starting a workflow from an item
 
 A workflow script is not an item and has no key in one. It starts on a
-request to the superagent that names the script and the directory
-([dsh-master.md](dsh-master.md#workflows)). An item is such a request
-when its prompt says so, which is also how a workflow runs on a schedule:
+request to the floor's superagent that names the script and the
+directory, on a floor that offers `orchestrator_workflow_start`. An item
+is such a request when its prompt says so, which is also how a workflow
+runs on a schedule:
 
 ```jsonc
 // ~/work/acme/.agency/scheduled/release-notes.jsonc
@@ -200,8 +202,8 @@ when its prompt says so, which is also how a workflow runs on a schedule:
 }
 ```
 
-`scheduled run work/acme:release-notes` starts it now. This is the start
-path the live rehearsal exercises.
+`scheduled run work/acme:release-notes` starts it now, once a floor
+reads the inbox.
 
 ## The pieces
 
@@ -211,21 +213,20 @@ path the live rehearsal exercises.
 | Inbox, written by the heartbeat and by `scheduled run` | `<stateDir>/inbox/scheduled/*.json`, through `.tmp/` |
 | Inbox, owned by the floor's Source | `.done/` (received), `.bad/` (refused, with `<name>.error`) |
 | Heartbeat state (`heartbeat.json`, `intake.json`, `.tick.lock`) | `~/.local/state/scheduled` (systemd `StateDirectory`) |
-| The floor | dshd instance `floor` (`SCHEDULED_FLOOR_INSTANCE`) |
+| The floor | a systemd user unit named by `SCHEDULED_FLOOR_UNIT`, with its suffix (none tonight; `factory-floor.service` once its wake is on) |
 | The skill | `home/dot_claude/skills/scheduled/SKILL.md`, linked into both seats ([below](#the-skill)) |
 
-`<stateDir>` is the Master profile's dsh-superagent `stateDir`
-(`programs.dsh.master.stateDir`, default `~/.agency/state/master`), and it
-is the one value the two sides share. `home/scheduled.nix` passes
-`SCHEDULED_INBOX=<stateDir>/inbox/scheduled` to the service, and the
-installed `scheduled` command carries it and the floor instance as defaults
-(a wrapper), because Home Manager's session variables reach no NAS shell,
-Herdr or Claude Code. A variable set by hand still wins. `tests/scheduled`
-asserts that the two agree, and `checks.scheduled-vm` runs `scheduled run`
-with no environment.
-
-The floor's DSH profiles, `master` and one `master-<pair>` per worker
-pair, are rendered from one source; see [dsh-master.md](dsh-master.md).
+`<stateDir>` is `~/.agency/state/master`, written literally in
+`home/scheduled.nix`. It was the Master profile's dsh-superagent
+`stateDir` until that profile was retired on 2026-11-26; the path stays,
+so the records Tom's items produce are where a floor's Source can be
+pointed. `home/scheduled.nix` passes `SCHEDULED_INBOX` to the service, and
+`SCHEDULED_FLOOR_UNIT` only when a floor unit is named. The installed
+`scheduled` command carries the same values as defaults (a wrapper),
+because Home Manager's session variables reach no NAS shell, Herdr or
+Claude Code. A variable set by hand still wins. `tests/scheduled` asserts
+the inbox path and the floor variable, and `checks.scheduled-vm` runs
+`scheduled run` with no environment.
 
 ## A tick
 
@@ -243,19 +244,56 @@ pair, are rendered from one source; see [dsh-master.md](dsh-master.md).
 5. Withdraw: while the floor is not running, starting or stopping, the
    tick unlinks its own waiting records of items that are no longer valid
    and enabled.
-6. Wake, only when records wait:
+6. Wake, only when records wait and a floor unit is named. One
+   `systemctl --user show --property=LoadState,ActiveState,SubState,Result,ExecMainStatus -- <unit>`
+   reads it once per tick, before step 5's withdrawal (a live floor
+   blocks the withdrawal), and the table decides:
 
-   | Floor state | What the tick does | Exit |
-   |---|---|---|
-   | running, starting, stopping | nothing | 0 |
-   | stopped (any ending), previous-boot, interrupted | `dshd start --json floor` | 0, or 1 if the start fails |
-   | failed | `dshd start --json floor` | 1 |
-   | masked | nothing | 0 |
-   | not-found, orphaned, inconsistent, unavailable | nothing | 1 |
+   | `systemctl show` says | State in the line | What the tick does | Exit |
+   |---|---|---|---|
+   | ActiveState `active`, `reloading`, `refreshing` | running | nothing | 0 |
+   | ActiveState `activating` (also `auto-restart`) | starting | nothing | 0 |
+   | ActiveState `deactivating` | stopping | nothing | 0 |
+   | ActiveState `inactive` | stopped | `systemctl --user start --no-block -- <unit>` | 0, or 1 if systemctl refuses the job |
+   | ActiveState `failed` | failed | the same start | 1 |
+   | LoadState `masked` | masked | nothing | 0 |
+   | LoadState `not-found` | not-found | nothing | 1 |
+   | LoadState `bad-setting`, `error`; another ActiveState | that word | nothing | 1 |
+   | systemctl fails, or the name is not a full unit name | unavailable | nothing | 1 |
 
-   The instance's `enabled` flag is not read. `enabled: false` items
-   write no records, so nothing wakes the floor until Tom enables an item
-   or runs one by hand.
+   A unit in motion (active, activating, deactivating) is live whatever
+   its LoadState, so a unit whose file vanished while it runs is left
+   alone. `--no-block`
+   returns once the job is queued: `result=queued` says the start was
+   asked for, not that the floor came up. A unit whose `Condition…=`
+   fails, or that dies at once, shows at the next tick as stopped or
+   failed. `enabled: false` items write no records, so nothing wakes the
+   floor until Tom enables an item or runs one by hand.
+
+   The unit name must be a full unit name with a `.service` or `.target`
+   suffix (`factory-floor.service`); a glob, a path or a name starting
+   with `-` is refused before systemctl runs (`error=invalid-unit-name`),
+   because `systemctl start` expands globs and turns a path into a mount
+   unit.
+
+## No floor configured
+
+This is the NAS's mode from 2026-11-26 until the factory floor's
+heartbeat wake is turned on (`home/factory-floor.nix`, `heartbeatWake`):
+`home/scheduled.nix` names no floor unit, so the service and the
+installed command carry no `SCHEDULED_FLOOR_UNIT`.
+
+- A due tick links its record into the inbox, logs no `floor` line,
+  runs no systemctl and exits 0. The record waits.
+- The withdrawal still runs (no floor is reading), so a record of an
+  item disabled or removed meanwhile is withdrawn at the next tick.
+- `scheduled run ID` writes its record, prints `floor: none`, and says on
+  stderr that no floor was woken and the record waits in the inbox.
+- Waiting records accumulate, one per item per due instant, until a
+  floor reads the inbox.
+
+To try a floor unit by hand without changing the host, pass it:
+`scheduled run ID --floor-unit factory-floor.service`.
 
 Record names are `<namespace>~<item>@<yyyymmddThhmmZ>.json` for a
 schedule and `<namespace>~<item>@run~<ULID>.json` for a manual run. A `/`
@@ -277,8 +315,9 @@ that generation still runs.
    - `switch-to-configuration dry-activate` on the NAS.
 2. Switch the NAS, attended. After the switch the timer runs, but
    `ConditionPathIsDirectory` skips every tick until `~/.agency` exists.
-3. Install the Master profile and create the `floor` instance. Its
-   scheduled Source reads `<stateDir>/inbox/scheduled`.
+3. Declare the floor unit (`home/factory-floor.nix`) and start it once
+   by hand. Its scheduled Source reads `<stateDir>/inbox/scheduled` only
+   when its host config says so.
 4. Place the master items, every one with `"enabled": false`. Each is
    `~/.agency/scheduled/<item>.jsonc`, item v1 (`scheduled schema`); an
    item written for an earlier layout is not v1, so rewrite a copy of it
@@ -301,10 +340,13 @@ that generation still runs.
    ```
 
    Expect a `pass` line, no `<3>` line, and `heartbeat.json` written.
-6. `scheduled run master:<item>` once. One record appears in the inbox,
-   the floor starts if it was stopped, and the record moves to `.done/`.
-   `scheduled history` lists it.
-7. Tom enables an item. Only Tom does this.
+6. `scheduled run master:<item> --floor-unit factory-floor.service`
+   once. One record appears in the inbox, the floor unit starts if it was
+   stopped, and the record moves to `.done/`. `scheduled history` lists
+   it.
+7. Tom turns the heartbeat wake on, which names the floor unit to the
+   heartbeat. Only Tom does this.
+8. Tom enables an item. Only Tom does this.
 
 ## Everyday commands
 
@@ -336,12 +378,14 @@ occurrences. It does not wait for the work. The superagent's own record
 (its Thread and Ticket) is where the work is followed.
 
 `run` and `history` take the inbox from `SCHEDULED_INBOX`, and `run` takes
-the floor from `SCHEDULED_FLOOR_INSTANCE`. The installed command defaults
-both; set them, or pass `--inbox DIR --floor-instance NAME` to `run`, to
+the floor unit from `SCHEDULED_FLOOR_UNIT`. The installed command defaults
+them; set them, or pass `--inbox DIR --floor-unit NAME` to `run`, to
 override. Without an inbox, `run` exits 2 and names both ways to give one.
-Without a floor instance (say `SCHEDULED_FLOOR_INSTANCE=` set empty), it
+Without a floor unit (unset, or `SCHEDULED_FLOOR_UNIT=` set empty), it
 writes the record, prints `floor: none` and says on stderr that it woke no
-floor; the next tick wakes the floor.
+floor; the record waits in the inbox. The old `SCHEDULED_FLOOR_INSTANCE`,
+`--floor-instance` and `SCHEDULED_DSHD` were removed with dshd on
+2026-11-26 (scheduled 0.3.0), with no alias.
 
 Exit codes: 0 ok, 1 refused or a fault, 2 usage, 3 revision conflict.
 
@@ -360,7 +404,7 @@ asserts both NAS links.
 
 ```sh
 journalctl --user -u scheduled-heartbeat -n 20 -o cat
-journalctl --user -u dshd@floor.service
+journalctl --user -u factory-floor.service     # the floor unit, once one is named
 ```
 
 Lines carry an sd-daemon priority prefix, which journald strips into
@@ -370,9 +414,11 @@ tick; `reason=manual` means it ran any other way. A healthy tick:
 
 ```
 <6>decode item=master:weekly-review due=2026-11-16T06:00:00.000Z result=created
-<5>floor action=start state=stopped waiting=1 result=started
+<5>floor action=start unit=factory-floor.service state=stopped waiting=1 result=queued
 <6>pass reason=timer took_ms=412 discover_ms=48 agencies=1 items=3 waiting=1
 ```
+
+With no floor unit named, the same tick has no `floor` line.
 
 ## Failure table
 
@@ -384,16 +430,18 @@ tick; `reason=manual` means it ran any other way. A healthy tick:
 | `<4>discover unreadable path=... error=...` | A `scheduled/` folder, or a folder above known items, cannot be read. Its items keep their last parse and their waiting records are kept; the tick exits 1. | Restore the folder's permissions or mount |
 | `<5>withdrawn occurrence=... reason=disabled\|removed\|invalid` | A waiting record of an item that is no longer valid and enabled was withdrawn | Intended |
 | `<4>floor masked waiting=N` | The floor unit is masked; records wait | Unmask deliberately, or accept that the floor is off |
-| `<3>floor action=start state=failed child=...` | The floor crashed. The tick restarted it and exits 1 anyway, so the crash is seen. | `journalctl --user -u dshd@floor.service`, fix, check the next tick |
-| `<3>floor state=not-found waiting=N` | No `floor` instance exists and records wait | Create it ([dsh-master.md](dsh-master.md#the-floor-instance)) |
-| `<3>floor state=orphaned\|inconsistent ... remedy=...` | dshd reports a broken instance | Follow dshd's remedy; inspect with `dshd get --json floor` |
-| `<3>floor state=unavailable error=...` | dshd could not be asked | Check dshd and the user manager |
+| `<3>floor action=start unit=U state=failed child=...` | The floor unit failed: `child=exit:N` or `signal:N` from its main process, else `result:R`, systemd's Result. The tick queued a start and exits 1 anyway, so the failure is seen. | `journalctl --user -u U`, fix, check the next tick |
+| `<3>floor action=start unit=U ... result=failed error=...` | systemctl refused the start job | The error says why; `systemctl --user status U` |
+| `<5>floor action=start ... result=queued`, yet the floor is down | The start was only queued (`--no-block`); the unit's condition failed or it died at once | `systemctl --user status U`; the next tick reads it again |
+| `<3>floor state=not-found waiting=N` | systemd knows no unit of that name and records wait | Declare the unit, or fix `SCHEDULED_FLOOR_UNIT` |
+| `<3>floor state=bad-setting\|error remedy=...` | systemd could not load the unit file | Follow the remedy (`systemctl --user status U`) |
+| `<3>floor state=unavailable error=...` | systemctl could not be asked (no user bus), or `error=invalid-unit-name`: the name lacks its suffix or is a glob or path | Check the user manager; name the unit in full |
 | `<3>guard machine-id differs: state from another host` | `~/.local/state/scheduled` came from a different machine | Restore the local state; never share it between hosts |
 | `<4>clock went back` | The clock is behind `lastTick` | Nothing is handed off; `lastTick` is kept |
 | `scheduled tick: --now needs an explicit --state-dir` | A `--now` pass would commit its `lastTick` into the heartbeat's own state | Pass a scratch `--state-dir` |
-| records stay in the inbox | The floor's Source is not reading | `dshd get --json floor`; the Source moves each record to `.done/` or `.bad/` |
+| records stay in the inbox | No floor reads them: none is named ([No floor configured](#no-floor-configured)), or its Source is off | `scheduled history`; the floor's own status; the Source moves each record to `.done/` or `.bad/` |
 | `.bad/<name>.error` | The Source refused a record | `scheduled history ID` shows the error |
-| `done` in history, but no unit | The superagent ignored the occurrence, or the Trigger waits for an Eval | The panel's Eval tab shows the Decision and its reason |
+| `done` in history, but no work | The floor ignored the occurrence, or it waits for a judgement | The floor's own record of its decision |
 
 The user-unit tripwire sees the heartbeat's exit 1 as a failed start job,
 so a refused tick surfaces. The tick never runs `reset-failed`.
@@ -403,22 +451,23 @@ so a refused tick surfaces. The tick never runs `reset-failed`.
 Any step back is the previous NixOS generation, and it does not leave
 `~/.agency` alone. A generation from before scheduled 0.2.0 runs heartbeat
 0.1.0, which reads `.agency/workflows/` and keeps its state under
-`~/.agency/state/master`, beside the floor's own files; items under
-`.agency/scheduled/` are ignored until you roll forward.
+`~/.agency/state/master`; items under `.agency/scheduled/` are ignored
+until you roll forward.
 
-A generation without `dsh-master` cannot re-render the Master profiles:
-they keep naming the seat wrapper of the generation that rendered them.
-Do not run `nix-collect-garbage -d` while rolled back: it strands the
-floor's pinned Claude wrapper, and the floor can no longer start Claude.
+A generation from before 2026-11-26 runs scheduled 0.2.0, whose tick
+knows only the retired dshd floor: it starts `dshd@floor` (on loopback
+3082) whenever a record waits. Before rolling back across that line,
+stop `scheduled-heartbeat.timer` if another floor holds 3082.
 
 To quiet things without a generation switch, use one of these:
 - `scheduled set ID enabled false` for an item;
 - stop the timer through Home Manager;
-- `dshd stop floor`, which holds only until a tick finds a waiting
-  record: the heartbeat starts a stopped floor, even one stopped by
-  intent, and `scheduled run` starts it at once. To keep the floor down,
-  set the items `enabled false` first, or mask the unit (the tick then
-  logs `<4>floor masked`).
+- `systemctl --user stop <unit>`, which holds only until a tick finds a
+  waiting record: the heartbeat starts a stopped floor unit, even one
+  stopped by intent, and `scheduled run` starts it at once. To keep the
+  floor down, set the items `enabled false` first, mask the unit (the
+  tick then logs `<4>floor masked`), or name no floor unit to the
+  heartbeat ([No floor configured](#no-floor-configured)).
 
 Waiting records of a disabled item are withdrawn at the next tick while
 the floor is stopped.

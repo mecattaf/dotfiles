@@ -7,12 +7,12 @@ import fs from 'node:fs';
 import { join } from 'node:path';
 import { tick } from '../src/lib/tick.mjs';
 import { main as tickMain } from '../src/verbs/tick.mjs';
-import { setupEnv, hourly, MACHINE_ID } from './helpers.mjs';
+import { setupEnv, hourly, MACHINE_ID, UNIT } from './helpers.mjs';
 
 const at = (iso) => new Date(iso);
 
-test('T1 a first tick writes heartbeat.json and intake.json in the state dir, no record, and calls no dshd', async () => {
-  const env = setupEnv({ floorInstance: 'floor' });
+test('T1 a first tick writes heartbeat.json and intake.json in the state dir, no record, and calls no systemctl', async () => {
+  const env = setupEnv({ floorUnit: UNIT });
   try {
     env.item('hb', hourly());
     const res = await tick(env.ctx, { now: at('2026-11-12T14:00:00.000Z') });
@@ -23,7 +23,7 @@ test('T1 a first tick writes heartbeat.json and intake.json in the state dir, no
     assert.equal(env.entry('master:hb').valid, true);
     assert.deepEqual(env.records(), []);
     assert.equal(fs.existsSync(env.inbox), false, 'the inbox is created only to hand off a record');
-    assert.deepEqual(env.dshdCalls(), []);
+    assert.deepEqual(env.systemctlCalls(), []);
   } finally {
     env.cleanup();
   }
@@ -141,7 +141,7 @@ test('T6 two ticks started together: the second waits on .tick.lock', async () =
 });
 
 test('T7 a disabled item gets no record; an item disabled while its record waits and the floor is stopped has that record withdrawn with <5>withdrawn reason=disabled', async () => {
-  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'running' } });
+  const env = setupEnv({ floorUnit: UNIT, stubState: { state: 'running' } });
   try {
     env.item('off', hourly({ enabled: false }));
     env.item('hb', hourly());
@@ -150,20 +150,20 @@ test('T7 a disabled item gets no record; an item disabled while its record waits
     assert.deepEqual(env.records(), ['master~hb@20261112T1200Z.json']);
 
     env.item('hb', hourly({ enabled: false }), new Date('2026-11-12T12:10:00.000Z'));
-    env.setStub({ state: 'stopped', enabled: false, lastRun: { ending: 'stopped' } });
+    env.setStub({ state: 'stopped' });
     const res = await tick(env.ctx, { now: at('2026-11-12T12:30:00.000Z') });
     assert.equal(res.code, 0);
     assert.deepEqual(env.records(), []);
     assert.ok(res.lines.includes('<5>withdrawn occurrence=master~hb@20261112T1200Z reason=disabled'), res.lines.join('\n'));
     // Nothing waits after the withdrawal, so the floor is not started.
-    assert.ok(!env.dshdCalls().some((argv) => argv[0] === 'start'));
+    assert.ok(!env.systemctlCalls().some((argv) => argv[1] === 'start'));
   } finally {
     env.cleanup();
   }
 });
 
 test('T8 a removed or invalid item has its waiting heartbeat record withdrawn; a manual record and another producer\'s record stay', async () => {
-  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'running' } });
+  const env = setupEnv({ floorUnit: UNIT, stubState: { state: 'running' } });
   try {
     env.item('gone', hourly());
     env.item('broken', hourly());
@@ -179,7 +179,7 @@ test('T8 a removed or invalid item has its waiting heartbeat record withdrawn; a
 
     fs.rmSync(join(env.scheduled, 'gone.jsonc'));
     env.item('broken', '{ "enabled": true,', new Date('2026-11-12T12:10:00.000Z'));
-    env.setStub({ state: 'stopped', lastRun: { ending: 'stopped' } });
+    env.setStub({ state: 'stopped' });
     const res = await tick(env.ctx, { now: at('2026-11-12T12:30:00.000Z') });
     assert.ok(res.lines.includes('<5>withdrawn occurrence=master~gone@20261112T1200Z reason=removed'), res.lines.join('\n'));
     assert.ok(res.lines.includes('<5>withdrawn occurrence=master~broken@20261112T1200Z reason=invalid'), res.lines.join('\n'));
@@ -191,7 +191,7 @@ test('T8 a removed or invalid item has its waiting heartbeat record withdrawn; a
 
 test('T8b while the floor is running no record is withdrawn', async () => {
   for (const state of ['running', 'starting', 'stopping']) {
-    const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'running' } });
+    const env = setupEnv({ floorUnit: UNIT, stubState: { state: 'running' } });
     try {
       env.item('hb', hourly());
       await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
@@ -288,8 +288,8 @@ test('T10 with only the hourly timer, an item enabled at 11:40 fires 12:00 at th
   }
 });
 
-test('T11 a tick opens no file named orchestrator.sqlite, runs no dshd run and no item command, and writes no census', async () => {
-  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'stopped', lastRun: { ending: 'stopped' } } });
+test('T11 a tick opens no file named orchestrator.sqlite, runs no item command and no systemctl verb but show and start, and writes no census', async () => {
+  const env = setupEnv({ floorUnit: UNIT, stubState: { state: 'stopped' } });
   try {
     const marker = join(env.tmpDir, 'command-ran');
     // A withdrawn key naming a command is refused, never run.
@@ -302,9 +302,9 @@ test('T11 a tick opens no file named orchestrator.sqlite, runs no dshd run and n
     const all = fs.readdirSync(env.tmpDir, { recursive: true }).map(String);
     assert.ok(!all.some((p) => p.endsWith('orchestrator.sqlite')), all.join('\n'));
     assert.ok(!all.some((p) => p.includes('census')), all.join('\n'));
-    const calls = env.dshdCalls();
+    const calls = env.systemctlCalls();
     assert.ok(calls.length > 0, 'the stopped floor was read and started');
-    for (const argv of calls) assert.ok(['get', 'start'].includes(argv[0]), argv.join(' '));
+    for (const argv of calls) assert.ok(argv[0] === '--user' && ['show', 'start'].includes(argv[1]), argv.join(' '));
     assert.ok(env.entry('master:gated').problems.some((p) => p.code === 'removed-key'));
   } finally {
     env.cleanup();
@@ -397,7 +397,7 @@ test('C3.12 every tick line carries an sd-daemon level prefix; pass carries reas
   }
 });
 
-test('the verb takes --inbox, --state-dir, --home and --floor-instance flags over the environment defaults', async () => {
+test('the verb takes --inbox, --state-dir, --home and --floor-unit flags over the environment defaults', async () => {
   const env = setupEnv();
   try {
     env.item('hb', hourly());
@@ -411,6 +411,30 @@ test('the verb takes --inbox, --state-dir, --home and --floor-instance flags ove
     assert.equal(fs.existsSync(env.state), false);
     assert.equal(JSON.parse(env.out.at(-1)).code, 0);
     assert.equal(await tickMain(['--inbox', other, '--bogus'], env.ctx), 2);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('T15 with no floor unit (the NAS tonight) a due tick links its record, exits 0, logs no floor line and runs no systemctl', async () => {
+  const env = setupEnv({ stubState: { state: 'stopped' } });
+  try {
+    assert.equal(env.ctx.floorUnit, null);
+    env.item('hb', hourly());
+    await tick(env.ctx, { now: at('2026-11-12T11:00:00.000Z') });
+    const res = await tick(env.ctx, { now: at('2026-11-12T12:00:10.000Z') });
+    assert.equal(res.code, 0, res.lines.join('\n'));
+    assert.deepEqual(env.records(), ['master~hb@20261112T1200Z.json']);
+    assert.ok(res.lines.includes('<6>decode item=master:hb due=2026-11-12T12:00:00.000Z result=created'), res.lines.join('\n'));
+    assert.ok(!res.lines.some((l) => /^<\d>floor/.test(l)), res.lines.join('\n'));
+    assert.match(res.lines.at(-1), /^<6>pass .* waiting=1$/);
+    // The record keeps waiting; the next due tick adds its own and still wakes nothing.
+    const next = await tick(env.ctx, { now: at('2026-11-12T13:00:10.000Z') });
+    assert.equal(next.code, 0, next.lines.join('\n'));
+    assert.equal(env.records().length, 2);
+    assert.deepEqual(env.systemctlCalls(), []);
+    // An empty --floor-unit= is a usage error, like any empty flag value; the empty variable is this mode.
+    assert.equal(await tickMain(['--floor-unit='], env.ctx), 2);
   } finally {
     env.cleanup();
   }

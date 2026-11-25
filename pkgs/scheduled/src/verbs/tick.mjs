@@ -1,6 +1,6 @@
 // src/verbs/tick.mjs — The `scheduled tick` verb (docs/scheduled.md, A tick).
 //
-// Usage: scheduled tick --inbox DIR [--state-dir DIR] [--home DIR] [--floor-instance NAME] [--now ISO --state-dir DIR] [--json]
+// Usage: scheduled tick --inbox DIR [--state-dir DIR] [--home DIR] [--floor-unit NAME] [--now ISO --state-dir DIR] [--json]
 
 import { tick } from '../lib/tick.mjs';
 import { parseLocationFlags } from '../lib/flags.mjs';
@@ -13,7 +13,7 @@ import { parseLocationFlags } from '../lib/flags.mjs';
  * @returns {Promise<number>} Exit code
  */
 export async function main(args, ctx) {
-  const parsed = parseLocationFlags(args, ctx, ['--inbox', '--state-dir', '--home', '--floor-instance', '--now']);
+  const parsed = parseLocationFlags(args, ctx, ['--inbox', '--state-dir', '--home', '--floor-unit', '--now']);
   if (parsed.error || parsed.positional.length) {
     ctx.err(`<3>scheduled tick: ${parsed.error ?? `unexpected argument '${parsed.positional[0]}'`}\n`);
     return 2;
