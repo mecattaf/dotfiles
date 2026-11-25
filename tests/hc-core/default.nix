@@ -32,6 +32,11 @@ let
   ];
   configLink = hm.xdg.configFile."herdr-core/config.toml".source;
   unit = hm.xdg.configFile."systemd/user/hc-core.service".source;
+  # Agent templates: the repo's files and the links Home Manager makes.
+  templateDir = ../../home/dot_config/herdr-core/templates;
+  templateFiles = builtins.attrNames (builtins.readDir templateDir);
+  templateLinksOf =
+    name: lib.filter (lib.hasPrefix "herdr-core/templates/") (builtins.attrNames (homeOf name).xdg.configFile);
 in
 assert svc.Unit.Description == "hc core for this machine (default session)";
 assert svc.Unit.X-SwitchMethod == "keep-old";
@@ -97,6 +102,27 @@ assert
     "speech-queue"
   ];
 assert !(hm.systemd.user.timers ? hc-core);
+# Templates: named worker-*, never like a binary (it would shadow that binary
+# for every caller); each file has a header with a command; every repo file is
+# linked on the brain and none anywhere else.
+assert lib.all (f: builtins.match "worker-[a-z0-9-]+\\.md" f != null) templateFiles;
+assert lib.all (
+  f:
+  let
+    text = builtins.readFile (templateDir + "/${f}");
+  in
+  lib.hasPrefix "---\n" text && lib.hasInfix "\ncommand: " text
+) templateFiles;
+assert builtins.elem "worker-claude.md" templateFiles && builtins.elem "worker-codex.md" templateFiles;
+assert templateLinksOf "nas" == map (f: "herdr-core/templates/${f}") templateFiles;
+assert lib.all (
+  name: builtins.match "herdr-core/templates/worker-[a-z0-9-]+\\.md" name != null
+) (templateLinksOf "nas");
+assert lib.all (name: templateLinksOf name == [ ]) [
+  "client"
+  "strix-coordinator"
+  "strix-worker"
+];
 pkgs.runCommand "hc-core" { nativeBuildInputs = [ pkgs.dash ]; } ''
   set -eu
   unit=${unit}
@@ -112,6 +138,11 @@ pkgs.runCommand "hc-core" { nativeBuildInputs = [ pkgs.dash ]; } ''
     || { echo "hc-core.service does not unset CLAUDECODE"; cat "$unit"; exit 1; }
   # A single-file raw link into the checkout, never a store copy (hot edit).
   test "$(readlink ${configLink})" = /home/tom/mecattaf/dotfiles/home/dot_config/herdr-core/config.toml
+  ${lib.concatMapStrings (f: ''
+    test "$(readlink ${
+      hm.xdg.configFile."herdr-core/templates/${f}".source
+    })" = /home/tom/mecattaf/dotfiles/home/dot_config/herdr-core/templates/${f}
+  '') templateFiles}
   dash -n ${../../home/dot_local/bin/hc-restart-clean}
   touch $out
 ''
