@@ -72,6 +72,11 @@ end
 function cx; __agency_codex --disable daemon_auto_start --dangerously-bypass-approvals-and-sandbox $argv; end
 function cax; __agency_codex resume --last --disable daemon_auto_start --dangerously-bypass-approvals-and-sandbox $argv; end
 
+# Go: module cache and GOPATH under XDG, never ~/go (25 Nov 2026). Same values
+# as home.sessionVariables in home.nix, for shells that do not read those.
+set -gx GOPATH $HOME/.local/share/go
+set -gx GOMODCACHE $HOME/.cache/go/mod
+
 # ── Music ────────────────────────────────────────────────────────────────
 # The library lives on the NAS and is served by Navidrome (hosts/nas/media.nix).
 # The cliamp TUI client and its m/music/mp/mn/mb/mnow aliases were removed
