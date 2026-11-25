@@ -150,6 +150,10 @@
     # modules/common.nix). home/agent-tools.nix installs an allowlist of it
     # (`keepFromLlmAgents`) via buildEnv.
     llm-agents.url = "github:numtide/llm-agents.nix";
+    # Codex stays at 0.169.0 while the rest of llm-agents rolls (pinned
+    # 2026-11-25): the llm-agents revision that last shipped it. Never add this
+    # input to `rollingInputOverrides`.
+    llm-agents-codex.url = "github:numtide/llm-agents.nix/db5b3ff7fca0005b0162c3c417fb98e369534e5c";
 
     # NAS session supervision; DSH itself still comes from llm-agents.
     dshd = {
@@ -350,7 +354,10 @@
           # Whole llm-agents catalog under `pkgs.llm-agents.*` (prebuilt from its
           # own nixpkgs — no second eval of ours). home/home.nix pulls an
           # allowlisted set out of this namespace. See the input comment above.
-          llm-agents = inputs.llm-agents.packages.${system};
+          llm-agents = inputs.llm-agents.packages.${system} // {
+            # Pinned: see the llm-agents-codex input.
+            inherit (inputs.llm-agents-codex.packages.${system}) codex;
+          };
           # Native terminal consolidation: advance only Kitty, preserving the
           # host nixpkgs/Mesa/kernel pins. The recipe uses the prior package as
           # its build definition, avoiding an overlay self-reference.
