@@ -17,6 +17,19 @@ alternates and ARA route, `modules/superroc.nix` and `pkgs/superroc`,
 entry. Library bytes are deleted by name with `RETIRED-2026-11-25.tsv`, then
 `local-models-prune` runs on each host.
 
+2026-11-25 Attic, the fleet binary cache, is retired. Tom, 2026-11-25:
+"attic cache: delete it. as long as my keys are saved (is that what attic
+does?) i am okay". `hosts/nas/attic.nix` (the `myNas.attic` service, its
+`/var/lib/private/atticd` bind and its firewall rule) and
+`modules/attic-cache-tripwire.nix` are deleted. No host lists
+`http://nas:8080/fleet` as a substituter or trusts its `fleet:` key, and the
+attic client leaves the common packages. Nothing had been pushed to the cache
+since 24 Sep; strix-coordinator builds every system and the deploy copies the
+closure to its host, so hosts fetch the rest from the public caches. The
+cache's signing key is in the 10 Sep fleet-identities capture, and the
+`atticd-server-token` ciphertext stays as escrow. The 33 GB of state under
+`/mnt/fast/atticd` is deleted by hand after the NAS switch.
+
 2026-10-31 Chrome and the browser desktop leave strix-coordinator (dotfiles
 #651). `modules/browser-desktop.nix`, `pkgs/browser-desktop` and
 `pkgs/chrome-stream` are deleted, `browser.internal` is dropped from AdGuard,
