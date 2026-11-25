@@ -123,6 +123,13 @@ in
     "$HOME/.local/bin"
   ];
 
+  # Go writes its module cache to ~/go when GOPATH is unset (found 25 Nov 2026:
+  # 470 MB under ~/go from one build). Keep it out of the home root.
+  home.sessionVariables = {
+    GOPATH = "${config.xdg.dataHome}/go";
+    GOMODCACHE = "${config.xdg.cacheHome}/go/mod";
+  };
+
   # ---------------------------------------------------------------------------
   # RAW configs (whole-dir per ~/.config/<name>).
   # ---------------------------------------------------------------------------
