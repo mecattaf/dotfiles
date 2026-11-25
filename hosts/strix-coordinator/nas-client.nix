@@ -30,10 +30,6 @@ in
 {
   options.myNasClient = {
     useRemoteStorage = lib.mkEnableOption "mounting the NAS NFS export at the historical /mnt/nas path";
-    # relayAttic stays declared solely so the flake's topology check can
-    # assert it is FALSE forever (the 2026-08-21 direct-serve move made a
-    # relay architecturally wrong, not merely unused).
-    relayAttic = lib.mkEnableOption "DEAD OPTION — never enable; the NAS serves the cache directly since 2026-08-21";
   };
 
   config = lib.mkMerge [
@@ -222,9 +218,5 @@ in
         '';
       };
     }
-
-    # (The #130 ws5 binary-cache relay that lived here was DELETED 2026-08-21:
-    # the direct-serve move made it dead code — every host dials
-    # http://nas:8080/fleet itself. See hosts/nas/attic.nix.)
   ];
 }
