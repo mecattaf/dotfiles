@@ -42,15 +42,17 @@ the existing observer enrolled each source.
 |---|---|---|
 | Existing fleet collector | One bounded fleet fanout; selected public reachability/load/memory fields | 300 seconds |
 | Fixed host counters | `/proc` memory/load; qualified Strix APU busy and GTT/VRAM counters | 60 seconds |
-| dshd | Batched `ls`, then one native accounting-property batch; no ACP probe | 60 seconds |
-| User journal | One cursor-owned lifecycle subscription | Events, bounded reconnect backoff |
-| DSH | Incremental selected metadata from recent session journals | 10 seconds |
 | Seats | `--no-spend`, normal 1800-second native cache TTL, one shared acquisition | 600 seconds |
 | Antigravity accounts 1–3 | Official standalone `--print /usage` metadata, credits disabled; independent Gemini weekly pools | 1800 seconds per account |
 | Cloudflare | Read-only account Neurons analytics; declared included allocation kept separate | 3600 seconds |
 | Vercel | Read-only credits balance | 3600 seconds |
 | Free-provider headers | Existing lane meter, recorded during ordinary calls | Incremental; no inference/catalogue probes |
 | Local/public commit | Independent of slow reads | 60 seconds |
+
+The dshd, user-journal and DSH session-journal sources were retired on
+2026-11-26: `modules/fleet-status.nix` no longer configures them, and
+`agent.instances`, `agent.lifecycle` and `agent.sessions` report
+`not-configured`.
 
 The dormant Strix worker is declared dormant and never contacted. The Strix APU
 counter map is a fixed qualified PCI device. The metrics helper first checks
@@ -63,7 +65,8 @@ failure backoff. A failed source retains dated `lastGood`; heartbeat publication
 never refreshes its observation time. Unknown counters are not zero. Independent
 sources and the outbound sender cannot block the main publication heartbeat.
 
-For persisted DSH journals, `assistant/message.data.usage` supplies only numeric
+When a DSH session directory is configured (none is since 2026-11-26), the
+persisted DSH journals' `assistant/message.data.usage` supplies only numeric
 metadata and is joined to its matching `step/end`. The completion sequence is
 counted once, including when stdout repeats usage or a source is resumed.
 Prompts, reasoning, code and tool output are never copied into observer state.
