@@ -12,4 +12,4 @@ Retained findings:
 - A successful OAuth flow cannot restore an offering that the server has retired.
 - ACP delegates the inner agent; the minimal Gemini SDK is a different implementation.
 
-The detailed CLI capability map, architecture and source references are preserved in the owned dsh-gemini-cli repository. The earlier implementation is retained in Git history (PRs710 and711); no login data is deleted.
+The detailed CLI capability map, architecture and source references are preserved in the owned dsh-gemini-cli repository (its fleet pin retired on 2026-11-26). The earlier implementation is retained in Git history (PRs710 and711); no login data is deleted.

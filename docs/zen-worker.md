@@ -5,43 +5,16 @@
 commands. It does not impersonate the native client or rotate keys on refusal.
 The older `dsh zen` fingerprint plugin is not this supported path.
 
-## DSH owns the work
+## ACP use (DSH adapter history)
 
-Mount the existing native-agent ACP adapter a second time. The same package
-supports both Antigravity and Zen; there is no new factory or LLM tool loop.
-Use the current built `@mecattaf/dsh-gemini-cli` package from the owning profile,
-with this module configuration (JSON shown to preserve exact names):
-
-```json
-{
-  "id": "llm-zen-cli",
-  "name": "@mecattaf/dsh-gemini-cli",
-  "config": {
-    "providerPrefix": "zen-cli",
-    "runtimeName": "OpenCode Zen",
-    "registerCommands": false,
-    "allowDirectProvider": true,
-    "accounts": [{
-      "id": "1",
-      "name": "Zen fixed slot 1",
-      "executablePath": "zen",
-      "cliArgs": ["--acp", "--timeout", "3600"]
-    }],
-    "defaultMode": "zen-worker",
-    "allowedModels": [
-      "opencode/beam-free",
-      "opencode/big-pickle",
-      "opencode/deepseek-v4.1-flash-free",
-      "opencode/flint-40b-free",
-      "opencode/glm-5.3-flash-free"
-    ],
-    "turnTimeoutMs": 600000
-  }
-}
-```
+Until 2026-11-26 the Master profiles mounted the native-agent ACP adapter
+from the `@mecattaf/dsh-gemini-cli` package (pin retired on 2026-11-26) with
+provider prefix `zen-cli` and account `zen --acp --timeout 3600`; its full
+module configuration is in Git history. The ACP facts below still describe
+the `zen --acp` launcher.
 
 Select provider `zen-cli-1` and an exact native model, for example
-`opencode/deepseek-v4.1-flash-free`. The example deliberately allows a subset.
+`opencode/deepseek-v4.1-flash-free`. The retired configuration allowed a subset.
 The earlier apparent five-model limit came from truncated native stdout, not
 provider removal or account entitlement. The corrected launcher refreshed and
 listed these twelve zero-price metadata selectors on all four fixed slots on
@@ -77,17 +50,17 @@ native session binding and DSH presentation. ACP native data persists privately
 under `~/.local/state/seats/zen/acp/slot-N/` so a new process can load a bound
 native session. A second route/key does not imply independent quota.
 
-The Master floor's Zen pairs also pass `--model <selector>` (without the
-`opencode/` prefix), so the launcher admits, pins as small model and records
-the pair's own model rather than its DeepSeek default. A floor worker's cwd is
-its workflow run's directory. When that is home or the filesystem root, the
-ACP launcher serves the session read-only and says so on stderr and in its
-receipt (`edit_requested`, `edit_refused`), instead of exiting before ACP
-starts. Edits are never granted across home or root; a hand-run `zen --edit`
-in home is still refused. Before this, every floor Zen worker of a run started
-in home exited at once and DSH reported only "ACP connection closed before the
-operation completed"; the adapter now appends the client's exit status and
-redacted stderr tail to that error.
+Until 2026-11-26 (Master floor retired) the floor's Zen pairs also passed
+`--model <selector>` (without the `opencode/` prefix), so the launcher admits,
+pins as small model and records the pair's own model rather than its DeepSeek
+default. A floor worker's cwd is its workflow run's directory. When that is home
+or the filesystem root, the ACP launcher serves the session read-only and says
+so on stderr and in its receipt (`edit_requested`, `edit_refused`), instead of
+exiting before ACP starts. Edits are never granted across home or root; a
+hand-run `zen --edit` in home is still refused. Before this, every floor Zen
+worker of a run started in home exited at once and DSH reported only "ACP
+connection closed before the operation completed"; the adapter now appends the
+client's exit status and redacted stderr tail to that error.
 
 OpenCode 1.19.5 returns ACP `configOptions`: `model` uses full
 `opencode/<selector>` values, `mode` includes `zen-worker`, and the effort

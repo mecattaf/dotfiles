@@ -61,12 +61,13 @@ The retained [Gemini investigation](gemini-cli.md) records the superseded path.
 
 ## Included Gemini workers
 
-The existing full-agent ACP integration is packaged privately as
-`@mecattaf/dsh-gemini-cli` and pinned by the Master worker profile. It selects
-`antigravity-cli-1/gemini-3.8-flash` explicitly (other account IDs are selected
-explicitly, never rotated on refusal). Native process arguments place
-`--settings '{"useG1Credits":false}'` before `acp`; this session-local setting
-disables credit fallback without rewriting saved preferences.
+Until 2026-11-26 the full-agent ACP integration was packaged privately as
+`@mecattaf/dsh-gemini-cli` (pin retired on 2026-11-26 with the Master worker
+profile). The native client facts still hold: select
+`antigravity-cli-1/gemini-3.8-flash` explicitly (other account IDs are
+selected explicitly, never rotated on refusal). Native process arguments
+place `--settings '{"useG1Credits":false}'` before `acp`; this session-local
+setting disables credit fallback without rewriting saved preferences.
 
 Worker config uses `allowDirectProvider=true`, `allowedModels` containing only
 the Gemini selector, `turnTimeoutMs=600000`, and `nativeThoughtLevel="low"`.
