@@ -20,7 +20,7 @@ let
   disk = nas.myNas.homeDisk.device;
   # O1 PR-1 (hosts/nas/storage-alerts.nix): trip point per mount.
   diskAlerts = {
-    disk-root = 75;
+    disk-root = 25;
     disk-boot = 80;
     disk-pool = 85;
     disk-immich = 85;

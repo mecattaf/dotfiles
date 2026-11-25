@@ -92,7 +92,7 @@ hand-run service, a path/udev/session trigger, or a factory schedule:
 | # | Unit(s) | Hosts | Declared in |
 |---|---|---|---|
 | D41 | failure-marker-reconcile | all | `modules/failure-surfacing.nix` |
-| D42 | tripwire-coredump, tripwire-user-unit-failure (all); tripwire-nas-reachability (strix); tripwire-strix-reachability (client, #514); tripwire-disk-{root,boot,pool,immich,hdd}, tripwire-nas-mounts (NAS, O1 2026-11-10, `hosts/nas/storage-alerts.nix`) | all | `modules/tripwire.nix` |
+| D42 | tripwire-coredump, tripwire-user-unit-failure (all); tripwire-nas-reachability, tripwire-disk-floor (2026-11-25, `hosts/strix-coordinator/disk-floor.nix`) (strix); tripwire-strix-reachability (client, #514); tripwire-disk-{root,boot,pool,immich,hdd}, tripwire-nas-mounts (NAS, O1 2026-11-10, `hosts/nas/storage-alerts.nix`) | all | `modules/tripwire.nix` |
 | D43 | nix-gc (weekly), gc-root-reaper (daily) | all | `modules/gc-retention.nix`, `modules/gc-root-reaper.nix` |
 | D45 | btrfs-scrub-mnt-nas (monthly); btrbk-nas off since 2026-10-28 | NAS | `hosts/nas/storage.nix`, `hosts/nas/snapshots.nix` (gate off) |
 | D49 | fstrim, logrotate, fwupd-refresh, systemd-tmpfiles-clean (system and user) | all | NixOS defaults |

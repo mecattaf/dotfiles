@@ -148,6 +148,9 @@ in
   # same day; the 4TB holds music, photos, videos, Documents and the model
   # Library only.
   myNas.snapshots.enable = false;
+  # Step 4d of docs/nas/system-off-emmc.md: the eMMC holds only /etc, /root
+  # and the host identity since the 2026-11-25 reclaim.
+  myNas.storageAlerts.rootThreshold = 25;
   # ws5 Attic (the fleet binary cache) is retired (Tom, 2026-11-25: "attic
   # cache: delete it"). Nothing was pushed to it after 24 Sep; every system is
   # built on strix-coordinator and copied to its host. Its signing key is kept
