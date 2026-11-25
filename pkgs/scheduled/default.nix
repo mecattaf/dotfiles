@@ -8,9 +8,10 @@
 }:
 # scheduled (AGENTS.md D52): the Scheduled CLI and the heartbeat tick.
 # The tick links one occurrence record per due item into the superagent's
-# inbox and wakes the floor; it holds no superagent logic (docs/scheduled.md).
-# Cron comes from @deepseek-ai/dsh-util-time inside the same dsh store
-# path the dshd release runs, so one flake.lock pin moves both. JSONC
+# inbox and starts the floor's systemd user unit (SCHEDULED_FLOOR_UNIT)
+# when records wait; it holds no superagent logic (docs/scheduled.md).
+# Cron comes from @deepseek-ai/dsh-util-time inside the store path of the
+# plain dsh harness package (llm-agents.dsh), so its pin moves it. JSONC
 # comes from one registry tarball, MIT, no dependencies.
 let
   npm =
@@ -28,7 +29,7 @@ let
 in
 stdenvNoCC.mkDerivation {
   pname = "scheduled";
-  version = "0.2.0";
+  version = "0.3.0";
   src = ./.;
   nativeBuildInputs = [ makeWrapper ];
   installPhase = ''

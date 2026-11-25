@@ -155,12 +155,6 @@
     # input to `rollingInputOverrides`.
     llm-agents-codex.url = "github:numtide/llm-agents.nix/db5b3ff7fca0005b0162c3c417fb98e369534e5c";
 
-    # NAS session supervision; DSH itself still comes from llm-agents.
-    dshd = {
-      url = "github:mecattaf/dshd.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     # flake-utils — shared by git-ai and deploy-rs through `follows`. It used to
     # be reached as "tally/flake-utils"; the Tally inputs (tally, tally-b,
     # tally-lake) were removed with the Tally sunset on 2026-09-30, and this
@@ -653,9 +647,6 @@
               modules = [ { disko.rootMountPoint = "/mnt/strix-worker-install"; } ];
             }).config.system.build.diskoScript;
           nas-home-migrate = self.nixosConfigurations.nas.config.system.build.nas-home-migrate;
-          # `nix build .#dsh-master`: NAS's rendered Master profiles and the
-          # dsh-master CLI, byte-identical to what switch activation renders.
-          dsh-master = self.nixosConfigurations.nas.config.home-manager.users.tom.programs.dsh.master.package;
         };
 
       # `nix build .#models.<id>` retired with the 2026-08-21 "weights leave
@@ -2047,26 +2038,6 @@
               touch "$out"
             '';
 
-        # dsh-config (T-31): the wrapped dsh boots every allowed profile with
-        # the fleet policy as the last layer, and refuses what it must. Runs
-        # against the NAS package in the build sandbox: no network, private
-        # HOME and DSH_HOME under $TMPDIR, no key path in the wrapper. Each dump
-        # must leave stderr empty (a patch that matches no row warns there)
-        # and carry the policy rows; tests/dsh-config/check_dump.py reads its
-        # expectations from pkgs.dsh's passthru.
-        dshd-nas = import ./tests/dshd-nas {
-          inherit pkgs;
-          configurations = self.nixosConfigurations;
-        };
-
-        # The Master profile folders (home/dsh-master.nix): rendered shape,
-        # confined idempotent render, and a config dump of each folder's
-        # first-party half by the dsh dshd runs (tests/dsh-master).
-        dsh-master = import ./tests/dsh-master {
-          inherit pkgs;
-          configurations = self.nixosConfigurations;
-        };
-
         # Scheduled (AGENTS.md D52): eval asserts on the real NAS
         # config, then the package's own tests under its own Node.
         scheduled = import ./tests/scheduled {
@@ -2074,15 +2045,21 @@
           configurations = self.nixosConfigurations;
         };
 
-        # Scheduled in a NixOS VM: the NAS's own heartbeat units with the
-        # dshd module and the stub dsh; hand-off, clock back, power cut,
-        # switch, surfacing and the run-now storm (KVM; the builders
-        # advertise nixos-test and kvm).
+        # Scheduled in a NixOS VM: the NAS's own heartbeat units with a stub
+        # floor unit; hand-off, clock back, power cut, switch, surfacing and
+        # the run-now storm (KVM; the builders advertise nixos-test and kvm).
         scheduled-vm = import ./tests/scheduled-vm {
           inherit inputs;
           configurations = self.nixosConfigurations;
         };
 
+        # dsh-config (T-31): the wrapped dsh boots every allowed profile with
+        # the fleet policy as the last layer, and refuses what it must. Runs
+        # against the NAS package in the build sandbox: no network, private
+        # HOME and DSH_HOME under $TMPDIR, no key path in the wrapper. Each dump
+        # must leave stderr empty (a patch that matches no row warns there)
+        # and carry the policy rows; tests/dsh-config/check_dump.py reads its
+        # expectations from pkgs.dsh's passthru.
         dsh-config =
           let
             dshPackage = self.nixosConfigurations.nas.pkgs.dsh.override { qwenKeyFile = null; };

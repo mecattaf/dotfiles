@@ -350,26 +350,6 @@
       },
       "parent": []
     },
-    "dshd": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1794490673,
-        "narHash": "sha256-bhjavXIeRxsxQo334a5OLNuKHK10glWgf3tdYmsuu5E=",
-        "owner": "mecattaf",
-        "repo": "dshd.nix",
-        "rev": "e2df6ab724c7953e9a61b47588386675581b8359",
-        "type": "github"
-      },
-      "original": {
-        "owner": "mecattaf",
-        "repo": "dshd.nix",
-        "type": "github"
-      }
-    },
     "ec-su-axb35": {
       "flake": false,
       "locked": {
@@ -1250,7 +1230,6 @@
         "disko": "disko",
         "domicile": "domicile",
         "dsh-domicile": "dsh-domicile",
-        "dshd": "dshd",
         "flake-utils": "flake-utils",
         "git-ai": "git-ai",
         "gufo": "gufo",

@@ -94,7 +94,6 @@ let
   observer = config.services.fleet-status.observer;
   observerConfig = pkgs.writeText "fleet-observer.json" (builtins.toJSON {
     fleetCommand = [ "${pkgs.fleet-status}/bin/fleet-status" "--json" ];
-    dshdCommand = [ "/run/current-system/sw/bin/dshd" "ls" "--json" ];
     # Seats owns the account families it supports, using its ordinary cache.
     # Antigravity has a separate native metadata command below, never a prompt.
     seatsCommand = [ "/home/tom/.local/bin/seats" "--json" "--only" "cc,cc2,codex,openrouter" "--no-spend" "--cache-ttl" "1800" ];
@@ -104,18 +103,9 @@ let
       name = toString slot;
       value = [ "/etc/profiles/per-user/tom/bin/agy${if slot == 1 then "" else toString slot}" "--settings" ''{"useG1Credits":false}'' "--print" "/usage" "--print-timeout" "12s" ];
     }) [ 1 2 3 ]);
-    systemctlCommand = [ "systemctl" "--user" "show" "dshd@*.service" "--property=Id,CPUUsageNSec,MemoryCurrent,MemoryPeak,TasksCurrent,IOReadBytes,IOWriteBytes,NRestarts" ];
-    journalCommand = [
-      "journalctl" "--user" "--follow" "--output=json" "--no-pager" "--user-unit=dshd@*.service"
-      "MESSAGE_ID=39f53479d3a045ac8e11786248231fbf"
-      "MESSAGE_ID=9d1aaa27d60140bd96365438aad20286"
-      "MESSAGE_ID=be02cf6855d2428ba40df7e9d022f03d"
-      "MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c"
-    ];
-    dshSessions = "/home/tom/.dsh/sessions";
     laneMeter = "/home/tom/.local/state/seats/lane-usage.jsonl";
     python = "${pkgs.python3}/bin/python3";
-    intervals = { hosts = 300; metrics = 60; instances = 60; seats = 600; tails = 10; cloudflareQuota = 3600; vercelQuota = 3600; antigravity1 = 1800; antigravity2 = 1800; antigravity3 = 1800; };
+    intervals = { hosts = 300; metrics = 60; seats = 600; tails = 10; cloudflareQuota = 3600; vercelQuota = 3600; antigravity1 = 1800; antigravity2 = 1800; antigravity3 = 1800; };
     cloudflareQuota = if config.age.secrets ? cloudflare-account-id && config.age.secrets ? cloudflare-api-token then {
       accountFile = config.age.secrets.cloudflare-account-id.path;
       tokenFile = config.age.secrets.cloudflare-api-token.path;

@@ -96,7 +96,6 @@ in
     ./communications.nix
     ./ai-memory.nix
     ./dsh.nix
-    ./dsh-master.nix
     ./downloads-mirror.nix
     ./harness-records.nix
     ./herdr.nix

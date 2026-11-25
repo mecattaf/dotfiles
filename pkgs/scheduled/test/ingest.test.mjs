@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { join } from 'node:path';
 import { tick } from '../src/lib/tick.mjs';
-import { setupEnv, hourly } from './helpers.mjs';
+import { setupEnv, hourly, UNIT } from './helpers.mjs';
 
 const at = (iso) => new Date(iso);
 
@@ -104,7 +104,7 @@ test('C3.4 a file first seen while younger than 2 s is parsed at the next pass, 
 });
 
 test('C3.8 a stat error other than ENOENT keeps the item in intake with its previous parse, and its waiting record is not withdrawn', async () => {
-  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'stopped', lastRun: { ending: 'stopped' } } });
+  const env = setupEnv({ floorUnit: UNIT, stubState: { state: 'stopped' } });
   try {
     env.item('kept', hourly(), at('2026-11-12T11:00:00.000Z'));
     assert.equal((await tick(env.ctx, { now: at('2026-11-12T11:30:00.000Z') })).code, 0);
@@ -145,7 +145,7 @@ test('intake.json and heartbeat.json live in the state dir, never in the superag
 });
 
 test('C3.8 an unreadable scheduled/ hides its items, it does not remove them: the record waits, the tick exits 1, and the item fires after recovery (review SCHED-1)', async () => {
-  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'stopped', lastRun: { ending: 'stopped' } } });
+  const env = setupEnv({ floorUnit: UNIT, stubState: { state: 'stopped' } });
   try {
     env.item('kept', hourly(), at('2026-11-12T11:00:00.000Z'));
     assert.equal((await tick(env.ctx, { now: at('2026-11-12T11:30:00.000Z') })).code, 0);
