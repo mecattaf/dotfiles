@@ -15,20 +15,6 @@ let
     "client"
   ];
   dshPackages = home: builtins.filter (p: lib.getName p == "dsh") home.home.packages;
-  # Assert the refusal with an explicitly unfilled fixture so this check
-  # still passes after Tom supplies the production source pin and hashes.
-  unfilled =
-    (self.nixosConfigurations.nas.extendModules {
-      modules = [
-        {
-          services.herdr-web-ui = {
-            revision = lib.mkForce "TODO-private-fork-rev";
-            sourceHash = lib.mkForce lib.fakeHash;
-            depsHash = lib.mkForce lib.fakeHash;
-          };
-        }
-      ];
-    }).config;
   recipients = import ../../secrets.nix;
   registry = import ../../modules/mesh-registry.nix;
   toNas = [
@@ -105,15 +91,17 @@ assert builtins.all
   ];
 assert c.services.openssh.startWhenNeeded;
 assert !(c.systemd.services ? sshd);
-assert c.systemd.services ? herdr-web-ui-serve;
-assert builtins.elem "HOST=127.0.0.1" h.systemd.user.services.herdr-web-ui.Service.Environment;
+# herdr-web-ui left with Herdr v1 (R-T10): no user unit, no system Serve
+# unit, no option, and the tailnet :443 is closed.
+assert !(c.systemd.services ? herdr-web-ui-serve);
+assert !(h.systemd.user.services ? herdr-web-ui);
+assert !(c.services ? herdr-web-ui);
 assert !(builtins.elem "tailscale0" c.networking.firewall.trustedInterfaces);
 assert
   lib.sort builtins.lessThan c.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [
     22
     53
     80
-    443
     2283
     4533
     8790
@@ -208,11 +196,6 @@ assert builtins.all (
 assert builtins.all (r: !(builtins.elem registry.strix-coordinator.hostKey r.publicKeys)) (
   builtins.attrValues (builtins.removeAttrs recipients [ "secrets/gufo-tp2-control-token.age" ])
 );
-# The unfilled private source must block the real toplevel. This check does
-# not bypass that assertion or pretend the private source has been built.
-assert builtins.any (
-  a: !a.assertion && lib.hasPrefix "TODO(Tom): private fork rev" a.message
-) unfilled.assertions;
 # The generation itself: each seat root holds exactly the scheduled link,
 # which resolves into the checkout, and .agents/skills is not in it at all.
 pkgs.runCommand "nas-agent-host" { files = h.home-files; } ''

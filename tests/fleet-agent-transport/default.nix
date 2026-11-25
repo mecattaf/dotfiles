@@ -104,18 +104,9 @@ assert builtins.all (c: builtins.elem "--accept-dns=false" (flags c)) [
   nas
   coordinator
 ];
-# The Herdr web UI follows Herdr to the NAS: only the NAS serves it, over
-# private Tailscale HTTPS on :443 (https://nas.tail8dd1.ts.net/). The
+# The Herdr web UI left with Herdr v1 (R-T10): no host serves it, and the
 # coordinator's old Serve (strix.tail8dd1.ts.net:8443) is not declared anywhere.
-assert hasHerdrWebUi nas;
-assert lib.hasInfix "serve --https=443 http://127.0.0.1:7317"
-  nas.systemd.services.herdr-web-ui-serve.serviceConfig.ExecStart;
-assert
-  !builtins.any hasHerdrWebUi [
-    client
-    coordinator
-    worker
-  ];
+assert !builtins.any hasHerdrWebUi (members ++ [ worker ]);
 assert builtins.all (
   c:
   !builtins.any (unit: lib.hasInfix "--https=8443" (toString (unit.serviceConfig.ExecStart or ""))) (
