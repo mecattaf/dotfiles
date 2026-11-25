@@ -1475,15 +1475,15 @@
             ];
           assert (cfgOf "client").myDisplay.enable;
           assert !(cfgOf "strix-coordinator").myDisplay.enable;
-          # No Claude Desktop or ChatGPT apps and no Chrome --app launcher
-          # entries on any host (Tom, 2026-10-12).
+          # Claude Desktop is restored only on the Zenbook (Tom, 2026-11-25).
+          # ChatGPT and the retired Chrome --app launcher entries stay absent.
           assert builtins.all
             (
               h:
               let
                 hm = self.nixosConfigurations.${h}.config.home-manager.users.tom;
               in
-              !(builtins.elem pkgs.llm-agents.claude-desktop hm.home.packages)
+              (builtins.elem pkgs.llm-agents.claude-desktop hm.home.packages == (h == "client"))
               && !(builtins.elem pkgs.llm-agents.chatgpt hm.home.packages)
               && !(builtins.any (n: hm.xdg.desktopEntries ? ${n}) [
                 "chatgpt"
@@ -1503,9 +1503,8 @@
               "client"
               "strix-coordinator"
             ];
-          # No Brave, cmux or Claude Desktop on client, strix-coordinator or
-          # the NAS, whichever way they arrive (Tom, 2026-10-31). Name-based,
-          # so a renamed attribute or a wrapper still trips it.
+          # No Brave or cmux anywhere, and Claude Desktop only on the Zenbook.
+          # Name-based, so a renamed attribute or wrapper still trips it.
           assert builtins.all
             (
               h:
@@ -1516,21 +1515,26 @@
                     cfg.home-manager.users.tom.home.packages ++ cfg.environment.systemPackages
                   )
                 );
-              in
-              !(builtins.any (
-                n:
-                builtins.any (p: nixpkgs.lib.hasPrefix p n) [
+                forbidden = [
                   "brave"
-                  "claude-desktop"
                   "cmux"
                 ]
-              ) names)
+                ++ nixpkgs.lib.optional (h != "client") "claude-desktop";
+              in
+              !(builtins.any (n: builtins.any (p: nixpkgs.lib.hasPrefix p n) forbidden) names)
             )
             [
               "client"
               "strix-coordinator"
+              "strix-worker"
               "nas"
             ];
+
+          # herdr-core comes from the shared catalog on every configured host,
+          # including the dormant compute configuration.
+          assert builtins.all (
+            host: builtins.elem pkgs.llm-agents.herdr-core host.config.home-manager.users.tom.home.packages
+          ) (builtins.attrValues self.nixosConfigurations);
 
           assert !(cfgOf "nas").myDisplay.enable;
           # The client owns the physical Domicile seat, with no agent server,
