@@ -14,8 +14,13 @@ are O1 (`~/tuesday-nov10/fleet-shape/consolidated/O1-nas-storage-shape.md`,
 sections 3.3 to 3.5).
 
 The gate `myNas.systemOffEmmc.enable` defaults to false. It takes effect only
-at a reboot, and the reboot is Tom's (decision D1 in O1). Nothing in this
-document has been run.
+at a reboot, and the reboot is Tom's (decision D1 in O1).
+
+**Status, 2026-11-25:** done through step 4. The flip ran on 2026-11-19
+(commit `471e23be`). Step 4 ran on 2026-11-25, one day before its seventh
+day, on Tom's word ("1gb eMMC : go for it"); the eMMC root went from 49 GB
+used to 2.0 MB. Step 4b was replaced, and step 4 gained a guard: see
+[Step 4 as run](#step-4-as-run-2026-11-25).
 
 ## What merging changes (gate off)
 
@@ -265,6 +270,9 @@ than N exists: `loader.conf` names the newest entry, which is N until then.
 
 ## Step 4: after seven clean days, reclaim the eMMC
 
+The commands below are the plan as written on 2026-11-10. What actually ran
+differs in two places; see [Step 4 as run](#step-4-as-run-2026-11-25).
+
 Both checks below must pass before anything is deleted.
 
 ```sh
@@ -326,11 +334,41 @@ From step 4 on, C and every older generation must never be booted: their
 `/var` is gone. With `configurationLimit = 3` they leave the menu after three
 more generations.
 
+## Step 4 as run (2026-11-25)
+
+- **4a ran as written.** Only nine files existed solely in the old `/var`:
+  the Caddy local-CA certificates, which Caddy issues again on demand.
+- **4b was replaced by item-by-item handling.** Tom wants no monolithic
+  backups, so the single tar of the old `/tmp` (46.6 GB) was not made.
+  Instead every git repository found there was pinned by remote and HEAD
+  (clean clones) or bundled to the HDD (local-only commits, a stash, or no
+  remote), and every other item was copied, checked against its source and
+  ledgered, or deleted by ruling. The ledgers are in Tom's notes for that
+  day, not in this repository.
+- **4c ran** in a private mount namespace with a non-recursive read-write
+  bind of `/`, after checking that the bind was `mmcblk0p2` and that none of
+  `tmp`, `var`, `home`, `nix` or `mnt/*` under it was a mount point.
+- **4d** is `myNas.storageAlerts.rootThreshold = 25` in
+  `hosts/nas/default.nix`, merged with this record. The `disk-root` tripwire
+  also reports data hidden under a mount point since then
+  (`hosts/nas/storage-alerts.nix`).
+- **Added: the immutable guard.** The 50 mount-point directories on the eMMC
+  (`tmp`, `var`, `home`, `home/tom`, `nix`, and the skeletons under
+  `mnt/nas`, `mnt/immich` and `mnt/fast`) are `chattr +i`. If a `nofail`
+  mount is missing, its writers now fail with `Operation not permitted`
+  instead of refilling the eMMC. To undo one for maintenance, bind `/` in a
+  private mount namespace (`sudo unshare -m sh -c 'mount --bind / /srv &&
+  chattr -i /srv/<dir>'`). A boot over the immutable directories had not
+  happened yet when this was written.
+- Generations 29 and 30 (built 2026-11-17, before the flip) must not be
+  booted: their `/var` is gone. Generation 31 was the default.
+
 ## Not verified
 
-- Nothing above has run. The module was built on strix-coordinator with the
-  gate off, and with it on through an uncommitted override; the gate-on boot
-  itself is untested.
+- Written before anything ran: the module was built on strix-coordinator
+  with the gate off, and with it on through an uncommitted override. Steps 1
+  to 4 have since run (see the status above); a reboot over the immutable
+  mount-point directories has not.
 - How `switch-to-configuration` would treat the new mounts is moot while the
   inhibitor stands; it was not tested either.
 - The writer list in 2c is the 2026-11-10 scan.

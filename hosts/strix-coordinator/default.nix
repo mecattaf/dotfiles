@@ -11,6 +11,7 @@
     ./uplink-nas.nix
 
     ./nas-client.nix # /mnt/nas NFS view and the NAS reachability tripwire
+    ./disk-floor.nix # disk floor tripwire and /tmp emptied at boot
     ./atuin.nix # retained import; its brain role gate now disables the server
     ../client/audio.nix
     ../../modules/strix-compute.nix

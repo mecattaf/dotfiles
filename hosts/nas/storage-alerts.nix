@@ -18,10 +18,12 @@
 # hidden under the /home mount (20.9G), /tmp (up to 24G) and /var (7.4G). The
 # trip points differ by what each disk is for, and each re-arms 5 points lower:
 #
-#   /            eMMC root      75%  interim; 25% once /var and /tmp have left
-#                                    the eMMC (O1 phase 3). Holding only /etc,
-#                                    /root and the host identity, growth there
-#                                    is a leak, not a capacity question.
+#   /            eMMC root      25%  since the 2026-11-25 reclaim (step 4 of
+#                                    docs/nas/system-off-emmc.md). Holding only
+#                                    /etc, /root and the host identity, growth
+#                                    there is a leak, not a capacity question.
+#                                    The same sensor also fires on data hidden
+#                                    under a mount point (see below).
 #   /boot        eMMC ESP       80%  three generations of kernels and initrds.
 #   /mnt/fast    1TB pool       85%  one btrfs for @home, @fast (/nix, attic,
 #                                    the remote journal); btrfs degrades near full.
@@ -35,8 +37,19 @@
 # required. The usage tripwire of an absent mount reports 0 (df would describe
 # the eMMC), so nas-mounts reports an absence once rather than twice.
 #
-# Cost: statfs and /proc/self/mountinfo only. Neither reads the HDD, so the
-# 10-minute polls never wake it from the smartd `-n standby` spin-down.
+# Hidden data: du cannot see files that sit in a directory a mount covers,
+# and that is how the eMMC filled twice (51 GB under /tmp and /var, found
+# 2026-11-25). The root sensor therefore also binds / non-recursively in a
+# private mount namespace and compares du -x of that bind (every file on the
+# eMMC) with du -x of / (the visible ones). 64 MiB or more hidden reports as
+# 100% so the existing disk-root tripwire fires; no extra timer is declared.
+# The mount-point directories on the eMMC are also chattr +i since
+# 2026-11-25, so a missing mount makes its writers fail instead of filling the
+# eMMC; this check is the second line.
+#
+# Cost: statfs, /proc/self/mountinfo and two du passes over the eMMC root
+# (/etc, /root: a few MB). None reads the HDD, so the 10-minute polls never
+# wake it from the smartd `-n standby` spin-down.
 let
   cfg = config.myNas.storageAlerts;
   markerDir = config.myFailureSurfacing.markerDir;
@@ -57,6 +70,30 @@ let
     flock 9
   '';
 
+  # Bytes on the root filesystem that / does not show: du of a non-recursive
+  # bind of / (made in a private mount namespace, gone when it exits) minus du
+  # of / itself, both -x. Prints MiB.
+  hiddenRootMiB = pkgs.writeShellScript "root-hidden-mib" ''
+    set -eu
+    export PATH=${
+      lib.makeBinPath [
+        pkgs.coreutils
+        pkgs.util-linux
+      ]
+    }
+    # The tripwire oneshot runs as root. Anywhere else (a build sandbox) the
+    # bind is impossible, so report nothing hidden rather than fail the poll.
+    if [ "$(id -u)" != 0 ]; then echo 0; exit 0; fi
+    d=$(mktemp -d /run/root-hidden.XXXXXX)
+    trap 'rmdir "$d"' EXIT
+    all=$(unshare --mount --propagation private ${pkgs.runtimeShell} -c 'mount --bind / "$1" && du -sxb "$1" | cut -f1' _ "$d")
+    seen=$(du -sxb / | cut -f1)
+    hidden=$((all - seen))
+    [ "$hidden" -gt 0 ] || hidden=0
+    echo $((hidden / 1048576))
+  '';
+  hiddenLimitMiB = 64;
+
   usage =
     {
       name,
@@ -64,6 +101,7 @@ let
       what,
       threshold,
       hint ? null,
+      checkHidden ? false,
     }:
     {
       enable = lib.elem mount mountPoints;
@@ -88,6 +126,13 @@ let
         fi
         pct="$(df --output=pcent "$m" | tail -n 1 | tr -dc '0-9')"
         [ -n "$pct" ]
+        ${lib.optionalString checkHidden ''
+          hidden="$(${hiddenRootMiB})"
+          if [ "$hidden" -ge ${toString hiddenLimitMiB} ]; then
+            echo "100 hidden:${name}"
+            exit 0
+          fi
+        ''}
         echo "$pct disk:${name}"
       '';
       onFirePath = [
@@ -100,6 +145,9 @@ let
         {
           printf '%s  %s %s is %s%% full (alert at %s%%, episode %s)\n' \
             "$(date '+%Y-%m-%d %H:%M')" ${lib.escapeShellArg what} ${lib.escapeShellArg mount} "$1" "$3" "$4"
+          ${lib.optionalString checkHidden ''
+            printf '  %s MiB sit hidden under its mount points (alert at ${toString hiddenLimitMiB} MiB); 100%% above means hidden data, not a full disk\n' "$(${hiddenRootMiB})"
+          ''}
           printf '  check: df -h %s; sudo du -xh --max-depth=2 %s | sort -h | tail\n' \
             ${lib.escapeShellArg mount} ${lib.escapeShellArg mount}
           ${lib.optionalString (hint != null) "printf '  %s\\n' ${lib.escapeShellArg hint}"}
@@ -115,8 +163,8 @@ in
       default = 75;
       description = ''
         Percent used on the eMMC root at which tripwire-disk-root fires. 75 is
-        interim: set it to 25 once /var and /tmp have left the eMMC and their
-        hidden copies are reclaimed (O1 phase 3).
+        the pre-reclaim value; the NAS sets 25 since the old /var and /tmp
+        under its mounts were reclaimed (2026-11-25).
       '';
     };
     requiredMounts = lib.mkOption {
@@ -146,6 +194,7 @@ in
         what = "eMMC root";
         threshold = cfg.rootThreshold;
         hint = "du cannot see files hidden under a mount point: bind-mount / elsewhere and du there (O1 section 3.1)";
+        checkHidden = true;
       };
       disk-boot = usage {
         name = "boot";

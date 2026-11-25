@@ -149,6 +149,9 @@ in
   # same day; the 4TB holds music, photos, videos, Documents and the model
   # Library only.
   myNas.snapshots.enable = false;
+  # Step 4d of docs/nas/system-off-emmc.md: the eMMC holds only /etc, /root
+  # and the host identity since the 2026-11-25 reclaim.
+  myNas.storageAlerts.rootThreshold = 25;
   # ws5 — flipped 2026-08-21 per the runbook in ./attic.nix: state rsynced
   # from the strix with atticd stopped, signing key verified intact,
   # env file placed on the root NVMe.
