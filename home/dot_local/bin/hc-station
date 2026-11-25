@@ -36,15 +36,14 @@ The rules, each one load-bearing (plan P1 D12, orchestrator ruling R-7):
 The window is marked with Kitty's user variable hc_addr (OSC 1337 SetUserVar),
 so `kitten @ ls` and Kitty mappings can find the station behind a window.
 """
-import argparse
-import base64
+# Only light imports: this runs on every Mod+Enter, and argparse, subprocess
+# and shutil together cost about 40 ms on the NAS (measured 26 Nov).
+import binascii
 import json
 import os
 import pwd
 import re
-import shutil
 import socket
-import subprocess
 import sys
 import time
 
@@ -57,6 +56,8 @@ IDENTITY = {"TERM": "xterm-kitty", "TERM_PROGRAM": "kitty", "COLORTERM": "trueco
 ATTACH_KEEP = ("HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM",
                "XDG_RUNTIME_DIR", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "HC_SESSION", "HC_SOCKET")
 EX_UNAVAILABLE = 69
+USAGE = """usage: hc-station new [--cwd D] [--label k=v]... [--kitty-version V] [--no-fallback] [-- argv...]
+       hc-station attach ADDR [--history N]"""
 
 
 class Unavailable(Exception):
@@ -68,12 +69,91 @@ class Unavailable(Exception):
         self.detail = detail
 
 
-class Parser(argparse.ArgumentParser):
-    # A version skew between the seat and the NAS (a flag one side does not
-    # know yet) must still open a terminal, so argument errors raise instead
-    # of exiting.
-    def error(self, message):
-        raise Unavailable("usage", message)
+class Options:
+    def __init__(self, verb):
+        self.verb, self.cwd, self.label, self.kitty_version = verb, None, [], None
+        self.no_fallback, self.argv, self.address, self.history = False, [], None, HISTORY
+
+
+def parse(argv):
+    """The two verbs. A bad argument raises Unavailable("usage"), never exits:
+    a version skew between the seat and the NAS (a flag one side does not
+    know yet) must still open a terminal."""
+    if not argv or argv[0] in ("-h", "--help"):
+        print(USAGE)
+        raise SystemExit(0 if argv else 2)
+    options, rest, index = Options(argv[0]), argv[1:], 0
+    if options.verb not in ("new", "attach"):
+        raise Unavailable("usage", f"unknown verb {options.verb!r}")
+    takes = ("--cwd", "--label", "--kitty-version") if options.verb == "new" else ("--history",)
+    while index < len(rest):
+        word = rest[index]
+        index += 1
+        if word in ("-h", "--help"):
+            print(USAGE)
+            raise SystemExit(0)
+        if options.verb == "new" and word == "--":
+            options.argv = rest[index:]
+            break
+        if options.verb == "new" and word == "--no-fallback":
+            options.no_fallback = True
+            continue
+        name, equals, value = word.partition("=")
+        if name in takes:
+            if not equals:
+                if index >= len(rest):
+                    raise Unavailable("usage", f"{name} wants a value")
+                value, index = rest[index], index + 1
+            if name == "--label":
+                options.label.append(value)
+            elif name == "--history":
+                if not value.isdigit():
+                    raise Unavailable("usage", f"--history wants a number, not {value!r}")
+                options.history = int(value)
+            else:
+                setattr(options, name[2:].replace("-", "_"), value)
+            continue
+        if word.startswith("-"):
+            raise Unavailable("usage", f"unknown option {word}")
+        if options.verb == "new":
+            options.argv = rest[index - 1:]
+            break
+        if options.address is not None:
+            raise Unavailable("usage", f"attach takes one address, not {word!r} too")
+        options.address = word
+    if options.verb == "attach" and not options.address:
+        raise Unavailable("usage", "attach wants an address (t7, a name, machine/t7)")
+    return options
+
+
+def which(name, path):
+    for directory in (path or "").split(os.pathsep):
+        candidate = os.path.join(directory, name)
+        if directory and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def run_quiet(argv, env, timeout):
+    """Exit status of argv run with stdio on /dev/null, or None (not run, or killed at timeout)."""
+    program = which(argv[0], env.get("PATH")) if os.sep not in argv[0] else argv[0]
+    if not program:
+        return None
+    quiet = [(os.POSIX_SPAWN_OPEN, fd, os.devnull, os.O_RDWR, 0) for fd in (0, 1, 2)]
+    try:
+        pid = os.posix_spawn(program, argv, env, file_actions=quiet)
+    except OSError:
+        return None
+    deadline = time.monotonic() + timeout
+    while True:
+        done, status = os.waitpid(pid, os.WNOHANG)
+        if done:
+            return os.waitstatus_to_exitcode(status)
+        if time.monotonic() > deadline:
+            os.kill(pid, 9)
+            os.waitpid(pid, 0)
+            return None
+        time.sleep(0.002)
 
 
 def user_name(env):
@@ -160,12 +240,7 @@ def open_core(env, path, ours, may_start):
         return peer
     if not (ours and may_start):
         raise Unavailable("no core", f"nothing listens on {path}")
-    try:
-        subprocess.run(["systemctl", "--user", "start", "--no-block", "hc-core.service"],
-                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL, timeout=3, env=env)
-    except (OSError, subprocess.SubprocessError):
-        pass
+    run_quiet(["systemctl", "--user", "start", "--no-block", "hc-core.service"], env, 3)
     deadline = time.monotonic() + min(3.0, timeout_s(env))
     while time.monotonic() < deadline:
         time.sleep(0.05)
@@ -213,15 +288,7 @@ def rpc(peer, method, params, timeout):
 
 
 def xterm_kitty_resolves(env):
-    infocmp = shutil.which("infocmp", path=env.get("PATH"))
-    if not infocmp:
-        return False
-    try:
-        return subprocess.run([infocmp], env=dict(env, TERM="xterm-kitty"), stdin=subprocess.DEVNULL,
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                              timeout=2).returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
+    return run_quiet(["infocmp"], dict(env, TERM="xterm-kitty"), 2) == 0
 
 
 def tty_size():
@@ -249,7 +316,7 @@ def resolve_cwd(requested, env):
 
 
 def run_params(options, env, cwd):
-    argv = options.argv[1:] if options.argv[:1] == ["--"] else options.argv
+    argv = options.argv
     labels = {"owner": user_name(env), "ui": "kitty", "kind": "agent" if argv else "shell"}
     for pair in options.label:
         key, sep, value = pair.partition("=")
@@ -279,7 +346,7 @@ def attach_env(env):
 
 def attach(binary, address, history, env):
     if sys.stdout.isatty():
-        mark = base64.b64encode(address.encode()).decode()
+        mark = binascii.b2a_base64(address.encode(), newline=False).decode()
         sys.stdout.write(f"\033]1337;SetUserVar=hc_addr={mark}\033\\")
         sys.stdout.flush()
     os.execve(binary, [binary, "attach", "--history", str(history), address], attach_env(env))
@@ -304,21 +371,6 @@ def fallback(kind, cwd, env):
     return 127
 
 
-def parser():
-    top = Parser(prog="hc-station", description="Open or join a persistent hc terminal for a Kitty window.")
-    verbs = top.add_subparsers(dest="verb", required=True, parser_class=Parser)
-    new = verbs.add_parser("new", help="a new station, then attach to it")
-    new.add_argument("--cwd", help="directory on this machine (default: home)")
-    new.add_argument("--label", action="append", default=[], metavar="K=V")
-    new.add_argument("--kitty-version", help="the version of the Kitty that shows the window")
-    new.add_argument("--no-fallback", action="store_true", help="exit 69 instead of opening a plain fish")
-    new.add_argument("argv", nargs=argparse.REMAINDER, help="-- program and arguments (default: hc's shell)")
-    join = verbs.add_parser("attach", help="attach to an existing station")
-    join.add_argument("address", help="t7, a name, or machine/t7")
-    join.add_argument("--history", type=int, default=HISTORY)
-    return top
-
-
 def requested_cwd(argv):
     # For a fallback after an argument error: the --cwd the caller meant.
     options = argv[:argv.index("--")] if "--" in argv else argv
@@ -338,7 +390,7 @@ def main(argv=None, env=None):
     is_attach = argv[:1] == ["attach"]
     cwd = None
     try:
-        options = parser().parse_args(argv)
+        options = parse(argv)
         if options.verb == "new":
             cwd = resolve_cwd(options.cwd, env)
         binary = hc_bin(env)
@@ -348,8 +400,9 @@ def main(argv=None, env=None):
         if options.verb == "attach":
             open_core(env, path, ours, may_start=False).close()
             attach(binary, options.address, options.history, env)
+        params = run_params(options, env, cwd)
         peer = open_core(env, path, ours, may_start=True)
-        result = rpc(peer, "terminal.run", run_params(options, env, cwd), timeout_s(env))
+        result = rpc(peer, "terminal.run", params, timeout_s(env))
         address = result.get("address")
         if not isinstance(address, str) or not address:
             raise Unavailable("protocol", "terminal.run answered without an address")

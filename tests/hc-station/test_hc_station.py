@@ -233,6 +233,32 @@ class Station(unittest.TestCase):
         self.assertEqual(self.params()["cwd"], str(self.home))
         self.assertIn("is not a directory here; starting in", result.stderr)
 
+    def test_argument_forms(self):
+        self.start_core()
+        cases = [
+            (["new", f"--cwd={self.home / 'proj'}", "--label=a=b", "sh", "-c", "x --cwd y"],
+             {"cwd": str(self.home / "proj"), "argv": ["sh", "-c", "x --cwd y"], "a": "b"}),
+            (["new", "--no-fallback", "--kitty-version=1.2", "--", "--weird", "-x"],
+             {"cwd": str(self.home), "argv": ["--weird", "-x"]}),
+        ]
+        for argv, want in cases:
+            self.core.requests.clear()
+            result = self.run_station(*argv)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            params = self.params()
+            self.assertEqual(params["cwd"], want["cwd"], argv)
+            self.assertEqual(params["argv"], want["argv"], argv)
+            if "a" in want:
+                self.assertEqual(params["labels"]["a"], "b")
+        self.assertEqual(self.run_station("--help").returncode, 0)
+        self.assertEqual(self.run_station().returncode, 2)
+        self.assertEqual(self.run_station("attach").returncode, 2)
+        self.assertEqual(self.run_station("attach", "t1", "--history", "lots").returncode, 2)
+        self.assertEqual(self.fish_calls(), [])
+        (self.hcdir / "herdr-core.json").unlink()
+        self.assert_fallback(self.run_station("new", "--bogus", "--cwd", str(self.home / "proj")), "usage",
+                             self.home / "proj")
+
     def test_a_bad_label_falls_back(self):
         self.start_core()
         self.assert_fallback(self.run_station("new", "--label", "noequals"), "usage")
