@@ -53,56 +53,6 @@
       ]
     }
   },
-  "qwen38-27b-gguf": {
-    "kind": "model",
-    "maker": "unsloth",
-    "baseCheckpoint": {
-      "url": "https://huggingface.co/Qwen/Qwen3.8-27B",
-      "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
-    },
-    "quantization": "UD-Q4_K_XL",
-    "notes": "Gufo's dense alternate (gufo-switch qwen38-27b): the UD-Q4_K_XL target with its BF16 vision projector beside it. Q8_K_XL is the documented heavier choice and is not carried.",
-    "source": {
-      "hfUrl": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF",
-      "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
-      "layout": "flat",
-      "primary": "Qwen3.8-27B-UD-Q4_K_XL.gguf",
-      "files": [
-        {
-          "path": "Qwen3.8-27B-UD-Q4_K_XL.gguf",
-          "bytes": 17559178144,
-          "oid": "3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e",
-          "hash": "sha256-PyJweQA63SURQ35bHpSBLjYzhSJb9qm0ewBUpyvIsB4="
-        },
-        {
-          "path": "mmproj-BF16.gguf",
-          "bytes": 931146432,
-          "oid": "83ee4f4f205fa514161778c41df1ea14144faa0f713510893b63c2395f5c2d53",
-          "hash": "sha256-g+5PTyBfpRQWF3jEHfHqFBRPqg9xNRCJO2PCOV9cLVM="
-        }
-      ]
-    }
-  },
-  "qwen38-27b-dflash2-gguf": {
-    "kind": "draft",
-    "maker": "z-lab",
-    "quantization": "Q4_K_M",
-    "notes": "DFlash2 draft for the 27B (--speculative dflash2 --dflash-model).",
-    "source": {
-      "hfUrl": "https://huggingface.co/z-lab/Qwen3.8-27B-DFlash2-GGUF",
-      "revision": "2d9571f8ce46e151f61c6499c99dee6079e1d610",
-      "layout": "flat",
-      "primary": "Qwen3.8-27B-DFlash2-Q4_K_M.gguf",
-      "files": [
-        {
-          "path": "Qwen3.8-27B-DFlash2-Q4_K_M.gguf",
-          "bytes": 1143006816,
-          "oid": "1a25c56858e1ebe93f2718ac1d49d1151f9323325c1bbfd6209370f4db131ebd",
-          "hash": "sha256-GiXFaFjh6+k/JxisHUnRFR+TIzJcG7/WIJNw9NsTHr0="
-        }
-      ]
-    }
-  },
   "qwen3-asr-1.7b": {
     "kind": "model",
     "maker": "Qwen",
@@ -931,36 +881,6 @@
           "bytes": 2936,
           "oid": "5a587fe13b2371427415ac892463142683aefcd8d322e274a3a095eac37ac7d2",
           "hash": "sha256-Wlh/4TsjcUJ0FayJJGMUJoOu/NjTIuJ0o6CV6sN6x9I="
-        }
-      ]
-    }
-  },
-  "qwen38-27b-q8-gguf": {
-    "kind": "model",
-    "maker": "unsloth",
-    "baseCheckpoint": {
-      "url": "https://huggingface.co/Qwen/Qwen3.8-27B",
-      "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
-    },
-    "quantization": "UD-Q8_K_XL",
-    "notes": "The heavier Q8 option linked from Gufo 0.22 README; single-host alternate, never started or borrowed automatically.",
-    "source": {
-      "hfUrl": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF",
-      "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
-      "layout": "flat",
-      "primary": "Qwen3.8-27B-UD-Q8_K_XL.gguf",
-      "files": [
-        {
-          "path": "Qwen3.8-27B-UD-Q8_K_XL.gguf",
-          "bytes": 31457991680,
-          "oid": "af36ecb6b5db1407953345b746c14ac93f0657dda413910b4348683a2d990377",
-          "hash": "sha256-rzbstrXbFAeVM0W3RsFKyT8GV92kE5ELQ0hoOi2ZA3c="
-        },
-        {
-          "path": "mmproj-BF16.gguf",
-          "bytes": 931146432,
-          "oid": "83ee4f4f205fa514161778c41df1ea14144faa0f713510893b63c2395f5c2d53",
-          "hash": "sha256-g+5PTyBfpRQWF3jEHfHqFBRPqg9xNRCJO2PCOV9cLVM="
         }
       ]
     }

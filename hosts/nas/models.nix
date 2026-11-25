@@ -10,10 +10,14 @@
 # should say what the tree IS — "Models (where i save LLMs)"), and broadened
 # from "cold archive for retired weights" to the Library's whole byte plane:
 #
-#   models/weights  the forever collection — every LLM Tom downloads, kept,
-#                   laid out /weights/<artifactId>/<file> mirroring the
-#                   catalog. Retired rows leave by the runbook in
-#                   docs/nas/model-archive.md, with a receipt in
+#   models/weights  the kept collection, laid out /weights/<artifactId>/<file>
+#                   mirroring the catalog. Since 2026-11-25 it holds only
+#                   Tom's keep set: Qwen3.8 Flash-Next GGUF and MiniMax H3,
+#                   plus the Library originals of what strix-coordinator
+#                   borrows (D3-Ultra, Qwen-Image, VibeVoice ASR, the Qwen3
+#                   embedder, Qwen3-ASR, both Qwen3-TTS builds, the TTS
+#                   tokenizer and the K-2SO voice). Retired rows leave by the
+#                   runbook in docs/nas/model-archive.md, with a receipt in
 #                   weights/RETIRED-<date>.tsv.
 #
 # THE FLOW (2026-08-21, decisive — same-day v2 of this header): "model

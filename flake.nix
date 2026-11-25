@@ -387,15 +387,6 @@
             # the deliberately-lagging main pin (which exists only to gate kernel/
             # Mesa churn — uv carries none of that risk).
             uv = fresh.uv;
-            # llama.cpp for the Hy-Memory route (modules/hy-memory.nix, #603)
-            # and nothing else. Hy-Memory is the hy_v3 architecture, merged
-            # upstream on 2026-07-13: the fleet's nix-strix-halo llama.cpp
-            # predates that merge, and the main pin's build is older than
-            # Tencent's validated 5aeac37a. nixpkgs-fresh carries a release
-            # past that commit; its Vulkan build (= llama-cpp-vulkan) comes from
-            # cache.nixos.org. Reached only through the llama-swap launcher,
-            # never put on PATH.
-            llama-cpp-hy-memory = fresh.llama-cpp.override { vulkanSupport = true; };
           }
         )
       ];
@@ -640,7 +631,6 @@
             ;
           # `nix build .#gufo` — the engine modules/gufo.nix runs (#525).
           gufo = inputs.gufo.packages.${system}.default;
-          superroc = pkgs.callPackage ./pkgs/superroc { };
           d3-torch-rocm = strixAi.torch-rocm.override {
             wheelSources = builtins.fromJSON (builtins.readFile ./pkgs/vllm-srun/rocm10-wheels.json);
           };
@@ -2833,13 +2823,7 @@
             nixpkgs.lib.sort builtins.lessThan strix.services.local-models.artifacts
             == nixpkgs.lib.sort builtins.lessThan [
               "d3-ultra-bf16"
-              "hy-memory-30b-a3b-q8-gguf"
               "qwen38-flash-next-gguf"
-              "qwen38-flash-next-abliterated-rocmfp4-gguf"
-              "qwen38-27b-heretic-ara-q8-gguf"
-              "qwen38-27b-gguf"
-              "qwen38-27b-q8-gguf"
-              "qwen38-27b-dflash2-gguf"
               "qwen3-asr-1.7b"
               "qwen3-tts-12hz-1.7b-base"
               "qwen-image-2.1"
@@ -2854,9 +2838,6 @@
             == nixpkgs.lib.sort builtins.lessThan (
               nixpkgs.lib.subtractLists [
                 "d3-ultra-bf16"
-                "hy-memory-30b-a3b-q8-gguf"
-                "qwen38-27b-heretic-ara-q8-gguf"
-                "qwen38-flash-next-abliterated-rocmfp4-gguf"
                 "qwen3-embedding-8b-q8-gguf"
               ] strix.services.local-models.artifacts
             );
@@ -2872,8 +2853,6 @@
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "d3-ultra-bf16"
-              "glm53-flash-iq2-xxs-gguf"
-              "hy-memory-30b-a3b-q8-gguf"
               "minimax-h3-fl2va"
               "qwen-image-2.1"
               "qwen-k2so-midway-b"
@@ -2882,11 +2861,6 @@
               "qwen3-tts-1.7b-base-q8-0"
               "qwen3-tts-12hz-1.7b-base"
               "qwen3-tts-tokenizer-f32"
-              "qwen38-27b-dflash2-gguf"
-              "qwen38-27b-gguf"
-              "qwen38-27b-heretic-ara-q8-gguf"
-              "qwen38-27b-q8-gguf"
-              "qwen38-flash-next-abliterated-rocmfp4-gguf"
               "qwen38-flash-next-gguf"
               "vibevoice-asr-streaming-7b-bf16"
             ];

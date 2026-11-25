@@ -1,3 +1,13 @@
+**Model keep sets (Tom, 2026-11-25).** The NAS Library keeps Qwen3.8
+Flash-Next GGUF and MiniMax H3, plus the originals of what strix-coordinator
+borrows. strix-coordinator keeps Flash-Next, D3-Ultra, Qwen-Image, VibeVoice
+ASR, the Qwen3 8B embedder, Qwen3-ASR and the two Qwen3-TTS builds (with the
+TTS tokenizer and the K-2SO voice they need). Tom: "all the rest including
+qwen38-27b are OUT." The Qwen3.8 27B rows (Q4, Q8, DFlash2, Heretic ARA), the
+abliterated Flash-Next (SuperROC), Hy-Memory and GLM 5.3 left the catalog, so
+`library-fetch` cannot bring them back; Gufo has no alternate. This replaces
+the 27B, ARA, Hy-Memory and GLM lines below.
+
 **One embedding route on Gufo (Tom, 2026-11-10).** Tom: "i m a gufo
 maximalist." Embeddings are served by Gufo, not llama-server: Qwen3-Embedding-8B
 Q8_0 (`qwen3-embedding-8b-q8-gguf`) is the route `qwen3-embedding-8b`
@@ -150,7 +160,7 @@ model collection is catalogued in
 - Qwen3.8 Flash-Next (UD-Q4_K_XL GGUF with the MTP predictor and the vision
   projector): the default demand-loaded text model, served as `qwen3.8-flash-next` on
   `http://strix-coordinator:8731` (`llama-swap.service`, target endpoint);
-- Qwen3.8-27B (UD-Q4_K_XL with the DFlash2 draft): the alternate on the same
+- Qwen3.8-27B (UD-Q4_K_XL with the DFlash2 draft): retired 2026-11-25; it was the alternate on the same
   endpoint, selected by the API model ID or `gufo-switch <name>`. Gufo's DeepSeek V4 Flash 0731
   alternate was removed on 2026-10-25: DeepSeek is now kyuz0's V4.1 Flash
   1017 on ds4 (`modules/ds4.nix`), single host on strix-worker at

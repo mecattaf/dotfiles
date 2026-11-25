@@ -1,5 +1,22 @@
 # DECISIONS
 
+2026-11-25 Models outside Tom's keep sets leave the catalog. Tom,
+2026-11-25, for the 4 TB HDD: "models we shall only keep qwen flash-next gguf
+(115gb), minimax h3. this must be adjusted from the Dotfiles repo side of
+things"; for strix: "qwen flash next remains ... qwen image, vibevoice asr,
+qwen 8b embedding, qwen asr, and the two qwen tts remain. all the rest
+including qwen38-27b are OUT." The catalog keeps those, D3-Ultra, the TTS
+tokenizer and the K-2SO voice, because strix borrows them from the Library.
+Retired rows: `qwen38-27b-gguf`, `qwen38-27b-q8-gguf`,
+`qwen38-27b-dflash2-gguf`, `qwen38-27b-heretic-ara-q8-gguf`,
+`qwen38-flash-next-abliterated-rocmfp4-gguf`, `hy-memory-30b-a3b-q8-gguf`
+and `glm53-flash-iq2-xxs-gguf`, with `lib/coding-comparison-models.json` and
+`lib/memory-writer-models.json`. Their consumers go too: the Gufo 27B
+alternates and ARA route, `modules/superroc.nix` and `pkgs/superroc`,
+`modules/hy-memory.nix` and its llama.cpp overlay, and the dsh local 27B
+entry. Library bytes are deleted by name with `RETIRED-2026-11-25.tsv`, then
+`local-models-prune` runs on each host.
+
 2026-10-31 Chrome and the browser desktop leave strix-coordinator (dotfiles
 #651). `modules/browser-desktop.nix`, `pkgs/browser-desktop` and
 `pkgs/chrome-stream` are deleted, `browser.internal` is dropped from AdGuard,
