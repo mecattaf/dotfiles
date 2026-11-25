@@ -6,7 +6,7 @@
 
 import { makeContext } from './lib/context.mjs';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 // ---------------------------------------------------------------------------
 // Usage text (docs/scheduled.md, Everyday commands)
@@ -16,8 +16,8 @@ const USAGE = `\
 scheduled ${VERSION}
 
 Scheduled items are <agency>/.agency/scheduled/<item>.jsonc. The heartbeat tick
-links one occurrence record per due item into the superagent's inbox and wakes
-the floor; the superagent decides what runs.
+links one occurrence record per due item into the superagent's inbox and starts
+the floor's systemd user unit when records wait; the floor decides what runs.
 
 USAGE:
   scheduled ls [--agency A] [--json]
@@ -27,17 +27,18 @@ USAGE:
   scheduled new ID --cron EXPR --tz ZONE (--prompt TEXT | --prompt-file PATH) [--name N]
   scheduled set ID PATH (VALUE | --unset) [--expect REV]
   scheduled rm ID [--expect REV]
-  scheduled run ID [--home DIR] [--inbox DIR] [--floor-instance NAME] [--json]
+  scheduled run ID [--home DIR] [--inbox DIR] [--floor-unit NAME] [--json]
   scheduled history [ID] [--inbox DIR] [-n N] [--json]
-  scheduled tick --inbox DIR [--state-dir DIR] [--home DIR] [--floor-instance NAME]
+  scheduled tick --inbox DIR [--state-dir DIR] [--home DIR] [--floor-unit NAME]
                  [--now ISO --state-dir DIR] [--json]
 
 ENVIRONMENT:
-  SCHEDULED_INBOX           default --inbox (the superagent's <stateDir>/inbox/scheduled)
-  SCHEDULED_FLOOR_INSTANCE  default --floor-instance (the floor's dshd instance)
-  SCHEDULED_STATE_DIR       default --state-dir, then STATE_DIRECTORY, then
-                            $XDG_STATE_HOME/scheduled
-  SCHEDULED_DSHD            dshd binary (default /run/current-system/sw/bin/dshd)
+  SCHEDULED_INBOX       default --inbox (the superagent's <stateDir>/inbox/scheduled)
+  SCHEDULED_FLOOR_UNIT  default --floor-unit: the floor's systemd user unit, with its
+                        suffix (factory-floor.service); unset or empty wakes nothing
+  SCHEDULED_STATE_DIR   default --state-dir, then STATE_DIRECTORY, then
+                        $XDG_STATE_HOME/scheduled
+  SCHEDULED_SYSTEMCTL   systemctl binary (default /run/current-system/sw/bin/systemctl)
 
 EXIT CODES:
   0  done

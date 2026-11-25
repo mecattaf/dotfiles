@@ -1,8 +1,8 @@
 // scheduled history [ID] [--inbox DIR] [--json] [-n N] (docs/scheduled.md, Everyday commands)
 //
 // What the floor's Source did with each record, newest first: `<inbox>/.done/*.json` (received) and
-// `<inbox>/.bad/*.json` (refused, with its `.error` line). The work itself is the superagent's record:
-// its Ticket and the dshd unit's session. ID is `<agency>:<item>` or a bare item, matched on the record
+// `<inbox>/.bad/*.json` (refused, with its `.error` line). The work itself is the floor's own record:
+// its Ticket and the worker's session. ID is `<agency>:<item>` or a bare item, matched on the record
 // itself, so the history of a removed item still shows.
 
 import { readdirSync, readFileSync } from 'node:fs';

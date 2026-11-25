@@ -5,14 +5,18 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { join } from 'node:path';
 import { main as runMain } from '../src/verbs/run.mjs';
-import { setupEnv, hourly } from './helpers.mjs';
+import { PROPERTIES } from '../src/lib/floor.mjs';
+import { setupEnv, hourly, UNIT } from './helpers.mjs';
+
+const show = (unit) => ['--user', 'show', `--property=${PROPERTIES.join(',')}`, '--', unit];
+const start = (unit) => ['--user', 'start', '--no-block', '--', unit];
 
 test('R1 run on a missing item exits 1 and writes no record', async () => {
-  const env = setupEnv({ floorInstance: 'floor' });
+  const env = setupEnv({ floorUnit: UNIT });
   try {
     assert.equal(await runMain(['master:nope'], env.ctx), 1);
     assert.equal(fs.existsSync(env.inbox), false);
-    assert.deepEqual(env.dshdCalls(), []);
+    assert.deepEqual(env.systemctlCalls(), []);
     // An invalid item is refused too.
     env.item('broken', '{ "on": {} }');
     assert.equal(await runMain(['master:broken'], env.ctx), 1);
@@ -23,7 +27,7 @@ test('R1 run on a missing item exits 1 and writes no record', async () => {
 });
 
 test('R2 run on a disabled item writes one manual record with a ULID and wakes a stopped floor once', async () => {
-  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'stopped', enabled: false, lastRun: { ending: 'stopped' } } });
+  const env = setupEnv({ floorUnit: UNIT, stubState: { state: 'stopped' } });
   try {
     env.item('probe-ready', { name: 'Probe', enabled: false, on: { schedule: [{ cron: '0 4 * * *', timezone: 'Europe/Paris' }] }, job: { prompt: 'Reply READY and end.' } });
     const code = await runMain(['master:probe-ready', '--json'], env.ctx);
@@ -42,20 +46,20 @@ test('R2 run on a disabled item writes one manual record with a ULID and wakes a
     const out = JSON.parse(env.out.join(''));
     assert.equal(out.occurrence, name.slice(0, -'.json'.length));
     assert.equal(out.file, join(env.inbox, name));
-    assert.equal(out.floor, 'floor action=start state=stopped waiting=1 result=started');
-    assert.deepEqual(env.dshdCalls(), [['get', '--json', 'floor'], ['start', '--json', 'floor']]);
+    assert.equal(out.floor, `floor action=start unit=${UNIT} state=stopped waiting=1 result=queued`);
+    assert.deepEqual(env.systemctlCalls(), [show(UNIT), start(UNIT)]);
   } finally {
     env.cleanup();
   }
 });
 
 test('R3 run against a running floor writes the record and starts nothing', async () => {
-  const env = setupEnv({ floorInstance: 'floor', stubState: { state: 'running' } });
+  const env = setupEnv({ floorUnit: UNIT, stubState: { state: 'running' } });
   try {
     env.item('hb', hourly());
     assert.equal(await runMain(['hb'], env.ctx), 0);
     assert.equal(env.records().length, 1);
-    assert.deepEqual(env.dshdCalls(), [['get', '--json', 'floor']]);
+    assert.deepEqual(env.systemctlCalls(), [show(UNIT)]);
   } finally {
     env.cleanup();
   }
@@ -70,14 +74,14 @@ test('R4 two runs of one item write two records with different run ids', async (
     const runs = env.records().map((n) => env.record(n).run);
     assert.equal(runs.length, 2);
     assert.notEqual(runs[0], runs[1]);
-    // No floor instance: no dshd at all.
-    assert.deepEqual(env.dshdCalls(), []);
+    // No floor unit: no systemctl at all.
+    assert.deepEqual(env.systemctlCalls(), []);
   } finally {
     env.cleanup();
   }
 });
 
-test('run takes --home, --inbox and --floor-instance; --inbox missing exits 2; a not-found floor exits 1 with the record written', async () => {
+test('run takes --home, --inbox and --floor-unit; --inbox missing exits 2; a not-found floor exits 1 with the record written', async () => {
   const env = setupEnv({ stubState: null });
   try {
     const other = join(env.tmpDir, 'rehearsal');
@@ -86,29 +90,30 @@ test('run takes --home, --inbox and --floor-instance; --inbox missing exits 2; a
     fs.writeFileSync(join(other, '.agency', 'scheduled', 'probe-ready.jsonc'), JSON.stringify(hourly({ enabled: false })), { mode: 0o600 });
     const inbox = join(env.tmpDir, 'inbox');
     assert.equal(await runMain(['master:probe-ready', '--home', other], { ...env.ctx, inbox: null }), 2);
-    const code = await runMain(['master:probe-ready', '--home', other, '--inbox', inbox, '--floor-instance', 'rehearsal'], env.ctx);
+    const code = await runMain(['master:probe-ready', '--home', other, '--inbox', inbox, '--floor-unit', 'rehearsal.service'], env.ctx);
     assert.equal(code, 1);
     const names = fs.readdirSync(inbox).filter((n) => n.endsWith('.json'));
     assert.equal(names.length, 1);
     assert.equal(JSON.parse(fs.readFileSync(join(inbox, names[0]), 'utf8')).cwd, other);
-    assert.deepEqual(env.dshdCalls(), [['get', '--json', 'rehearsal']]);
+    assert.deepEqual(env.systemctlCalls(), [show('rehearsal.service')]);
+    assert.match(env.err.join(''), /scheduled run: floor state=not-found waiting=1/);
   } finally {
     env.cleanup();
   }
 });
 
-test('run with no floor instance writes the record and says on stderr that it woke no floor', async () => {
-  const env = setupEnv({ stubState: { state: 'stopped', enabled: false, lastRun: { ending: 'stopped' } } });
+test('run with no floor unit writes the record and says on stderr that it woke no floor', async () => {
+  const env = setupEnv({ stubState: { state: 'stopped' } });
   try {
     env.item('hb', hourly());
     assert.equal(await runMain(['hb'], env.ctx), 0, env.err.join(''));
     assert.equal(env.records().length, 1);
     assert.match(env.out.join(''), / floor: none\n$/);
     const err = env.err.join('');
-    assert.match(err, /no floor instance/);
-    assert.match(err, /--floor-instance/);
-    assert.match(err, /SCHEDULED_FLOOR_INSTANCE/);
-    assert.deepEqual(env.dshdCalls(), []);
+    assert.match(err, /no floor unit, so no floor was woken; the record waits/);
+    assert.match(err, /--floor-unit/);
+    assert.match(err, /SCHEDULED_FLOOR_UNIT/);
+    assert.deepEqual(env.systemctlCalls(), []);
   } finally {
     env.cleanup();
   }

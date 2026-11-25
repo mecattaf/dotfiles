@@ -1,19 +1,22 @@
-// helpers.mjs — a scratch home with one master agency, a heartbeat state dir, an inbox and the stub dshd.
+// helpers.mjs — a scratch home with one master agency, a heartbeat state dir, an inbox and the stub systemctl.
 
 import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const STUB_DSHD = fileURLToPath(new URL('./stub-dshd.mjs', import.meta.url));
+export const STUB_SYSTEMCTL = fileURLToPath(new URL('./stub-systemctl.mjs', import.meta.url));
+/** The floor unit the tests name. */
+export const UNIT = 'floor.service';
 export const MACHINE_ID = '9fa751adff4f4e1d9ebed1ce31aac90b';
 
 /**
  * A scratch environment: `home/.agency/scheduled/` (agency `master`), `state/` (the heartbeat's own), and
- * `home/.agency/state/master/inbox/scheduled` (the superagent's inbox, as on the NAS). The stub dshd answers
- * `get` from `stubState` (written to a file; `null` means not found) and logs every argv.
+ * `home/.agency/state/master/inbox/scheduled` (the superagent's inbox, as on the NAS). The stub systemctl
+ * answers `show` from `stubState` (written to a file: a named state such as `{ state: 'stopped' }` or raw
+ * properties; `null` means the unit is not found) and logs every argv.
  */
-export function setupEnv({ stubState = { state: 'running', release: { state: 'current' } }, floorInstance = null } = {}) {
+export function setupEnv({ stubState = { state: 'running' }, floorUnit = null } = {}) {
   const tmpDir = fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), 'sched-test-')));
   const home = join(tmpDir, 'home');
   const agency = join(home, '.agency');
@@ -26,9 +29,9 @@ export function setupEnv({ stubState = { state: 'running', release: { state: 'cu
 
   const machineIdFile = join(tmpDir, 'machine-id');
   fs.writeFileSync(machineIdFile, `${MACHINE_ID}\n`);
-  const stubStateFile = join(tmpDir, 'stub-dshd-state.json');
+  const stubStateFile = join(tmpDir, 'stub-systemctl-state.json');
   if (stubState !== null) fs.writeFileSync(stubStateFile, JSON.stringify(stubState));
-  const stubLogFile = join(tmpDir, 'stub-dshd.log');
+  const stubLogFile = join(tmpDir, 'stub-systemctl.log');
 
   const out = [];
   const err = [];
@@ -36,14 +39,13 @@ export function setupEnv({ stubState = { state: 'running', release: { state: 'cu
     home,
     stateDir: state,
     inbox,
-    floorInstance,
-    env: { STUB_DSHD_STATE: stubStateFile, STUB_DSHD_LOG: stubLogFile },
+    floorUnit,
+    env: { STUB_SYSTEMCTL_STATE: stubStateFile, STUB_SYSTEMCTL_LOG: stubLogFile },
     now: () => new Date('2026-11-12T14:00:00.000Z'),
     out: (s) => out.push(s),
     err: (s) => err.push(s),
     uid: process.getuid(),
-    dshd: STUB_DSHD,
-    systemctl: '/nonexistent/systemctl',
+    systemctl: STUB_SYSTEMCTL,
     machineIdFile,
   };
 
@@ -84,7 +86,8 @@ export function setupEnv({ stubState = { state: 'running', release: { state: 'cu
     entry(id) {
       return Object.values(this.intake().files).find((f) => f.id === id);
     },
-    dshdCalls() {
+    /** Every argv the stub systemctl was run with, in order. */
+    systemctlCalls() {
       if (!fs.existsSync(stubLogFile)) return [];
       return fs.readFileSync(stubLogFile, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
     },
