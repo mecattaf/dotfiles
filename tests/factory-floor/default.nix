@@ -25,15 +25,16 @@ let
       configurations.${name}.config.home-manager.users.tom.systemd.user.timers or { }
     );
   home = "/home/tom";
-  # The two flips Tom keeps for himself (docs/factory-floor.md), evaluated
-  # once so the day they are made is not their first evaluation.
-  flipped =
+  # The NAS has both flips on (hosts/nas/default.nix). The way back is the
+  # module's defaults, evaluated here so a revert is never a first
+  # evaluation.
+  unflipped =
     (configurations.nas.extendModules {
       modules = [
         {
           home-manager.users.tom.services.factory-floor = {
-            autostart = true;
-            heartbeatWake = true;
+            autostart = lib.mkForce false;
+            heartbeatWake = lib.mkForce false;
           };
         }
       ];
@@ -56,8 +57,8 @@ assert svc.Unit.X-SwitchMethod == "keep-old";
 assert builtins.elem "hc-core.service" svc.Unit.After;
 assert builtins.elem "network-online.target" svc.Unit.After;
 assert svc.Unit.Wants == [ "hc-core.service" ];
-# Declared, not wanted by any target: started by hand on 2026-11-26.
-assert !cfg.autostart && !(svc ? Install);
+# Autostart (hosts/nas/default.nix): wanted by default.target, so up at boot.
+assert cfg.autostart && svc.Install.WantedBy == [ "default.target" ];
 # Local-checkout mode: a store launcher runs the built entry of the checkout.
 assert cfg.package == null;
 assert cfg.checkout == "${home}/mecattaf/factory-floor";
@@ -93,11 +94,15 @@ assert cfg.port == 3082;
 assert lib.hasInfix "-R 127.0.0.1:${toString cfg.port}:127.0.0.1:${toString cfg.port} " (
   toString tunnel.Service.ExecStart
 );
-# No heartbeat wake: the heartbeat links records and starts nothing, and the
-# floor's own scheduled inbox is not the live one.
-assert !cfg.heartbeatWake && cfg.floorUnit == null;
-assert cli != null && cli.floorUnit == null;
-assert !(lib.any (e: lib.hasPrefix "SCHEDULED_FLOOR" e) (lib.toList heartbeat.Service.Environment));
+# The heartbeat wake (hosts/nas/default.nix): the heartbeat and the installed
+# command name this unit. The floor's own scheduled inbox is still not the
+# live one: the floor reads the live inbox only when floor.jsonc says so.
+assert cfg.heartbeatWake && cfg.floorUnit == "factory-floor.service";
+assert cli != null && cli.floorUnit == "factory-floor.service";
+assert
+  lib.filter (e: lib.hasPrefix "SCHEDULED_FLOOR" e) (lib.toList heartbeat.Service.Environment) == [
+    "SCHEDULED_FLOOR_UNIT=factory-floor.service"
+  ];
 assert "${cfg.stateDir}/inbox/scheduled" != cli.inbox;
 # The floor adds no clock: the NAS timer list is unchanged.
 assert
@@ -112,12 +117,13 @@ assert lib.all (h: !((servicesOf h) ? factory-floor)) [
   "strix-coordinator"
   "strix-worker"
 ];
-# The flips: wanted by default.target, and the heartbeat wakes this unit.
-assert flipped.systemd.user.services.factory-floor.Install.WantedBy == [ "default.target" ];
-assert flipped.services.factory-floor.floorUnit == "factory-floor.service";
-assert builtins.elem "SCHEDULED_FLOOR_UNIT=factory-floor.service" (
-  lib.toList flipped.systemd.user.services.scheduled-heartbeat.Service.Environment
-);
+# Both flips off again: wanted by no target, and the heartbeat wakes nothing.
+assert !(unflipped.systemd.user.services.factory-floor ? Install);
+assert unflipped.services.factory-floor.floorUnit == null;
+assert
+  !(lib.any (e: lib.hasPrefix "SCHEDULED_FLOOR" e) (
+    lib.toList unflipped.systemd.user.services.scheduled-heartbeat.Service.Environment
+  ));
 pkgs.runCommand "factory-floor" { } ''
   set -eu
   unit=${rendered}
@@ -126,10 +132,8 @@ pkgs.runCommand "factory-floor" { } ''
   grep -qxF 'RestartPreventExitStatus=78' "$unit"
   grep -qxF 'ConditionPathExists=${cfg.entry}' "$unit"
   grep -qxF 'ExecStart=${launcher}' "$unit"
-  if grep -q '^\[Install\]' "$unit"; then
-    echo "factory-floor.service has an [Install] section" >&2
-    exit 1
-  fi
+  grep -qxF '[Install]' "$unit"
+  grep -qxF 'WantedBy=default.target' "$unit"
 
   # The unit's own environment, with the checkout moved to a fake one whose
   # entry reports what the contract promises it: node 24 and herdr-core on

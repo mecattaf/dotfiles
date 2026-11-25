@@ -278,10 +278,11 @@ the inbox path and the floor variable, and `checks.scheduled-vm` runs
 
 ## No floor configured
 
-This is the NAS's mode from 2026-11-26 until the factory floor's
-heartbeat wake is turned on (`home/factory-floor.nix`, `heartbeatWake`):
-`home/scheduled.nix` names no floor unit, so the service and the
-installed command carry no `SCHEDULED_FLOOR_UNIT`.
+This was the NAS's mode from 2026-11-26 until the factory floor's
+heartbeat wake was turned on (`heartbeatWake` in `hosts/nas/default.nix`;
+the option is `home/factory-floor.nix`'s); it is the mode of any host
+whose config names no floor unit. Then `home/scheduled.nix` names none,
+so the service and the installed command carry no `SCHEDULED_FLOOR_UNIT`.
 
 - A due tick links its record into the inbox, logs no `floor` line,
   runs no systemctl and exits 0. The record waits.

@@ -24,6 +24,8 @@ let
   # profile's stateDir held, kept at its path on 2026-11-26 so its records
   # stay where the new floor's scheduled Source can be pointed.
   inbox = "/home/tom/.agency/state/master/inbox/scheduled";
+  # The unit a tick starts when records wait (home/factory-floor.nix).
+  floorUnit = "factory-floor.service";
   environment = lib.toList tick.Service.Environment;
 in
 assert
@@ -38,19 +40,19 @@ assert tick.Service.Type == "oneshot";
 assert tick.Unit.X-RestartIfChanged == false;
 assert tick.Unit.StartLimitIntervalSec == 0;
 assert lib.toList tick.Service.ExecStart == [ "${lib.getExe scheduled} tick" ];
-# The heartbeat links records into the inbox and wakes nothing: no floor
-# unit is named (the supported no-floor mode), so the unit's whole
-# environment is PATH and the inbox.
+# The heartbeat links records into the inbox and wakes the factory floor's
+# unit, which the NAS names (heartbeatWake, hosts/nas/default.nix), so the
+# unit's whole environment is PATH, the inbox and the floor unit.
 assert tick.Unit.ConditionPathIsDirectory == "%h/.agency";
 assert builtins.elem "SCHEDULED_INBOX=${inbox}" environment;
-assert !(lib.any (e: lib.hasPrefix "SCHEDULED_FLOOR" e) environment);
 assert
   environment == [
     "PATH=/run/current-system/sw/bin"
     "SCHEDULED_INBOX=${inbox}"
+    "SCHEDULED_FLOOR_UNIT=${floorUnit}"
   ];
 assert cli != null && cli.unwrapped == scheduled;
-assert cli.inbox == inbox && cli.floorUnit == null;
+assert cli.inbox == inbox && cli.floorUnit == floorUnit;
 # The Master dsh profiles that owned the inbox and the port are gone, and
 # with them dshd, which ran the old floor.
 assert !(hm.programs.dsh ? master);
@@ -95,11 +97,10 @@ pkgs.runCommand "scheduled" { nativeBuildInputs = [ scheduled.node ]; } ''
   patchShebangs test
   node --test 'test/*.test.mjs'
   ${lib.getExe scheduled} --version
-  # The installed command carries the inbox default, and a variable set by
-  # hand still wins (makeWrapper --set-default). No floor unit default while
-  # none is named.
+  # The installed command carries the inbox and floor unit defaults, and a
+  # variable set by hand still wins (makeWrapper --set-default).
   grep -qxF "export SCHEDULED_INBOX=\''${SCHEDULED_INBOX-'${inbox}'}" ${lib.getExe cli}
-  if grep -q SCHEDULED_FLOOR ${lib.getExe cli}; then exit 1; fi
+  grep -qxF "export SCHEDULED_FLOOR_UNIT=\''${SCHEDULED_FLOOR_UNIT-'${floorUnit}'}" ${lib.getExe cli}
   ${lib.getExe cli} --version
   touch $out
 ''
