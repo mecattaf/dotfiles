@@ -2045,6 +2045,14 @@
           configurations = self.nixosConfigurations;
         };
 
+        # The hc core on the brain (docs/herdr-core.md): eval asserts on the
+        # real NAS config (hc-core.service, config.toml, kitty terminfo), the
+        # rendered unit and hc-restart-clean.
+        hc-core = import ./tests/hc-core {
+          inherit pkgs;
+          configurations = self.nixosConfigurations;
+        };
+
         # Scheduled in a NixOS VM: the NAS's own heartbeat units with a stub
         # floor unit; hand-off, clock back, power cut, switch, surfacing and
         # the run-now storm (KVM; the builders advertise nixos-test and kvm).
@@ -2996,6 +3004,28 @@
                 ${./home/dot_local/bin/theme} \
                 ${./home/dot_local/bin/runtime-test}
               python3 ${./tests/herdr/test_launchers.py}
+              touch "$out"
+            '';
+
+        # Mod+Enter on the seat: hc-station (a new hc terminal in ~, then
+        # attach; plain fish when hc is unavailable) and domicile-terminal's
+        # remote command. Fakes only, no core.
+        hc-station =
+          pkgs.runCommand "hc-station"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.python3
+                pkgs.coreutils
+              ];
+              DOTFILES_BIN = ./home/dot_local/bin;
+            }
+            ''
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p "$HOME"
+              python3 -m unittest discover -s ${./tests/hc-station} -p 'test_*.py' -v
+              python3 -m unittest discover -s ${./tests/domicile-terminal} -p 'test_*.py' -v
               touch "$out"
             '';
 

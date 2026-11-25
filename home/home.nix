@@ -99,6 +99,7 @@ in
     ./downloads-mirror.nix
     ./harness-records.nix
     ./herdr.nix
+    ./herdr-core.nix
     ./nvim.nix
     ./paper.nix
     ./scheduled.nix
