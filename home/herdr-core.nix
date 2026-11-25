@@ -77,6 +77,15 @@ in
     # ~/.config/herdr-core/ itself stays a real directory (templates/, and
     # hand-made files such as pulse-client.conf, live next to it).
     xdg.configFile."herdr-core/config.toml".source = link "dot_config/herdr-core/config.toml";
+    # Agent templates (`hc run --bg worker-claude "task"`), each its own raw
+    # single-file link, so templates/ stays a real directory for hand-made
+    # ones. Only worker-*: a template named like a binary shadows that binary
+    # for every caller. hc reads them fresh on each use: an edit needs no
+    # switch. tests/hc-core asserts the naming rule.
+    xdg.configFile."herdr-core/templates/worker-claude.md".source =
+      link "dot_config/herdr-core/templates/worker-claude.md";
+    xdg.configFile."herdr-core/templates/worker-codex.md".source =
+      link "dot_config/herdr-core/templates/worker-codex.md";
 
     systemd.user.services.hc-core = {
       Unit = {

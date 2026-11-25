@@ -11,8 +11,9 @@ brain host. One core per machine, in the default session, listening at
 | Where | What | Hosts |
 |---|---|---|
 | `home/herdr.nix` | the `hc` and `herdr-core` package, `pkgs.llm-agents.herdr-core` | every host |
-| `home/herdr-core.nix` | `hc-core.service` and the `~/.config/herdr-core/config.toml` link | brain (NAS) |
+| `home/herdr-core.nix` | `hc-core.service`, the `~/.config/herdr-core/config.toml` link and the `worker-*` template links | brain (NAS) |
 | `home/dot_config/herdr-core/config.toml` | the config: fish login shell, `notes = true`, `draft_wait = 60`, `headless = "120x40"`, no `socket` | brain |
+| `home/dot_config/herdr-core/templates/worker-*.md` | agent templates `worker-claude`, `worker-codex` | brain |
 | `modules/herdr-core.nix` | `kitty.terminfo` system-wide, so `xterm-kitty` resolves for every terminal | brain |
 | `home/dot_local/bin/hc-restart-clean` | restart the core from a clean environment after an upgrade | linked everywhere, meant for the NAS |
 | `tests/hc-core/` | eval asserts (`checks.hc-core`) and `smoke.sh` against a private core | |
@@ -73,7 +74,8 @@ real directory.
 - No second core and no `HC_SESSION` outside tests. Tests use a private core
   under `~/.local/bin/runtime-test` (`tests/hc-core/smoke.sh`).
 - No template named like a binary in `~/.config/herdr-core/templates/` (it
-  shadows that binary for every caller). Dotfiles installs none.
+  shadows that binary for every caller). Dotfiles installs only `worker-*`
+  templates (see Templates below).
 - Bare `hc` on the NAS is the hand-installed 0.1.21 in `~/bin` until the
   cutover; use `/etc/profiles/per-user/tom/bin/herdr-core` by absolute path.
 
@@ -89,6 +91,21 @@ identity when `xterm-kitty` resolves) and becomes `herdr-core attach` on it.
 `hc-core.service` once, and if hc is still unavailable it opens a plain fish
 with a one-line banner, so Tom always gets a terminal. (hc-station and
 domicile-terminal are their own files; see their headers.)
+
+## Templates
+
+`home/dot_config/herdr-core/templates/worker-claude.md` (`exec claude`) and
+`worker-codex.md` (`exec codex --no-daemon`: no background server shared
+between workers) are linked on the brain, one raw single-file link each, so
+`~/.config/herdr-core/templates/` stays a real directory. From a station:
+`hc run --bg --name w1 --cwd ~/x worker-claude "the task"`, then `hc wait w1`
+and `hc read w1`; the worker reports back with `hc send` as hc's `reach`
+attribute says. The floor may launch through them (its recipes accept
+`template`), but a template carries no per-launch flags (`--session-id`,
+`--mcp-config`, `--settings`): a recipe that needs those passes argv. Names are
+`worker-*` only, asserted by `checks.hc-core`. Unverified: Codex 0.169.0's OSC
+7501 report (inferred from its bundle), and any template launch on the live
+core.
 
 ## What is retired
 
