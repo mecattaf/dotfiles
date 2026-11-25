@@ -1,5 +1,12 @@
 # DECISIONS
 
+2026-11-25 Codex is pinned at 0.169.0 while the rest of llm-agents keeps
+rolling. The pin is a second, fixed llm-agents input (`llm-agents-codex`, the
+revision that last shipped 0.169.0); the overlay takes `codex` from it. It is
+not a rolling input, so a fleet update does not move it. Merging #790 had
+moved Codex to 0.171.0 through the shared llm-agents bump; the NAS ran 0.171.0
+from that switch until this pin was deployed.
+
 2026-11-25 Models outside Tom's keep sets leave the catalog. Tom,
 2026-11-25, for the 4 TB HDD: "models we shall only keep qwen flash-next gguf
 (115gb), minimax h3. this must be adjusted from the Dotfiles repo side of
