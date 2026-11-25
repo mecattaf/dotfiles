@@ -96,6 +96,18 @@ in
     "${persist}/etc/ssh/ssh_host_rsa_key"
   ];
 
+  # A headless box whose root account is locked must not wait at an emergency
+  # prompt nobody can open. A failure in the initrd (no /persist, no /nix)
+  # panics and reboots after 30 s; during the trial the one-shot entry is spent
+  # by then, so the previous default generation starts. A failed mount in
+  # stage 2 does not stop the boot, so sshd (its keys are on /persist, mounted
+  # in the initrd) stays reachable for the checks and the rollback.
+  boot.kernelParams = [
+    "boot.panic_on_fail"
+    "panic=30"
+  ];
+  systemd.enableEmergencyMode = false;
+
   # /etc/shadow is rebuilt at every boot. tom's console password comes from a
   # root-only hash file the runbook writes before the first boot; ssh logins
   # use keys and sudo needs no password, so a missing file locks the console
