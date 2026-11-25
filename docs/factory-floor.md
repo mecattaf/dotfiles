@@ -14,7 +14,7 @@ a local checkout. Checks: `checks.factory-floor` (`tests/factory-floor`).
 | Ordering | `After=network-online.target hc-core.service`, `Wants=hc-core.service` |
 | Condition | `ConditionPathExists=<entry>`: with no checkout, a start is skipped and no unit fails |
 | Switch | `X-SwitchMethod=keep-old`: a switch never restarts a running floor |
-| Install | `WantedBy=default.target` (`autostart = true` in `hosts/nas/default.nix`): up at boot, and started by a switch that adds the want, when the entry exists |
+| Install | `WantedBy=default.target` (`autostart = true` in `hosts/nas/default.nix`): up at boot, and started by any switch that finds it inactive (sd-switch), when the entry exists |
 | ExecStart | a store launcher, `factory-floor-service`, that execs the entry with no arguments |
 | Heartbeat wake | on (`heartbeatWake = true` in `hosts/nas/default.nix`, `floorUnit = "factory-floor.service"`): a tick with records waiting starts the unit |
 
@@ -83,13 +83,15 @@ journalctl --user -u factory-floor -f
 systemctl --user stop factory-floor         # SIGTERM; workers keep running in hc
 ```
 
-With the heartbeat wake on, a stop holds only until the next tick that finds
-a record waiting. To keep the floor down, stop the clock first
-(`systemctl --user stop scheduled-heartbeat.timer`, until the next boot or a
-switch that changes the timer), or disable the items
-(`scheduled set ID enabled false`), or delete the flips block and switch.
-`systemctl --user mask` is no help here: the unit file is a Home Manager link
-in `~/.config/systemd/user`, which a mask will not replace.
+With both flips on, a stop holds only until the next tick that finds a record
+waiting, the next switch (sd-switch starts an inactive unit that a target
+wants; `keep-old` only spares a running one) or the next boot. To keep the
+floor down, delete the flips block and switch. For a short hold, stop the
+clock first (`systemctl --user stop scheduled-heartbeat.timer`) or disable the
+items (`scheduled set ID enabled false`); a switch or a boot still starts it.
+Do not mask it: the unit file is a Home Manager link in
+`~/.config/systemd/user`, so a plain mask refuses to replace it and a forced
+one fights the next activation.
 
 A switch does not restart a running floor (`keep-old`). To pick up a new
 launcher or a rebuilt checkout, restart it yourself:
