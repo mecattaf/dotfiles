@@ -15,6 +15,7 @@
     ../client/audio.nix
     ../../modules/strix-compute.nix
     ../../modules/keyring-autounlock.nix
+    ./impermanence.nix # tmpfs root, declared persistence (one-shot boot only)
   ];
 
   networking.hostName = "strix-coordinator";
