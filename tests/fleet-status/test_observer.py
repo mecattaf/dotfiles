@@ -3,10 +3,11 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import socket
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 SOURCE = Path(os.environ.get("FLEET_STATUS_OBSERVER_PY", Path(__file__).resolve().parents[2] / "pkgs/fleet-status/observer.py"))
 sys.path.insert(0, str(SOURCE.parent))
@@ -268,6 +269,82 @@ class ObserverTests(unittest.TestCase):
         self.value.tails()
         self.assertEqual(self.value.state["usage"]["groq"]["inputTokens"], 12)
         self.assertIn(str(path), self.value.state["cursors"])
+
+    # hc panel: terminal counts of the NAS core, never a client call without an answering socket.
+    HC_REPORT = {"hidden_finished": 0, "terminals": [
+        {"address": "t1", "name": "st1", "cwd": "/private/home", "state": "live"},
+        {"address": "t2", "name": "st2", "cwd": "/private/home", "state": "live", "status": "working"},
+        {"address": "t3", "name": "done", "cwd": "/private/home", "state": "finished", "exit_code": 0, "reason": "exited"},
+        {"address": "nas/t9", "name": "remote", "state": "live"}]}
+
+    def hc_observer(self, socket_path):
+        config = {"laneMeter": str(self.root / "meter.jsonl"), "hcCommand": ["env", "-i", "herdr-core", "ls", "--all", "--json"], "hcSocket": str(socket_path),
+                  "intervals": {"hosts": 300, "metrics": 60, "seats": 600, "tails": 10, "hc": 60}}
+        value = observer.Observer(config, self.root / "state-hc")
+        self.addCleanup(value.pool.shutdown, wait=True)
+        self.addCleanup(value.publisher_pool.shutdown, wait=True)
+        return value
+
+    def socket_dir(self):
+        # AF_UNIX paths are limited to 108 bytes: keep them short.
+        directory = tempfile.TemporaryDirectory(prefix="fs", dir="/tmp" if os.access("/tmp", os.W_OK) else None)
+        self.addCleanup(directory.cleanup)
+        return Path(directory.name)
+
+    def listening(self, path):
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.bind(str(path))
+        server.listen(8)
+        self.addCleanup(server.close)
+        return server
+
+    def test_hc_counts_live_and_finished_local_terminals(self):
+        path = self.socket_dir() / "default.sock"
+        self.listening(path)
+        value = self.hc_observer(path)
+        with patch.object(observer, "command", return_value=self.HC_REPORT) as call:
+            result = value.acquire("hc", value.hc)
+        self.assertIsNone(result["error"])
+        self.assertEqual(call.call_args.args, (value.config["hcCommand"],))
+        self.assertEqual(call.call_args.kwargs["timeout"], 10)
+        rows = {row["key"]: row for row in result["rows"]}
+        self.assertEqual(rows["runtime.runningCount"]["value"], 2)
+        self.assertEqual(rows["runtime.workloadCount"]["value"], 3)
+        for row in rows.values():
+            self.assertEqual((row["subjectId"], row["sourceId"], row["unit"], row["scope"]), ("host-nas", "runtime.containers", "count", "host-total"))
+        value.accept("hc", result)
+        snapshot = value.publish()
+        coverage = {row["sourceId"]: row for row in snapshot["coverage"]}
+        self.assertEqual(coverage["runtime.containers"]["state"], "reporting")
+        self.assertNotIn("private", json.dumps(snapshot))
+
+    def test_hc_never_runs_without_an_answering_socket(self):
+        directory = self.socket_dir()
+        stale = directory / "stale.sock"
+        self.listening(stale).close()
+        for path in [directory / "missing.sock", stale]:
+            with self.subTest(path=path.name):
+                value = self.hc_observer(path)
+                with patch.object(observer, "command", Mock(return_value=self.HC_REPORT)) as call:
+                    result = value.acquire("hc", value.hc)
+                self.assertEqual(result["error"], "source-unavailable")
+                call.assert_not_called()
+                value.accept("hc", result)
+                coverage = {row["sourceId"]: row for row in value.publish()["coverage"]}
+                self.assertEqual(coverage["runtime.containers"]["state"], "unavailable")
+
+    def test_config_without_hc_keeps_runtime_containers_not_configured(self):
+        self.assertNotIn("hcCommand", self.value.config)
+        coverage = {row["sourceId"]: row for row in self.value.publish()["coverage"]}
+        self.assertEqual(coverage["runtime.containers"]["state"], "not-configured")
+
+    def test_hc_refuses_a_malformed_report(self):
+        path = self.socket_dir() / "default.sock"
+        self.listening(path)
+        value = self.hc_observer(path)
+        for report in [{"terminals": "x"}, [], {"hidden_finished": 0}]:
+            with self.subTest(report=report), patch.object(observer, "command", return_value=report):
+                self.assertEqual(value.acquire("hc", value.hc)["error"], "source-failed")
 
 
 if __name__ == "__main__":
