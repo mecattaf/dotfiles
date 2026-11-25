@@ -264,7 +264,10 @@ assert lib.assertMsg
   )
   "The OpenCode Zen provider belongs in its dedicated zen profile, where credentials are re-enabled for it";
 assert lib.assertMsg (
-  !(builtins.any (name: builtins.elem "mnemon" (profilePlugins.${name} or [ ])) [ "herdr" "native" ])
+  !(builtins.any (name: builtins.elem "mnemon" (profilePlugins.${name} or [ ])) [
+    "herdr"
+    "native"
+  ])
 ) "Mnemon belongs in its dedicated profile, where the fleet memory policy is applied";
 writeShellApplication {
   name = "dsh";
