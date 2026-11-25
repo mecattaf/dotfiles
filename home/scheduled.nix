@@ -26,7 +26,10 @@ let
   # the 2026-11-26 dshd retirement: the tick links records and wakes nothing.
   # home/factory-floor.nix decides it: services.factory-floor.floorUnit is
   # "factory-floor.service" once heartbeatWake is on, and null until then.
-  floorUnit = config.services.factory-floor.floorUnit;
+  # tests/scheduled-vm imports this file without home/factory-floor.nix,
+  # hence the `or null`; tests/factory-floor's flip assert holds the real
+  # wiring (heartbeatWake on puts SCHEDULED_FLOOR_UNIT in the Environment).
+  floorUnit = config.services.factory-floor.floorUnit or null;
   floorDefault = lib.optionalString (
     floorUnit != null
   ) "--set-default SCHEDULED_FLOOR_UNIT ${lib.escapeShellArg floorUnit}";
