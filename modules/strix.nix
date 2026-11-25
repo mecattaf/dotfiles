@@ -19,9 +19,6 @@
     ./gufo.nix
     # The on-demand embedding route on Gufo v0.33.0 (host-enabled).
     ./gufo-embedding.nix
-    ./superroc.nix
-    # Plain llama-server for the Hy-Memory route (#603).
-    ./hy-memory.nix
     ./d3-decision.nix
     # The utility-model seam (/drain, /print), independent of the engine.
     ./utility-model.nix
@@ -38,29 +35,9 @@
     services.gufo = {
       enable = true;
       lanInterface = "enp191s0";
-      alternates = {
-        qwen38-27b = {
-          artifact = "qwen38-27b-gguf";
-          servedModelName = "qwen3.8-27b";
-          mmproj = "mmproj-BF16.gguf";
-          dflashArtifact = "qwen38-27b-dflash2-gguf";
-          sessions = 4;
-          context = 131072;
-        };
-        qwen38-27b-q8 = {
-          artifact = "qwen38-27b-q8-gguf";
-          servedModelName = "qwen3.8-27b";
-          mmproj = "mmproj-BF16.gguf";
-          dflashArtifact = "qwen38-27b-dflash2-gguf";
-          sessions = 4;
-          context = 131072;
-        };
-        # No DeepSeek alternate: Tom (2026-10-25) replaced Gufo's DeepSeek V4
-        # Flash 0731 with kyuz0's V4.1 Flash 1017, which only ds4 loaded
-        # (modules/ds4.nix, retired 2026-11-08, removed 2026-11-13). The 0731
-        # catalog rows and Library bytes stay until an explicit Library
-        # retirement.
-      };
+      # No alternate: Qwen3.8 27B left with the other models outside Tom's
+      # keep set (2026-11-25). Flash-Next is the one text model.
+      alternates = { };
       # The one voice (Tom, 2026-09-14): the K-2SO midway-B matched prefix and
       # its transcript. qwentts.cpp stays the live voice until Tom has listened
       # to Gufo's BF16 Base with it.

@@ -545,17 +545,6 @@ in
     }
     // lib.mapAttrs' (name: m: lib.nameValuePair "gufo-llm-${name}" (mkLlmUnit name m)) cfg.alternates;
 
-    # The 27B Q8 remains a supported single-host alternate. Flash-Next Q8
-    # was TP2-only and is retired with the canceled second host (#698).
-    environment.etc."gufo/27b-q8-wanted.json".source =
-      (pkgs.formats.json { }).generate "gufo-27b-q8-wanted.json"
-        (
-          modelStore.manifestFor [
-            "qwen38-27b-q8-gguf"
-            "qwen38-27b-dflash2-gguf"
-          ]
-        );
-
     environment.systemPackages = [
       cfg.package
       gufoSwitch
