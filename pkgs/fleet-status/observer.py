@@ -15,7 +15,6 @@ import json
 import math
 import os
 from pathlib import Path
-import queue
 import re
 import secrets
 import signal
@@ -237,15 +236,17 @@ class Observer:
             self.state = {"sequence": 0, "salt": secrets.token_hex(32), "cursors": {}, "sessions": {}, "usage": {}, "events": [], "enrolledAt": stamp()}
         self.lock = threading.RLock()
         self.cache = self.state.setdefault("cache", {})
-        self.results = queue.Queue(maxsize=1024)
+        # The instance collector and the lifecycle journal were retired on
+        # 2026-11-26. A restored state must not keep republishing their last
+        # rows and run events: nothing produces newer ones to displace them.
+        self.cache.pop("instances", None)
+        self.state["events"] = [row for row in self.state.get("events", []) if row.get("sourceId") != "agent.lifecycle"]
         self.futures = {}
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
         self.publisher_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self.publisher_future = None
         self.subjects = {}
         self.new_process = True
-        self.journal_child = None
-        self.journal_thread = None
         self.add_subject("fleet", "fleet", "Fleet")
         for name, label in [("nas", "NAS"), ("strix-coordinator", "Strix coordinator"), ("client", "Zenbook"), ("strix-worker", "Strix worker")]:
             self.add_subject("host-" + name, "host", label, "fleet", "dormant" if name == "strix-worker" else None)
@@ -301,121 +302,6 @@ class Observer:
                 rows.append(public_observation(subject, "host.pressure", key, value if finite(value) else None, at=load.get("observed_at"), scope="host-total", ttl=900))
         self.add_subject("host-strix-worker", "host", "Strix worker", "fleet", "dormant")
         return rows
-
-    def instances(self):
-        report = command(self.config["dshdCommand"], timeout=15)
-        rows = []
-        for item in report.get("instances", [])[:1024]:
-            ident = self.public_id("instance", item.get("name"))
-            self.add_subject(ident, "instance", "DSH instance", "host-nas")
-            for raw, key in [(item.get("state"), "instance.state"), (item.get("transport"), "instance.transport")]:
-                value = raw if raw in CONTRACT["stringDomains"][key] else "unknown"
-                rows.append(public_observation(ident, "agent.instances", key, value, ttl=180, scope="this-instance"))
-            enabled = item.get("enabled")
-            rows.append(public_observation(ident, "agent.instances", "instance.enabled", enabled if isinstance(enabled, bool) else None, ttl=180, scope="this-instance"))
-        if self.config.get("systemctlCommand"):
-            raw = command(self.config["systemctlCommand"], timeout=12, as_json=False)
-            fields = {"CPUUsageNSec": ("instance.cpuUsageNSec", "nanoseconds"), "MemoryCurrent": ("instance.memoryCurrentBytes", "bytes"), "MemoryPeak": ("instance.memoryPeakBytes", "bytes"), "TasksCurrent": ("instance.tasksCurrent", "count"), "IOReadBytes": ("instance.ioReadBytes", "bytes"), "IOWriteBytes": ("instance.ioWriteBytes", "bytes"), "NRestarts": ("instance.restartCount", "count")}
-            for block in raw.split("\n\n")[:1024]:
-                values = dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
-                unit = values.get("Id", "")
-                if not unit.startswith("dshd@") or not unit.endswith(".service"):
-                    continue
-                ident = self.public_id("instance", unit[5:-8])
-                self.add_subject(ident, "instance", "DSH instance", "host-nas")
-                for raw_key, (key, measure) in fields.items():
-                    value = values.get(raw_key, "")
-                    parsed = int(value) if value.isdigit() and int(value) < 2 ** 63 else None
-                    rows.append(public_observation(ident, "agent.instances", key, parsed, unit=measure, scope="this-instance", ttl=180))
-        return rows
-
-    def journal(self):
-        """One owned lifecycle subscription; only reviewed envelope fields leave it."""
-        backoff = 5
-        while not STOP.is_set():
-            argv = list(self.config.get("journalCommand", []))
-            if not argv:
-                return
-            with self.lock:
-                cursor = self.state.get("journalCursor")
-            argv += ["--after-cursor=" + cursor] if cursor else ["--since=now"]
-            try:
-                child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
-                self.journal_child = child
-                for line in iter(lambda: child.stdout.readline(65537), b""):
-                    if STOP.is_set():
-                        break
-                    if len(line) > 65536 or not line.endswith(b"\n"):
-                        self.results.put({"gap": True})
-                        continue
-                    try:
-                        record = json.loads(line)
-                    except (ValueError, UnicodeDecodeError):
-                        continue
-                    # Do not queue MESSAGE, argv, labels, tools or credentials.
-                    selected = {key: record.get(key) for key in ["MESSAGE_ID", "USER_UNIT", "UNIT", "_SYSTEMD_USER_UNIT", "_SYSTEMD_INVOCATION_ID", "USER_INVOCATION_ID", "__REALTIME_TIMESTAMP", "__CURSOR"]}
-                    try:
-                        self.results.put_nowait(selected)
-                    except queue.Full:
-                        with self.lock:
-                            self.state["journalGap"] = True
-                status = child.wait(timeout=3)
-                with self.lock:
-                    self.state["journalError"] = "source-failed" if status else "source-unavailable"
-                    if status and cursor:
-                        # A rotated/invalid cursor must not wedge observation
-                        # forever. Resume from now, explicitly retaining the
-                        # coverage gap rather than replaying old executions.
-                        self.state.pop("journalCursor", None)
-                        self.state["journalGap"] = True
-            except (OSError, subprocess.TimeoutExpired):
-                with self.lock:
-                    self.state["journalError"] = "source-failed"
-            finally:
-                child = self.journal_child
-                if child and child.poll() is None:
-                    os.killpg(child.pid, signal.SIGTERM)
-                    try:
-                        child.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        os.killpg(child.pid, signal.SIGKILL)
-                        child.wait()
-                self.journal_child = None
-            if STOP.wait(backoff):
-                break
-            backoff = min(300, backoff * 2)
-
-    @synchronized
-    def drain_journal(self):
-        while True:
-            try:
-                record = self.results.get_nowait()
-            except queue.Empty:
-                return
-            if record.get("gap"):
-                self.state["journalGap"] = True
-                continue
-            cursor = record.get("__CURSOR")
-            if isinstance(cursor, str) and len(cursor) <= 512:
-                self.state["journalCursor"] = cursor
-            message = record.get("MESSAGE_ID")
-            types = {"39f53479d3a045ac8e11786248231fbf": "run.started", "9d1aaa27d60140bd96365438aad20286": "run.ended", "be02cf6855d2428ba40df7e9d022f03d": "run.ended", "d9b373ed55a64feb8242e02dbe79a49c": "run.ended"}
-            kind = types.get(message)
-            unit = record.get("USER_UNIT") or record.get("UNIT") or record.get("_SYSTEMD_USER_UNIT") or ""
-            if kind is None or not isinstance(unit, str) or not unit.startswith("dshd@") or not unit.endswith(".service"):
-                continue
-            invocation = record.get("USER_INVOCATION_ID") or record.get("_SYSTEMD_INVOCATION_ID")
-            if not isinstance(invocation, str):
-                self.state["journalGap"] = True
-                continue
-            try:
-                at = stamp(dt.datetime.fromtimestamp(int(record["__REALTIME_TIMESTAMP"]) / 1_000_000, UTC))
-            except (ValueError, TypeError, OverflowError):
-                continue
-            parent = self.add_subject(self.public_id("instance", unit[5:-8]), "instance", "DSH instance", "host-nas")
-            subject = self.add_subject(self.public_id("invocation", invocation), "invocation", "Supervised run", parent)
-            self.event(subject, "agent.lifecycle", kind, at, cursor or invocation + kind)
-            self.state.update(journalLastSuccess=at, journalError=None)
 
     def metrics(self):
         rows = []
@@ -606,8 +492,10 @@ class Observer:
     def tails(self):
         sessions = self.state["sessions"]
         cursors = self.state["cursors"]
-        directory = Path(self.config["dshSessions"])
-        files = sorted(directory.glob("*/*/session.v4.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)[:256]
+        files = []
+        if self.config.get("dshSessions"):
+            directory = Path(self.config["dshSessions"])
+            files = sorted(directory.glob("*/*/session.v4.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)[:256]
         truncated = len(files) >= 256
         remaining = 8 * 1024 * 1024
         for path in files:
@@ -795,7 +683,7 @@ class Observer:
     def snapshot(self):
         observations = []
         coverage = {key: {"sourceId": key, "state": "disabled-by-policy" if key.startswith("optional.") or key in ["storage.smart", "host.temperatures"] else "not-configured", "lastAttemptAt": None, "lastSuccessAt": None, "errorCode": "not-instrumented"} for key in SOURCES}
-        memberships = {"hosts": ["fleet.snapshot", "host.pressure"], "metrics": ["host.pressure", "inference.gpu"], "instances": ["agent.instances"], "seats": ["compute.subscriptions", "compute.quota-headers"], "cloudflareQuota": ["compute.quota-headers"], "vercelQuota": ["compute.quota-headers"], "tails": ["agent.sessions", "agent.spans", "compute.call-history", "compute.tokens", "compute.quota-headers"]}
+        memberships = {"hosts": ["fleet.snapshot", "host.pressure"], "metrics": ["host.pressure", "inference.gpu"], "seats": ["compute.subscriptions", "compute.quota-headers"], "cloudflareQuota": ["compute.quota-headers"], "vercelQuota": ["compute.quota-headers"], "tails": ["agent.sessions", "agent.spans", "compute.call-history", "compute.tokens", "compute.quota-headers"]}
         memberships.update({"antigravity" + str(slot): ["compute.subscriptions"] for slot in self.config.get("antigravityQuotaCommands", {})})
         acquired = {}
         for name, cache in self.cache.items():
@@ -815,10 +703,6 @@ class Observer:
                                     lastAttemptAt=max((cache.get("lastAttemptAt") or "" for cache, _ in groups), default="") or None,
                                     lastSuccessAt=max((cache.get("lastSuccessAt") or "" for cache, _ in groups), default="") or None,
                                     errorCode=error or coverage[source].get("errorCode") if coverage[source].get("truncated") else error or (None if source_rows else "not-instrumented"))
-        if self.config.get("journalCommand"):
-            coverage["agent.lifecycle"] = {"sourceId": "agent.lifecycle", "state": "reporting" if self.state.get("journalLastSuccess") and not self.state.get("journalError") else "unavailable", "lastAttemptAt": stamp(), "lastSuccessAt": self.state.get("journalLastSuccess"), "errorCode": self.state.get("journalError") or ("cursor-gap" if self.state.get("journalGap") else None if self.state.get("journalLastSuccess") else "initial-enrollment")}
-            if self.state.get("journalGap"):
-                coverage["agent.lifecycle"].update(truncated=True, gapFrom=self.state["enrolledAt"])
         # Every provider remains visible even before any ordinary call emits
         # headers. No periodic inference or catalogue ping fills these gaps.
         for lane in PROVIDERS:
@@ -875,16 +759,11 @@ class Observer:
 
     def close(self):
         STOP.set()
-        child = self.journal_child
-        if child and child.poll() is None:
-            os.killpg(child.pid, signal.SIGTERM)
-        if self.journal_thread:
-            self.journal_thread.join(timeout=5)
         self.pool.shutdown(wait=True, cancel_futures=True)
         self.publisher_pool.shutdown(wait=True, cancel_futures=True)
 
     def run(self, once=False):
-        functions = {"hosts": self.hosts, "metrics": self.metrics, "instances": self.instances, "seats": self.seats, "tails": self.tails}
+        functions = {"hosts": self.hosts, "metrics": self.metrics, "seats": self.seats, "tails": self.tails}
         for slot, argv in self.config.get("antigravityQuotaCommands", {}).items():
             functions["antigravity" + str(slot)] = lambda slot=slot, argv=argv: self.antigravity_quota(slot, argv)
         if self.config.get("cloudflareQuota"):
@@ -896,12 +775,8 @@ class Observer:
                 self.accept(name, self.acquire(name, fn))
             return self.publish()
         next_publish = 0
-        if self.config.get("journalCommand"):
-            self.journal_thread = threading.Thread(target=self.journal, name="fleet-lifecycle", daemon=True)
-            self.journal_thread.start()
         try:
             while not STOP.is_set():
-                self.drain_journal()
                 for name, fn in functions.items():
                     if name in self.futures and self.futures[name].done():
                         self.accept(name, self.futures.pop(name).result())
