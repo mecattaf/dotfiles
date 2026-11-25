@@ -1,0 +1,65 @@
+#!/bin/sh
+# hc-restart-clean: restart this machine's hc core (default session) from a clean
+# environment. For a person, after a fleet switch moved the herdr-core package.
+#
+#   hc-restart-clean [--json]
+#
+# Runs the fleet binary's `herdr-core server restart --fresh` with only the
+# variables listed below, so no variable of the calling shell (an agent's, a
+# build's, a token) reaches the new core or any terminal it starts. Programs keep
+# running: the old core saves screens and exits, the new one adopts the old
+# holder, which drains with its terminals; new terminals go to a new-build
+# holder. Run it from a plain ssh shell on the NAS, never from inside an hc
+# terminal. No unit calls it; hc-core.service starts a core, it never restarts
+# one (home/herdr-core.nix, docs/herdr-core.md).
+#
+# Port of scripts/restart-core.sh from herdr-core
+# (https://github.com/herdrdev/herdr-core, identical at v0.1.22 and master
+# 329cb66), Copyright the herdr-core authors, licensed under the Apache License,
+# Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0). Changes from
+# upstream: the executable is fixed to the fleet's (never ~/bin/hc or a
+# ~/.local/bin copy), PATH is fixed instead of passed through, the SSH, display,
+# TMPDIR, XDG_*_HOME and HC_SESSION/HC_SOCKET variables are not passed (this
+# always means the default session, as hc-core.service does), `--fresh` is
+# always given, and it refuses to run inside an hc terminal.
+set -eu
+
+json=""
+for arg in "$@"; do
+  case "$arg" in
+    --json) json="--json" ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    *) echo "hc-restart-clean: unknown argument: $arg (usage: hc-restart-clean [--json])" >&2; exit 2 ;;
+  esac
+done
+
+if [ -n "${HC_TERMINAL_ID:-}" ]; then
+  echo "hc-restart-clean: refusing inside hc terminal $HC_TERMINAL_ID; run it from a plain ssh shell outside hc" >&2
+  exit 2
+fi
+
+user=${USER:-$(id -un)}
+exe=/etc/profiles/per-user/$user/bin/herdr-core
+if [ ! -x "$exe" ]; then
+  echo "hc-restart-clean: no fleet herdr-core at $exe" >&2
+  exit 1
+fi
+runtime=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+
+# HOME, USER, LOGNAME, SHELL, LANG and XDG_RUNTIME_DIR as upstream; PATH in NixOS
+# order without the per-user nix profiles; LOCALE_ARCHIVE, TERMINFO_DIRS and
+# TZDIR are NixOS store pointers every login and the user manager carry, kept
+# so a worker started without a login shell still finds locales, terminfo
+# (xterm-kitty) and zones.
+exec env -i \
+  "PATH=/run/wrappers/bin:/etc/profiles/per-user/$user/bin:/run/current-system/sw/bin" \
+  ${HOME:+"HOME=$HOME"} \
+  "USER=$user" \
+  "LOGNAME=${LOGNAME:-$user}" \
+  ${SHELL:+"SHELL=$SHELL"} \
+  ${LANG:+"LANG=$LANG"} \
+  "XDG_RUNTIME_DIR=$runtime" \
+  ${LOCALE_ARCHIVE:+"LOCALE_ARCHIVE=$LOCALE_ARCHIVE"} \
+  ${TERMINFO_DIRS:+"TERMINFO_DIRS=$TERMINFO_DIRS"} \
+  ${TZDIR:+"TZDIR=$TZDIR"} \
+  "$exe" server restart --fresh $json

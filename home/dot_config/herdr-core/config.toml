@@ -1,0 +1,68 @@
+# ~/.config/herdr-core/config.toml: the hc core's config on the brain host (the
+# NAS), hc 0.1.22, one core per machine in the default session. Delivered by
+# home/herdr-core.nix as a single-file out-of-store link into the checkout: keys
+# are read per use (spawn, detach, delivery, dial), not at core start, so an edit
+# here takes effect without a rebuild or a core restart.
+#
+# hc has exactly 11 keys (crates/herdr-core/src/config.rs at v0.1.22) and ignores
+# unknown ones silently, so a typo says nothing: keep this file to those keys.
+# tests/hc-core/default.nix fails on any other key and on `socket`.
+# Values come from the 21 Nov holder-eval fresh pass
+# (journal/2026/11/21/holder-eval/configs/hc-fresh/config.toml); MEASURED there
+# on 0.1.21, re-checked against the 0.1.22 source, and the config is exercised by
+# tests/hc-core/smoke.sh against a private 0.1.22 core.
+
+shell = ["/run/current-system/sw/bin/fish", "--login"]
+# What a terminal with no argv runs (every Mod+Enter station). Without this key
+# hc takes $SHELL, which is bash for a core started by a unit, and starts it
+# without --login. A station is the first process of its session (no sshd login
+# shell runs ahead of it), so --login is what makes it equal to an ssh login.
+
+detach_key = "ctrl+\\"
+# Default, written out. The only chord `hc attach` takes from the window; it
+# still detaches when the program has Kitty keyboard flags on. Closing the kitty
+# window detaches too (the station keeps running on the NAS).
+
+notes = true
+# Default, kept on (the hand-written NAS file had false). On is what makes hc's
+# agent features work for the floor: a child's "blocked" and "exited" reach its
+# parent as typed notes, and `hc send` between terminals arrives tagged
+# <hc from="t3 w1">. Notes only go to a parent that reports status, and
+# hc-station starts Tom's stations with no_parent and no_notify anyway.
+
+notes_quiet = 3
+# Default. Seconds without a human key before a note is typed into a parent.
+
+draft_wait = 60
+# Default. A draft Tom is typing in an attached window holds `hc send` and notes
+# for up to this long after his last key; then the text is submitted. A delay,
+# not a refusal: the floor sends with `if: idle` and never to owner=tom.
+
+wait_timeout = 180
+# Default. Only the check-in of `hc wait` and foreground `hc run`; the floor
+# passes its own timeout.
+
+headless = "120x40"
+# Size of a terminal nobody is attached to, and the size it is resized back to at
+# every detach (one SIGWINCH per detach unless equal). Set to the usual Kitty
+# station window on the Zenbook. DESK CHECK STILL OWED: `stty size` in that
+# window (prints rows cols). hc-station and the floor always pass `size` at
+# start, so this never decides a start size.
+
+history_mb = 32
+# Scrollback per live terminal: about 38,000 lines at 100 columns. Not more: one
+# core holds every station and its memory grows with what each one fills; an
+# attach paints at most 4 MiB of history anyway (beyond that, `hc read --lines`).
+
+restore_screen = true
+# Only for kept terminals whose program was lost. Nothing here is kept; this is
+# the value for the day someone runs `hc keep` by hand.
+
+machine_timeout = 10
+# Default 30. Per remote call, and line liveness (a frozen line is declared dead
+# after timeout + the 15 s heartbeat). The laptop sleeps and roams; 10 keeps
+# clients from hanging half a minute on it.
+
+# socket: deliberately not set. The default <runtime dir>/herdr-core/default.sock
+# is where every client looks (`ssh host herdr-core connect`, hc-station, the
+# floor). HC_SESSION and HC_SOCKET stay unset everywhere outside tests.
