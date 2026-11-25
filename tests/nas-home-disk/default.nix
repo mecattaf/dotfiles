@@ -20,7 +20,7 @@ let
   disk = nas.myNas.homeDisk.device;
   # O1 PR-1 (hosts/nas/storage-alerts.nix): trip point per mount.
   diskAlerts = {
-    disk-root = 75;
+    disk-root = 25;
     disk-boot = 80;
     disk-pool = 85;
     disk-immich = 85;
@@ -119,7 +119,6 @@ assert lib.all (mount: lib.elem mount nas.myNas.storageAlerts.requiredMounts) [
   "/mnt/immich"
   "/mnt/nas"
   "/var/log/journal/remote"
-  "/var/lib/private/atticd"
 ];
 assert !(lib.elem "/" nas.myNas.storageAlerts.requiredMounts);
 # No journal size cap (Tom, 2026-11-10), local or remote.
@@ -155,8 +154,7 @@ assert lib.elem "D! /tmp 1777 root root" offEmmc.systemd.tmpfiles.rules;
 assert
   offEmmc.system.switch.inhibitors.nas-var-tmp-backing
   != onEmmc.system.switch.inhibitors.nas-var-tmp-backing;
-assert
-  offEmmc.fileSystems."/var/lib/private/atticd" == onEmmc.fileSystems."/var/lib/private/atticd";
+assert !(offEmmc.fileSystems ? "/var/lib/private/atticd");
 assert
   offEmmc.fileSystems."/var/log/journal/remote" == onEmmc.fileSystems."/var/log/journal/remote";
 assert offEmmc.fileSystems."/nix" == onEmmc.fileSystems."/nix";

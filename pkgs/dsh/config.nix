@@ -308,7 +308,6 @@ let
 
   # Gufo's keyless LAN route. The wrapper supplies a public dummy bearer:
   # pi-ai still requires a nonempty credential for a custom provider.
-  # The alternate shares the endpoint and must be selected with gufo-switch first.
   gufoModels = {
     ${localModel.modelId} = {
       name = "Qwen3.8 Flash-Next (Gufo)";
@@ -318,19 +317,6 @@ let
         "image"
       ];
       reasoningEfforts = false;
-    };
-    "qwen3.8-27b" = {
-      name = "Qwen3.8 27B (Gufo alternate)";
-      contextWindow = 131072;
-      input = [
-        "text"
-        "image"
-      ];
-      reasoningEfforts = {
-        low = "low";
-        high = "high";
-        max = "max";
-      };
     };
   };
   gufo = {

@@ -14,9 +14,8 @@ let
     (self.nixosConfigurations.strix-coordinator.extendModules {
       modules = [
         {
-          services.gufo.models."qwen27-short" = {
-            artifact = "qwen38-27b-gguf";
-            dflashArtifact = "qwen38-27b-dflash2-gguf";
+          services.gufo.models."flash-short" = {
+            artifact = "qwen38-flash-next-gguf";
             serve = {
               context = 32768;
               sessions = 1;
@@ -27,46 +26,34 @@ let
         }
       ];
     }).config;
-  extra = extended.services.llama-swap.settings.models."qwen27-short";
+  extra = extended.services.llama-swap.settings.models."flash-short";
   ids = [
     "Qwen-Image-2.1"
     "qwen3-asr-1.7b"
     "qwen3-embedding-8b"
     "qwen3-tts-12hz-1.7b-base"
-    "qwen3.8-27b"
-    "qwen3.8-27b-ara"
-    "qwen3.8-27b-q8"
     "qwen3.8-flash-next"
-    "qwen3.8-flash-next-abliterated"
   ];
-  hy = models."hy-memory-30b-a3b";
 in
 assert proxy.enable && proxy.port == 8731;
-# Preserve the qualified runtime-only routes across the first declarative boot.
-assert c.services.superroc.enable;
-assert !self.nixosConfigurations.strix-worker.config.services.superroc.enable;
-assert !(builtins.elem "qwen38-27b-heretic-ara-q8-gguf" self.nixosConfigurations.strix-worker.config.services.local-models.artifacts);
-assert !(builtins.elem "qwen38-flash-next-abliterated-rocmfp4-gguf" self.nixosConfigurations.strix-worker.config.services.local-models.artifacts);
-assert models."qwen3.8-27b-ara".capabilities.context == 102400;
-assert models."qwen3.8-flash-next-abliterated".capabilities.context == 32768;
-assert builtins.all (id: builtins.elem id c.services.local-models.artifacts) [
+# Models outside Tom's 2026-11-25 keep set have no route and no loan: no 27B
+# alternate or ARA route, no abliterated SuperROC route, no Hy-Memory route.
+assert builtins.all (id: !(models ? ${id})) [
+  "qwen3.8-27b"
+  "qwen3.8-27b-ara"
+  "qwen3.8-27b-q8"
+  "qwen3.8-flash-next-abliterated"
+  "hy-memory-30b-a3b"
+];
+assert builtins.all (id: !(builtins.elem id c.services.local-models.artifacts)) [
+  "qwen38-27b-gguf"
+  "qwen38-27b-q8-gguf"
+  "qwen38-27b-dflash2-gguf"
   "qwen38-27b-heretic-ara-q8-gguf"
   "qwen38-flash-next-abliterated-rocmfp4-gguf"
+  "hy-memory-30b-a3b-q8-gguf"
 ];
-# Hy-Memory is a plain llama-server route behind the same supervisor (#603),
-# borrowed from the Library and never fetched by the server itself.
-assert c.services.hy-memory.enable;
-assert builtins.elem "hy-memory-30b-a3b-q8-gguf" c.services.local-models.artifacts;
-assert hy.checkEndpoint == "/health" && hy.ttl == 600;
-assert hy.useModelName == "hy-memory-30b-a3b";
-assert hy.capabilities.context == 65536 && hy.capabilities.tools == false;
-assert !(pkgs.lib.hasInfix "-hf" hy.cmd);
-assert pkgs.lib.hasSuffix "-llama-server-demand-hy-memory \${PORT}" hy.cmd;
-# Reached only through its launcher: the fleet's llama-server stays on PATH.
-assert !(builtins.elem c.services.hy-memory.package c.environment.systemPackages);
-assert !worker.services.hy-memory.enable;
-assert !(worker.services.llama-swap.settings.models ? "hy-memory-30b-a3b");
-assert !(builtins.elem "hy-memory-30b-a3b-q8-gguf" worker.services.local-models.artifacts);
+assert c.services.gufo.alternates == { };
 # Gufo and the production qwentts.cpp voice share one loan, not duplicate IDs.
 assert
   builtins.length (builtins.filter (id: id == "qwen-k2so-midway-b") c.services.local-models.artifacts)
@@ -103,7 +90,6 @@ assert !(proxy.settings ? hooks) && !(proxy.settings ? groups);
 assert models."qwen3.8-flash-next".ttl == 600;
 assert models."qwen3-tts-12hz-1.7b-base".ttl == 120;
 assert models."qwen3-asr-1.7b".ttl == 120;
-assert models."qwen3.8-27b-q8".useModelName == "qwen3.8-27b";
 assert models."qwen3.8-flash-next".capabilities.context == 102400;
 assert builtins.all (id: models.${id}.checkEndpoint == "/ready" && models.${id}.ttl > 0) ids;
 assert c.systemd.services.gufo-llm.wantedBy == [ ];
@@ -113,9 +99,8 @@ assert !(c.systemd.services ? ds4);
 assert !(builtins.elem proxy.port c.networking.firewall.allowedTCPPorts);
 assert builtins.all (id: builtins.hasAttr id extended.services.llama-swap.settings.models) ids;
 assert extra.ttl == 180 && extra.capabilities.context == 32768;
-assert extra.useModelName == "qwen27-short";
-assert builtins.elem "qwen38-27b-gguf" extended.services.local-models.artifacts;
-assert builtins.elem "qwen38-27b-dflash2-gguf" extended.services.local-models.artifacts;
+assert extra.useModelName == "flash-short";
+assert builtins.elem "qwen38-flash-next-gguf" extended.services.local-models.artifacts;
 pkgs.runCommand "gufo-demand"
   {
     nativeBuildInputs = [

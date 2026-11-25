@@ -325,7 +325,7 @@ LANE_FAMILIES = {
 # Local rows in the same ledger: no key, no quota. The gpu-strix row probes
 # the retained Gufo server; retired local DeepSeek has no lane.
 LOCAL_LANES = {
-    "gpu-strix": {"models": ["qwen3.8-flash-next", "qwen3.8-27b"], "allowance": "local, no quota",
+    "gpu-strix": {"models": ["qwen3.8-flash-next"], "allowance": "local, no quota",
                   "run": "DSH_ROUTE=gufo dsh headless"},
     "codex": {"models": ["gpt-6.1-sol", "gpt terra"], "allowance": "weekly window (plan)"},
 }

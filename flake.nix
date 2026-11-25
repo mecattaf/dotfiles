@@ -150,6 +150,10 @@
     # modules/common.nix). home/agent-tools.nix installs an allowlist of it
     # (`keepFromLlmAgents`) via buildEnv.
     llm-agents.url = "github:numtide/llm-agents.nix";
+    # Codex stays at 0.169.0 while the rest of llm-agents rolls (pinned
+    # 2026-11-25): the llm-agents revision that last shipped it. Never add this
+    # input to `rollingInputOverrides`.
+    llm-agents-codex.url = "github:numtide/llm-agents.nix/db5b3ff7fca0005b0162c3c417fb98e369534e5c";
 
     # NAS session supervision; DSH itself still comes from llm-agents.
     dshd = {
@@ -350,7 +354,10 @@
           # Whole llm-agents catalog under `pkgs.llm-agents.*` (prebuilt from its
           # own nixpkgs — no second eval of ours). home/home.nix pulls an
           # allowlisted set out of this namespace. See the input comment above.
-          llm-agents = inputs.llm-agents.packages.${system};
+          llm-agents = inputs.llm-agents.packages.${system} // {
+            # Pinned: see the llm-agents-codex input.
+            inherit (inputs.llm-agents-codex.packages.${system}) codex;
+          };
           # Native terminal consolidation: advance only Kitty, preserving the
           # host nixpkgs/Mesa/kernel pins. The recipe uses the prior package as
           # its build definition, avoiding an overlay self-reference.
@@ -387,15 +394,6 @@
             # the deliberately-lagging main pin (which exists only to gate kernel/
             # Mesa churn — uv carries none of that risk).
             uv = fresh.uv;
-            # llama.cpp for the Hy-Memory route (modules/hy-memory.nix, #603)
-            # and nothing else. Hy-Memory is the hy_v3 architecture, merged
-            # upstream on 2026-07-13: the fleet's nix-strix-halo llama.cpp
-            # predates that merge, and the main pin's build is older than
-            # Tencent's validated 5aeac37a. nixpkgs-fresh carries a release
-            # past that commit; its Vulkan build (= llama-cpp-vulkan) comes from
-            # cache.nixos.org. Reached only through the llama-swap launcher,
-            # never put on PATH.
-            llama-cpp-hy-memory = fresh.llama-cpp.override { vulkanSupport = true; };
           }
         )
       ];
@@ -548,7 +546,7 @@
         autoRollback = true;
         magicRollback = true;
         remoteBuild = false; # every selected profile is built locally on strix
-        fastConnection = false; # let each destination substitute from Attic
+        fastConnection = false; # let each destination substitute from the public caches
         activationTimeout = 1200;
         confirmTimeout = 90;
 
@@ -640,7 +638,6 @@
             ;
           # `nix build .#gufo` — the engine modules/gufo.nix runs (#525).
           gufo = inputs.gufo.packages.${system}.default;
-          superroc = pkgs.callPackage ./pkgs/superroc { };
           d3-torch-rocm = strixAi.torch-rocm.override {
             wheelSources = builtins.fromJSON (builtins.readFile ./pkgs/vllm-srun/rocm10-wheels.json);
           };
@@ -1125,9 +1122,6 @@
           # interface-scoped rather than global. On enp191s0: the worker is
           # WIRED into the BE550 and has no wifi profile at all.
 
-          # Attic moved to the NAS at ws5 — the strix serves no :8080 and
-          # every host, worker included, dials http://nas:8080/fleet instead.
-
           # NAS gateway/DNS .1 forwards on Ethernet to BE550 .3.
           assert nas.services.dnsmasq.enable;
           assert nixpkgs.lib.toList nas.services.dnsmasq.settings.port == [ 0 ];
@@ -1214,9 +1208,10 @@
           # created live with compression=none, gate + export + receipt
           # discipline landed together, per this block's own instructions.
           assert nas.myNas.models.enable; # model Library (was ws4 archive) hosts/nas/models.nix
-          # ws5 EXECUTED 2026-08-21: atticd runs on the NAS M.2, no relay —
-          # every host dials http://nas:8080/fleet directly.
-          assert nas.myNas.attic.enable; # ws5  hosts/nas/attic.nix
+          # Attic is retired (Tom, 2026-11-25): no host serves or trusts the
+          # old fleet cache.
+          assert !nas.services.atticd.enable;
+          assert !(nixpkgs.lib.elem "http://nas:8080/fleet" nas.nix.settings.extra-substituters);
           # Paperless was removed on 2026-10-13 (Tom 2026-09-29: "i m removing
           # paperless fully"); nothing on the NAS or the strix may bring it back.
           assert !nas.services.paperless.enable;
@@ -1239,7 +1234,6 @@
             && nixpkgs.lib.hasInfix "exit 1" text;
           assert builtins.elem "NetworkManager-ensure-profiles.service" nas.systemd.services.caddy.after;
           assert !(builtins.elem "tailscale0" nas.networking.firewall.trustedInterfaces);
-          assert !strix.myNasClient.relayAttic;
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
           # 2026-08-03: the staged Jellyfin alternative was deleted, not kept
           # as a decoy). It must never be silently displaced.
@@ -1247,15 +1241,6 @@
           # Cross-host invariants. Each relay and its backend must flip
           # together: a relay pointing at a service that is off is a black
           # hole, and a backend with no relay is unreachable from the tailnet.
-          # (The attic relay pairing died with the 2026-08-21 direct-serve
-          # move: the NAS serves 8080 itself and relayAttic must stay off.)
-          assert nas.myNas.attic.enable && !strix.myNasClient.relayAttic;
-          # The binary cache can only live in one place: moving it to the NAS
-          # requires the strix's own atticd to go away in the same
-          # commit, because both bind tcp/8080 on the strix (the relay
-          # socket there, the server here). Enforced host-locally too, by an
-          # assertion in hosts/strix/nas-client.nix.
-          assert nas.myNas.attic.enable -> !strix.services.atticd.enable;
           # (ws2b borg deleted 2026-08-21 — Tom ruled it redundant against
           # the physical-redundancy stack; its asserts died with it.)
           pkgs.runCommand "nas-topology" { } ''
@@ -2833,13 +2818,7 @@
             nixpkgs.lib.sort builtins.lessThan strix.services.local-models.artifacts
             == nixpkgs.lib.sort builtins.lessThan [
               "d3-ultra-bf16"
-              "hy-memory-30b-a3b-q8-gguf"
               "qwen38-flash-next-gguf"
-              "qwen38-flash-next-abliterated-rocmfp4-gguf"
-              "qwen38-27b-heretic-ara-q8-gguf"
-              "qwen38-27b-gguf"
-              "qwen38-27b-q8-gguf"
-              "qwen38-27b-dflash2-gguf"
               "qwen3-asr-1.7b"
               "qwen3-tts-12hz-1.7b-base"
               "qwen-image-2.1"
@@ -2854,9 +2833,6 @@
             == nixpkgs.lib.sort builtins.lessThan (
               nixpkgs.lib.subtractLists [
                 "d3-ultra-bf16"
-                "hy-memory-30b-a3b-q8-gguf"
-                "qwen38-27b-heretic-ara-q8-gguf"
-                "qwen38-flash-next-abliterated-rocmfp4-gguf"
                 "qwen3-embedding-8b-q8-gguf"
               ] strix.services.local-models.artifacts
             );
@@ -2872,8 +2848,6 @@
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "d3-ultra-bf16"
-              "glm53-flash-iq2-xxs-gguf"
-              "hy-memory-30b-a3b-q8-gguf"
               "minimax-h3-fl2va"
               "qwen-image-2.1"
               "qwen-k2so-midway-b"
@@ -2882,11 +2856,6 @@
               "qwen3-tts-1.7b-base-q8-0"
               "qwen3-tts-12hz-1.7b-base"
               "qwen3-tts-tokenizer-f32"
-              "qwen38-27b-dflash2-gguf"
-              "qwen38-27b-gguf"
-              "qwen38-27b-heretic-ara-q8-gguf"
-              "qwen38-27b-q8-gguf"
-              "qwen38-flash-next-abliterated-rocmfp4-gguf"
               "qwen38-flash-next-gguf"
               "vibevoice-asr-streaming-7b-bf16"
             ];

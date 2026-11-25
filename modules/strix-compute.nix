@@ -18,7 +18,6 @@ in
     ./fleet-transport.nix
     ./journal-upload.nix
     ./library-client.nix
-    ./attic-cache-tripwire.nix
     ./qwen-tts.nix
     ./immich-ml.nix
   ];

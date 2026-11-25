@@ -33,8 +33,9 @@ Restoring is the reverse: re-add the row and wanted-set entry, let
 restorable, which is why step 1 exists), then `local-models-borrow`.
 
 Retirement receipts so far: `RETIRED-2026-09-16.tsv` (dotfiles#397),
-`RETIRED-2026-09-30.tsv` (the 2026-09-30 sweep, F1) and
-`RETIRED-2026-10-03.tsv` (the two openWakeWord rows).
+`RETIRED-2026-09-30.tsv` (the 2026-09-30 sweep, F1),
+`RETIRED-2026-10-03.tsv` (the two openWakeWord rows) and
+`RETIRED-2026-11-25.tsv` (everything outside Tom's 2026-11-25 keep sets).
 
 ## Historical procedure (store-path era, #130 workstream 4)
 

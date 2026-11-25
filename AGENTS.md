@@ -1,3 +1,13 @@
+**Model keep sets (Tom, 2026-11-25).** The NAS Library keeps Qwen3.8
+Flash-Next GGUF and MiniMax H3, plus the originals of what strix-coordinator
+borrows. strix-coordinator keeps Flash-Next, D3-Ultra, Qwen-Image, VibeVoice
+ASR, the Qwen3 8B embedder, Qwen3-ASR and the two Qwen3-TTS builds (with the
+TTS tokenizer and the K-2SO voice they need). Tom: "all the rest including
+qwen38-27b are OUT." The Qwen3.8 27B rows (Q4, Q8, DFlash2, Heretic ARA), the
+abliterated Flash-Next (SuperROC), Hy-Memory and GLM 5.3 left the catalog, so
+`library-fetch` cannot bring them back; Gufo has no alternate. This replaces
+the 27B, ARA, Hy-Memory and GLM lines below.
+
 **One embedding route on Gufo (Tom, 2026-11-10).** Tom: "i m a gufo
 maximalist." Embeddings are served by Gufo, not llama-server: Qwen3-Embedding-8B
 Q8_0 (`qwen3-embedding-8b-q8-gguf`) is the route `qwen3-embedding-8b`
@@ -38,13 +48,12 @@ config file `~/.claude-work/.claude.json`), selected only by `CLAUDE_CONFIG_DIR`
 in the fish launchers (`home/dot_config/fish/config.fish`). Both share skills and writable settings at
 `~/.local/state/claude/settings.json`; no model or effort is pinned by Nix.
 The initializer preserves existing choices and never resets them on activation; login, history, sessions and trust are per seat, so a
-session id resumes only on the seat and from the cwd that created it
-(`claude-sessions` fans out over the seats). Claude never saves workspace trust
-for `$HOME`, so fresh launches from `~` resolve the default `~/today` alias
-through `journal-day` into a permanent Europe/Paris journal-day cwd. Host-local
-`~/.config/journal-day.json` supplies the journal root and alias. Continue/resume
-uses that seat's recorded cwd without rotating the alias; explicit project cwd
-and custom `CLAUDE_ENVELOPE` are preserved. No timer or generated brief is added.
+session id resumes only on the seat that created it (`claude-sessions` fans out
+over the seats). `cc`, `cac`, `cc2` and `cac2` are plain shortcuts for
+`claude --dangerously-skip-permissions` on their seat: they start in the current
+directory and never call `journal-day` or cd into `~/today` (Tom, 2026-11-25).
+Claude never saves workspace trust for `$HOME`, so a launch from `~` asks for
+trust each time. No timer or generated brief is added.
 `~/today` carries no brief file (the stale brief was retired on 2026-10-13), and
 there is no third seat (Tom, 2026-09-22: "no more cc3"). Logins are hand
 `/login`s, never a delivered secret (the old claude-credentials seed was removed
@@ -83,9 +92,8 @@ hand-run service, a path/udev/session trigger, or a factory schedule:
 | # | Unit(s) | Hosts | Declared in |
 |---|---|---|---|
 | D41 | failure-marker-reconcile | all | `modules/failure-surfacing.nix` |
-| D42 | tripwire-coredump, tripwire-user-unit-failure (all); tripwire-nas-reachability, tripwire-attic-cache-health (strix); tripwire-strix-reachability (client, #514); tripwire-disk-{root,boot,pool,immich,hdd}, tripwire-nas-mounts (NAS, O1 2026-11-10, `hosts/nas/storage-alerts.nix`) | all | `modules/tripwire.nix` |
+| D42 | tripwire-coredump, tripwire-user-unit-failure (all); tripwire-nas-reachability, tripwire-disk-floor (2026-11-25, `hosts/strix-coordinator/disk-floor.nix`) (strix); tripwire-strix-reachability (client, #514); tripwire-disk-{root,boot,pool,immich,hdd}, tripwire-nas-mounts (NAS, O1 2026-11-10, `hosts/nas/storage-alerts.nix`) | all | `modules/tripwire.nix` |
 | D43 | nix-gc (weekly), gc-root-reaper (daily) | all | `modules/gc-retention.nix`, `modules/gc-root-reaper.nix` |
-| D44 | atticd GC every 12 h | NAS | `hosts/nas/attic.nix` |
 | D45 | btrfs-scrub-mnt-nas (monthly); btrbk-nas off since 2026-10-28 | NAS | `hosts/nas/storage.nix`, `hosts/nas/snapshots.nix` (gate off) |
 | D49 | fstrim, logrotate, fwupd-refresh, systemd-tmpfiles-clean (system and user) | all | NixOS defaults |
 | D50 | smartd (`-n standby,q`; a daemon, not a timer) | NAS | `hosts/nas/storage.nix` |
@@ -150,7 +158,7 @@ model collection is catalogued in
 - Qwen3.8 Flash-Next (UD-Q4_K_XL GGUF with the MTP predictor and the vision
   projector): the default demand-loaded text model, served as `qwen3.8-flash-next` on
   `http://strix-coordinator:8731` (`llama-swap.service`, target endpoint);
-- Qwen3.8-27B (UD-Q4_K_XL with the DFlash2 draft): the alternate on the same
+- Qwen3.8-27B (UD-Q4_K_XL with the DFlash2 draft): retired 2026-11-25; it was the alternate on the same
   endpoint, selected by the API model ID or `gufo-switch <name>`. Gufo's DeepSeek V4 Flash 0731
   alternate was removed on 2026-10-25: DeepSeek is now kyuz0's V4.1 Flash
   1017 on ds4 (`modules/ds4.nix`), single host on strix-worker at

@@ -1,5 +1,42 @@
 # DECISIONS
 
+2026-11-25 Codex is pinned at 0.169.0 while the rest of llm-agents keeps
+rolling. The pin is a second, fixed llm-agents input (`llm-agents-codex`, the
+revision that last shipped 0.169.0); the overlay takes `codex` from it. It is
+not a rolling input, so a fleet update does not move it. Merging #790 had
+moved Codex to 0.171.0 through the shared llm-agents bump; the NAS ran 0.171.0
+from that switch until this pin was deployed.
+
+2026-11-25 Models outside Tom's keep sets leave the catalog. Tom,
+2026-11-25, for the 4 TB HDD: "models we shall only keep qwen flash-next gguf
+(115gb), minimax h3. this must be adjusted from the Dotfiles repo side of
+things"; for strix: "qwen flash next remains ... qwen image, vibevoice asr,
+qwen 8b embedding, qwen asr, and the two qwen tts remain. all the rest
+including qwen38-27b are OUT." The catalog keeps those, D3-Ultra, the TTS
+tokenizer and the K-2SO voice, because strix borrows them from the Library.
+Retired rows: `qwen38-27b-gguf`, `qwen38-27b-q8-gguf`,
+`qwen38-27b-dflash2-gguf`, `qwen38-27b-heretic-ara-q8-gguf`,
+`qwen38-flash-next-abliterated-rocmfp4-gguf`, `hy-memory-30b-a3b-q8-gguf`
+and `glm53-flash-iq2-xxs-gguf`, with `lib/coding-comparison-models.json` and
+`lib/memory-writer-models.json`. Their consumers go too: the Gufo 27B
+alternates and ARA route, `modules/superroc.nix` and `pkgs/superroc`,
+`modules/hy-memory.nix` and its llama.cpp overlay, and the dsh local 27B
+entry. Library bytes are deleted by name with `RETIRED-2026-11-25.tsv`, then
+`local-models-prune` runs on each host.
+
+2026-11-25 Attic, the fleet binary cache, is retired. Tom, 2026-11-25:
+"attic cache: delete it. as long as my keys are saved (is that what attic
+does?) i am okay". `hosts/nas/attic.nix` (the `myNas.attic` service, its
+`/var/lib/private/atticd` bind and its firewall rule) and
+`modules/attic-cache-tripwire.nix` are deleted. No host lists
+`http://nas:8080/fleet` as a substituter or trusts its `fleet:` key, and the
+attic client leaves the common packages. Nothing had been pushed to the cache
+since 24 Sep; strix-coordinator builds every system and the deploy copies the
+closure to its host, so hosts fetch the rest from the public caches. The
+cache's signing key is in the 10 Sep fleet-identities capture, and the
+`atticd-server-token` ciphertext stays as escrow. The 33 GB of state under
+`/mnt/fast/atticd` is deleted by hand after the NAS switch.
+
 2026-10-31 Chrome and the browser desktop leave strix-coordinator (dotfiles
 #651). `modules/browser-desktop.nix`, `pkgs/browser-desktop` and
 `pkgs/chrome-stream` are deleted, `browser.internal` is dropped from AdGuard,

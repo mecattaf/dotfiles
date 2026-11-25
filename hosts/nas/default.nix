@@ -52,7 +52,6 @@ in
     # "real backups are physical redundancy, not a backup sitting on the
     # same device." The protection stack is snapshots + RAID 1 + LaCie.
     ./models.nix # the model Library: weights forever-collection + static cache
-    ./attic.nix # ws5  fleet binary cache, served directly (executed 2026-08-21)
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
@@ -149,15 +148,18 @@ in
   # same day; the 4TB holds music, photos, videos, Documents and the model
   # Library only.
   myNas.snapshots.enable = false;
-  # ws5 — flipped 2026-08-21 per the runbook in ./attic.nix: state rsynced
-  # from the strix with atticd stopped, signing key verified intact,
-  # env file placed on the root NVMe.
-  myNas.attic.enable = true;
+  # Step 4d of docs/nas/system-off-emmc.md: the eMMC holds only /etc, /root
+  # and the host identity since the 2026-11-25 reclaim.
+  myNas.storageAlerts.rootThreshold = 25;
+  # ws5 Attic (the fleet binary cache) is retired (Tom, 2026-11-25: "attic
+  # cache: delete it"). Nothing was pushed to it after 24 Sep; every system is
+  # built on strix-coordinator and copied to its host. Its signing key is kept
+  # in the 10 Sep fleet-identities capture.
   # No update center: the NAS builds nothing for the fleet. Its nightly build
   # was parked on 2026-09-28 (it peaked at 15.5G + 1.4G swap on this 24G
   # router), update-adopt left the devices on 2026-09-30, and NixOS builds
   # happen on strix-coordinator. The candidates vhost and its firewall rule
-  # on 10.42.0.1:8734 went with it; atticd stays.
+  # on 10.42.0.1:8734 went with it.
 
   # ── /nix on the NVMe pool (#232) ────────────────────────────────────────
   # Flipped after the runbook in ./nix-on-nvme.nix was walked on the real

@@ -19,7 +19,7 @@ to repair a test incident while live agent sessions must be preserved.
 
 # Worktrees live under /tmp
 
-Tom, 2026-10-31 (`~/notes/CLAUDE.md`): "Temporary experiments and worktrees
+Tom, 2026-10-31: "Temporary experiments and worktrees
 belong under /tmp, never a new hidden workspace collection in home." Create
 worktrees and scratch clones under `${TMPDIR:-/tmp}`, never `~/.wt`. `/tmp` ages
 out after 10 days and, on the NAS, is emptied at every boot: push or bundle the
@@ -30,6 +30,28 @@ uptodate with github which is quite a large thing to do.. that i dnt want to
 risk overbuilding." Push your branch at each stopping point, so a worktree
 never holds the only copy of the work. This is a habit, not a mechanism: build
 no sync tool, sweep or schedule for it.
+
+# Chats are journal files
+
+Every harness transcript has a second name in the notes journal, under
+`journal/YYYY/MM/DD/chats/<store>/` for the day its session started, made by
+the master agency's `chats` protocol (`protocols/chats/steps/link`). Both
+names are one file: a hard link, not a copy. Each name is the harness's own
+thread id.
+
+- Read chats there. Never write, append, truncate or edit one in place: that
+  changes the live session's transcript.
+- Never replace a project dir, a session folder or a transcript with a symlink,
+  and never point a harness store into notes. A symlinked Claude Code project
+  dir breaks resume by id from other directories (measured 2026-11-25, 2.1.325).
+- Resume by id from the session's own directory, the first "cwd" in its
+  transcript. Never assume a session lives in `~/today`.
+- If the harness has dropped its own name, resume from the journal name:
+  `claude --resume <path>.jsonl`.
+- Deleting a chat for good means deleting both names.
+- No harvest, archive or index script lives in the notes tree (Tom,
+  2026-11-25). Ordinary searches include `chats/` (Tom, 2026-11-25: "why would
+  ordinary searches skip chats/ ?"); a search for Tom's own writing excludes it.
 
 # NAS agent host: send compute to strix-coordinator
 
