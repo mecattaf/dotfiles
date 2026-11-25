@@ -9,21 +9,25 @@
 # Tom, 2026-11-10: "the only nix pure workflow is the heartbeat. it gets
 # a systemd timer unit." Each tick runs `scheduled tick`: it decodes the
 # cron times of every agency's .agency/scheduled/*.jsonc, links one
-# occurrence record per due item into the superagent's inbox and starts
-# the floor when records wait. It holds no superagent logic: the floor's
-# scheduled Source turns records into Triggers and the main Session
-# judges them. Runbook: docs/scheduled.md.
+# occurrence record per due item into the floor's inbox and, when a floor
+# unit is named and records wait, starts that unit. It holds no floor
+# logic: the floor's scheduled Source turns records into Triggers and the
+# floor judges them. Runbook: docs/scheduled.md.
 let
   scheduled = lib.getExe pkgs.scheduled;
-  # The one shared value: the floor's scheduled Source reads
-  # <stateDir>/inbox/scheduled by default, beside orchestrator.sqlite.
-  # programs.dsh.master.stateDir (home/dsh-master.nix) is what the Master
-  # profile renders as dsh-superagent's stateDir; tests/scheduled asserts
-  # the two agree.
-  inbox = "${config.programs.dsh.master.stateDir}/inbox/scheduled";
-  # The floor's dshd instance; the name the Master floor recipe keeps.
-  floorInstance = "floor";
-  # Tom, Claude Code and the dsh-web panel run the same program, and
+  # The one shared value. The Master dsh profile was retired on
+  # 2026-11-26 with dshd; the inbox stays at the path it had
+  # (<the Master stateDir>/inbox/scheduled), now literal, so the records
+  # already there are where the new floor's scheduled Source can be
+  # pointed. tests/scheduled asserts the path.
+  inbox = "${config.home.homeDirectory}/.agency/state/master/inbox/scheduled";
+  # The systemd user unit a tick starts when records wait (pkgs/scheduled,
+  # SCHEDULED_FLOOR_UNIT). null is the supported no-floor mode (orchestrator
+  # resolution R-9, 2026-11-26): the tick links records and wakes nothing.
+  # home/factory-floor.nix sets it once the factory floor is trusted to be
+  # woken.
+  floorUnit = null;
+  # Tom, Claude Code and the floor run the same program, and
   # `scheduled run` and `history` find the same inbox and floor. The
   # defaults live in the installed command: Home Manager's session
   # variables reach no NAS shell (useUserPackages puts hm-session-vars.sh
@@ -35,17 +39,20 @@ let
     nativeBuildInputs = [ pkgs.makeWrapper ];
     postBuild = ''
       wrapProgram $out/bin/scheduled \
-        --set-default SCHEDULED_INBOX ${lib.escapeShellArg inbox} \
-        --set-default SCHEDULED_FLOOR_INSTANCE ${floorInstance}
+        --set-default SCHEDULED_INBOX ${lib.escapeShellArg inbox}${
+          lib.optionalString (floorUnit != null) " --set-default SCHEDULED_FLOOR_UNIT ${lib.escapeShellArg floorUnit}"
+        }
     '';
     passthru = {
       unwrapped = pkgs.scheduled;
-      inherit inbox floorInstance;
+      inherit inbox floorUnit;
     };
     meta.mainProgram = "scheduled";
   };
 in
-lib.mkIf osConfig.dshd.enable {
+# The heartbeat follows the brain role, never a floor (R-9): until the
+# 2026-11-26 dshd retirement it was gated on the dshd module's enable.
+lib.mkIf (osConfig.myFleet.has "brain") {
   home.packages = [ cli ];
 
   systemd.user.services.scheduled-heartbeat = {
@@ -65,26 +72,27 @@ lib.mkIf osConfig.dshd.enable {
     Service = {
       Type = "oneshot";
       ExecStart = "${scheduled} tick";
-      # dshd and what it calls (nix-store, systemctl, journalctl)
-      # follow the running system, never a login shell.
+      # systemctl, the one tool a wake calls, follows the running system,
+      # never a login shell. No SCHEDULED_FLOOR_UNIT while floorUnit is null.
       Environment = [
         "PATH=/run/current-system/sw/bin"
         "SCHEDULED_INBOX=${inbox}"
-        "SCHEDULED_FLOOR_INSTANCE=${floorInstance}"
-      ];
+      ]
+      ++ lib.optional (floorUnit != null) "SCHEDULED_FLOOR_UNIT=${floorUnit}";
       # heartbeat.json, intake.json and .tick.lock: ~/.local/state/scheduled
-      # ($STATE_DIRECTORY), never the superagent's stateDir.
+      # ($STATE_DIRECTORY), never the floor's state dir.
       StateDirectory = "scheduled";
       # systemd's default is 0755; the files are 0600, keep their names private too.
       StateDirectoryMode = "0700";
       NoNewPrivileges = true;
       UMask = "0077";
       # The walk of ~ never competes with an interactive session for CPU
-      # (home/harness-records.nix). The floor dshd starts is its own unit
+      # (home/harness-records.nix). A floor the tick wakes is its own unit
       # and keeps its own priority.
       Nice = 10;
-      # Longer than dshd's startupTimeout (150 s) plus the tick lock's
-      # 60 s wait, so systemd never kills a tick before it logs why.
+      # Well past the tick lock's 60 s wait plus a wake (a --no-block
+      # start returns at once), so systemd never kills a tick before it
+      # logs why. Kept from the dshd era, when a wake waited up to 150 s.
       TimeoutStartSec = "5min";
     };
   };
@@ -107,22 +115,24 @@ lib.mkIf osConfig.dshd.enable {
     Install.WantedBy = [ "timers.target" ];
   };
 
-  # The Master floor's dsh-web on the Zenbook's loopback (docs/scheduled.md).
-  # The port grants control equal to the owner's own shell: the floor's
-  # management API takes no token (docs/dsh-master.md, The floor instance),
-  # so any local process on the Zenbook can steer the superagent through
-  # this forward.
+  # The factory floor's panel on the Zenbook's loopback (docs/scheduled.md).
+  # The port is the one the retired Master floor's dsh-web served on, kept
+  # literal for the new floor's loopback panel (R-10, 2026-11-26). Treat
+  # the port as granting control equal to the owner's own shell: a floor
+  # panel that takes no token lets any local process on the Zenbook steer
+  # the floor through this forward. With nothing listening on the NAS the
+  # forward is inert.
   # NAS-owned, like the live agency-web-client-tunnel; nothing of
   # Scheduled runs on the Zenbook. No store path in this text, so an
   # openssh bump never makes fleet-update hold a switch for it.
   systemd.user.services.scheduled-panel-tunnel =
     let
-      # The port the Master web profile serves on.
-      webPort = toString config.programs.dsh.master.webPort;
+      # The factory floor's loopback panel port (docs/factory-floor.md).
+      webPort = "3082";
     in
     {
       Unit = {
-        Description = "Master floor dsh-web: NAS loopback ${webPort} on the Zenbook";
+        Description = "Factory floor panel: NAS loopback ${webPort} on the Zenbook";
         After = [ "network-online.target" ];
         StartLimitIntervalSec = 0;
       };
