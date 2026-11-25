@@ -2038,6 +2038,15 @@
               touch "$out"
             '';
 
+        # The factory floor's user unit (docs/factory-floor.md): eval asserts
+        # on the real NAS config (declared, not autostarted, heartbeat wake
+        # off; both flips through extendModules), then the store launcher
+        # against a fake checkout and a missing one.
+        factory-floor = import ./tests/factory-floor {
+          inherit pkgs;
+          configurations = self.nixosConfigurations;
+        };
+
         # Scheduled (AGENTS.md D52): eval asserts on the real NAS
         # config, then the package's own tests under its own Node.
         scheduled = import ./tests/scheduled {
