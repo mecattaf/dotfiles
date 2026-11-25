@@ -1,5 +1,6 @@
 {
   lib,
+  pkgs,
   ...
 }:
 # ─── strix-coordinator: a root wiped at every boot (prepared 2026-11-25) ─────
@@ -43,8 +44,7 @@ let
   ];
 
   dirs = [
-    "/home" # tom's home: ~/.ssh (keys, known_hosts, the scan upload key), GitHub
-    # credentials for the nightly's fleet/ branch, the keyring
+    "/home" # on disk, but pruned to homeKeep at every boot (see below)
     "/var/log" # the journal
     "/var/lib/systemd" # linger (the nightly's systemd-run --user), timer stamps, random seed, coredumps
     "/var/lib/private" # DynamicUser state
@@ -56,6 +56,35 @@ let
     "/var/lib/failure-markers"
     "/var/lib/tripwire"
   ];
+
+  # tom's home keeps only these paths across a boot (Tom, 2026-11-25: strix
+  # is lean and impermanent; ~/compute "is EXACTLY what must be removed as
+  # part of an impermanent configuration"). Everything else in it, such as
+  # ~/compute, ~/.wt, ~/.cache and old tool state, is removed at every boot
+  # before /home is mounted. home-manager links its files again at boot.
+  # Home stays on the disk rather than in the 4 GiB RAM root, because the
+  # nightly's builds run as tom and fill ~/.cache/nix while strix is up.
+  # Paths are relative to the home.
+  homeKeep = [
+    ".ssh" # the key strix uses for nix copy and git over SSH, known_hosts, and
+    # authorized_keys, the only place the scanner's restricted upload key is
+    ".local/share/keyrings" # the keyring keyring-unlock-boot opens with the TPM-sealed password
+    ".local/state/home-manager" # home-manager's generation record and GC root,
+    ".local/state/nix" # and the per-user profiles it uses, so the boot
+    ".nix-profile" # activation stays a re-activation, not a first install
+    ".bash_history" # shell history
+    ".local/share/fish" # shell history (fish_history)
+    ".local/share/atuin" # shell history and atuin's own key
+    ".terminfo" # kitty's terminfo for ssh from the Zenbook, not installed system-wide
+    ".local/state/fleet-deploy" # failure-marker episodes a shell already showed;
+    # the markers themselves persist in /var/lib/failure-markers
+  ];
+
+  homePrune = pkgs.writeShellApplication {
+    name = "home-prune";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = builtins.readFile ./home-prune.sh;
+  };
 in
 {
   # The ext4 partition keeps its partuuid; only its mount point moves.
@@ -77,6 +106,23 @@ in
   // lib.genAttrs dirs same;
 
   boot.tmp.cleanOnBoot = true;
+
+  # Prune tom's home to homeKeep once per boot, after the disk is mounted at
+  # /persist and before /home is bound from it. A failure is logged and does
+  # not stop the boot: /home then mounts unpruned, as before this change.
+  systemd.services.home-prune = {
+    description = "Prune tom's home to the declared paths";
+    unitConfig = {
+      DefaultDependencies = false;
+      RequiresMountsFor = [ "${persist}/home" ];
+    };
+    before = [ "home.mount" ];
+    wantedBy = [ "home.mount" ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${homePrune}/bin/home-prune ${persist}/home/tom ${lib.escapeShellArgs homeKeep}";
+    };
+  };
 
   # Host identity read straight from /persist: no copy in /etc to go stale.
   environment.etc."machine-id".source = "${persist}/etc/machine-id";
