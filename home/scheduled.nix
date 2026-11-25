@@ -27,6 +27,9 @@ let
   # home/factory-floor.nix sets it once the factory floor is trusted to be
   # woken.
   floorUnit = null;
+  floorDefault = lib.optionalString (
+    floorUnit != null
+  ) "--set-default SCHEDULED_FLOOR_UNIT ${lib.escapeShellArg floorUnit}";
   # Tom, Claude Code and the floor run the same program, and
   # `scheduled run` and `history` find the same inbox and floor. The
   # defaults live in the installed command: Home Manager's session
@@ -39,9 +42,7 @@ let
     nativeBuildInputs = [ pkgs.makeWrapper ];
     postBuild = ''
       wrapProgram $out/bin/scheduled \
-        --set-default SCHEDULED_INBOX ${lib.escapeShellArg inbox}${
-          lib.optionalString (floorUnit != null) " --set-default SCHEDULED_FLOOR_UNIT ${lib.escapeShellArg floorUnit}"
-        }
+        --set-default SCHEDULED_INBOX ${lib.escapeShellArg inbox} ${floorDefault}
     '';
     passthru = {
       unwrapped = pkgs.scheduled;

@@ -26,11 +26,12 @@ let
   inbox = "/home/tom/.agency/state/master/inbox/scheduled";
   environment = lib.toList tick.Service.Environment;
 in
-assert timer.Timer == {
-  OnCalendar = "hourly";
-  OnStartupSec = "2min";
-  Persistent = true;
-};
+assert
+  timer.Timer == {
+    OnCalendar = "hourly";
+    OnStartupSec = "2min";
+    Persistent = true;
+  };
 assert timer.Install.WantedBy == [ "timers.target" ];
 assert storeFree timer && storeFree tunnel;
 assert tick.Service.Type == "oneshot";
@@ -43,10 +44,11 @@ assert lib.toList tick.Service.ExecStart == [ "${lib.getExe scheduled} tick" ];
 assert tick.Unit.ConditionPathIsDirectory == "%h/.agency";
 assert builtins.elem "SCHEDULED_INBOX=${inbox}" environment;
 assert !(lib.any (e: lib.hasPrefix "SCHEDULED_FLOOR" e) environment);
-assert environment == [
-  "PATH=/run/current-system/sw/bin"
-  "SCHEDULED_INBOX=${inbox}"
-];
+assert
+  environment == [
+    "PATH=/run/current-system/sw/bin"
+    "SCHEDULED_INBOX=${inbox}"
+  ];
 assert cli != null && cli.unwrapped == scheduled;
 assert cli.inbox == inbox && cli.floorUnit == null;
 assert !(hm.home.sessionVariables ? SCHEDULED_INBOX);
@@ -63,11 +65,12 @@ assert !(lib.hasInfix "--state-dir" (toString tick.Service.ExecStart));
 assert !(tick ? Install);
 assert !(builtins.elem scheduled hm.home.packages);
 assert !(lib.any (t: lib.hasPrefix ".agency" t) targets);
-assert timersOf "nas" == [
-  "paper-daemon-flush"
-  "scheduled-heartbeat"
-  "speech-queue"
-];
+assert
+  timersOf "nas" == [
+    "paper-daemon-flush"
+    "scheduled-heartbeat"
+    "speech-queue"
+  ];
 assert lib.all (h: !(builtins.elem "scheduled-heartbeat" (timersOf h))) [
   "client"
   "strix-coordinator"
