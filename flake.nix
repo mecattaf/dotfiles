@@ -1662,7 +1662,7 @@
           let
             homeConfig = agentProbe.home-manager.users.tom;
             clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
-            expectedJournal = "/home/tom/mecattaf/notes/journal";
+            expectedJournal = "/home/tom/notes/journal";
           in
           assert homeConfig.programs.ai-memory.journalDir == expectedJournal;
           assert homeConfig.home.activation ? aiMemoryJournal;

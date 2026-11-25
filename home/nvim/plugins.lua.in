@@ -357,11 +357,12 @@ require("lazy").setup({
     dir = dir('nvim-lspconfig'),
     ft = { "markdown", "md" },
     config = function()
-      -- The ~/mecattaf/notes vault is ~10k markdown files / 5.4G. marksman roots
+      -- The ~/notes vault is ~10k markdown files / 5.4G. marksman roots
       -- to its .git and tries to index the whole tree, times out
       -- (MailboxProcessor.PostAndAsyncReply) and crashes on every open. Skip
       -- attaching inside the vault; marksman still works in normal md projects.
-      local vault = vim.env.HOME .. "/mecattaf/notes"
+      -- ~/mecattaf/notes is its old path, left as a symlink for a while (2026-11-25).
+      local vaults = { vim.env.HOME .. "/notes/", vim.env.HOME .. "/mecattaf/notes/" }
       vim.lsp.config("marksman", {
         root_dir = function(bufnr, on_dir)
           local fname = vim.api.nvim_buf_get_name(bufnr)
@@ -369,7 +370,9 @@ require("lazy").setup({
           -- filesystem workspace. Marksman rejects that URI as a root.
           -- DshRecoverySave emits FileType again after choosing a real path.
           if fname:match("^dsh%-recovery://") then return end
-          if fname:sub(1, #vault + 1) == vault .. "/" then return end
+          for _, vault in ipairs(vaults) do
+            if fname:sub(1, #vault) == vault then return end
+          end
           on_dir(vim.fs.root(bufnr, { ".marksman.toml", ".git" })
             or vim.fs.dirname(fname))
         end,
