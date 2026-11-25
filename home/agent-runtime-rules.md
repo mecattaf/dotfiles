@@ -61,8 +61,9 @@ local. Nix uses the SSH builder `strix-coordinator` with zero local build jobs.
 builder, and nothing goes to it. Do not override that setting or fall back to a
 NAS build.
 Evaluate on NAS when useful; compile and run memory/GPU-intensive jobs on
-compute. Before every `nix build`, check `df -h /` on the build host and stop
-if it has less than 25 GB free.
+compute. Before every `nix build`, check `df -h /nix` on the build host and
+stop if it has less than 25 GB free. (On strix-coordinator `/` is a RAM disk
+wiped at boot; `/nix` is on the disk.)
 
 For other heavy commands, use `fleet-exec strix-coordinator --cwd
 /absolute/remote/checkout -- command args...`. Stage the
