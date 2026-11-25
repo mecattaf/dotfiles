@@ -142,7 +142,6 @@ let
     substituteInPlace "$out/bin/domicile" --replace-fail '@out@' "$out"
     chmod +x "$out/bin/domicile"
   '';
-  desktopClientConfig = home.xdg.configFile."herdr/desktop-client.toml".source;
   trialPath = "${helperDirectory}:${recovery}/bin:${domicile}/bin:${home.home.path}/bin:${pkgs.fish}/bin:/etc/profiles/per-user/tom/bin:/run/current-system/sw/bin";
   # A separately checked store file remains usable when the live config is broken.
   rescue = "${rescueDirectory}/domicile.tsx";
@@ -279,7 +278,6 @@ let
     fi
     export DOMICILE_CONFIG_FILE=${lib.escapeShellArg (toString checkedKeyTable)}
     export DOMICILE_CONSOLE_TRIAL_PATH=${lib.escapeShellArg trialPath}
-    export DOMICILE_DESKTOP_CLIENT_CONFIG=${lib.escapeShellArg (toString desktopClientConfig)}
     echo "Domicile console trial: config $DOMICILE_CONFIG_FILE"
     echo "No activation or kernel change. Logs: journalctl -t domicile-session -b"
     exec ${session}/bin/domicile-physical-session

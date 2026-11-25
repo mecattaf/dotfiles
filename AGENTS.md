@@ -128,14 +128,14 @@ never the rendered wrapper.
 
 **Fleet target (Tom, 2026-10-22/23).** Rename strix to `strix-coordinator`;
 `strix-worker` returns. Both are headless Ethernet compute hosts. The NAS is
-the canonical home and agent host: Herdr, history, credentials and harnesses.
+the canonical home and agent host: hc terminals, history, credentials and harnesses.
 `dsh` is the primary harness; pi was retired (2026-10-25). NAS retains routing, DNS,
 Tailscale and the Library. The Zenbook client is the physical seat, with Huion
 and Magic Trackpad; Domicile is the sole daily compositor. Sway, Niri, Vicinae, Mako and
 external desktop menus are retired; use the native Domicile APIs. strix-coordinator
 keeps its independent Tailscale fallback; use ordinary OpenSSH. Speech defaults to
 client; synthesis stays on compute. These are cutover targets, not a claim
-that the migration is live. Preserve Herdr sessions. Reboot remains a
+that the migration is live. Preserve live hc terminals. Reboot remains a
 deliberate, supervised step. Activation of NAS and strix-coordinator, attended
 or overnight, is decided by the master agency's fleet update protocol (see
 Updates above), never by code in this repository; it activates only an idle,
@@ -341,7 +341,7 @@ shared browser desktop or `chrome-stream`; the client keeps Chrome. A flake
 check asserts that no host declares a `browser-desktop` user service.
 
 **Raw dotfiles come from `~/mecattaf/dotfiles`, not from the flake you switch
-from (#313).** Every out-of-store link (`home/home.nix` `link`, herdr, nvim)
+from (#313).** Every out-of-store link (`home/home.nix` `link`, herdr-core, nvim)
 points into that checkout. Bring the branch there (ff-merge or `pull
 --ff-only`) before `nixos-rebuild switch`, even when switching from a worktree.
 `raw-dotfiles-guard` (`home/raw-dotfiles-guard.nix`) fails the Home Manager
@@ -375,9 +375,9 @@ the daemon synthesizes and plays through a seat during 06:00–24:00, matching
 paper working hours, with a 06:05 release for anything held overnight.
 Publishing a queue file is not evidence it was heard: consult playback receipts.
 
-Keep the Herdr server's `X-SwitchMethod=keep-old` protection: deployment must
-not kill live PTYs. Existing client processes need a new projector launch to
-load a changed binary.
+Keep `hc-core.service`'s `X-SwitchMethod=keep-old` protection: deployment must
+not kill live PTYs. A moved herdr-core lands in a running core only through
+`hc-restart-clean`, typed by a person outside any hc terminal.
 
 The original montage, accepted midway B enrollment and evaluation outputs are
 preserved on NAS; superseded speech model weights were deleted on 2026-09-16

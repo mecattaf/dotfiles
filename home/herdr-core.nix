@@ -8,11 +8,13 @@
 # hc (herdr-core, github.com/herdrdev/herdr-core, Apache-2.0): the terminal
 # runtime that carries Tom's stations and the floor's workers on the brain host.
 # One core per machine, default session, socket
-# /run/user/<uid>/herdr-core/default.sock. The package (`hc`, `herdr-core`) is
-# installed on every host by ./herdr.nix; this file adds, on the brain only, the
-# two things a declared core needs: its config file and the unit that decides
-# WHEN and WITH WHICH ENVIRONMENT the core starts. ../modules/herdr-core.nix
-# adds kitty's terminfo on the same host. Runbook: docs/herdr-core.md.
+# /run/user/<uid>/herdr-core/default.sock. This file installs the package
+# (`hc`, `herdr-core`) on every host, from the shared llm-agents input (it moved
+# here from the retired home/herdr.nix with Herdr v1), and adds, on the brain
+# only, the two things a declared core needs: its config file and the unit that
+# decides WHEN and WITH WHICH ENVIRONMENT the core starts.
+# ../modules/herdr-core.nix adds kitty's terminfo on the same host. Runbook:
+# docs/herdr-core.md.
 #
 # WHY A ONESHOT (S2 §14, holder-eval 21 Nov). Upstream ships no unit; hc
 # supervises itself with transient user units it creates through systemd-run:
@@ -42,7 +44,7 @@
 # must never end a program; the core and the holder live in hc's own units
 # anyway, so a stop or restart of hc-core.service ends nothing.
 #
-# SWITCH. X-SwitchMethod=keep-old, as ./herdr.nix: once the unit is active, a
+# SWITCH. X-SwitchMethod=keep-old (as the retired Herdr v1 unit had): once the unit is active, a
 # switch that moves the herdr-core store path never re-runs it. Read in the
 # sd-switch source tonight (26 Nov; the NAS's home-manager-nas activates with
 # sd-switch 0.6.3 from nixos-26.05, the unstable hosts with 0.6.4; both have
@@ -72,8 +74,12 @@ let
   link = config.lib.rawDotfiles.link; # home/raw-dotfiles-guard.nix
 in
 {
-  config = lib.mkIf (osConfig.myFleet.has "brain") {
-    # RAW single-file symlink into the checkout, like Herdr's config.toml:
+  # Every configured host carries the client and the binary; only the brain
+  # runs a declared core.
+  config = lib.mkMerge [
+    { home.packages = [ pkgs.llm-agents.herdr-core ]; }
+    (lib.mkIf (osConfig.myFleet.has "brain") {
+    # RAW single-file symlink into the checkout, like Herdr v1's config.toml was:
     # ~/.config/herdr-core/ itself stays a real directory (templates/, and
     # hand-made files such as pulse-client.conf, live next to it).
     xdg.configFile."herdr-core/config.toml".source = link "dot_config/herdr-core/config.toml";
@@ -124,8 +130,9 @@ in
         ExecStart = "${pkgs.llm-agents.herdr-core}/bin/herdr-core server start";
       };
       # default.target, not graphical-session.target: under linger the core
-      # comes up at boot with no login session, like herdr.service.
+      # comes up at boot with no login session.
       Install.WantedBy = [ "default.target" ];
     };
-  };
+    })
+  ];
 }

@@ -72,10 +72,13 @@ assert !h.gtk.enable && !h.programs.obs-studio.enable;
 assert !(h.xdg.configFile ? "sway-local.conf");
 assert !(h.systemd.user.services ? vicinae);
 assert !builtins.any (p: lib.getName p == "call-diarize") h.home.packages;
-assert h.systemd.user.services.herdr.Unit.X-SwitchMethod == "keep-old";
-assert h.systemd.user.services.herdr.Service.OOMPolicy == "continue";
-assert h.systemd.user.services.herdr.Service.ManagedOOMPreference == "omit";
-assert !(h.systemd.user.services.herdr.Unit ? PartOf);
+# Herdr v1's server is gone; the terminal runtime is the declared hc core,
+# which keeps the same switch and OOM stance (no ManagedOOMPreference on
+# purpose: home/herdr-core.nix).
+assert !(h.systemd.user.services ? herdr);
+assert h.systemd.user.services.hc-core.Unit.X-SwitchMethod == "keep-old";
+assert h.systemd.user.services.hc-core.Service.OOMPolicy == "continue";
+assert !(h.systemd.user.services.hc-core.Unit ? PartOf);
 assert c.systemd.services."user@".serviceConfig.ManagedOOMPreference == "omit";
 assert builtins.all
   (
