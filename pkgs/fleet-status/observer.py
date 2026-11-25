@@ -236,6 +236,11 @@ class Observer:
             self.state = {"sequence": 0, "salt": secrets.token_hex(32), "cursors": {}, "sessions": {}, "usage": {}, "events": [], "enrolledAt": stamp()}
         self.lock = threading.RLock()
         self.cache = self.state.setdefault("cache", {})
+        # The instance collector and the lifecycle journal were retired on
+        # 2026-11-26. A restored state must not keep republishing their last
+        # rows and run events: nothing produces newer ones to displace them.
+        self.cache.pop("instances", None)
+        self.state["events"] = [row for row in self.state.get("events", []) if row.get("sourceId") != "agent.lifecycle"]
         self.futures = {}
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
         self.publisher_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)

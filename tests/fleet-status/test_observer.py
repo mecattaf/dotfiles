@@ -40,6 +40,21 @@ class ObserverTests(unittest.TestCase):
         self.assertFalse(any(subject["kind"] == "instance" for subject in snapshot["subjects"]))
         self.assertEqual(snapshot["events"], [])
 
+    def test_restored_state_drops_retired_instance_rows_and_lifecycle_events(self):
+        parent = self.value.add_subject(self.value.public_id("instance", "private-floor"), "instance", "DSH instance", "host-nas")
+        run = self.value.add_subject(self.value.public_id("invocation", "private-run"), "invocation", "Supervised run", parent)
+        self.value.event(run, "agent.lifecycle", "run.started", "2026-11-25T23:00:00Z", "private-run-started")
+        row = observer.public_observation(parent, "agent.instances", "instance.state", "running", ttl=180, scope="this-instance")
+        self.value.cache["instances"] = {"rows": [row], "failures": 0, "error": None}
+        self.value.publish()
+        again = observer.Observer(self.value.config, self.root / "state")
+        self.addCleanup(again.pool.shutdown, wait=True)
+        self.addCleanup(again.publisher_pool.shutdown, wait=True)
+        self.assertNotIn("instances", again.cache)
+        snapshot = again.publish()
+        self.assertEqual(snapshot["events"], [])
+        self.assertFalse(any(subject["kind"] in ["instance", "invocation"] for subject in snapshot["subjects"]))
+
     def test_projection_refuses_secrets_paths_objects_nan_and_unknown_keys(self):
         for value in ["Bearer secret-token", "/private/home", {"secret": "abc"}, float("nan")]:
             with self.subTest(value=value), self.assertRaises(ValueError):
