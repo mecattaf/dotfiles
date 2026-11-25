@@ -94,6 +94,7 @@ in
     ./agency-kitty.nix
     ./agency-editor.nix
     ./communications.nix
+    ./factory-floor.nix
     ./ai-memory.nix
     ./dsh.nix
     ./downloads-mirror.nix

@@ -78,10 +78,10 @@ the Scheduled heartbeat (D52). Tom, 2026-11-10: "one systemd timer
 cnfigured in the dotfiels, the rest are not timers at all." The
 heartbeat holds no schedule of its own: each hourly tick decodes the
 cron times in those files, hands due work to the floor and wakes it.
-dshd and the Master dsh profiles were retired on 2026-11-26; until a
-floor unit takes the wake (`SCHEDULED_FLOOR_UNIT`), the heartbeat
-links records and wakes nothing. The floor stays free of clocks (Tom:
-"NO SCHEDULES EVER"). Substrate does not decide what is due (Tom,
+dshd and the Master dsh profiles were retired on 2026-11-26; until
+`factory-floor.service` (`home/factory-floor.nix`) takes the wake, the
+heartbeat links records and wakes nothing. The floor stays free of
+clocks (Tom: "NO SCHEDULES EVER"). Substrate does not decide what is due (Tom,
 2026-11-10: `re: "substrate decides what's due" NO.`). Silent-hours
 releases (paper 06:05, speech 06:05) stay. Reactive triggers (a Huion
 scan drops → process when there is bandwidth) are fine. A midnight
@@ -115,9 +115,9 @@ has no timer and no `OnCalendar` (tests/closet-topology asserts both).
 **Updates (Tom, 2026-11-10 and 2026-11-12).** Fleet and CLI updates are
 protocols of the master agency under `~/.agency/protocols/`, outside this
 repository. This repository holds only the mechanism: the Scheduled heartbeat
-and CLI, and the hc core unit (`home/herdr-core.nix`). The nightly
-`update-check` program, its watch list and its rolling `update/<input>` PRs
-are retired.
+and CLI, the hc core unit (`home/herdr-core.nix`) and the factory-floor unit
+(`home/factory-floor.nix`). The nightly `update-check` program, its watch
+list and its rolling `update/<input>` PRs are retired.
 
 In any generated PR body or comment, imported release notes must stay in
 collision-safe literal text fences, with only their release-page links
