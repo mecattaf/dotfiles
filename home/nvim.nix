@@ -210,9 +210,12 @@ in
   # The native UI lives on the seat; files and editor state stay on the NAS.
   # The NAS needs only Kitty's standalone CLI to request that local overlay.
   home.sessionVariables.NVIM_REMOTE_ROLE =
-    if osConfig.myFleet.has "seat" then "seat"
-    else if osConfig.myFleet.has "brain" then "brain"
-    else "local";
+    if osConfig.myFleet.has "seat" then
+      "seat"
+    else if osConfig.myFleet.has "brain" then
+      "brain"
+    else
+      "local";
   home.packages = lib.optional (osConfig.myFleet.has "brain") pkgs.kitty.kitten;
 
   # nvim ≥ 0.11 required (config uses vim.fn.getregion / vim.uv / vim.diff / vim.lsp.config)
