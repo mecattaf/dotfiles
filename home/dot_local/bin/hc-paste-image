@@ -16,6 +16,7 @@ The path is inserted without Enter. The window and hc address are rechecked
 after upload before insertion.
 """
 import json
+import os
 import re
 import secrets
 import shlex
@@ -57,7 +58,12 @@ print(folder + "/" + name)
 
 
 def kitten(*args):
-    return subprocess.run(["kitten", "@", *args], capture_output=True, text=True, timeout=10)
+    # Kitty's background launch grants control through this inherited socket.
+    # Keep it only for kitten children; SSH and clipboard tools do not need it.
+    endpoint = re.fullmatch(r"fd:(\d+)", os.environ.get("KITTY_LISTEN_ON", ""))
+    inherited = (int(endpoint[1]),) if endpoint else ()
+    return subprocess.run(["kitten", "@", *args], capture_output=True, text=True,
+                          timeout=10, pass_fds=inherited)
 
 
 def station_window(window):

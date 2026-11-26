@@ -25,6 +25,8 @@ import json, os, shlex, sys
 from pathlib import Path
 here = Path(sys.argv[0]).resolve().parent
 name = Path(sys.argv[0]).name
+if name == "kitten" and os.environ.get("KITTY_LISTEN_ON", "").startswith("fd:"):
+    os.fstat(int(os.environ["KITTY_LISTEN_ON"][3:]))
 data = sys.stdin.buffer.read() if name == "ssh" else b""
 with open(here / (name + ".jsonl"), "a") as out:
     out.write(json.dumps({"argv": sys.argv[1:], "stdin_len": len(data)}) + "\n")
@@ -64,9 +66,14 @@ class PasteImage(unittest.TestCase):
         listing = [{"id": 1, "tabs": [{"id": 1, "windows": [{"id": 7, "user_vars": user_vars}]}]}]
         (self.bin / "kitten-ls.json").write_text(json.dumps(listing))
 
-    def run_paste(self, *args):
+    def run_paste(self, *args, control_fd=None):
         env = {"PATH": f"{self.bin}:{os.environ.get('PATH', '')}", "HOME": str(self.root)}
-        return subprocess.run([sys.executable, str(SCRIPT), *args], env=env, capture_output=True, text=True, timeout=30)
+        inherited = ()
+        if control_fd is not None:
+            env["KITTY_LISTEN_ON"] = f"fd:{control_fd}"
+            inherited = (control_fd,)
+        return subprocess.run([sys.executable, str(SCRIPT), *args], env=env,
+                              capture_output=True, text=True, timeout=30, pass_fds=inherited)
 
     def calls(self, name):
         path = self.bin / (name + ".jsonl")
@@ -88,6 +95,12 @@ class PasteImage(unittest.TestCase):
         self.assertEqual(texts[0][:7], ["@", "send-text", "--match", "id:7", "--bracketed-paste", "auto", "--"])
         self.assertRegex(texts[0][7], r"^/tmp/hc-paste-1000/clipboard-\d{8}-\d{6}-[0-9a-f]{16}\.png$")
         self.assertEqual(self.sent("send-key"), [])
+
+    def test_kitty_background_control_socket_survives_each_kitten_call(self):
+        with open(os.devnull, "rb") as control:
+            result = self.run_paste("7", control_fd=control.fileno())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.sent("send-text")), 1)
 
     def test_not_a_station_passes_ctrl_v_through(self):
         self.window({})
