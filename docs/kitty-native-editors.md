@@ -92,8 +92,11 @@ leaves the same dirty NAS editor PID, and a fresh SSH opening restores it.
 A private Kitty/hc/Xvfb test verifies the blocking overlay request, original
 window targeting across focus changes, quoted file arguments and child exit
 status. These use private homes and runtimes, never live user input.
-Full Nix plugin startup and the actual network/desktop clipboard/graphics path
-remain deployment qualification.
+Full managed startup on the candidate client/NAS wrappers loads all 32 plugin
+specifications without error notifications; `nvim-remote` uses NAS plugin paths
+and OSC52. That check exposed and fixed pipeline.nvim's missing Nix-managed
+nui.nvim dependency. The actual Zenbook/NAS desktop clipboard and graphics
+path remains deployment qualification.
 
 `runtime-test -- python3 tests/native-nvim/kitty_overlay.py --kitty <kitty>
 --hc <hc> --xvfb <Xvfb> [--dri-drivers <Mesa/lib/dri>]` runs actual Kitty and hc
