@@ -71,6 +71,17 @@ in
     agencyKitty.enable = false;
     agencyEditor.enable = false;
   };
+  # The factory floor's two flips (docs/factory-floor.md, "The two flips"),
+  # Tom's alone; home/factory-floor.nix keeps both off by default.
+  # autostart: factory-floor.service is wanted by default.target, so it
+  # comes up at boot, and any switch that finds it inactive starts it, when
+  # the checkout's entry exists. heartbeatWake: the heartbeat is told the unit
+  # (SCHEDULED_FLOOR_UNIT), so a tick with records waiting in the live inbox
+  # starts it, even after a hand stop (docs/factory-floor.md: keeping it down).
+  home-manager.users.tom.services.factory-floor = {
+    autostart = true;
+    heartbeatWake = true;
+  };
   # The live skill roots are writable directories. Keep them frozen for the
   # separate DSH ownership work; activation must not back them up or replace
   # them with the older whole-directory links.

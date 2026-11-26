@@ -78,9 +78,9 @@ the Scheduled heartbeat (D52). Tom, 2026-11-10: "one systemd timer
 cnfigured in the dotfiels, the rest are not timers at all." The
 heartbeat holds no schedule of its own: each hourly tick decodes the
 cron times in those files, hands due work to the floor and wakes it.
-dshd and the Master dsh profiles were retired on 2026-11-26; until
-`factory-floor.service` (`home/factory-floor.nix`) takes the wake, the
-heartbeat links records and wakes nothing. The floor stays free of
+dshd and the Master dsh profiles were retired on 2026-11-26; the NAS
+names `factory-floor.service` (`home/factory-floor.nix`, `heartbeatWake`
+in `hosts/nas/default.nix`) as the unit the heartbeat wakes. The floor stays free of
 clocks (Tom: "NO SCHEDULES EVER"). Substrate does not decide what is due (Tom,
 2026-11-10: `re: "substrate decides what's due" NO.`). Silent-hours
 releases (paper 06:05, speech 06:05) stay. Reactive triggers (a Huion

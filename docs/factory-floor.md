@@ -14,13 +14,15 @@ a local checkout. Checks: `checks.factory-floor` (`tests/factory-floor`).
 | Ordering | `After=network-online.target hc-core.service`, `Wants=hc-core.service` |
 | Condition | `ConditionPathExists=<entry>`: with no checkout, a start is skipped and no unit fails |
 | Switch | `X-SwitchMethod=keep-old`: a switch never restarts a running floor |
-| Install | none: wanted by no target, so it never starts at boot or at switch (`autostart = false`) |
+| Install | `WantedBy=default.target` (`autostart = true` in `hosts/nas/default.nix`): up at boot, and started by any switch that finds it inactive (sd-switch), when the entry exists |
 | ExecStart | a store launcher, `factory-floor-service`, that execs the entry with no arguments |
-| Heartbeat wake | off (`heartbeatWake = false`, `floorUnit = null`) |
+| Heartbeat wake | on (`heartbeatWake = true` in `hosts/nas/default.nix`, `floorUnit = "factory-floor.service"`): a tick with records waiting starts the unit |
 
 The options are `services.factory-floor.{enable, package, checkout, entry, stateDir,
 workDir, configDir, host, port, autostart, heartbeatWake}`, plus the read-only
 `floorUnit`. `enable` defaults to the brain role. No other host has the unit.
+`autostart` and `heartbeatWake` default to off; the NAS turns both on in
+`hosts/nas/default.nix` ([The two flips](#the-two-flips-toms)).
 
 ## The contract with the floor repository
 
@@ -74,12 +76,22 @@ workDir, configDir, host, port, autostart, heartbeatWake}`, plus the read-only
 ## Start, stop, logs
 
 ```
-systemctl --user start factory-floor        # by hand; nothing else starts it
+systemctl --user start factory-floor        # by hand; boot and the heartbeat also start it
 systemctl --user status factory-floor
 journalctl --user -u factory-floor -f
 ~/mecattaf/factory-floor/bin/agency status --json
 systemctl --user stop factory-floor         # SIGTERM; workers keep running in hc
 ```
+
+With both flips on, a stop holds only until the next tick that finds a record
+waiting, the next switch (sd-switch starts an inactive unit that a target
+wants; `keep-old` only spares a running one) or the next boot. To keep the
+floor down, delete the flips block and switch. For a short hold, stop the
+clock first (`systemctl --user stop scheduled-heartbeat.timer`) or disable the
+items (`scheduled set ID enabled false`); a switch or a boot still starts it.
+Do not mask it: the unit file is a Home Manager link in
+`~/.config/systemd/user`, so a plain mask refuses to replace it and a forced
+one fights the next activation.
 
 A switch does not restart a running floor (`keep-old`). To pick up a new
 launcher or a rebuilt checkout, restart it yourself:
@@ -89,19 +101,27 @@ first.
 
 ## The two flips (Tom's)
 
-Both live in `home/factory-floor.nix` or in a host block:
+Both default to off in `home/factory-floor.nix`. The NAS turns both on in a
+host block, `hosts/nas/default.nix`:
 
 ```nix
-services.factory-floor.autostart = true;      # WantedBy=default.target: up at boot (and started by the switch)
-services.factory-floor.heartbeatWake = true;  # floorUnit = "factory-floor.service"
+home-manager.users.tom.services.factory-floor = {
+  autostart = true;      # WantedBy=default.target: up at boot (and started by the switch)
+  heartbeatWake = true;  # floorUnit = "factory-floor.service"
+};
 ```
+
+Delete the block to turn both off again.
 
 When `heartbeatWake` is on, `home/scheduled.nix` passes
 `SCHEDULED_FLOOR_UNIT=factory-floor.service` to the heartbeat. A tick with
 records waiting then runs `systemctl --user start --no-block` on the floor
 (docs/scheduled.md). Turn it on only when the floor's scheduled Source reads the
-live inbox and you want it to act on those items unattended. `tests/factory-floor`
-evaluates both flips, so neither is first evaluated on the day it is made.
+live inbox and you want it to act on those items unattended. Once it is on, a
+hand `systemctl --user stop` holds only until the next tick that finds a
+record waiting ([Start, stop, logs](#start-stop-logs) says how to keep it
+down). `tests/factory-floor` evaluates the way back (both off), so a revert
+is never a first evaluation.
 
 ## Running the floor on a host that was not switched
 

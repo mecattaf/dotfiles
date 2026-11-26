@@ -25,11 +25,12 @@
 # failed unit. Once the floor repo has a flake, `package` names it and
 # `entry` defaults into the store.
 #
-# NOT AUTOSTARTED, NO WAKE (2026-11-26). The unit is declared but wanted by no
-# target, and the heartbeat does not start it: the heartbeat's inbox holds
+# OFF BY DEFAULT (2026-11-26). By default the unit is declared but wanted by
+# no target, and the heartbeat does not start it: the heartbeat's inbox holds
 # Tom's real items (fleet-update among them), and a first-night floor must not
-# be woken into them unattended. It is started by hand
-# (`systemctl --user start factory-floor`). Two flips, both Tom's:
+# be woken into them unattended. It is then started by hand
+# (`systemctl --user start factory-floor`). Two flips, both Tom's, both on for
+# the NAS in hosts/nas/default.nix:
 #   autostart = true      -> WantedBy=default.target (comes up at boot)
 #   heartbeatWake = true  -> floorUnit = "factory-floor.service", which
 #                            home/scheduled.nix passes to the heartbeat as
