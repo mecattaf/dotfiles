@@ -68,6 +68,7 @@ env['PROBE_LAUNCHER']=str(source)
 logs={'kitty_binary':str(kitty),'hc_binary':str(hc),'xvfb_binary':str(xvfb),
       'launcher':str(source),'launcher_sha256':hashlib.sha256(source.read_bytes()).hexdigest()}
 processes=[]
+core_started=False
 def wait_file(path,timeout=15):
  end=time.monotonic()+timeout
  while time.monotonic()<end:
@@ -83,7 +84,7 @@ try:
  xp=subprocess.Popen([str(xvfb),'-displayfd','1','-screen','0','1024x768x24','-nolisten','tcp','-ac','-noreset'],env=env,stdout=subprocess.PIPE,stderr=xf,text=True);processes.append(xp)
  assert select.select([xp.stdout],[],[],8)[0], 'Xvfb display timeout'
  display=xp.stdout.readline().strip();assert display.isdigit(),(display,(root/'xvfb.log').read_text());env['DISPLAY']=':'+display
- start=json.loads(run([hc,'--json','server','start']));logs['core_start']=start
+ start=json.loads(run([hc,'--json','server','start']));logs['core_start']=start;core_started=True
  terminal=json.loads(run([hc,'--json','run','--bg','--no-parent','--no-notify','--name','overlay','--cwd',root,'--',sys.executable,root/'worker.py']));logs['terminal']=terminal
  tid=terminal.get('address') or terminal.get('id') or terminal.get('terminal',{}).get('id');assert tid,terminal
  wait_file(root/'worker-ready')
@@ -127,5 +128,4 @@ finally:
    p.terminate()
    try:p.wait(timeout=4)
    except subprocess.TimeoutExpired:p.kill();p.wait()
- try:run([hc,'server','stop'])
- except Exception:pass
+ if core_started:run([hc,'server','stop'])
