@@ -73,6 +73,11 @@ function M.open(data)
     assert(opened, 'Could not open files in the retained NAS editor')
     -- Native :connect relinks its SSH tunnel to the retained server, detaches
     -- stale UIs and closes this empty bootstrap. Neovim owns all lifetimes.
+    -- Incoming socket UIs default detachable in 0.13. Only this disposable
+    -- bootstrap must opt out, otherwise :connect leaves an empty server.
+    for _, ui in ipairs(vim.api.nvim_list_uis()) do
+      vim.api.nvim_chan_set(ui.chan, { detach = false })
+    end
     vim.cmd.connect({ args = { socket } })
   else
     open_files(data)
