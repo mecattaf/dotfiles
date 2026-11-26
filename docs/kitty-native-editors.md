@@ -95,6 +95,14 @@ status. These use private homes and runtimes, never live user input.
 Full Nix plugin startup and the actual network/desktop clipboard/graphics path
 remain deployment qualification.
 
+`runtime-test -- python3 tests/native-nvim/kitty_overlay.py --kitty <kitty>
+--hc <hc> --xvfb <Xvfb> [--dri-drivers <Mesa/lib/dri>]` runs actual Kitty and hc
+on a private X server. It invokes the production NAS launcher over the hc
+terminal, selects an overlay on its originating window while another tab is
+active, preserves literal file arguments, and verifies blocking exit status
+7 and SIGTERM/143. The local editor is a small test process; no live desktop,
+clipboard or user terminal participates.
+
 ## Historical retained-editor candidate (7 November)
 
 Research and candidate implementation, 2026-11-07. Nothing here activates a
