@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """A new persistent NAS shell (an hc station) for each Kitty window.
 
-Mod+Enter -> domicile-apps terminal -> kitty -e domicile-terminal -> the same
-pinned ssh as before -> on the NAS, hc-station opens a new hc terminal in ~
+Mod+Enter -> domicile-apps terminal -> kitty -e domicile-terminal -> the
+Kitty SSH kitten -> on the NAS, hc-station opens a new hc terminal in ~
 (or --cwd) and attaches to it. Closing the window only detaches: the shell
 keeps running on the NAS; `exit` ends it. If hc-station is missing on the NAS
 a plain fish opens with a one-line banner, and hc-station itself falls back
@@ -10,8 +10,14 @@ to a plain fish when hc is unavailable: a window always gets a shell.
 
 --plain is the old behaviour (a plain fish over ssh, no hc), --local opens
 fish on this device (the seat rescue shell).
+
+--attach ADDRESS reopens an existing hc station without creating a shell.
+After a network drop, reconnect to that same address in this window. A new
+station's address comes from hc-station's existing Kitty hc_addr marker;
+if creation was interrupted before it arrived, stop instead of creating twice.
 """
 import argparse
+import json
 import os
 from pathlib import Path
 import re
@@ -19,11 +25,13 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 
 # Pin transport to the known NAS Tailnet address and its existing host identity.
 NAS_TAILNET = "100.65.85.114"
 VERSION = re.compile(r"[0-9]+(\.[0-9]+)*")
 SEAT = re.compile(r"[a-z0-9][a-z0-9_.-]{0,31}")
+ADDRESS = re.compile(r"(?:[a-z0-9][a-z0-9_.-]{0,31}/)?[a-z0-9][a-z0-9_.-]{0,31}")
 # A terminal launched by an agent must not inherit its pane or attach gate.
 PLAIN_SHELL = ["env", "-u", "HERDR_ENV", "-u", "HERDR_SESSION",
                "-u", "HERDR_WORKSPACE_ID", "-u", "HERDR_PANE_ID",
@@ -43,6 +51,7 @@ def parse_args(argv):
     where = parser.add_mutually_exclusive_group()
     where.add_argument("--local", action="store_true", help="open fish on this device")
     where.add_argument("--plain", action="store_true", help="a plain NAS fish over ssh, no hc")
+    where.add_argument("--attach", metavar="ADDRESS", help="reattach an existing hc station, never create one")
     parser.add_argument("--cwd", help="absolute directory on the shell's host")
     parser.add_argument("--seat", default="zenbook", help="the hc label seat=<name> (default zenbook)")
     args = parser.parse_args(argv)
@@ -51,6 +60,11 @@ def parse_args(argv):
         parser.error("--cwd must be an absolute path without control characters")
     if not SEAT.fullmatch(args.seat):
         parser.error("--seat must be 1-32 of a-z 0-9 _ . - (starting with a letter or digit)")
+    if args.attach is not None:
+        if not ADDRESS.fullmatch(args.attach):
+            parser.error("--attach expects an hc address such as t7, a name, or machine/t7")
+        if args.cwd is not None:
+            parser.error("--cwd cannot change an existing station's directory")
     return args
 
 
@@ -72,9 +86,14 @@ def plain_command(cwd):
     return (f"cd -- {shlex.quote(cwd)} && " if cwd is not None else "") + "exec " + shlex.join(PLAIN_SHELL)
 
 
-def station_command(cwd, seat="zenbook", version=None):
+def station_command(cwd, seat="zenbook", version=None, address=None):
     # The script runs under sh on the NAS whatever the login shell is; every
     # value in it is quoted data. $HOME is the NAS home, expanded by that sh.
+    if address is not None:
+        if not ADDRESS.fullmatch(address):
+            raise ValueError("invalid hc address")
+        # No fallback, core start, or shell creation on the restore path.
+        return "exec sh -c " + shlex.quote('exec "$HOME/.local/bin/hc-station" attach ' + shlex.quote(address))
     station = ["new", "--label", f"seat={seat}"]
     if version is not None and VERSION.fullmatch(version):
         station += ["--kitty-version", version]
@@ -89,16 +108,67 @@ def station_command(cwd, seat="zenbook", version=None):
     return "exec sh -c " + shlex.quote(script)
 
 
-def ssh_argv(cwd, plain=False, seat="zenbook", version=None):
+def ssh_argv(cwd, plain=False, seat="zenbook", version=None, address=None, kitty=False):
     # OpenSSH joins command arguments into shell text. Quote deliberately:
     # a project path is data even when it contains shell syntax.
-    remote = plain_command(cwd) if plain else station_command(cwd, seat, version)
-    return ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+    remote = plain_command(cwd) if plain else station_command(cwd, seat, version, address)
+    # Let the SSH kitten manage its own ControlMaster. Outside Kitty retain
+    # the ordinary OpenSSH path, including its independent connection.
+    carrier = ["kitten", "ssh"] if kitty else ["ssh"]
+    independent = [] if kitty else ["-o", "ControlMaster=no", "-o", "ControlPath=none"]
+    return carrier + ["-tt", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
             "-o", f"Hostname={NAS_TAILNET}", "-o", "HostKeyAlias=nas",
-            "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes",
-            "-o", "ControlMaster=no", "-o", "ControlPath=none",
+            "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes"] + independent + [
             "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15",
             "-o", "ServerAliveCountMax=3", "nas", remote]
+
+
+def kitty_address(env):
+    """Read this window's existing marker; None means the query was unreliable."""
+    window = env.get("KITTY_WINDOW_ID", "")
+    endpoint = env.get("KITTY_LISTEN_ON", "")
+    if not window.isdecimal() or not endpoint:
+        return None
+    try:
+        result = subprocess.run(["kitten", "@", "--to", endpoint, "ls", "--match", f"id:{window}"],
+                                env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=2)
+        if result.returncode:
+            return None
+        for os_window in json.loads(result.stdout):
+            for tab in os_window["tabs"]:
+                for item in tab["windows"]:
+                    if str(item["id"]) == window:
+                        address = item.get("user_vars", {}).get("hc_addr", "")
+                        return address if isinstance(address, str) and (not address or ADDRESS.fullmatch(address)) else None
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError, KeyError, TypeError, AttributeError):
+        pass
+    return None
+
+
+def connect(args, env, version):
+    kitty = bool(env.get("KITTY_WINDOW_ID") and env.get("KITTY_PID"))
+    address = args.attach
+    before = kitty_address(env) if not args.plain and address is None else None
+    attempt = 0
+    while True:
+        status = subprocess.call(ssh_argv(args.cwd, args.plain, args.seat, version, address, kitty), env=env)
+        # Exit, detach, and remote command failures must not reopen anything.
+        if status != 255 or args.plain:
+            return status
+        if address is None:
+            after = kitty_address(env)
+            if before is None or not after or after == before:
+                print("\nNAS connection ended before a new station address was confirmed. "
+                      "It may still be running: check `hc ls` on the NAS, then reopen with "
+                      "`domicile-terminal --attach ADDRESS`. No new shell was created by a retry.",
+                      file=sys.stderr, flush=True)
+                return status
+            address = after
+        delay = (1, 2, 5, 10)[min(attempt, 3)]
+        print(f"\nNAS connection lost. Reconnecting to {address} in {delay}s; Ctrl+C closes this window.",
+              file=sys.stderr, flush=True)
+        time.sleep(delay)
+        attempt += 1
 
 
 def main(argv=None):
@@ -112,12 +182,11 @@ def main(argv=None):
             os.chdir(args.cwd)
         os.execvpe("fish", ["fish", "--login", "--interactive"], env)
     version = None if args.plain else kitty_version()
-    status = subprocess.call(ssh_argv(args.cwd, args.plain, args.seat, version), env=env)
+    status = connect(args, env, version)
     if status == 255:
-        # Never reconnect into another shell and never silently change host.
-        print("\nNAS connection ended. A shell opened through hc keeps running on the NAS. "
-              "Mod+Enter opens a new one; Mod+Shift+Enter opens a local shell.",
-              file=sys.stderr, flush=True)
+        if args.plain:
+            print("\nNAS connection ended. This was a plain shell, without hc persistence.", file=sys.stderr)
+        print("\nMod+Shift+Enter opens a local shell.", file=sys.stderr, flush=True)
         try:
             input("Press Enter to close this window. ")
         except EOFError:
