@@ -10,6 +10,7 @@ case "${1:-terminal}" in
     # --title fixes the OS title permanently. Let hc's running program name
     # the window so Domicile can show the same chat title Kitty knows.
     exec kitty --class domicile-terminal \
+      --override "allow_remote_control=yes" \
       --override "shell=$here/domicile-terminal" -e "$here/domicile-terminal" "$@"
     ;;
   rescue)

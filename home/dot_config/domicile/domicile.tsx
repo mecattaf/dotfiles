@@ -39,8 +39,7 @@ const keybindings = {
   ...kept,
   "Meta+Return": exec("domicile-apps", "terminal"),
   "Meta+Shift+Return": exec("domicile-apps", "rescue"),
-  "Control+n": exec("domicile-apps", "chrome"),
-  "Control+Shift+n": exec("domicile-apps", "chrome", "--incognito"),
+  // Control chords belong to the focused browser, terminal or editor.
   "Meta+n": exec("domicile-apps", "chrome"),
   "Meta+Control+n": exec("domicile-apps", "chrome", "--incognito"),
   "Meta+e": exec("domicile-apps", "files"),
