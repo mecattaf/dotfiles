@@ -64,7 +64,12 @@ if vim.env.HERDR_ENV or vim.env.SSH_TTY or vim.env.DSH_EDITOR_ROOT
 end
 
 opt.clipboard = 'unnamedplus'
-opt.swapfile = false
+-- Native crash recovery lives with the editor on NAS, not in /tmp or on the
+-- disposable UI client. This does not write changes to the source file.
+local swap_dir = vim.fn.stdpath('state') .. '/swap'
+vim.fn.mkdir(swap_dir, 'p', 448)
+opt.directory = swap_dir .. '//'
+opt.swapfile = true
 opt.undofile = true
 opt.autoread = true
 -- opt.cmdheight = 0

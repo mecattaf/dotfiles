@@ -23,6 +23,7 @@ assert(vim.api.nvim_buf_get_lines(buffer, 0, 1, false)[1] == 'unsaved buffer')
 assert(vim.api.nvim_get_option_value('modified', { buf = buffer }))
 
 vim.env.NVIM_APPNAME = 'nvim-remote'
+vim.env.XDG_STATE_HOME = tmp .. '/state'
 vim.env.SSH_TTY, vim.env.HERDR_ENV, vim.env.DSH_EDITOR_ROOT = nil, nil, nil
 local sent = {}
 vim.api.nvim_ui_send = function(bytes) sent[#sent + 1] = bytes end
