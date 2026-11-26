@@ -7,8 +7,7 @@ now starts a local Nvim 0.13 UI and uses native `:connect ssh://nas`; editor
 logic, files and unsaved buffers remain on the NAS, outside hc. From a NAS
 shell, Kitty's native `launch --type=overlay-main` opens that UI locally and
 returns after acknowledging the launch, like gvim. The shell stays ready
-under the overlay. The
-NAS terminal must permit Kitty remote control; only the NAS window launcher
+under the overlay. The NAS terminal must permit Kitty remote control; only the NAS window launcher
 opts in. No editor daemon, callback service, holder or `EDITOR` override is
 introduced.
 
@@ -114,8 +113,12 @@ path remains deployment qualification.
 --hc <hc> --xvfb <Xvfb> [--dri-drivers <Mesa/lib/dri>]` runs actual Kitty and hc
 on a private X server. It invokes the production NAS launcher over the hc
 terminal, selects an overlay on its originating window while another tab is
-active, preserves literal file arguments, and verifies blocking exit status
-7 and SIGTERM/143. The local editor is a small test process; no live desktop,
+active, preserves literal file arguments, and verifies that the NAS launcher
+returns while the overlay remains open. It also severs its private viewer,
+checks that no exit waiter is retained, and proves a missing launch reply
+fails within 10 seconds without creating another overlay. The overlay does
+not inherit the parent's hc_addr clipboard binding. The local editor is a
+small test process; no live desktop,
 clipboard or user terminal participates.
 
 ## Historical retained-editor candidate (7 November)

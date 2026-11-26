@@ -39,8 +39,15 @@ local function open_files(data)
     end, data.files)
     -- :hide switches buffers without discarding unsaved text. Reopening the
     -- same name selects its existing modified buffer; never :edit! or reload.
+    local arguments = {}
+    for _, file in ipairs(vim.fn.argv()) do
+      arguments[vim.fs.normalize(vim.fs.abspath(file))] = true
+    end
     for _, file in ipairs(files) do
-      vim.cmd('argadd ' .. vim.fn.fnameescape(file))
+      if not arguments[file] then
+        vim.cmd('argadd ' .. vim.fn.fnameescape(file))
+        arguments[file] = true
+      end
     end
     local buffer = vim.fn.bufadd(files[1])
     if vim.api.nvim_buf_is_loaded(buffer) then

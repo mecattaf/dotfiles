@@ -18,9 +18,11 @@ remote.open_files({ directory = project, files = { vim.fs.basename(file) }, comm
 assert(vim.api.nvim_get_current_buf() == buffer)
 assert(vim.bo.modified)
 assert(vim.deep_equal(vim.api.nvim_buf_get_lines(buffer, 0, -1, false), { 'unsaved buffer', 'still here' }))
+assert(vim.deep_equal(vim.fn.argv(), { file }), 'reattachment must not duplicate argument-list files')
 remote.open_files({ directory = project, files = { 'other file.md' }, commands = {} })
 assert(vim.api.nvim_buf_get_lines(buffer, 0, 1, false)[1] == 'unsaved buffer')
 assert(vim.api.nvim_get_option_value('modified', { buf = buffer }))
+assert(vim.fn.argc() == 2)
 
 vim.env.NVIM_APPNAME = 'nvim-remote'
 vim.env.XDG_STATE_HOME = tmp .. '/state'
