@@ -63,7 +63,7 @@ class PasteImage(unittest.TestCase):
         (self.bin / "image.bin").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(92)))
 
     def window(self, user_vars):
-        listing = [{"id": 1, "tabs": [{"id": 1, "windows": [{"id": 7, "user_vars": user_vars}]}]}]
+        listing = [{"id": 1, "tabs": [{"id": 1, "windows": [{"id": 7, "pid": 123, "user_vars": user_vars}]}]}]
         (self.bin / "kitten-ls.json").write_text(json.dumps(listing))
 
     def run_paste(self, *args, control_fd=None):

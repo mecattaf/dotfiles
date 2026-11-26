@@ -78,8 +78,9 @@ def station_window(window):
                 for entry in tab.get("windows", []):
                     if str(entry.get("id")) == window:
                         address = (entry.get("user_vars") or {}).get("hc_addr")
-                        if isinstance(address, str) and ADDRESS.fullmatch(address):
-                            return address, entry.get("pid")
+                        pid = entry.get("pid")
+                        if isinstance(address, str) and ADDRESS.fullmatch(address) and type(pid) is int:
+                            return address, pid
                         return None
     except (OSError, subprocess.SubprocessError, ValueError, AttributeError, TypeError):
         return None
