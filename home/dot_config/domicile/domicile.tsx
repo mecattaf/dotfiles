@@ -99,6 +99,9 @@ const imagineShell = runImagine({
   // the warmth the old external monitors used.
   displayTemperatures: { [upperPanel]: 3850, [lowerPanel]: 3350, [external5k]: 4000 },
   layoutPersistence: { identity: "agency-layout-identity" },
+  // The rail's Chats list: the NAS floor's workers, one row each, from
+  // `agency relay --watch` over ssh (modules/imagine-helpers.nix, R41).
+  sessionCatalogue: { relay: "/etc/profiles/per-user/tom/bin/agency-relay", server: "nas" },
   workspaceModes: true,
   tiling: { gap: 10 },
   windowBorders,

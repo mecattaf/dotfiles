@@ -1,0 +1,36 @@
+#!/bin/sh
+# agency-relay: Imagine's session catalogue relay (`sessionCatalogue.relay` in
+# home/dot_config/domicile/domicile.tsx). Imagine spawns `agency-relay --watch`,
+# reads NDJSON snapshot/upsert/remove frames from stdout, closes stdin to stop
+# it, and spawns it again 2 s after any exit. The frames come from the NAS
+# floor: `agency relay --watch` (factory-floor F31, R41), over the same
+# BatchMode ssh the other client helpers use. ssh passes stdin's EOF on, and
+# the remote relay then exits 0.
+#
+# `agency` must be on the NAS at /etc/profiles/per-user/tom/bin/agency
+# (factory-floor from the store, PR #813). Until then, and whenever the floor
+# is down, the remote fails at once: a failed run waits before it exits, so
+# Imagine's 2 s respawn does not open an ssh connection every 2 s.
+set -u
+case "$*" in
+  "" | --watch) ;;
+  *) echo "agency-relay: only --watch is taken" >&2; exit 2 ;;
+esac
+# A background job's stdin is /dev/null in sh; hand it Imagine's stdin by fd 3.
+exec 3<&0
+ssh -T -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
+  nas /etc/profiles/per-user/tom/bin/agency relay "$@" <&3 3<&- &
+child=$!
+exec 3<&-
+stopped=0
+trap 'stopped=1; kill "$child" 2>/dev/null || true' TERM INT HUP
+code=0
+wait "$child" || code=$?
+# A trap interrupts the first wait; wait again for the ssh it signalled.
+if [ "$stopped" = 1 ]; then wait "$child" 2>/dev/null || true; exit 0; fi
+if [ "$code" != 0 ]; then
+  echo "agency-relay: ssh nas agency relay exited $code; retrying after ${AGENCY_RELAY_BACKOFF:-20}s" >&2
+  sleep "${AGENCY_RELAY_BACKOFF:-20}" &
+  wait $! 2>/dev/null || true
+fi
+exit "$code"
