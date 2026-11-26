@@ -3,9 +3,9 @@
 # media/browser/handwriting front door after private artifact hosting was
 # retired on 2026-11-08; those vhosts are added here and by their host files.
 #
-# Bind: Tailscale Serve owns :443 on the NAS tailnet address
-# (modules/herdr-web-ui.nix), so Caddy must never bind a wildcard. default_bind
-# keeps every site on the LAN address and loopback only.
+# Bind: Tailscale Serve owns the NAS tailnet address (the academic drain's
+# :8444 listener, hosts/nas/tailscale.nix), so Caddy must never bind a
+# wildcard. default_bind keeps every site on the LAN address and loopback only.
 #
 # WireGuard supplies transport security on the tailnet; `.internal` names
 # never resolve publicly.
@@ -59,7 +59,8 @@
   };
 
   # LAN clients reach Caddy on the router address. Tailnet clients retain :80
-  # for internal sites; :443 belongs to Tailscale Serve and Herdr.
+  # for internal sites. The tailnet :443 closed with herdr-web-ui (Herdr v1
+  # removal); nothing listens there now.
   networking.firewall.extraInputRules = ''
     iifname "enp1s0" ip saddr 10.42.0.0/24 tcp dport { 80, 443 } accept comment "Caddy front door (LAN)"
   '';

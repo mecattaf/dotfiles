@@ -70,9 +70,6 @@
         "video/*"
       ] (_: [ "mpv.desktop" ]);
     };
-    xdg.configFile."herdr/desktop-client.toml".text =
-      builtins.replaceStrings [ "[ui]\n" ] [ "[ui]\nprompt_new_workspace_name = true\n" ]
-        (builtins.readFile ../home/dot_config/herdr/config.toml);
     # Finder enumerates these actions through Domicile's native app index.
     xdg.desktopEntries = {
       rog-control-center = {

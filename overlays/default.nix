@@ -1,4 +1,4 @@
-{ torchRocm, herdr }:
+{ torchRocm }:
 final: _prev: {
   qwentts = final.callPackage ../pkgs/qwentts.nix { };
   utility-storage = final.callPackage ../pkgs/utility-storage { };
@@ -52,11 +52,10 @@ final: _prev: {
   dsh = final.callPackage ../pkgs/dsh { };
   agency-kitty = final.callPackage ../pkgs/agency-kitty { };
   mnemon = final.callPackage ../pkgs/mnemon { };
-  # Pinned plugins selected by the hand-run `herdr` and `mnemon` profiles.
+  # Pinned plugins selected by the hand-run `mnemon`, `zen` and `native` profiles.
   # An attrset, not a package; pkgs/dsh picks them up.
   dsh-plugins = import ../pkgs/dsh-plugins {
     inherit (final) callPackage llm-agents;
-    inherit herdr;
   };
 
   # CLI-Anything — pinned cli-hub Python app plus immutable Codex/Claude

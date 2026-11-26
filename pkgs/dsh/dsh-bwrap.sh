@@ -16,6 +16,13 @@
 # runner, so it still reads whatever tom can. The masks block actions, not
 # reads by the harness itself.
 #
+# One hole in the /run/user mask, for factory-floor workers only: when the
+# floor launched this dsh, the worker-only control socket it named in
+# AGENCY_FLOOR_SOCKET (<profile>.worker.sock) is bound back, read-only, on top
+# of the mask, so the worker's `agency report` reaches it. Nothing else under
+# /run/user is, and never the person's <profile>.sock (see "The factory
+# floor's control socket" below).
+#
 # Known limits:
 # - dsh's in-process `write` and `edit` tools also run outside this runner.
 #   In workspace-write their fence is the workspace, /tmp and os.tmpdir()
@@ -80,6 +87,41 @@ for m in "${masks[@]}"; do
   fi
   extra+=(--tmpfs "$m")
 done
+
+# The factory floor's worker socket. A floor worker reports by running
+# `agency report`, which connects to $AGENCY_FLOOR_SOCKET; the floor (since
+# factory-floor R22) hands its workers the worker-only socket
+# /run/user/<uid>/agency-floor/<profile>.worker.sock, which the mask above
+# hides. So when the floor launched this dsh (it exports AGENCY_FLOOR_SOCKET
+# and AGENCY_FLOOR_LAUNCH_FILE into every worker; dsh's child-env scrub keeps
+# both names), that one socket is bound back on top of the mask:
+# - only a direct child of /run/user/<uid>/agency-floor named *.worker.sock,
+#   so the variable cannot reopen hc, Herdr, the bus, the user manager or the
+#   person's <profile>.sock;
+# - only a socket owned by tom, and neither it nor its directory a symlink;
+# - the socket alone, never the directory, so other profiles' sockets stay
+#   hidden; read-only, since connect(2) needs no write access to the mount.
+# A socket outside /run/user needs nothing here (the root is bound read-only,
+# and connect works through that). A dsh started by hand has no
+# AGENCY_FLOOR_LAUNCH_FILE and gets no hole. The worker socket refuses a
+# `hello` without a terminal and its launch token, refuses the brain, and
+# answers only the worker methods, so the worker's bash can be at most a
+# Ticket's worker whose token it holds, never the floor's person. A floor
+# older than R22 names its person's <profile>.sock here, which is not bound:
+# its dsh workers cannot report, as before this hole.
+floor_dir="/run/user/$uid/agency-floor"
+floor_sock="${AGENCY_FLOOR_SOCKET-}"
+if [ -n "$floor_sock" ] && [ -n "${AGENCY_FLOOR_LAUNCH_FILE-}" ]; then
+  case "$floor_sock" in
+    "$floor_dir"/*/*) ;;
+    "$floor_dir"/?*.worker.sock)
+      if [ -d "/run/user/$uid" ] && [ ! -L "$floor_dir" ] && [ ! -L "$floor_sock" ] \
+        && [ -S "$floor_sock" ] && [ -O "$floor_sock" ]; then
+        extra+=(--ro-bind "$floor_sock" "$floor_sock")
+      fi
+      ;;
+  esac
+fi
 
 # A read-only gitdir in a writable workspace. The whole `.git` is bound
 # read-only, FILE (a linked worktree) or DIRECTORY alike, so it is a mount

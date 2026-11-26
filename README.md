@@ -11,7 +11,7 @@ The flake exports these NixOS host configurations:
 |---|---|---|
 | `strix-coordinator` | Framework Desktop, AMD Strix Halo | Headless compute, wired 10.42.0.2: the fleet's Nix builder, Gufo (the local model endpoint, `http://strix-coordinator:8731`) and on-demand Immich ML |
 | `strix-worker` | Framework Desktop, AMD Strix Halo | Dormant until its replacement arrives; wired 10.42.0.5. Not a builder, serves no model |
-| `nas` | UGREEN NASync DXP2800 GT, AMD R2514 | Wired 10.42.0.1: storage, DNS, media, the closet's Tailscale subnet router, and the agent host (Herdr, Claude Code, Codex, dsh); builds nothing locally |
+| `nas` | UGREEN NASync DXP2800 GT, AMD R2514 | Wired 10.42.0.1: storage, DNS, media, the closet's Tailscale subnet router, and the agent host (hc, Claude Code, Codex, dsh); builds nothing locally |
 | `client` | ASUS Zenbook Duo, wired 10.42.0.16 | Physical Domicile desktop: Kitty, Chrome, Huion and Magic Trackpad; its terminals open on the NAS over SSH |
 
 Strix and NAS plug into the BE550, with Freebox upstream. Strix's public
@@ -23,10 +23,9 @@ See `docs/closet-cutover.md` for the staged rollout.
 Claude Desktop is installed on the Zenbook only. It and herdr-core (`hc` /
 `herdr-core`, installed on all four configured hosts) come from the shared
 `numtide/llm-agents.nix` input. `nix flake update llm-agents` refreshes their
-locked versions alongside the catalog's other selected tools. Classic Herdr
-keeps its separate pin and protected NAS service while it holds live sessions,
-unchanged. herdr-core has one declared core on the NAS (`hc-core.service`,
-`home/herdr-core.nix`); classic Herdr still runs beside it.
+locked versions alongside the catalog's other selected tools. herdr-core has
+one declared core on the NAS (`hc-core.service`, `home/herdr-core.nix`).
+Classic Herdr (v1), its pin, `herdr.service` and herdr-web-ui are removed.
 
 ```
 flake.nix        four NixOS hosts wired through one mkHost

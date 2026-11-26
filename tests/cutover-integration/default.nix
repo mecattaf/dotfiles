@@ -60,7 +60,7 @@ assert builtins.elem "subvol=@fast" nas.fileSystems."/mnt/fast".options;
       }) nas.nix.buildMachines;
       inference = nas.services.utilityModel.endpoint;
       dsh = nas.home-manager.users.tom.programs.dsh.enable;
-      herdrSwitchMethod = nas.home-manager.users.tom.systemd.user.services.herdr.Unit.X-SwitchMethod;
+      hcCoreSwitchMethod = nas.home-manager.users.tom.systemd.user.services.hc-core.Unit.X-SwitchMethod;
     };
     singleStrix = {
       rdmaEnabled = configs.strix-coordinator.config.hardware.thunderbolt-ibverbs.enable or false;

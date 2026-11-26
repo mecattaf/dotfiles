@@ -20,8 +20,10 @@ let
       builders = map (b: b.hostName) c.nix.buildMachines;
       dsh = c.home-manager.users.tom.programs.dsh.enable;
       inference = c.services.utilityModel.endpoint;
-      herdrKeepOld = c.home-manager.users.tom.systemd.user.services.herdr.Unit.X-SwitchMethod;
-      herdrOOM = c.home-manager.users.tom.systemd.user.services.herdr.Service.OOMPolicy;
+      # The terminal runtime's switch and OOM policy (hc-core.service; Herdr
+      # v1's herdr.service and its facts are gone).
+      hcCoreKeepOld = c.home-manager.users.tom.systemd.user.services.hc-core.Unit.X-SwitchMethod;
+      hcCoreOOM = c.home-manager.users.tom.systemd.user.services.hc-core.Service.OOMPolicy;
       substratePuller = c.systemd.user.services ? substrate-puller;
     };
 in

@@ -21,9 +21,8 @@
 # a warning on stderr; checks.dsh-config fails on any stderr from a dump.
 #
 # Outputs:
-#   policy : every profile the wrapper boots (headless, sdk, acp, herdr, mnemon, zen)
+#   policy : every profile the wrapper boots (headless, sdk, acp, mnemon, zen, native)
 #   acp    : acp only; its bundle pins the official DeepSeek route in its own row
-#   herdr  : the hand-run plugin profile only (jevcore's row; ./default.nix)
 #   mnemon : the dedicated local-memory profile, including its Gufo route
 #   zen    : the hand-run OpenCode Zen free-model profile (jiesou's provider
 #            plugin, credentials re-enabled, Zen as the default route)
@@ -379,9 +378,14 @@ let
       provider = "google";
       model = "gemini-3.5-flash-lite";
     };
+    # The Gufo model declares `reasoningEfforts = false` (gufoModels above), so
+    # the overlay's `high` was refused at the first request
+    # (UNSUPPORTED_REASONING_EFFORT, measured 2026-11-26); `null` drops the
+    # key, as the mnemon profile's Gufo row always has.
     gufo = {
       provider = "gufo";
       model = localModel.modelId;
+      reasoningEffort = null;
     };
     groq = {
       provider = "groq";
@@ -531,24 +535,6 @@ let
 
   acp = [ (set "acp" defaultRoute) ];
 
-  # The `herdr` profile's own rows. jevcore stays on its offline mock: no
-  # network path exists without the SDK, and its startup line at `info`
-  # (`[jevcore] ready · provider=mock`) reaches stderr through the profile's
-  # stderr-log plugin. Both gates stay off: on the mock every gated
-  # bash, edit or git call would become an ask, which headless denies.
-  # FOLLOW-UP, NOT IMPLEMENTED: a real Jev route is this one row (provider
-  # live, baseURL, model, apiKeyRef) plus the SDK back in pkgs/dsh-plugins.
-  herdr = lib.optionals (builtins.elem "jevcore" (profilePlugins.herdr or [ ])) [
-    (set "jev" {
-      provider = "mock";
-      logLevel = "info";
-      gates = {
-        safety = false;
-        context = false;
-      };
-    })
-  ];
-
   # Memory work is explicitly selected with `dsh mnemon`. Existing profiles,
   # Claude and Codex do not acquire hooks. Writes are intended tool calls;
   # there is no idle review, automatic capture, skill editing or Git sync.
@@ -642,18 +628,20 @@ in
 {
   policy = yaml.generate "dsh-policy.patch.yml" policy;
   acp = yaml.generate "dsh-acp.patch.yml" acp;
-  herdr = yaml.generate "dsh-herdr.patch.yml" herdr;
   mnemon = yaml.generate "dsh-mnemon.patch.yml" mnemonProfile;
   zen = yaml.generate "dsh-zen.patch.yml" zenProfile;
   smoke = yaml.generate "dsh-smoke.patch.yml" smoke;
   routeOverlays = lib.mapAttrs (
     name: route:
-    yaml.generate "dsh-route-${name}.patch.yml" [
+    let
       # `high` unless the route names its own effort; `null` drops the key.
-      (set "agent-default-model" (
-        lib.filterAttrs (_: v: v != null) ({ reasoningEffort = "high"; } // route)
-      ))
-    ]
+      row = lib.filterAttrs (_: v: v != null) ({ reasoningEffort = "high"; } // route);
+      effortless =
+        route.provider == "gufo" && ((gufoModels.${route.model} or { }).reasoningEfforts or null) == false;
+    in
+    assert lib.assertMsg (!(effortless && row ? reasoningEffort))
+      "dsh route ${name}: ${route.model} declares no reasoning efforts, so the route must set reasoningEffort = null";
+    yaml.generate "dsh-route-${name}.patch.yml" [ (set "agent-default-model" row) ]
   ) routes;
   # Local provider data for offline config checks.
   localProviders = { inherit gufo; };
@@ -665,8 +653,6 @@ in
     maxRetries = 3;
   };
   inherit defaultRoute routes zenProvider;
-  # The herdr profile's rows as data, for checks.dsh-plugins.
-  herdrRows = builtins.listToAttrs (map (row: lib.nameValuePair row.id row.config) herdr);
   mnemonRows = builtins.listToAttrs (
     map (row: lib.nameValuePair row.id row.config) (lib.filter (row: row ? config) mnemonProfile)
   );

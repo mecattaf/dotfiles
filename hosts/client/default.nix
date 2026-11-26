@@ -19,11 +19,11 @@
 # the boot menu as the rollback.
 #
 # The physical Domicile seat owns Kitty, Chrome and the dock peripherals.
-# Herdr and agent sessions run on NAS; builds and inference run on compute.
+# hc terminals and agent sessions run on NAS; builds and inference run on compute.
 # Meta+Return opens a fresh NAS terminal through domicile-apps.
 #
 # WHAT IT IS NOT:
-#   * not an agent host — no herdr server (home/herdr.nix is brain-
+#   * not an agent host — no hc core (home/herdr-core.nix is brain-
 #     gated), no Claude/Codex credential (secrets.nix: brainOnly, the
 #     jul12 "own session" ruling stands), no tally clocks, no voxtype, no
 #     transcript mirror, no paper timers. Every one of those
@@ -58,8 +58,6 @@
 #     A local `sudo nixos-rebuild switch --flake github:mecattaf/dotfiles/main#client`
 #     still works but evaluates and builds here, which ran one core at
 #     101 C and the fan at 3400 rpm on 2026-10-11.
-#     Strix first whenever herdr is bumped (the two speak a versioned
-#     protocol and the laptop projects the strix's server).
 #
 # The hardware layer below is omarchy-fleet's profiles/zenbook-duo.nix +
 # hosts/zenbook-duo/hardware.nix merged with 77eac406^'s host module; each
@@ -96,7 +94,7 @@
 
   # No dotfiles checkout on the thin client (Tom, 2026-10-11, about ~/dotfiles
   # and ~/mecattaf here: "i dnt need here"). Every raw dotfile (Domicile, kitty,
-  # fish, ~/.local/bin, herdr's config.toml, nvim) comes from the Nix store,
+  # fish, ~/.local/bin, nvim) comes from the Nix store,
   # so a deploy from the strix carries both halves at one rev and nothing has
   # to be pulled here afterwards. This also turns off raw-dotfiles-guard and
   # modules/dotfiles-bootstrap.nix on this host (home/raw-dotfiles-guard.nix).

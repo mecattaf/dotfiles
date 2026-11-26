@@ -99,7 +99,6 @@ in
     ./dsh.nix
     ./downloads-mirror.nix
     ./harness-records.nix
-    ./herdr.nix
     ./herdr-core.nix
     ./nvim.nix
     ./paper.nix
@@ -247,7 +246,7 @@ in
   };
 
   # ---------------------------------------------------------------------------
-  # The brain's linger keeps its user manager and Herdr panes alive without
+  # The brain's linger keeps its user manager and hc terminals alive without
   # a login session. modules/headless.nix preserves it on the NAS.
   # ---------------------------------------------------------------------------
 

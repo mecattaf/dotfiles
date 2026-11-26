@@ -7,7 +7,8 @@
     enable = true;
     # tailscaled derives its state directory from --state only when the parent
     # is named "tailscale"; without --statedir it has nowhere for Serve's TLS
-    # certificates ("no TailscaleVarRoot") and herdr-web-ui's HTTPS fails.
+    # certificates ("no TailscaleVarRoot") and Serve's HTTPS (the :8444
+    # drain listener below) fails.
     extraDaemonFlags = [
       "--state=/var/lib/tailscale-personal/tailscaled.state"
       "--statedir=/var/lib/tailscale-personal"
@@ -19,10 +20,11 @@
     after = [ "container@nas-saas.service" ];
     unitConfig.ConditionPathExists = "/var/lib/tailscale-personal/tailscaled.state";
   };
-  # Never reset Serve/Funnel here: herdr-web-ui owns its declared listener.
+  # Never reset Serve/Funnel here.
   # Academic drain's read-only master-index page owns ONLY /drain/ on the
-  # existing background :8444 listener. The root :8444 proxy and Herdr's
-  # foreground :443 listener are separate and must stay intact.
+  # existing background :8444 listener. The root :8444 proxy is separate and
+  # must stay intact. (herdr-web-ui's foreground :443 listener left with
+  # Herdr v1.)
   # Bootstrap once (Serve --bg persists in the existing tailscaled state):
   #   tailscale serve --bg --https=8444 --set-path=/drain /var/lib/academic-drain-web
   # The existing checkpoint renderer writes just index.html here. No server,

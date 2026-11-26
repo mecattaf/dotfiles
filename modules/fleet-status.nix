@@ -21,9 +21,9 @@
 # moves its facts with it:
 #   gufo    services.gufo.enable            → llama-swap/gufo-llm*, /running, /v1/models
 #   (runs, the Tally planes, went with the Tally sunset on 2026-09-30)
-#   attention  the Herdr server host (home/herdr.nix gates its unit on
-#              myFleet.has "brain", and so does this module; the
-#              flake's herdr-oom-isolation check pins that shape)
+#   (attention, the Herdr v1 server's agents and panes, went with Herdr v1:
+#    no host has that role, so its collector grades missing-by-design and
+#    the fleet view omits it; an hc panel is separate work)
 # The profile NAME is still per host, because it names the expectation set in
 # the terminal view. An unlisted hostname fails evaluation instead of quietly
 # shipping as "unprofiled".
@@ -53,8 +53,7 @@ let
 
   enabled = name: config.services.${name}.enable or false;
 
-  roles =
-    lib.optional (enabled "gufo") "gufo" ++ lib.optional (config.myFleet.has "brain") "attention";
+  roles = lib.optional (enabled "gufo") "gufo";
 
   profile = {
     name = profileNames.${host} or "unprofiled";

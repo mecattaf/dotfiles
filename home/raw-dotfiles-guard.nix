@@ -6,7 +6,7 @@
 }:
 # raw-dotfiles-guard (#313, 2026-09-13).
 #
-# Every raw dotfile (home/home.nix `link`, home/herdr.nix, home/nvim.nix) is an
+# Every raw dotfile (home/home.nix `link`, home/herdr-core.nix, home/nvim.nix) is an
 # out-of-store symlink into the checkout at `rawDotfiles.repoDir`, never into
 # the flake a switch was taken from; that is what makes hot-reload-by-editing
 # work, and #313 keeps it (option 2, anchoring at the switched flake, would
@@ -41,7 +41,7 @@
 # given up on such a host; nothing there writes into the raw tree at runtime.
 # Every other host keeps the out-of-store links unchanged.
 #
-# The three readers (home.nix, herdr.nix, nvim.nix) build their links with
+# The three readers (home.nix, herdr-core.nix, nvim.nix) build their links with
 # config.lib.rawDotfiles.{link,path}, so the choice is made here once.
 let
   cfg = config.rawDotfiles;

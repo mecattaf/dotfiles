@@ -211,25 +211,15 @@ util_fragment_row() { # $1 = timer, $2 = "both" | "strix"
 util_fragment_row util-sampler.timer both
 util_fragment_row util-row.timer strix
 
-# ── 7. herdr: binaries everywhere, one server on the strix (ruling B5) ─
-for binary in herdr; do
+# ── 7. hc: the binary everywhere (Herdr v1 and its server rows are gone;
+# the one declared hc core runs on the NAS, which this probe does not read) ─
+for binary in herdr-core; do
   if command -v "$binary" >/dev/null 2>&1; then
     ok "[E] $binary on PATH" "command -v $binary"
   else
     no "[E] $binary on PATH" "command -v $binary"
   fi
 done
-if strix_only; then
-  if systemctl --user is-active --quiet herdr; then
-    ok "[E] herdr server active" "systemctl --user is-active herdr"
-  else
-    no "[E] herdr server active" "systemctl --user is-active herdr"
-  fi
-else
-  # NOT a failure on the worker: ruling B5 in home/herdr.nix puts ONE server on
-  # the strix and the client binaries everywhere. See dotfiles#309.
-  na "[E] herdr server (strix only, ruling B5)" "systemctl --user is-active herdr"
-fi
 
 # ── 8. cleanupPeriodDays, read from the seat that actually uses it ──────────
 if cleanup="$(python3 - <<'PY' 2>/dev/null

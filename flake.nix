@@ -185,29 +185,6 @@
       flake = false;
     };
 
-    # herdr — the terminal workspace manager for AI coding agents
-    # (github.com/herdrdev/herdr, Apache-2.0). It replaced everything this repo
-    # used to invent for itself: the home-grown kitten tier, its session layer,
-    # and its title-naming pipeline were deleted in favour of one server holding
-    # every PTY. Herdr itself is now out of the picture (#729): it stays
-    # installed on the NAS and holds live sessions until a replacement carries
-    # them.
-    #
-    # PINNED TO A REV, not a branch (v0.9.3 today; nixpkgs carries an older
-    # release). Bump by editing the rev here, deliberately, the way
-    # nixpkgs-paperless is bumped.
-    #
-    # Consume `packages.<sys>.herdr` ONLY (home/herdr.nix). Upstream composes
-    # rust-overlay into its own pkgs fixpoint to build the Rust toolchain from
-    # rust-toolchain.toml; that must never reach ours, so no overlay of theirs is
-    # ever applied here. Following our nixpkgs keeps the build on our one pin.
-    # NOT in `rollingInputOverrides`: herdr owns live PTYs, so its version moves
-    # when Tom says so, never on a nightly resolve.
-    herdr = {
-      url = "github:herdrdev/herdr/7b116c05bfda646af39d2524c54e70c751f57ee8"; # v0.9.3, wire PROTOCOL_VERSION 22 as in 0.9.0
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     # nix-amd-ai — the proven strix NPU plane (hardware.amd-npu: amdxdna,
     # XRT plugin discovery, udev/memlock, FastFlowLM) plus the one accelerator
     # package nix-strix-halo does not expose: stable-diffusion-cpp-rocm.
@@ -506,9 +483,6 @@
 
       overlays.default = import ./overlays {
         torchRocm = inputs.nix-strix-halo.packages.${system}.torch-rocm;
-        # The herdr home/herdr.nix installs, for pkgs/dsh-plugins to pin by
-        # store path (dsh-herdr never looks `herdr` up on PATH).
-        herdr = inputs.herdr.packages.${system}.herdr;
       };
 
       nixosConfigurations = {
@@ -1274,9 +1248,23 @@
           assert !(strixHome.systemd.user.services ? speech-wake);
           assert !(strixHome.systemd.user.services ? voxtype);
           assert !(strixHome.xdg.configFile ? "pipewire/pipewire.conf.d/60-client-mic.conf");
-          # Production compute has no Herdr server; its protection is tested on
-          # the brain role fixture in herdr-oom-isolation.
-          assert !(strixHome.systemd.user.services ? herdr);
+          # Herdr v1 is gone fleet-wide (the DRAFT removal of 26 Nov): no server
+          # unit, no package, no config link, no projector variable and no
+          # web UI on any host. hc (herdr-core) is the terminal runtime.
+          assert builtins.all (
+            h:
+            let
+              hm = (cfgOf h).home-manager.users.tom;
+            in
+            !(hm.systemd.user.services ? herdr)
+            && !(hm.systemd.user.services ? herdr-web-ui)
+            && !(builtins.any (p: nixpkgs.lib.getName p == "herdr") hm.home.packages)
+            && !(hm.xdg.configFile ? "herdr/config.toml")
+            && !(hm.xdg.configFile ? "herdr/desktop-client.toml")
+            && !(hm.home.sessionVariables ? HERDR_PROJECTOR_TARGET)
+            && !((cfgOf h).systemd.services ? herdr-web-ui-serve)
+          ) displayHosts;
+          assert !(inputs ? herdr);
           # The seats oracle's peer cache outlives the seat feeder that used to
           # write it (home/harness-records.nix).
           assert
@@ -1285,7 +1273,6 @@
           # fleet-wide: no package, no generated kitty alias file.
           assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") strixHome.home.packages);
           assert !(strixHome.xdg.configFile ? "kitty-herdr-nix.conf");
-          assert builtins.any (p: nixpkgs.lib.getName p == "herdr") strixHome.home.packages;
           # The client shell owns the primary terminal and output chords.
           assert builtins.all
             (line: nixpkgs.lib.hasInfix line (builtins.readFile ./home/dot_config/domicile/domicile.tsx))
@@ -1296,25 +1283,21 @@
             ];
           # kitty.conf may not map anything to the removed `hk` action: kitty
           # turns an unknown action into a bad-config overlay on every start,
-          # and a `map ctrl+b …` would eat herdr's prefix before herdr sees it.
+          # and a `map ctrl+b …` would eat the single Ctrl+B nvim's file tree
+          # wants (Herdr v1 once doubled it).
           assert
             !(builtins.any (
               l:
               nixpkgs.lib.hasPrefix "map " l
               && (nixpkgs.lib.hasInfix " hk " l || nixpkgs.lib.hasPrefix "map ctrl+b " l)
             ) (nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/kitty/kitty.conf)));
-          # Without `--remote-keybindings server` a projector strips the server's
-          # [[keys.command]] bindings (herdr src/client/shell/config.rs:158-162).
-          assert nixpkgs.lib.hasInfix "--remote-keybindings server" (
-            builtins.readFile ./home/dot_local/bin/herdr-projector
-          );
           # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and the user timers are all real. What
           # it must NOT pick up are the things gated on being the strix —
           # voxtype, and since 2026-09-11 the graphical session itself (no
-          # display output on that box: Tom's ruling) — nor a herdr server: the
-          # one server is the NAS's (ruling B5), and Herdr is retiring (#729).
+          # display output on that box: Tom's ruling). Herdr v1 is gone from
+          # every host (asserted above); the NAS's hc core is the one runtime.
           # The worker itself is dormant until its replacement arrives.
 
           # The shared browser desktop and chrome-stream left strix-coordinator
@@ -1556,12 +1539,6 @@
           assert !(clientHome.systemd.user.services ? parakeet-service);
           assert !(clientHome.systemd.user.services ? speech-wake);
           assert !(builtins.any (p: nixpkgs.lib.getName p == "dictate-hold") clientHome.home.packages);
-          assert
-            !(nixpkgs.lib.hasInfix "HERDR_DICTATION_COMMAND" (
-              builtins.readFile ./home/dot_local/bin/herdr-projector
-            ));
-          assert !(clientHome.systemd.user.services ? herdr);
-          assert builtins.any (p: nixpkgs.lib.getName p == "herdr") clientHome.home.packages;
           assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") clientHome.home.packages);
           assert !(clientHome.systemd.user.services ? wayvnc);
           assert !(clientHome.xdg.configFile ? "wayvnc/config");
@@ -1592,30 +1569,6 @@
             );
 
           pkgs.runCommand "home-profiles" { } ''
-            touch "$out"
-          '';
-
-        # A pane child selected by the kernel OOM killer must not turn into a
-        # systemd stop of the Herdr server and every unrelated pane (#352).
-        # The policy is ours and remains required across upstream Herdr
-        # versions.
-        herdr-oom-isolation =
-          let
-            strixHome = agentProbe.home-manager.users.tom;
-
-            service = strixHome.systemd.user.services.herdr;
-          in
-          assert service.Service.OOMPolicy == "continue";
-          # #354: a switch never restarts Herdr.
-          # sd-switch 0.6.4 reads X-SwitchMethod=keep-old (home/herdr.nix);
-          # the rendered unit text is checked too, so a renamed option cannot
-          # silently drop the line.
-          assert service.Unit.X-SwitchMethod == "keep-old";
-
-          pkgs.runCommand "herdr-oom-isolation" { } ''
-            unit=${strixHome.xdg.configFile."systemd/user/herdr.service".source}
-            grep -qx 'X-SwitchMethod=keep-old' "$unit"
-            grep -qx 'OOMPolicy=continue' "$unit"
             touch "$out"
           '';
 
@@ -1982,7 +1935,7 @@
 
           assert (profile "nas").name == "appliance";
           assert (profile "nas").user_manager;
-          assert (profile "nas").roles == [ "attention" ];
+          assert (profile "nas").roles == [ ];
           assert (profile "client").name == "thin-client";
           assert (profile "client").user_manager;
 
@@ -2163,6 +2116,8 @@
               EXPECT=${expectPro} DSH_ROUTE=gemini-pro dump route-pro-acp acp --dump-config
               DSH_ROUTE=gemini DSH_KEY_SLOT=3 dump route-slot headless --dump-config
               ${batch2Dumps}
+              # Gufo: the route drops the effort its model does not declare.
+              EXPECT=${expectRoute "gufo"} DSH_ROUTE=gufo dump route-gufo headless --dump-config
               # A slot past every list is still a valid dump (the keys of the
               # single-account lanes are read only for a real run).
               EXPECT=${expectRoute "cohere"} DSH_ROUTE=cohere DSH_KEY_SLOT=5 dump route-cohere-slot5 headless --dump-config
@@ -2217,19 +2172,18 @@
               touch "$out"
             '';
 
-        # dsh-plugins (T-31): the hand-run `herdr` profile. Its plugins' own
-        # check phases are part of this closure: dsh-herdr's node tests (argv,
-        # runtime, preview, the 23-tool registration against the real
-        # dsh-tools) and the herdr-guard unit test (foreign pane_run, malformed
-        # ids, writes without HERDR_ENV=1) and the stderr-log unit test. Here:
-        # jevcore's $out has the pinned build and no network path, the wrapper
-        # composes `herdr` with every plugin row mounted and none skipped, the
-        # stock headless profile mounts none of them, and a boot
-        # of `herdr` with a blank task (it stops before any model call) prints
-        # the ready lines of herdr-guard, dsh-herdr and jevcore on stderr.
-        # Same sandbox as dsh-config: no network, a private DSH_HOME, no herdr,
-        # and no key by construction: the wrapper here is built without a key
-        # file and the key variable is unset, whatever the sandbox exposes.
+        # dsh-plugins (T-31): the Nix-declared plugin set outside the zen and
+        # mnemon profiles, which have their own checks. The hand-run `herdr`
+        # profile (dsh-herdr, herdr-guard, jevcore on its mock) left with
+        # Herdr v1; its rows must not come back into any dump. Here: jevcore's
+        # $out still has the pinned build and no network path (it is packaged,
+        # selected by no profile), the stderr-log check phase passed, the
+        # wrapper composes `native` with its rows and the stock headless
+        # profile mounts none of them, `herdr` is refused as a profile name,
+        # and the native profile's sync drops a store link no longer declared.
+        # Same sandbox as dsh-config: no network, a private DSH_HOME, and no
+        # key by construction: the wrapper here is built without a key file
+        # and the key variable is unset, whatever the sandbox exposes.
         dsh-plugins =
           let
             dshNoKey = self.nixosConfigurations.nas.pkgs.dsh.override { qwenKeyFile = null; };
@@ -2241,23 +2195,21 @@
               disabled = dshNoKey.disabledIds;
               runner = "${dshNoKey.runner}/bin/dsh-bwrap";
             };
-            pluginRows = [
-              "stderr-log"
+            retiredRows = [
               "herdr-guard"
               "dsh-herdr-toolkit"
               "jev"
             ];
-            expectHerdr = pkgs.writeText "dsh-plugins-herdr.json" (
+            expectHeadless = pkgs.writeText "dsh-plugins-headless.json" (
               builtins.toJSON (
                 base
                 // {
-                  rows = dshNoKey.herdrRows;
-                  present = pluginRows;
+                  absent = retiredRows ++ [
+                    "stderr-log"
+                    "agency-kitty-native"
+                  ];
                 }
               )
-            );
-            expectHeadless = pkgs.writeText "dsh-plugins-headless.json" (
-              builtins.toJSON (base // { absent = pluginRows ++ [ "agency-kitty-native" ]; })
             );
             expectNative = pkgs.writeText "dsh-plugins-native.json" (
               builtins.toJSON (
@@ -2268,10 +2220,7 @@
                     "stderr-log"
                     "agency-kitty-native"
                   ];
-                  absent = [
-                    "herdr-guard"
-                    "dsh-herdr-toolkit"
-                    "jev"
+                  absent = retiredRows ++ [
                     "mnemon"
                     "opencode-zen-free"
                   ];
@@ -2280,6 +2229,9 @@
             );
             semver = "${dshNoKey.unwrapped}/lib/node_modules/@deepseek-ai/dsh/node_modules/semver";
           in
+          assert !(plugins ? dsh-herdr);
+          assert !(plugins ? herdr-guard);
+          assert !(builtins.elem "herdr" dshNoKey.profiles);
           pkgs.runCommand "dsh-plugins"
             {
               nativeBuildInputs = [
@@ -2289,8 +2241,8 @@
             }
             ''
               set -euo pipefail
-              # Built, so their check phases passed.
-              : ${plugins.dsh-herdr} ${plugins.herdr-guard} ${plugins.stderr-log}
+              # Built, so its check phase passed.
+              : ${plugins.stderr-log}
 
               # jevcore: the git 0.4.2 that admits this dsh, core beside it,
               # the skill, and no TypeSafe SDK or network call in the JS.
@@ -2319,7 +2271,6 @@
 
               build="$TMPDIR"
               export HOME="$build/home" DSH_HOME="$build/dsh-home" TMPDIR="$build/tmp"
-              export HERDR_SOCKET_PATH="$build/no-herdr.sock"
               export PYTHONDONTWRITEBYTECODE=1
               unset QWEN_TOKEN_PLAN_API_KEY GEMINI_API_KEY OPENCODE_ZEN_FREE_API_KEY
               mkdir -p "$HOME" "$build/cwd" "$TMPDIR"
@@ -2342,54 +2293,37 @@
                 fi
                 python3 -I ${./tests/dsh-config/check_dump.py} "$TMPDIR/$name.yml" "$expect"
               }
-              dump herdr ${expectHerdr} herdr --dump-config
               dump headless ${expectHeadless} headless --dump-config
               dump native ${expectNative} native --dump-config
               dump native-flag ${expectNative} --profile native --dump-config
 
+              # The retired profile name is refused, before any profile sync.
+              rc=0
+              "$dsh" herdr --dump-config > "$TMPDIR/herdr.out" 2> "$TMPDIR/herdr.err" || rc=$?
+              test "$rc" = 2
+              grep -qF "profile 'herdr' is not one of" "$TMPDIR/herdr.err"
+              test ! -e "$DSH_HOME/profiles/herdr"
+
               # Native metadata uses the rendered helper and remains isolated
-              # from the older Herdr/memory/provider plugin profiles.
+              # from the memory and provider plugin profiles.
               n="$DSH_HOME/profiles/native"
               test "$(stat -c %a "$n/package.json")" = 600
               test "$(readlink "$n/node_modules/@agency/kitty-native")" = ${plugins.kitty-native}
               test "$(readlink "$n/node_modules/@mecattaf/stderr-log")" = ${plugins.stderr-log}
               test ! -e "$n/node_modules/@dsh-external"
+              test ! -e "$n/node_modules/@mecattaf/herdr-guard"
               test ! -e "$n/node_modules/jevcore-dsh"
               test ! -e "$n/node_modules/@jiesou"
-              test -z "$(find "$n" -maxdepth 1 -name '.sync.*')"
-
-              # The synced profile: a private manifest and store links only.
-              p="$DSH_HOME/profiles/herdr"
-              test "$(stat -c %a "$p/package.json")" = 600
-              test "$(readlink "$p/node_modules/@mecattaf/stderr-log")" = ${plugins.stderr-log}
-              test "$(readlink "$p/node_modules/@mecattaf/herdr-guard")" = ${plugins.herdr-guard}
-              test "$(readlink "$p/node_modules/@dsh-external/dsh-herdr-toolkit")" = ${plugins.dsh-herdr}
-              test "$(readlink "$p/node_modules/jevcore-dsh")" = ${plugins.jevcore}
-              test ! -e "$p/node_modules/@jiesou"
               test ! -e "$DSH_HOME/profiles/headless/node_modules"
               # A store link no longer declared goes on the next boot; a
               # profile file dsh owns stays.
-              ln -s ${plugins.jevcore} "$p/node_modules/dropped-plugin"
-              echo '[]' > "$p/cordis.patch.yml"
-              dump herdr-again ${expectHerdr} --profile herdr --dump-config
-              test ! -e "$p/node_modules/dropped-plugin"
-              test "$(cat "$p/cordis.patch.yml")" = '[]'
+              ln -s ${plugins.jevcore} "$n/node_modules/dropped-plugin"
+              echo '[]' > "$n/cordis.patch.yml"
+              dump native-again ${expectNative} --profile native --dump-config
+              test ! -e "$n/node_modules/dropped-plugin"
+              test "$(cat "$n/cordis.patch.yml")" = '[]'
               # No per-boot staging directory is left behind.
-              test -z "$(find "$p" -maxdepth 1 -name '.sync.*')"
-
-              # The whole tree boots: an unknown --session-id fails in headless
-              # after the loader settled and before any model call. The guard,
-              # dsh-herdr (which loads only with the guard's service) and jevcore
-              # (on the offline mock) each print a ready line through stderr-log.
-              rc=0
-              "$dsh" herdr --session-id session-none "reply OK" > "$TMPDIR/boot.out" 2> "$TMPDIR/boot.err" || rc=$?
-              cat "$TMPDIR/boot.err" >&2
-              echo "dsh herdr boot: exit $rc" >&2
-              test "$rc" = 1
-              grep -qF 'dsh: session "session-none" does not exist' "$TMPDIR/boot.err"
-              grep -qF '[jevcore] ready · provider=mock · gates: safety=off context=off' "$TMPDIR/boot.err"
-              grep -qF 'info: herdr-guard ready' "$TMPDIR/boot.err"
-              grep -qF 'info: dsh-herdr ready: 23 tools' "$TMPDIR/boot.err"
+              test -z "$(find "$n" -maxdepth 1 -name '.sync.*')"
               touch "$out"
             '';
 
@@ -2734,7 +2668,6 @@
               22
               53
               80
-              443
               2283
               4533
               8790
@@ -2995,26 +2928,15 @@
               touch "$out"
             '';
 
-        herdr-launchers =
-          pkgs.runCommand "herdr-launchers"
-            {
-              nativeBuildInputs = [
-                pkgs.bash
-                pkgs.python3
-                pkgs.jq
-                pkgs.gawk
-                pkgs.coreutils
-              ];
-              HERDR_SCRIPTS = ./home/dot_local/bin;
-            }
-            ''
-              ${pkgs.shellcheck}/bin/shellcheck \
-                ${./home/dot_local/bin/herdr-projector} \
-                ${./home/dot_local/bin/theme} \
-                ${./home/dot_local/bin/runtime-test}
-              python3 ${./tests/herdr/test_launchers.py}
-              touch "$out"
-            '';
+        # What survives of the old herdr-launchers check: the two shell
+        # launchers it also linted. The Herdr v1 projector and its test left
+        # with Herdr v1.
+        shell-launchers = pkgs.runCommand "shell-launchers" { } ''
+          ${pkgs.shellcheck}/bin/shellcheck \
+            ${./home/dot_local/bin/theme} \
+            ${./home/dot_local/bin/runtime-test}
+          touch "$out"
+        '';
 
         # Mod+Enter on the seat: hc-station (a new hc terminal in ~, then
         # attach; plain fish when hc is unavailable) and domicile-terminal's

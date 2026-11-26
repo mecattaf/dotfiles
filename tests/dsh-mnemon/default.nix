@@ -47,14 +47,14 @@ pkgs.runCommand "dsh-mnemon"
     "$dsh" mnemon --dump-config > "$TMPDIR/mnemon.yml" 2> "$TMPDIR/dump.err"
     test ! -s "$TMPDIR/dump.err"
     python3 -I ${./check_dump.py} "$TMPDIR/mnemon.yml" ${expected}
-    for profile in headless herdr; do
+    for profile in headless native; do
       "$dsh" "$profile" --dump-config > "$TMPDIR/$profile.yml" 2> "$TMPDIR/dump.err"
       test ! -s "$TMPDIR/dump.err"
       python3 -I ${./check_dump.py} "$TMPDIR/$profile.yml"
     done
     test "$(readlink "$DSH_HOME/profiles/mnemon/node_modules/dsh-mnemon")" = ${dsh.plugins.mnemon}
     test "$(stat -c %a "$DSH_HOME/profiles/mnemon/package.json")" = 600
-    test ! -e "$DSH_HOME/profiles/herdr/node_modules/dsh-mnemon"
+    test ! -e "$DSH_HOME/profiles/native/node_modules/dsh-mnemon"
     test ! -e "$DSH_HOME/profiles/headless/node_modules"
 
     # Unknown session stops after plugins mount, before inference. No provider
