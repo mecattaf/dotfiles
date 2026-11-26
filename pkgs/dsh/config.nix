@@ -379,9 +379,14 @@ let
       provider = "google";
       model = "gemini-3.5-flash-lite";
     };
+    # The Gufo model declares `reasoningEfforts = false` (gufoModels above), so
+    # the overlay's `high` was refused at the first request
+    # (UNSUPPORTED_REASONING_EFFORT, measured 2026-11-26); `null` drops the
+    # key, as the mnemon profile's Gufo row always has.
     gufo = {
       provider = "gufo";
       model = localModel.modelId;
+      reasoningEffort = null;
     };
     groq = {
       provider = "groq";
@@ -648,12 +653,15 @@ in
   smoke = yaml.generate "dsh-smoke.patch.yml" smoke;
   routeOverlays = lib.mapAttrs (
     name: route:
-    yaml.generate "dsh-route-${name}.patch.yml" [
+    let
       # `high` unless the route names its own effort; `null` drops the key.
-      (set "agent-default-model" (
-        lib.filterAttrs (_: v: v != null) ({ reasoningEffort = "high"; } // route)
-      ))
-    ]
+      row = lib.filterAttrs (_: v: v != null) ({ reasoningEffort = "high"; } // route);
+      effortless =
+        route.provider == "gufo" && ((gufoModels.${route.model} or { }).reasoningEfforts or null) == false;
+    in
+    assert lib.assertMsg (!(effortless && row ? reasoningEffort))
+      "dsh route ${name}: ${route.model} declares no reasoning efforts, so the route must set reasoningEffort = null";
+    yaml.generate "dsh-route-${name}.patch.yml" [ (set "agent-default-model" row) ]
   ) routes;
   # Local provider data for offline config checks.
   localProviders = { inherit gufo; };

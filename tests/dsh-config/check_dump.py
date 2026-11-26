@@ -63,6 +63,13 @@ def main(dump_path, expect_path):
     model = (by_id.get("agent-default-model") or {}).get("config") or {}
     check(model.get("provider") == route["provider"], f"agent-default-model provider is {model.get('provider')!r}")
     check(model.get("model") == route["model"], f"agent-default-model model is {model.get('model')!r}")
+    # A route that declares `reasoningEffort = null` must reach dsh with no
+    # effort at all: a model without efforts refuses any value, null included.
+    if "reasoningEffort" in route and route["reasoningEffort"] is None:
+        check(
+            "reasoningEffort" not in model,
+            f"agent-default-model reasoningEffort is {model.get('reasoningEffort')!r}, expected no key",
+        )
 
     providers = ((by_id.get("llm-pi-ai") or {}).get("config") or {}).get("providers") or {}
     local = expect["localProviders"]

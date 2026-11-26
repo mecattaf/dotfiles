@@ -2163,6 +2163,8 @@
               EXPECT=${expectPro} DSH_ROUTE=gemini-pro dump route-pro-acp acp --dump-config
               DSH_ROUTE=gemini DSH_KEY_SLOT=3 dump route-slot headless --dump-config
               ${batch2Dumps}
+              # Gufo: the route drops the effort its model does not declare.
+              EXPECT=${expectRoute "gufo"} DSH_ROUTE=gufo dump route-gufo headless --dump-config
               # A slot past every list is still a valid dump (the keys of the
               # single-account lanes are read only for a real run).
               EXPECT=${expectRoute "cohere"} DSH_ROUTE=cohere DSH_KEY_SLOT=5 dump route-cohere-slot5 headless --dump-config
