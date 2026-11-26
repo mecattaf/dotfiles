@@ -1,5 +1,50 @@
 # Native Kitty editors and the Neovim remote-SSH opening
 
+## Native fleet direction, 26 November 2026
+
+The old Agency Kitty/dsh-editor implementation below is historical. Fish `vi`
+now starts a local Nvim 0.13 UI and uses native `:connect ssh://nas`; editor
+logic, files and unsaved buffers remain on the NAS, outside hc. From a NAS
+shell, Kitty's native `launch --type=overlay-main --wait-for-child-to-exit`
+opens that UI locally and blocks the shell until it detaches or exits. The
+NAS terminal must permit Kitty remote control; only the NAS window launcher
+opts in. No editor daemon, callback service, holder or `EDITOR` override is
+introduced.
+
+The small `native_remote.lua` adapter carries cwd/files through public RPC,
+which the SSH URI itself does not support, and finds a marked same-directory
+server using `serverlist({peer=true})`. Existing local native tunnels are
+reused; after a lost tunnel, a new native SSH opening uses the remote
+`:connect` command to relink to the retained server. Neovim owns persistence,
+SSH forwarding, discovery and tunnel cleanup. `:detach` returns to the shell;
+`:qall` closes the NAS editor; plain `nvim` remains available for ordinary
+local editing and startup flags. `vi` accepts files, `+command` and `-c command`.
+
+Native SSH overwrites only its reserved `~/.config/nvim-remote/`. Its copied
+init delegates to the NAS's canonical `~/.config/nvim/`, so client Nix plugin
+paths never replace NAS plugin paths. The launcher checks the remote non-login
+PATH for a sufficiently new Nvim before connecting, preventing the default
+NixOS path from falling into upstream's binary auto-install. On the normal
+confirmation, choose Yes, not Update Nvim. Both hosts must be deployed with
+the same qualified 0.13 build before using this launcher.
+
+Current upstream 0.13 changed the lifecycle described in the old assessment
+below: SSH sessions with user activity survive link loss, `:connect` discovers
+them, and detachable UI channels preserve their server. This configuration
+marks its selected NAS editor's channels detachable, preserves modified
+buffers when opening another file, and keeps the existing OSC52 copy-only
+provider and pinned image.nvim native-UI adapter active in `nvim-remote`.
+Desktop clipboard reads remain Kitty's existing prompted policy.
+
+Validation: `runtime-test -- python3 tests/native-nvim/test_launcher.py`, and
+`runtime-test -- <nvim-0.13> --headless -u NONE -l tests/native-nvim/local.lua
+<checkout>`. The latter captures OSC52 bytes instead of altering the clipboard.
+An isolated native SSH/UI test must additionally cover fresh attach, reconnect,
+separate directories and unsaved-buffer survival; full Nix plugin startup and
+the actual desktop clipboard/graphics path are deployment qualification.
+
+## Historical retained-editor candidate (7 November)
+
 Research and candidate implementation, 2026-11-07. Nothing here activates a
 generation, changes a live Kitty instance, or restarts an editor or Herdr.
 

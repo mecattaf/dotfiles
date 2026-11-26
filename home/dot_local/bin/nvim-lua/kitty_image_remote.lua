@@ -121,7 +121,8 @@ end
 
 function M.prepare()
   if M.prepared then return true end
-  if not vim.env.DSH_EDITOR_STATE or vim.fn.has('ttyout') == 1 then return false end
+  if (not vim.env.DSH_EDITOR_STATE and vim.env.NVIM_APPNAME ~= 'nvim-remote')
+      or vim.fn.has('ttyout') == 1 then return false end
   assert(type(api.nvim_ui_send) == 'function', 'native image transport needs Nvim0.12 or newer')
   assert(not package.loaded['image/utils/term'], 'native image adapter must load before image.nvim')
   for relative, expected in pairs(fingerprints) do

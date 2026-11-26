@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""Local Neovim UI, native SSH connection, files and buffers on the NAS.
+
+On the seat this replaces the current terminal's foreground program. From a
+NAS shell Kitty opens a local overlay and waits for it, so `vi file; next`
+keeps its ordinary ordering. `:detach` returns to the shell while leaving the
+native NAS editor alive; `:qall` ends that editor.
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import signal
+import socket
+import subprocess
+import sys
+
+
+def request(directory, argv):
+    files, commands = [], []
+    literal = False
+    args = iter(argv)
+    for value in args:
+        if literal:
+            files.append(value)
+        elif value == "--":
+            literal = True
+        elif value == "-c":
+            try:
+                commands.append(next(args))
+            except StopIteration:
+                raise ValueError("-c requires a command") from None
+        elif value.startswith("+"):
+            commands.append(value[1:] or "$")
+        elif value.startswith("-"):
+            raise ValueError(f"{value}: use nvim directly for editor startup options; vi accepts files, +command and -c command")
+        else:
+            files.append(value)
+    if not Path(directory).is_absolute() or any(ord(c) < 32 or ord(c) == 127 for c in directory):
+        raise ValueError("the NAS directory must be an absolute path without control characters")
+    if any("\0" in value for value in files + commands):
+        raise ValueError("NUL is not valid in an editor argument")
+    return {"directory": directory, "files": files, "commands": commands}
+
+
+def local_argv():
+    return ["nvim", "-c", "lua require('native_remote').start()"]
+
+
+def role(env):
+    # A new fish in an older hc core can predate the Home Manager variable.
+    # Fleet identity is enough; no core/session restart is needed.
+    if env.get("NVIM_REMOTE_ROLE") in ("seat", "brain", "local"):
+        return env["NVIM_REMOTE_ROLE"]
+    return {"nas": "brain", "client": "seat"}.get(socket.gethostname().split(".")[0], "local")
+
+
+def kitty_argv(directory, argv):
+    # state:self is resolved by Kitty against the terminal that sent the
+    # request. A focus change must not send an editor into another window.
+    return ["kitten", "@", "launch", "--type=overlay-main", "--self",
+            "--source-window=state:self", "--next-to=state:self",
+            "--wait-for-child-to-exit", "--", "nvim-remote", "--ui",
+            "--directory", directory, "--", *argv]
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--ui", action="store_true", help="run the UI here (used by Kitty on the seat)")
+    parser.add_argument("--directory", default=os.getcwd(), help="absolute directory on the NAS")
+    parser.add_argument("files", nargs=argparse.REMAINDER)
+    args = parser.parse_args(argv)
+    editor_args = args.files[1:] if args.files[:1] == ["--"] else args.files
+    data = request(args.directory, editor_args)
+    env = os.environ.copy()
+    if not args.ui and role(env) == "brain":
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            raise ValueError("vi from the NAS requires a Kitty terminal; use nvim for headless commands")
+        # This is the seat's terminal, not a NAS control socket inherited from
+        # an unrelated process. No server, callback or editor RPC goes via hc.
+        env.pop("KITTY_LISTEN_ON", None)
+        result = subprocess.run(kitty_argv(args.directory, editor_args), env=env,
+                                stdout=subprocess.PIPE, text=True, check=False)
+        if result.returncode:
+            return result.returncode
+        status = result.stdout.strip()
+        if status.lstrip("-").isdigit():
+            code = int(status)
+            return code if code >= 0 else 128 - code
+        if status.startswith("SIG") and hasattr(signal, status):
+            return 128 + int(getattr(signal, status))
+        raise ValueError(f"Kitty returned an invalid editor exit status: {status!r}")
+    env["NVIM_REMOTE_REQUEST"] = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    os.execvpe("nvim", local_argv(), env)
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        raise SystemExit(130)
+    except (OSError, ValueError) as error:
+        print(f"vi: {error}", file=sys.stderr)
+        raise SystemExit(2)
