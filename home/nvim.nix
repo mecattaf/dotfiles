@@ -133,6 +133,7 @@ let
     "neoscroll.nvim" = vp.neoscroll-nvim;
     "lualine.nvim" = vp.lualine-nvim;
     "pipeline.nvim" = pipeline-nvim;
+    "nui.nvim" = vp.nui-nvim;
     "diagram.nvim" = vp.diagram-nvim;
     "nvim-lspconfig" = vp.nvim-lspconfig;
     "filemention.nvim" = filemention-nvim;
