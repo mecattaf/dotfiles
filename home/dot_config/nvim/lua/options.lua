@@ -7,21 +7,18 @@ opt.mouse = 'a'
 opt.title = true
 opt.titlestring = 'nvim %f'
 
--- THIN-CLIENT CLIPBOARD SEAM (2026-09-11). The seat is the laptop (`client`);
--- nvim almost always runs on the COORDINATOR, inside a herdr pane projected
--- into the laptop's kitty. Every herdr pane carries WAYLAND_DISPLAY=wayland-1,
--- so `unnamedplus` below would pick the wl-copy provider and land the yank on
--- the strix's clipboard — a clipboard nobody is sitting in front of; once
--- the strix goes headless (M-1) wl-copy fails outright.
+-- THIN-CLIENT CLIPBOARD SEAM. The seat is the laptop (`client`); nvim runs
+-- on the headless NAS, inside an hc station attached to the laptop's Kitty.
+-- A local clipboard provider on the NAS cannot reach the seat's clipboard.
 --
--- Fix: when the session is remote (a herdr pane sets HERDR_ENV; a plain remote
--- shell sets SSH_TTY), drive the clipboard over OSC 52 instead, so the yank
+-- hc sets HC_TERMINAL_ID without SSH_TTY: its PTY belongs to the holder,
+-- independently of any SSH attachment. Keep plain SSH and durable editor
+-- detection too, and drive the clipboard over OSC 52, so the yank
 -- travels the terminal stream into the laptop's kitty and lands on the SEAT's
 -- clipboard. kitty's `clipboard_control` (kitty.conf) permits exactly that write.
 --
 -- COPY-ONLY on purpose. nvim's bundled osc52 paste issues an OSC 52 READ and
--- then blocks 1 s + up to 9 s waiting for the terminal to answer. herdr never
--- answers OSC 52 reads at all (herdr-kitten mapping P27), and kitty answers one
+-- then blocks 1 s + up to 9 s waiting for the terminal to answer. Kitty answers
 -- only behind the interactive `read-clipboard-ask` prompt, so a plain `p` after
 -- a yank would hang for ten seconds. The `cache` table keeps whatever THIS nvim
 -- last put in each register, so in-nvim yank→put stays instant and never
@@ -34,7 +31,7 @@ opt.titlestring = 'nvim %f'
 -- rather than erroring out if a future nvim moves it.
 -- A durable editor can outlive its first SSH TTY; its native attached UIs own
 -- the terminal clipboard transport even while the server has no terminal.
-if vim.env.HERDR_ENV or vim.env.SSH_TTY or vim.env.DSH_EDITOR_ROOT then
+if vim.env.HC_TERMINAL_ID or vim.env.HERDR_ENV or vim.env.SSH_TTY or vim.env.DSH_EDITOR_ROOT then
   local ok, osc52 = pcall(require, 'vim.ui.clipboard.osc52')
   if ok then
     local cache = {}
