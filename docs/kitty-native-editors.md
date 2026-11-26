@@ -20,6 +20,15 @@ SSH forwarding, discovery and tunnel cleanup. `:detach` returns to the shell;
 `:qall` closes the NAS editor; plain `nvim` remains available for ordinary
 local editing and startup flags. `vi` accepts files, `+command` and `-c command`.
 
+The SSH entrypoint is `kitten ssh`, selected through the pinned Nvim 8cf5599
+`vim.net._ssh.ssh_cmd` command vector. This is a small internal extension point,
+guarded against a changed type or unexpected command; an upstream pin update
+must rerun the native lifecycle test. Nvim's calls use `-T` or `-G`, so Kitty
+uses its noninteractive SSH passthrough. The explicit version preflight also
+uses `kitten ssh -T`. Nvim still owns the RPC protocol, remote bootstrap,
+config copy and retained server; no global SSH alias or second SSH framework
+is installed. This entrypoint does not add offline editing or network roaming.
+
 Native SSH overwrites only its reserved `~/.config/nvim-remote/`. Its copied
 init delegates to the NAS's canonical `~/.config/nvim/`, so client Nix plugin
 paths never replace NAS plugin paths. The launcher checks the remote non-login
@@ -44,6 +53,8 @@ imports the actual launcher module and runs upstream's SSH bootstrap over a
 private transport fixture. It covers fresh attach, local tunnel reuse, a new
 seat relinking to the same dirty server, empty bootstrap cleanup, separate
 directories, and rejection of an old remote version before native connect.
+Its Kitten shim validates `ssh`/`-T`/`-G` argv and delegates to fake SSH; it does
+not qualify the real Kitty binary.
 Full Nix plugin startup and the actual network/desktop clipboard/graphics path
 remain deployment qualification.
 

@@ -3,7 +3,8 @@
 
 Run: runtime-test -- python3 tests/native-nvim/native_ssh.py --nvim /path/to/nvim
 The fixture runs upstream remote_ssh.sh and Unix forwarding, never a network SSH
-or a live terminal. All input below belongs to its private pseudo-terminals.
+or a live terminal. A Kitten shim checks argv and delegates to fake SSH; this
+does not qualify the actual Kitty binary. Input belongs to private terminals.
 """
 import argparse
 import fcntl
@@ -110,6 +111,14 @@ signal.signal(signal.SIGTERM,lambda *_:child.terminate())
 sys.exit(child.wait())
 '''
 (ROOT/'bin/ssh').write_text('#!'+sys.executable+'\n'+FAKE);(ROOT/'bin/ssh').chmod(0o755)
+KITTEN=r'''import json,os,sys
+from pathlib import Path
+root=Path(os.environ['PROBE_ROOT']);args=sys.argv[1:]
+assert args[0]=='ssh' and ('-T' in args or '-G' in args), args
+with open(root/'kitten-calls.jsonl','a') as f:f.write(json.dumps(args)+'\n')
+os.execv(str(root/'bin/ssh'),['ssh']+args[1:])
+'''
+(ROOT/'bin/kitten').write_text('#!'+sys.executable+'\n'+KITTEN);(ROOT/'bin/kitten').chmod(0o755)
 (ROOT/'bin/curl').write_text('#!'+SHELL+'\nexit 7\n');(ROOT/'bin/curl').chmod(0o755)
 LOCAL=r'''
 local directory=vim.env.PROBE_ROOT..'/'..(vim.env.PROBE_DIRECTORY or 'remote-cwd')
@@ -200,6 +209,10 @@ try:
  calls_after=(ROOT/'ssh-calls.jsonl').read_text().splitlines()
  rejected_calls=[json.loads(line) for line in calls_after[len(calls_before):]]
  assert len(rejected_calls)==1 and rejected_calls[0][-1]=='nvim --version', rejected_calls
+ kitten_calls=[json.loads(line) for line in (ROOT/'kitten-calls.jsonl').read_text().splitlines()]
+ assert all(call[0]=='ssh' and ('-T' in call or '-G' in call) for call in kitten_calls)
+ assert any('-G' in call for call in kitten_calls), 'native SSH did not use Kitty config lookup'
+ assert any('-L' in call for call in kitten_calls), 'native SSH did not use Kitty forwarding'
  print('PREFLIGHT_GUARD=PASS',flush=True)
  ui5=start_ui(5,directory='other-cwd');uis.append(ui5)
  other=wait_file(ui5,'remote-5.json')
@@ -207,7 +220,7 @@ try:
  assert other['lines']==['OTHER DIRECTORY']
  assert rpc(oldsock,STATE_LUA)['lines']==dirty['lines'], 'another directory changed the retained buffer'
  print('DIRECTORIES_DISTINCT=PASS',flush=True)
- receipt={'binary':str(BIN),'version':subprocess.check_output([str(BIN),'--version'],env=ENV,text=True).splitlines()[0],'fresh':fresh,'dirty':dirty,'detached':detached,'local_tunnel_reused':local_reused,'reattached':reattached,'bootstrap':bootstrap,'bootstrap_exited':bootstrap_gone,'disk_unchanged':True,'older_remote_rejected_before_native_connect':True,'other_directory':other,'isolated':True,'network':'private namespace, no network transport; native ssh command runner fixture only'}
+ receipt={'binary':str(BIN),'version':subprocess.check_output([str(BIN),'--version'],env=ENV,text=True).splitlines()[0],'fresh':fresh,'dirty':dirty,'detached':detached,'local_tunnel_reused':local_reused,'reattached':reattached,'bootstrap':bootstrap,'bootstrap_exited':bootstrap_gone,'disk_unchanged':True,'older_remote_rejected_before_native_connect':True,'other_directory':other,'isolated':True,'network':'private namespace, no network transport; Kitten shim and native SSH command-runner fixture only'}
  (ROOT/'results.json').write_text(json.dumps(receipt,indent=2)+'\n')
  print('NATIVE_LIFECYCLE_PROOF=PASS',flush=True)
 finally:

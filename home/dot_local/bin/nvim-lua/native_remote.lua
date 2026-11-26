@@ -4,6 +4,17 @@ local M = {}
 local host = 'nas'
 local marker = 'native_nvim_directory'
 
+local function kitty_ssh()
+  -- Pinned Neovim 8cf5599 exposes this command vector for its SSH runner.
+  -- Keep Nvim's RPC/bootstrap/lifetime code; select Kitty's SSH entrypoint.
+  local ssh = require('vim.net._ssh')
+  assert(type(ssh.ssh_cmd) == 'table' and
+    ((#ssh.ssh_cmd == 1 and ssh.ssh_cmd[1] == 'ssh') or
+     (#ssh.ssh_cmd == 2 and ssh.ssh_cmd[1] == 'kitten' and ssh.ssh_cmd[2] == 'ssh')),
+    'Neovim SSH command hook changed; qualify Kitty SSH against the new pin')
+  ssh.ssh_cmd = { 'kitten', 'ssh' }
+end
+
 local function request(socket, code, args)
   local ok, channel = pcall(vim.fn.sockconnect, 'pipe', socket, { rpc = true, trust = false })
   if not ok or channel == 0 then return nil end
@@ -121,9 +132,10 @@ function M.start()
         end
       end
     end
+    kitty_ssh()
     -- NixOS must use its declared remote binary, not a downloaded glibc
     -- release. Check the non-login PATH that native :connect itself will use.
-    local remote = vim.system({ 'ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
+    local remote = vim.system({ 'kitten', 'ssh', '-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
                                 host, 'nvim --version' }, { text = true }):wait(15000)
     local version = remote.code == 0 and vim.version.parse(remote.stdout or '')
     assert(version and vim.version.ge(version, vim.version()),
