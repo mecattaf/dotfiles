@@ -2,15 +2,14 @@
 """Local Neovim UI, native SSH connection, files and buffers on the NAS.
 
 On the seat this replaces the current terminal's foreground program. From a
-NAS shell Kitty opens a local overlay and waits for it, so `vi file; next`
-keeps its ordinary ordering. `:detach` returns to the shell while leaving the
-native NAS editor alive; `:qall` ends that editor.
+NAS shell Kitty opens a local overlay and returns after its launch is
+acknowledged, like gvim. The shell never waits for a reply across an entire
+editing session. `:detach` keeps the NAS editor alive; `:qall` ends it.
 """
 import argparse
 import json
 import os
 from pathlib import Path
-import signal
 import socket
 import subprocess
 import sys
@@ -60,7 +59,7 @@ def kitty_argv(directory, argv):
     # request. A focus change must not send an editor into another window.
     return ["kitten", "@", "launch", "--type=overlay-main", "--self",
             "--source-window=state:self", "--next-to=state:self",
-            "--wait-for-child-to-exit", "--", "nvim-remote", "--ui",
+            "--response-timeout=10", "--", "nvim-remote", "--ui",
             "--directory", directory, "--", *argv]
 
 
@@ -84,12 +83,9 @@ def main(argv=None):
         if result.returncode:
             return result.returncode
         status = result.stdout.strip()
-        if status.lstrip("-").isdigit():
-            code = int(status)
-            return code if code >= 0 else 128 - code
-        if status.startswith("SIG") and hasattr(signal, status):
-            return 128 + int(getattr(signal, status))
-        raise ValueError(f"Kitty returned an invalid editor exit status: {status!r}")
+        if status.isdecimal() and int(status) > 0:
+            return 0
+        raise ValueError(f"Kitty returned an invalid editor window id: {status!r}")
     env["NVIM_REMOTE_REQUEST"] = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     os.execvpe("nvim", local_argv(), env)
 

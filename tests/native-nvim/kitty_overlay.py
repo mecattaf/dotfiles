@@ -2,7 +2,7 @@
 """Actual Kitty/hc overlay regression; requires runtime-test and a private Xvfb.
 
 No live desktop, terminal input or clipboard is touched. A mock local editor
-lets the production NAS launcher prove blocking, origin binding and status.
+lets the production NAS launcher prove acknowledgement, origin binding and loss recovery.
 """
 import argparse
 import hashlib
@@ -41,6 +41,7 @@ ui=r'''import json,os,signal,subprocess,sys,time
 from pathlib import Path
 r=Path(os.environ['PROBE_ROOT'])
 case=(r/'case').read_text()
+with open(r/'ui-runs.jsonl','a') as f:f.write(json.dumps({'case':case,'argv':sys.argv[1:]})+'\n')
 e=dict(os.environ);e.pop('KITTY_LISTEN_ON',None)
 p=subprocess.run(['kitten','@','ls','--match','state:overlay_parent'],env=e,capture_output=True,text=True,timeout=8)
 (r/('ui-'+case+'.json')).write_text(json.dumps({'argv':sys.argv[1:],'window_id':os.environ.get('KITTY_WINDOW_ID'),'parent_query_code':p.returncode,'parent_query':p.stdout,'parent_query_err':p.stderr}))
@@ -50,20 +51,32 @@ if case=='signal':os.kill(os.getpid(),signal.SIGTERM)
 sys.exit(7)
 '''
 (root/'bin/nvim-remote').write_text('#!'+sys.executable+'\n'+ui);(root/'bin/nvim-remote').chmod(0o755)
-worker=r'''import json,os,subprocess,time
+worker=r'''import json,os,subprocess,sys,time
 from pathlib import Path
-r=Path(os.environ['PROBE_ROOT'])
-(r/'worker-ready').touch()
-end=time.monotonic()+25
-while not (r/'worker-go').exists() and time.monotonic()<end:time.sleep(.03)
+r=Path(os.environ['PROBE_ROOT']);case=sys.argv[1]
+if case=='ack':
+ (r/'worker-ready').touch()
+ end=time.monotonic()+25
+ while not (r/'worker-go').exists() and time.monotonic()<end:time.sleep(.03)
 e=dict(os.environ);e['NVIM_REMOTE_ROLE']='brain';e.pop('KITTY_LISTEN_ON',None)
-for case in ('exit7','signal'):
- (r/'case').write_text(case)
- p=subprocess.run([os.environ['PROBE_LAUNCHER'],'--directory',str(r),'--',"a 'quoted' `literal`.md"],env=e)
- (r/('worker-result-'+case+'.json')).write_text(json.dumps({'returncode':p.returncode}))
-time.sleep(3)
+(r/'case').write_text(case)
+started=time.monotonic()
+p=subprocess.run([os.environ['PROBE_LAUNCHER'],'--directory',str(r),'--',"a 'quoted' `literal`.md"],env=e)
+(r/('worker-result-'+case+'.json')).write_text(json.dumps({'returncode':p.returncode,'elapsed':time.monotonic()-started}))
+print('LAUNCH_RETURNED',case,flush=True)
+time.sleep(25)
 '''
 (root/'worker.py').write_text(worker)
+viewer=r'''import os,subprocess,time
+from pathlib import Path
+r=Path(os.environ['PROBE_ROOT'])
+p=subprocess.Popen([os.environ['PROBE_HC'],'attach',os.environ['PROBE_TID']])
+(r/'viewer-pid').write_text(str(p.pid))
+code=p.wait()
+(r/'viewer-disconnected').write_text(str(code))
+time.sleep(30)
+'''
+(root/'viewer.py').write_text(viewer)
 env['PROBE_LAUNCHER']=str(source)
 logs={'kitty_binary':str(kitty),'hc_binary':str(hc),'xvfb_binary':str(xvfb),
       'launcher':str(source),'launcher_sha256':hashlib.sha256(source.read_bytes()).hexdigest()}
@@ -85,12 +98,13 @@ try:
  assert select.select([xp.stdout],[],[],8)[0], 'Xvfb display timeout'
  display=xp.stdout.readline().strip();assert display.isdigit(),(display,(root/'xvfb.log').read_text());env['DISPLAY']=':'+display
  start=json.loads(run([hc,'--json','server','start']));logs['core_start']=start;core_started=True
- terminal=json.loads(run([hc,'--json','run','--bg','--no-parent','--no-notify','--name','overlay','--cwd',root,'--',sys.executable,root/'worker.py']));logs['terminal']=terminal
+ terminal=json.loads(run([hc,'--json','run','--bg','--no-parent','--no-notify','--name','overlay','--cwd',root,'--',sys.executable,root/'worker.py','ack']));logs['terminal']=terminal
  tid=terminal.get('address') or terminal.get('id') or terminal.get('terminal',{}).get('id');assert tid,terminal
  wait_file(root/'worker-ready')
+ env['PROBE_HC']=str(hc);env['PROBE_TID']=tid
  sock=root/'kitty.sock'
  kl=open(root/'kitty.log','w')
- kp=subprocess.Popen([str(kitty),'--config','NONE','--override','linux_display_server=x11','--override','allow_remote_control=yes','--override','shell_integration=disabled','--override','confirm_os_window_close=0','--listen-on','unix:'+str(sock),str(hc),'attach',tid],env=env,cwd=root,stdout=kl,stderr=kl);processes.append(kp)
+ kp=subprocess.Popen([str(kitty),'--config','NONE','--override','linux_display_server=x11','--override','allow_remote_control=yes','--override','shell_integration=disabled','--override','confirm_os_window_close=0','--listen-on','unix:'+str(sock),sys.executable,str(root/'viewer.py')],env=env,cwd=root,stdout=kl,stderr=kl);processes.append(kp)
  wait_file(sock)
  def rc(*argv):return run([kitten,'@','--to','unix:'+str(sock),*argv])
  def windows():return [w for o in json.loads(rc('ls')) for t in o['tabs'] for w in t['windows']]
@@ -99,25 +113,50 @@ try:
  other=int(rc('launch','--type=tab','--',shutil.which('sleep'),'30').strip());logs['other']=other
  active_tabs=[t for o in json.loads(rc('ls')) for t in o['tabs'] if t['is_active']]
  assert len(active_tabs)==1 and [w['id'] for w in active_tabs[0]['windows']]==[other], active_tabs
+ rc('set-user-vars','--match','id:'+str(origin),'hc_addr=nas/t1')
  (root/'worker-go').touch()
- logs['cases']={}
- for case,expected in (('exit7',7),('signal',143)):
-  wait_file(root/('ui-'+case+'.json'))
-  info=json.loads((root/('ui-'+case+'.json')).read_text())
-  assert info['argv']==['--ui','--directory',str(root),'--',"a 'quoted' `literal`.md"], info
-  assert not (root/('worker-result-'+case+'.json')).exists(),'NAS vi returned before local UI exited'
-  assert info['parent_query_code']==0,info
-  parents=[w for o in json.loads(info['parent_query']) for t in o['tabs'] for w in t['windows']]
-  assert [w['id'] for w in parents]==[origin],(origin,other,info)
-  (root/('ui-'+case+'-release')).touch();wait_file(root/('worker-result-'+case+'.json'))
-  result=json.loads((root/('worker-result-'+case+'.json')).read_text())
-  assert result['returncode']==expected,result
-  logs['cases'][case]={'argv':info['argv'],'overlay_window':int(info['window_id']),'parent_ids':[w['id'] for w in parents],'returncode':result['returncode'],'blocked_until_ui_exit':True}
- logs['passed']=True;logs['scope']='private Xvfb/Kitty0.50/hc0.1.22; real production NAS nvim-remote launcher, mock local UI exits7 or SIGTERM; no live desktop or clipboard'
+ wait_file(root/'ui-ack.json')
+ info=json.loads((root/'ui-ack.json').read_text())
+ assert info['argv']==['--ui','--directory',str(root),'--',"a 'quoted' `literal`.md"], info
+ assert info['parent_query_code']==0,info
+ parents=[w for o in json.loads(info['parent_query']) for t in o['tabs'] for w in t['windows']]
+ assert [w['id'] for w in parents]==[origin],(origin,other,info)
+ wait_file(root/'worker-result-ack.json')
+ ack=json.loads((root/'worker-result-ack.json').read_text())
+ assert ack['returncode']==0,ack
+ assert not (root/'ui-ack-release').exists()
+ overlay=next(w for w in windows() if w['id']==int(info['window_id']))
+ assert not overlay['user_vars'].get('hc_addr'),overlay
+ logs['acknowledged']={'returncode':0,'while_overlay_open':True,'parent_ids':[w['id'] for w in parents],
+                       'overlay_user_vars':overlay['user_vars'],'argv':info['argv']}
+ # Lose only the original viewer, as when its SSH stream ends. Keep the
+ # Kitty base window alive; the independent local editor then exits.
+ os.kill(int((root/'viewer-pid').read_text()),15)
+ wait_file(root/'viewer-disconnected')
+ (root/'ui-ack-release').touch()
+ second=int(rc('launch','--type=tab','--',str(hc),'attach',tid).strip())
+ end=time.monotonic()+5
+ while time.monotonic()<end:
+  if 'LAUNCH_RETURNED ack' in rc('get-text','--match','id:'+str(second),'--extent=screen'):break
+  time.sleep(.05)
+ else:raise AssertionError('reattached station did not show returned NAS command')
+ logs['viewer_drop_after_ack_leaves_no_wait']=True
+ # No viewer can receive this terminal's launch request. The native
+ # acknowledgement timeout must return a failure, without retrying a launch.
+ lost=json.loads(run([hc,'--json','run','--bg','--no-parent','--no-notify','--name','lostack',
+                       '--cwd',root,'--',sys.executable,root/'worker.py','lostack']))
+ wait_file(root/'worker-result-lostack.json',timeout=15)
+ lost_result=json.loads((root/'worker-result-lostack.json').read_text())
+ assert lost_result['returncode']!=0,lost_result
+ assert 9<=lost_result['elapsed']<15,lost_result
+ ui_runs=[json.loads(line) for line in (root/'ui-runs.jsonl').read_text().splitlines()]
+ assert len(ui_runs)==1 and ui_runs[0]['case']=='ack',ui_runs
+ logs['lost_ack']={'result':lost_result,'automatic_retry':False,'local_ui_runs':len(ui_runs)}
+ logs['passed']=True;logs['scope']='private Xvfb/Kitty0.50/hc0.1.22; real production NAS nvim-remote launcher, mock local UI remains open after acknowledged launch; lost viewer does not retain wait; missing acknowledgement fails in10s; no live desktop or clipboard'
  logs['binary_versions']={'kitty':run([kitty,'--version']).strip(),'hc':run([hc,'--version']).strip()}
  logs['source_root']=str(args.source_root)
  (root/'results.json').write_text(json.dumps(logs,indent=2)+'\n')
- print('OVERLAY_HC_WAITSTATUS=PASS',flush=True)
+ print('OVERLAY_HC_ASYNC_ACK=PASS',flush=True)
 except BaseException:
  print('KITTY_LOG='+((root/'kitty.log').read_text() if (root/'kitty.log').exists() else ''),flush=True)
  print('HC_READ='+run([hc,'read','overlay']) if (root/'worker-ready').exists() else 'no worker',flush=True)
