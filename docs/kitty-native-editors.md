@@ -45,6 +45,33 @@ buffers when opening another file, and keeps the existing OSC52 copy-only
 provider and pinned image.nvim native-UI adapter active in `nvim-remote`.
 Desktop clipboard reads remain Kitty's existing prompted policy.
 
+### What survives
+
+The normal entry point is `vi file` in the NAS fish shell inside hc. The NAS
+launcher sends a Kitty remote-control request through that terminal; Kitty
+opens the local UI as an overlay over the originating window, even if another
+window gains focus. The NAS shell waits. `:detach` removes the overlay and
+returns to that shell, retaining the editor; another `vi` from the same NAS
+directory selects that editor and its unsaved buffers. `:qall` ends it (and
+refuses modified buffers unless saved or explicitly discarded).
+
+An SSH loss removes the UI, not the dirty NAS editor. After reconnecting the
+hc shell, run `vi` in the same directory to attach again. This is recovery
+after a broken connection, not offline editing or automatic network roaming.
+Herdr retains the surrounding shell and harness PTYs; Neovim retains its own
+editor state. Desktop window placement remains Domicile's responsibility.
+
+NAS process loss is a separate case. Native swap is enabled in Neovim's
+persistent state directory (`~/.local/state/nvim-remote/swap/` for this remote
+editor). Swap periodically records in-progress changes without saving the
+source file; `:preserve` forces an update. After a crash use
+`NVIM_APPNAME=nvim-remote nvim -r` on the NAS to list recovery files, or add
+`/absolute/file` to recover
+from this app's swap directory. Inspect the recovered buffer before saving.
+Swap can lag the most recent keystrokes; it is not autosave. Persistent undo
+remains enabled for edit history after normal saves. Neither reconstructs a
+running process's full window/plugin state after a NAS reboot.
+
 Validation: `runtime-test -- python3 tests/native-nvim/test_launcher.py`, and
 `runtime-test -- <nvim-0.13> --headless -u NONE -l tests/native-nvim/local.lua
 <checkout>`. The latter captures OSC52 bytes instead of altering the clipboard.
@@ -55,6 +82,16 @@ seat relinking to the same dirty server, empty bootstrap cleanup, separate
 directories, and rejection of an old remote version before native connect.
 Its Kitten shim validates `ssh`/`-T`/`-G` argv and delegates to fake SSH; it does
 not qualify the real Kitty binary.
+`runtime-test -- python3 tests/native-nvim/swap_recovery.py --nvim <nvim-0.13>`
+modifies a private file's buffer, preserves swap, kills only its own editor,
+and proves recovery without having saved the source file.
+
+The 26 November isolated integration receipts also use actual Kitty 0.50,
+OpenSSH and the pinned Nvim: severing the private SSH master with SIGKILL
+leaves the same dirty NAS editor PID, and a fresh SSH opening restores it.
+A private Kitty/hc/Xvfb test verifies the blocking overlay request, original
+window targeting across focus changes, quoted file arguments and child exit
+status. These use private homes and runtimes, never live user input.
 Full Nix plugin startup and the actual network/desktop clipboard/graphics path
 remain deployment qualification.
 
