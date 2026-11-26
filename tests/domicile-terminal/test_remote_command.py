@@ -74,11 +74,11 @@ class RemoteCommand(unittest.TestCase):
         path.write_text("#!" + sys.executable + "\n" + RECORD)
         path.chmod(0o755)
 
-    def run_remote(self, remote):
+    def run_remote(self, remote, extra=None):
         # sshd runs the command with the login shell: `bash -c <remote>`.
         env = {"HOME": str(self.home), "FIXTURE": str(self.root),
                "PATH": f"{self.bin}:{os.environ.get('PATH', '/run/current-system/sw/bin:/usr/bin:/bin')}",
-               "HERDR_ENV": "1"}
+               "HERDR_ENV": "1", **(extra or {})}
         return subprocess.run(["bash", "-c", remote], env=env, cwd=self.root, stdin=subprocess.DEVNULL,
                               capture_output=True, text=True, timeout=20)
 
@@ -169,10 +169,43 @@ class RemoteCommand(unittest.TestCase):
         finally:
             os.environ["PATH"] = path
 
+    def test_pick_keeps_the_pinned_options_and_parses(self):
+        for cwd in (None, "/home/tom", self.awkward):
+            argv = self.dt.ssh_argv(cwd, pick=True)
+            self.assertEqual(argv[:-1], PINNED)
+            words = shlex.split(argv[-1])
+            self.assertEqual(words[:3], ["exec", "sh", "-c"])
+            self.assertEqual(len(words), 4)
+            self.assertIn("exec env -i ", words[3])
+            self.assertIn('h="/etc/profiles/per-user/$USER/bin/herdr-core"', words[3])
+            script = self.root / "pick.sh"
+            script.write_text(words[3])
+            for shell in ("sh", "bash"):
+                checked = subprocess.run([shell, "-n", str(script)], capture_output=True, text=True)
+                self.assertEqual(checked.returncode, 0, checked.stderr)
+
+    def test_pick_without_a_core_socket_runs_todays_fish(self):
+        # Only the no-socket branch runs here: the other one execs the real
+        # herdr-core picker.
+        self.fake(self.bin / "fish")
+        runtime = self.root / "runtime"
+        runtime.mkdir()
+        result = self.run_remote(self.dt.ssh_argv(self.awkward, pick=True)[-1], {"XDG_RUNTIME_DIR": str(runtime)})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(self.dt.NO_CORE, result.stderr)
+        calls = self.records("fish")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["argv"], ["--login", "--interactive"])
+        self.assertEqual(calls[0]["cwd"], self.awkward)
+        self.assertFalse((self.root / "PWNED").exists())
+        self.assertFalse(Path(self.awkward, "PWNED").exists())
+
     def test_arguments(self):
         self.assertEqual(self.dt.parse_args([]).seat, "zenbook")
         self.assertTrue(self.dt.parse_args(["--plain", "--cwd", "/x"]).plain)
-        for bad in (["--cwd", "relative"], ["--seat", "Bad Seat"], ["--local", "--plain"]):
+        self.assertTrue(self.dt.parse_args(["--pick"]).pick)
+        for bad in (["--cwd", "relative"], ["--seat", "Bad Seat"], ["--local", "--plain"],
+                    ["--pick", "--plain"], ["--pick", "--local"]):
             with self.assertRaises(SystemExit):
                 with open(os.devnull, "w") as quiet:
                     stderr, sys.stderr = sys.stderr, quiet

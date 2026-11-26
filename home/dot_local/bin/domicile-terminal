@@ -9,7 +9,8 @@ a plain fish opens with a one-line banner, and hc-station itself falls back
 to a plain fish when hc is unavailable: a window always gets a shell.
 
 --plain is the old behaviour (a plain fish over ssh, no hc), --local opens
-fish on this device (the seat rescue shell).
+fish on this device (the seat rescue shell), --pick runs hc's own picker on
+the NAS to attach to an existing terminal (no new station; no key is bound).
 """
 import argparse
 import os
@@ -29,6 +30,7 @@ PLAIN_SHELL = ["env", "-u", "HERDR_ENV", "-u", "HERDR_SESSION",
                "-u", "HERDR_WORKSPACE_ID", "-u", "HERDR_PANE_ID",
                "-u", "HERDR_SOCKET_PATH", "fish", "--login", "--interactive"]
 MISSING = "domicile-terminal: hc-station is missing on the NAS: plain fish, not persistent"
+NO_CORE = "domicile-terminal: no hc core on the NAS: plain fish, not persistent"
 
 
 def clean_environment():
@@ -43,6 +45,8 @@ def parse_args(argv):
     where = parser.add_mutually_exclusive_group()
     where.add_argument("--local", action="store_true", help="open fish on this device")
     where.add_argument("--plain", action="store_true", help="a plain NAS fish over ssh, no hc")
+    where.add_argument("--pick", action="store_true",
+                       help="attach to an existing NAS hc terminal with hc's own picker (no new station)")
     parser.add_argument("--cwd", help="absolute directory on the shell's host")
     parser.add_argument("--seat", default="zenbook", help="the hc label seat=<name> (default zenbook)")
     args = parser.parse_args(argv)
@@ -89,10 +93,35 @@ def station_command(cwd, seat="zenbook", version=None):
     return "exec sh -c " + shlex.quote(script)
 
 
-def ssh_argv(cwd, plain=False, seat="zenbook", version=None):
+def pick_command(cwd):
+    # Bare `herdr-core` is hc's picker (attach to a terminal, or new... on
+    # top). Any hc client autostarts a core when none answers, and that core
+    # would carry this ssh login's environment into every terminal: so only
+    # when the default socket exists, and then from a clean environment.
+    # Otherwise today's plain fish, so the window still gets a shell.
+    cd = f"cd -- {shlex.quote(cwd)} && " if cwd is not None else ""
+    script = "\n".join([
+        'r="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"',
+        'h="/etc/profiles/per-user/$USER/bin/herdr-core"',
+        'if [ -S "$r/herdr-core/default.sock" ] && [ -x "$h" ]; then ' + cd
+        + 'exec env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" SHELL="$SHELL" LANG="${LANG:-C.UTF-8}" '
+        'TERM="$TERM" XDG_RUNTIME_DIR="$r" '
+        'PATH=/run/wrappers/bin:/etc/profiles/per-user/"$USER"/bin:/run/current-system/sw/bin "$h"; fi',
+        "echo " + shlex.quote(NO_CORE) + " >&2",
+        plain_command(cwd),
+    ])
+    return "exec sh -c " + shlex.quote(script)
+
+
+def ssh_argv(cwd, plain=False, seat="zenbook", version=None, pick=False):
     # OpenSSH joins command arguments into shell text. Quote deliberately:
     # a project path is data even when it contains shell syntax.
-    remote = plain_command(cwd) if plain else station_command(cwd, seat, version)
+    if plain:
+        remote = plain_command(cwd)
+    elif pick:
+        remote = pick_command(cwd)
+    else:
+        remote = station_command(cwd, seat, version)
     return ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
             "-o", f"Hostname={NAS_TAILNET}", "-o", "HostKeyAlias=nas",
             "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes",
@@ -111,8 +140,8 @@ def main(argv=None):
         if args.cwd is not None:
             os.chdir(args.cwd)
         os.execvpe("fish", ["fish", "--login", "--interactive"], env)
-    version = None if args.plain else kitty_version()
-    status = subprocess.call(ssh_argv(args.cwd, args.plain, args.seat, version), env=env)
+    version = None if args.plain or args.pick else kitty_version()
+    status = subprocess.call(ssh_argv(args.cwd, args.plain, args.seat, version, pick=args.pick), env=env)
     if status == 255:
         # Never reconnect into another shell and never silently change host.
         print("\nNAS connection ended. A shell opened through hc keeps running on the NAS. "

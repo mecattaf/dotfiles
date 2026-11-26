@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""hc-reap: list (default) or end Kitty stations nobody has used for a while, on this machine's core.
+
+  hc-reap [--hours 24] [--label k=v]... [--kill]
+
+A Kitty window on the NAS is one hc terminal labelled ui=kitty (hc-station).
+Closing the window only detaches, so idle stations pile up; `exit` in one ends
+it. hc 0.1.22 has no "last activity" and no "who is attached" field, but the
+kernel has both halves: the terminal's pts keeps atime = last input read and
+mtime = last output written (what `w` calls idle). A station is a candidate
+when ALL of these hold:
+
+  - it is live, labelled ui=kitty, not kept, and not labelled reap=never;
+  - it is not the parent of a live terminal;
+  - its program is not working or blocked (OSC 7501);
+  - for a shell: the shell itself is in the foreground (no job running);
+  - no input and no output for --hours (default 24).
+
+It only ever looks at terminals labelled ui=kitty: the floor's workers and
+anything else are never printed and never touched. It prints by default;
+--kill ends the candidates (`kill`, then `rm`, as Ovis closes a terminal).
+Nothing schedules it (no timer, AGENTS.md): run it by hand.
+
+It never starts a core. Any herdr-core client call against a missing or stale
+socket autostarts one that inherits the caller's environment, so it first
+checks that the socket accepts a connection, and every call runs with a clean
+environment. The binary is $HC_BIN, else the fleet's
+/etc/profiles/per-user/$USER/bin/herdr-core, never bare `hc`.
+"""
+import argparse
+import json
+import os
+import pwd
+import socket
+import stat
+import subprocess
+import sys
+import time
+
+SHELLS = {"sh", "bash", "zsh", "fish", "nu", "dash", "ksh", "tcsh"}
+# Passed through to herdr-core when set; everything else (tokens, SSH_*,
+# CLAUDE*) stays behind in case a call ever reaches a core that starts.
+KEEP = ("HOME", "USER", "LOGNAME", "LANG", "XDG_RUNTIME_DIR", "HC_SESSION", "HC_SOCKET")
+
+
+def user():
+    return os.environ.get("USER") or pwd.getpwuid(os.getuid()).pw_name
+
+
+def binary():
+    return os.environ.get("HC_BIN") or f"/etc/profiles/per-user/{user()}/bin/herdr-core"
+
+
+def socket_path():
+    if os.environ.get("HC_SOCKET"):
+        return os.environ["HC_SOCKET"]
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    session = (os.environ.get("HC_SESSION") or "default").strip()
+    return os.path.join(runtime, "herdr-core", session + ".sock")
+
+
+def core_answers(path):
+    try:
+        if not stat.S_ISSOCK(os.stat(path).st_mode):
+            return False
+    except OSError:
+        return False
+    probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    probe.settimeout(2)
+    try:
+        probe.connect(path)
+        return True
+    except OSError:
+        return False
+    finally:
+        probe.close()
+
+
+def clean_environment():
+    env = {key: os.environ[key] for key in KEEP if os.environ.get(key)}
+    env["PATH"] = f"/run/wrappers/bin:/etc/profiles/per-user/{user()}/bin:/run/current-system/sw/bin"
+    return env
+
+
+def hc(*args):
+    try:
+        result = subprocess.run([binary(), *args, "--json"], stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, timeout=15, env=clean_environment())
+        value = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def idle_hours(pid):
+    # fd 0 is the pts: stat follows the link to the device.
+    if not isinstance(pid, int) or isinstance(pid, bool):
+        return None
+    try:
+        st = os.stat(f"/proc/{pid}/fd/0")
+    except OSError:
+        return None
+    return (time.time() - max(st.st_atime, st.st_mtime)) / 3600
+
+
+def status_state(record):
+    # `get` reports {"state": ...}; `ls` a bare string. Accept both.
+    status = record.get("status")
+    return status.get("state") if isinstance(status, dict) else status if isinstance(status, str) else None
+
+
+def verdict(record, parents, hours):
+    labels = record.get("labels") or {}
+    state = status_state(record)
+    argv = record.get("argv") or ["?"]
+    program = os.path.basename(str(argv[0]))
+    foreground = (record.get("foreground") or {}).get("name")
+    idle = idle_hours(record.get("pid"))
+    if record.get("keep"):
+        why = "kept"
+    elif labels.get("reap") == "never":
+        why = "reap=never"
+    elif record.get("address") in parents:
+        why = "has children"
+    elif state in ("working", "blocked"):
+        why = state
+    elif program in SHELLS and foreground is not None and foreground not in SHELLS:
+        why = f"job running ({foreground})"
+    elif idle is None:
+        why = "no pts"
+    elif idle < hours:
+        why = "recent"
+    else:
+        why = "REAP"
+    return program, state, idle, why
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(prog="hc-reap", description=__doc__.split("\n", 1)[0])
+    parser.add_argument("--hours", type=float, default=24.0, help="idle for at least this long (default 24)")
+    parser.add_argument("--label", action="append", default=[], metavar="K=V",
+                        help="only stations carrying this label too (repeatable)")
+    parser.add_argument("--kill", action="store_true", help="end the candidates (kill, then rm)")
+    args = parser.parse_args(argv)
+    if not args.hours > 0:
+        parser.error("--hours must be greater than 0")
+    pairs = []
+    for item in args.label:
+        key, sep, value = item.partition("=")
+        if not sep or not key:
+            parser.error(f"--label wants k=v, got {item!r}")
+        pairs.append((key, value))
+    args.pairs = pairs
+    return args
+
+
+def main(argv=None):
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    path = socket_path()
+    if not core_answers(path):
+        print(f"hc-reap: no hc core answers on {path}; nothing to do", file=sys.stderr)
+        return 3
+    listed = hc("ls").get("terminals")
+    live = [row["address"] for row in listed if isinstance(row, dict) and row.get("state") == "live"
+            and isinstance(row.get("address"), str) and "/" not in row["address"]] if isinstance(listed, list) else []
+    # Parents come from every live local terminal, not only the stations.
+    records = [record for record in (hc("get", address) for address in live) if record.get("address")]
+    parents = {record.get("parent") for record in records if record.get("parent")}
+    stations = [record for record in records
+                if (record.get("labels") or {}).get("ui") == "kitty" and record.get("state", "live") == "live"
+                and all((record.get("labels") or {}).get(key) == value for key, value in args.pairs)]
+    print("%-6s %-20s %-10s %-8s %-8s %s" % ("ADDR", "NAME", "PROGRAM", "STATUS", "IDLE", "VERDICT"))
+    reap = []
+    for record in stations:
+        program, state, idle, why = verdict(record, parents, args.hours)
+        print("%-6s %-20s %-10s %-8s %-8s %s" % (record["address"], record.get("name") or "", program, state or "-",
+                                                 "-" if idle is None else f"{idle:.1f}h", why))
+        if why == "REAP":
+            reap.append(record["address"])
+    if not args.kill:
+        if reap:
+            print(f"{len(reap)} to reap; run with --kill to end them")
+        return 0
+    for address in reap:
+        hc("kill", address)
+        print(("removed " if "removed" in hc("rm", address) else "kill sent ") + address)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)
