@@ -114,6 +114,15 @@ entries in section 6 come from issue 687.
   hand-declared Hugging Face id carry no reasoning metadata, so their routes
   declare `reasoningEffort = null` and the overlay drops the key instead of
   forcing `high` (UNSUPPORTED_REASONING_EFFORT).
+- `DSH_ROUTE=gufo` was not in that smoke and had the same fault: its model
+  row declares `reasoningEfforts = false`, so the overlay's `high` was
+  refused before any request (`provider "gufo" model "qwen3.8-flash-next"
+  does not support reasoning effort "high"`, measured 2026-11-26). The
+  route now declares `reasoningEffort = null`, an eval-time assertion keeps
+  every Gufo route on an effortless model without one, and
+  `checks.dsh-config` dumps the route. After the fix, one headless prompt
+  answered from provider `gufo` in 7 s. The mnemon profile's Gufo row never
+  set an effort.
 - pi-ai 1.3.0 (the fleet dsh) ships native catalog routes `groq`,
   `mistral` (wire protocol `mistral-conversations` on `https://api.mistral.ai`,
   not the `/v1` chat the orchestrator measured), `nvidia`, `huggingface` and
