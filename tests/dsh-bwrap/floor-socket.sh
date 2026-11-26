@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/dsh-bwrap/floor-socket.sh: dsh-bwrap's one hole in its /run/user mask,
-# the factory floor's control socket (pkgs/dsh/dsh-bwrap.sh).
+# the factory floor's worker-only control socket (pkgs/dsh/dsh-bwrap.sh).
 #
 #   ~/.local/bin/runtime-test -- bash tests/dsh-bwrap/floor-socket.sh <dsh-bwrap>
 #
@@ -9,16 +9,20 @@
 # (pid 1 must be bwrap, and /run/user/<uid> must be the wrapper's own, with no
 # bus and no systemd/private), because it makes sockets under /run/user/<uid>.
 #
-# It makes, in the private runtime dir, a listening floor socket
-# agency-floor/floor.sock, a second profile's agency-floor/other.sock, a decoy
-# herdr-core/default.sock and a symlink agency-floor/link.sock to the decoy.
+# It makes, in the private runtime dir, a listening worker socket
+# agency-floor/floor.worker.sock, the person's agency-floor/floor.sock beside
+# it, a second profile's agency-floor/other.worker.sock, a decoy
+# herdr-core/default.sock and a symlink agency-floor/link.worker.sock to the
+# decoy.
 # Then it runs a probe through dsh-bwrap with dsh's own workspace-write profile
 # and checks, case by case, what the probe's bash sees:
 #   1. no floor variables: nothing under /run/user/<uid>;
 #   2. a floor worker (AGENCY_FLOOR_SOCKET + AGENCY_FLOOR_LAUNCH_FILE): only
-#      floor.sock, as a socket it can connect to and read the floor's answer
-#      from; its rm of the socket and a file it plants beside it never reach
-#      the host;
+#      floor.worker.sock, as a socket it can connect to and read the floor's
+#      answer from; its rm of the socket and a file it plants beside it never
+#      reach the host;
+#   2b. both variables naming the person's floor.sock (a floor older than
+#      R22): nothing;
 #   3. AGENCY_FLOOR_SOCKET alone (a hand-started dsh): nothing;
 #   4. AGENCY_FLOOR_SOCKET at the decoy, or at agency-floor/../herdr-core/…,
 #      or at the symlink: nothing;
@@ -63,12 +67,13 @@ while True:
 PY
   pids+=("$!")
 }
-listen "$rt/agency-floor/floor.sock" floor
-listen "$rt/agency-floor/other.sock" other
+listen "$rt/agency-floor/floor.worker.sock" worker
+listen "$rt/agency-floor/floor.sock" person
+listen "$rt/agency-floor/other.worker.sock" other
 listen "$rt/herdr-core/default.sock" herdr
-ln -s ../herdr-core/default.sock "$rt/agency-floor/link.sock"
-: >"$rt/agency-floor/plain.sock"
-for s in agency-floor/floor.sock agency-floor/other.sock herdr-core/default.sock; do
+ln -s ../herdr-core/default.sock "$rt/agency-floor/link.worker.sock"
+: >"$rt/agency-floor/plain.worker.sock"
+for s in agency-floor/floor.worker.sock agency-floor/floor.sock agency-floor/other.worker.sock herdr-core/default.sock; do
   for _ in $(seq 50); do [ -S "$rt/$s" ] && break; sleep 0.1; done
   [ -S "$rt/$s" ] || die "listener $rt/$s did not start"
 done
@@ -78,7 +83,7 @@ done
 probe=$(cat <<'SH'
 rt=$1
 find "$rt" -mindepth 1 -printf '%P\n' 2>/dev/null | sort
-for s in agency-floor/floor.sock agency-floor/other.sock herdr-core/default.sock agency-floor/link.sock; do
+for s in agency-floor/floor.worker.sock agency-floor/floor.sock agency-floor/other.worker.sock herdr-core/default.sock agency-floor/link.worker.sock; do
   if [ -S "$rt/$s" ]; then
     printf 'connect %s: %s\n' "$s" "$(python3 -c 'import socket,sys
 c=socket.socket(socket.AF_UNIX); c.connect(sys.argv[1]); print(c.recv(64).decode().strip())' "$rt/$s" 2>&1)"
@@ -88,7 +93,7 @@ done
 # a file planted there never reaches the host; the socket is a mount point,
 # so it cannot be removed or replaced. The host side checks both.
 touch "$rt/agency-floor/planted" 2>/dev/null || true
-rm -f "$rt/agency-floor/floor.sock" 2>/dev/null || true
+rm -f "$rt/agency-floor/floor.worker.sock" 2>/dev/null || true
 SH
 )
 # dsh's own bwrap profile in workspace-write (see the header of dsh-bwrap.sh).
@@ -106,16 +111,17 @@ expect_nothing() {
 }
 
 expect_nothing "no floor variables"
-out=$(run AGENCY_FLOOR_SOCKET="$rt/agency-floor/floor.sock" AGENCY_FLOOR_LAUNCH_FILE="$work/token")
-want=$(printf '%s\n' 'agency-floor' 'agency-floor/floor.sock' 'connect agency-floor/floor.sock: floor')
-[ "$out" = "$want" ] || die "a floor worker: expected exactly floor.sock, connectable; got: $(tr '\n' ';' <<<"$out")"
-[ -S "$rt/agency-floor/floor.sock" ] && [ ! -e "$rt/agency-floor/planted" ] \
-  || die "a floor worker: the host's agency-floor changed (floor.sock gone or a planted file)"
-echo "ok: a floor worker: only agency-floor/floor.sock, connect answers 'floor'; the host's agency-floor is unchanged"
-expect_nothing "AGENCY_FLOOR_SOCKET without AGENCY_FLOOR_LAUNCH_FILE" AGENCY_FLOOR_SOCKET="$rt/agency-floor/floor.sock"
+out=$(run AGENCY_FLOOR_SOCKET="$rt/agency-floor/floor.worker.sock" AGENCY_FLOOR_LAUNCH_FILE="$work/token")
+want=$(printf '%s\n' 'agency-floor' 'agency-floor/floor.worker.sock' 'connect agency-floor/floor.worker.sock: worker')
+[ "$out" = "$want" ] || die "a floor worker: expected exactly floor.worker.sock, connectable; got: $(tr '\n' ';' <<<"$out")"
+[ -S "$rt/agency-floor/floor.worker.sock" ] && [ ! -e "$rt/agency-floor/planted" ] \
+  || die "a floor worker: the host's agency-floor changed (floor.worker.sock gone or a planted file)"
+echo "ok: a floor worker: only agency-floor/floor.worker.sock, connect answers 'worker'; the host's agency-floor is unchanged"
+expect_nothing "the person's floor.sock (a floor older than R22)" AGENCY_FLOOR_SOCKET="$rt/agency-floor/floor.sock" AGENCY_FLOOR_LAUNCH_FILE="$work/token"
+expect_nothing "AGENCY_FLOOR_SOCKET without AGENCY_FLOOR_LAUNCH_FILE" AGENCY_FLOOR_SOCKET="$rt/agency-floor/floor.worker.sock"
 expect_nothing "the herdr-core decoy" AGENCY_FLOOR_SOCKET="$rt/herdr-core/default.sock" AGENCY_FLOOR_LAUNCH_FILE="$work/token"
-expect_nothing "a path through .." AGENCY_FLOOR_SOCKET="$rt/agency-floor/../herdr-core/default.sock" AGENCY_FLOOR_LAUNCH_FILE="$work/token"
-expect_nothing "a symlink in agency-floor" AGENCY_FLOOR_SOCKET="$rt/agency-floor/link.sock" AGENCY_FLOOR_LAUNCH_FILE="$work/token"
-expect_nothing "a plain file named .sock" AGENCY_FLOOR_SOCKET="$rt/agency-floor/plain.sock" AGENCY_FLOOR_LAUNCH_FILE="$work/token"
+expect_nothing "a path through .." AGENCY_FLOOR_SOCKET="$rt/agency-floor/../herdr-core/default.worker.sock" AGENCY_FLOOR_LAUNCH_FILE="$work/token"
+expect_nothing "a symlink in agency-floor" AGENCY_FLOOR_SOCKET="$rt/agency-floor/link.worker.sock" AGENCY_FLOOR_LAUNCH_FILE="$work/token"
+expect_nothing "a plain file named .worker.sock" AGENCY_FLOOR_SOCKET="$rt/agency-floor/plain.worker.sock" AGENCY_FLOOR_LAUNCH_FILE="$work/token"
 [ ! -e "$rt/agency-floor/planted" ] || die "the sandbox planted a file in $rt/agency-floor"
 echo "FLOOR SOCKET OK"
