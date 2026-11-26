@@ -61,6 +61,12 @@
       inputs.home-manager.follows = "home-manager";
     };
 
+    # The factory floor (`agency`): its package and Home Manager module
+    # (home/factory-floor.nix). Pinned by rev like communications, and for the
+    # same reason no nixpkgs.follows: its pnpm-deps hash is fixed against its
+    # own lock (nixpkgs f36469d, pnpm 11.25.0). It has no other inputs.
+    factory-floor.url = "git+https://github.com/agency-agency/factory-floor?rev=769a1ecc0cb3ae8fde69420b56eb32891a68337a";
+
     # Per-device hardware quirks. No nixpkgs.follows — it's just module files.
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
 
