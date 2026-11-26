@@ -21,7 +21,8 @@ class Launcher(unittest.TestCase):
         argv = launcher.kitty_argv(directory, files)
         self.assertEqual(argv[-len(files):], files)
         self.assertEqual(argv[argv.index("--directory") + 1], directory)
-        self.assertIn("--wait-for-child-to-exit", argv)
+        self.assertNotIn("--wait-for-child-to-exit", argv)
+        self.assertIn("--response-timeout=10", argv)
         self.assertIn("--source-window=state:self", argv)
         self.assertIn("--next-to=state:self", argv)
 
