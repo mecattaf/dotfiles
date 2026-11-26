@@ -33,6 +33,15 @@
     # `nix flake update nixpkgs-stable`.
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
 
+    # Native :connect ssh:// and detachable UIs need Neovim 0.13. Keep the
+    # same source on the NAS and client, without moving either host's nixpkgs.
+    # Consume the nightly package with its own dependency pin: applying its
+    # overlay to the NAS's older tree-sitter can break its fixed-output hash.
+    neovim-nightly = {
+      url = "github:nix-community/neovim-nightly-overlay/13cb0050984b90b6bb61d9f88688dd9c86fb164d";
+      inputs.neovim-src.url = "github:neovim/neovim/8cf55994e9803afcf0739339cfbd365f2db8810d";
+    };
+
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -322,6 +331,15 @@
       overlays = [
         self.overlays.default
         (final: _prev: {
+          # home/nvim.nix keeps its existing Home Manager wrapper, plugins and
+          # tools; only the unwrapped editor comes from this shared leaf pin.
+          neovim-unwrapped = inputs.neovim-nightly.packages.${system}.default.overrideAttrs (_: {
+            # Upstream's package version is only the Git hash. Keep a semantic
+            # version for Home Manager and the existing minimum-version checks;
+            # this matches the nightly recipe's compiled version marker.
+            version = "0.13.0-nightly+${inputs.neovim-nightly.inputs.neovim-src.shortRev}";
+            src = inputs.neovim-nightly.inputs.neovim-src;
+          });
           # Whole llm-agents catalog under `pkgs.llm-agents.*` (prebuilt from its
           # own nixpkgs — no second eval of ours). home/home.nix pulls an
           # allowlisted set out of this namespace. See the input comment above.
