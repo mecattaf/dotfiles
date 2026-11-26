@@ -675,9 +675,5 @@ in
   );
   # Row ids the policy touches, for checks.dsh-config.
   policyIds = map (row: row.id) policy;
-  # The policy rows as data, for a profile that carries the policy in its own
-  # layer instead of the wrapper's overlay (an unwrapped dsh never adds the
-  # overlays). Its one reader, the Master profiles, was retired on 2026-11-26.
-  policyRows = policy;
   disabledIds = map (row: row.id) (lib.filter (row: row.disabled or false) policy);
 }
