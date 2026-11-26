@@ -101,7 +101,8 @@ function M.start()
   vim.env.NVIM_REMOTE_REQUEST = nil
   local ok, error = pcall(function()
     assert(vim.fn.has('nvim-0.13') == 1, 'native remote vi requires Neovim 0.13 on both hosts')
-    local data = vim.json.decode(assert(raw, 'missing native editor request'))
+    assert(raw, 'missing native editor request')
+    local data = vim.json.decode(raw)
     local before = {}
     -- Reuse a native local tunnel when it still exists. On a new laptop or a
     -- broken link, the native SSH opening below discovers the NAS server.
