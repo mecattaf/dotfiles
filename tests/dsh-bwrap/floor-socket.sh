@@ -29,7 +29,7 @@ set -euo pipefail
 die() { echo "FAIL: $*" >&2; exit 1; }
 [ "$#" -eq 1 ] || die "usage: floor-socket.sh <dsh-bwrap>"
 runner=$1
-[ -x "$runner" ] || die "$runner is not executable"
+[ -f "$runner" ] && [ -x "$runner" ] || die "$runner is not an executable file"
 [ "$(cat /proc/1/comm 2>/dev/null)" = bwrap ] || die "run me under ~/.local/bin/runtime-test (pid 1 is not bwrap)"
 uid=$(id -u)
 rt="/run/user/$uid"
