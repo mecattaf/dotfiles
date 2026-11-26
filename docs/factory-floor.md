@@ -1,10 +1,24 @@
 # factory-floor.service
 
-The factory floor (`agency`, repository `~/mecattaf/factory-floor`) is a Cordis
-orchestrator on herdr-core. It replaces the retired dshd instance `floor`
+The factory floor (`agency`, repository `agency-agency/factory-floor`) is a
+Cordis orchestrator on herdr-core. It replaces the retired dshd instance `floor`
 (2026-11-26). `home/factory-floor.nix` declares its user unit on the brain host
-(the NAS). The unit is modelled on `communications.service` and runs the entry of
-a local checkout. Checks: `checks.factory-floor` (`tests/factory-floor`).
+(the NAS) through the floor flake's Home Manager module (flake input
+`factory-floor`, pinned by rev; `nix/module.nix` in that repository). The unit
+is modelled on `communications.service`.
+
+Two modes, one option:
+
+- **Store mode** (this repository's setting): `package` is the floor flake's
+  package. The unit runs its `bin/agency-service` from the store, and `agency`
+  is on PATH (`/etc/profiles/per-user/tom/bin/agency`). A new floor is a rev
+  bump of the input plus `nix flake lock`.
+- **Checkout mode**: `package = null`. The unit runs the entry of the local
+  checkout `~/mecattaf/factory-floor`, built by hand. The launcher store path
+  is the same in both modes; only `FACTORY_FLOOR_ENTRY` and
+  `ConditionPathExists` change.
+
+Checks: `checks.factory-floor` (`tests/factory-floor`), which asserts store mode.
 
 ## What is declared
 
@@ -12,24 +26,29 @@ a local checkout. Checks: `checks.factory-floor` (`tests/factory-floor`).
 |---|---|
 | Unit | `factory-floor.service` (user), `Type=exec`, `Restart=on-failure`, `RestartSec=15`, `UMask=0077`, `KillSignal=SIGTERM`, `TimeoutStopSec=60`, `StartLimitIntervalSec=600`, `StartLimitBurst=10`, `RestartPreventExitStatus=78` |
 | Ordering | `After=network-online.target hc-core.service`, `Wants=hc-core.service` |
-| Condition | `ConditionPathExists=<entry>`: with no checkout, a start is skipped and no unit fails |
+| Condition | `ConditionPathExists=<entry>`: with no entry (checkout mode, no checkout), a start is skipped and no unit fails |
 | Switch | `X-SwitchMethod=keep-old`: a switch never restarts a running floor |
 | Install | none: wanted by no target, so it never starts at boot or at switch (`autostart = false`) |
 | ExecStart | a store launcher, `factory-floor-service`, that execs the entry with no arguments |
 | Heartbeat wake | off (`heartbeatWake = false`, `floorUnit = null`) |
 
-The options are `services.factory-floor.{enable, package, checkout, entry, stateDir,
-workDir, configDir, host, port, autostart, heartbeatWake}`, plus the read-only
-`floorUnit`. `enable` defaults to the brain role. No other host has the unit.
+The options are `services.factory-floor.{enable, package, installPackage, hcPackage,
+checkout, entry, stateDir, workDir, configDir, host, port, autostart,
+heartbeatWake, overlay, require, bundles, unsetEnvironment, documentation}`,
+plus the read-only `floorUnit` and `launcher` (the floor repository's
+`nix/README.md`). This repository sets `enable` to the brain role and
+`documentation` to this page. No other host has the unit.
 
 ## The contract with the floor repository
 
-1. **Entry.** The unit runs `~/mecattaf/factory-floor/bin/agency-service`
-   (option `entry`) with no arguments. The floor repository provides this
+1. **Entry.** The unit runs `<package>/bin/agency-service` in store mode, or
+   `~/mecattaf/factory-floor/bin/agency-service` in checkout mode (option
+   `entry`), with no arguments. The floor repository provides this
    file. It is a foreground process that exits non-zero when a plugin fails to
    start, ends within 60 s of SIGTERM, and never builds. It is expected to run
    `agency serve --profile floor` with the values below.
-2. **Built checkout.** The unit never builds, fetches or installs. Build first:
+2. **Built checkout (checkout mode only).** The unit never builds, fetches or
+   installs. Build first:
    `cd ~/mecattaf/factory-floor && pnpm install && pnpm build`. If the entry
    is missing or not executable, the launcher prints "build the checkout first
    (pnpm install && pnpm build)" and exits 78. The unit then fails without
@@ -42,7 +61,7 @@ workDir, configDir, host, port, autostart, heartbeatWake}`, plus the read-only
    | Variable | Value |
    |---|---|
    | `FACTORY_FLOOR_CHECKOUT` | `/home/tom/mecattaf/factory-floor` |
-   | `FACTORY_FLOOR_ENTRY` | `/home/tom/mecattaf/factory-floor/bin/agency-service` |
+   | `FACTORY_FLOOR_ENTRY` | `<package>/bin/agency-service` (store mode), or `/home/tom/mecattaf/factory-floor/bin/agency-service` (checkout mode) |
    | `FACTORY_FLOOR_STATE_DIR` | `/home/tom/.agency/state/master/factory-floor`: a fresh directory, never the retired `orchestrator.sqlite` beside it |
    | `FACTORY_FLOOR_WORK_DIR` | `/home/tom/.local/state/factory-floor` |
    | `FACTORY_FLOOR_CONFIG_DIR` | `/home/tom/.config/agency/factory-floor`: holds `floor.jsonc`, host-local, never in this repository |
@@ -132,7 +151,7 @@ Code session.
 
 ## Not done here
 
-- The floor is not a flake input yet. Once its repository has a flake, set
-  `package`: `entry` then defaults to the package's `bin/agency-service`, and
-  no checkout needs to be built.
+- The host-local `floor.jsonc` is not managed here. Its recipes' `AGENCY_BIN`
+  and the `fake` recipe's paths may still name the checkout; for pure store
+  mode, point `AGENCY_BIN` at `/etc/profiles/per-user/tom/bin/agency`.
 - No new timer, no `OnCalendar`, no unit on the seat or on strix.

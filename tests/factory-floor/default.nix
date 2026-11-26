@@ -58,10 +58,11 @@ assert builtins.elem "network-online.target" svc.Unit.After;
 assert svc.Unit.Wants == [ "hc-core.service" ];
 # Declared, not wanted by any target: started by hand on 2026-11-26.
 assert !cfg.autostart && !(svc ? Install);
-# Local-checkout mode: a store launcher runs the built entry of the checkout.
-assert cfg.package == null;
+# Store mode: the store launcher runs the floor flake's own agency-service.
+assert cfg.package != null;
 assert cfg.checkout == "${home}/mecattaf/factory-floor";
-assert cfg.entry == "${home}/mecattaf/factory-floor/bin/agency-service";
+assert cfg.entry == lib.getExe' cfg.package "agency-service";
+assert builtins.elem cfg.package hm.home.packages;
 assert svc.Unit.ConditionPathExists == cfg.entry;
 assert
   lib.hasPrefix builtins.storeDir launcher && lib.hasSuffix "/bin/factory-floor-service" launcher;
@@ -69,7 +70,7 @@ assert
 assert
   environment == [
     "FACTORY_FLOOR_CHECKOUT=${home}/mecattaf/factory-floor"
-    "FACTORY_FLOOR_ENTRY=${home}/mecattaf/factory-floor/bin/agency-service"
+    "FACTORY_FLOOR_ENTRY=${cfg.entry}"
     "FACTORY_FLOOR_STATE_DIR=${home}/.agency/state/master/factory-floor"
     "FACTORY_FLOOR_WORK_DIR=${home}/.local/state/factory-floor"
     "FACTORY_FLOOR_CONFIG_DIR=${home}/.config/agency/factory-floor"
