@@ -34,7 +34,10 @@ opt.titlestring = 'nvim %f'
 -- rather than erroring out if a future nvim moves it.
 -- A durable editor can outlive its first SSH TTY; its native attached UIs own
 -- the terminal clipboard transport even while the server has no terminal.
-if vim.env.HERDR_ENV or vim.env.SSH_TTY or vim.env.DSH_EDITOR_ROOT then
+-- Native :connect SSH servers have no SSH_TTY: their local UI still receives
+-- nvim_ui_send, so dd/yank must use OSC52 rather than NAS wl-copy/X11.
+if vim.env.HERDR_ENV or vim.env.SSH_TTY or vim.env.DSH_EDITOR_ROOT
+    or vim.env.NVIM_APPNAME == 'nvim-remote' then
   local ok, osc52 = pcall(require, 'vim.ui.clipboard.osc52')
   if ok then
     local cache = {}
