@@ -26,6 +26,11 @@ terminal. Meta+j/k switch outputs. The existing Imagine workspace, chat and
 terminal policy is retained. NAS continues to own Herdr and agent sessions.
 Client notification clients use the desktop's notification service.
 
+NAS Kitty windows follow the running program's title, so the Imagine shell and
+`domicile list-windows` can show which chat is open. Their application class
+stays `domicile-terminal`; window-to-session lookups use the native PID and
+Kitty's `hc_addr` user variable rather than matching a title.
+
 Imagine uses plain tree tiling by default; the scrolling layout was retracted
 on 2026-11-19 ("i retract the scrolling window mgmt logic. prefer good old tiling.").
 Meta+F cycles the nearest horizontal split and Meta+G the nearest vertical split
