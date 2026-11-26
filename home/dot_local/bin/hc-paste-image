@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""hc-paste-image WINDOW_ID: paste the seat's clipboard image into the NAS station shown in that Kitty window.
+
+Transport A: the seat has no hc of its own. A Kitty window opened by Mod+Enter
+is `ssh nas` running hc-station, which marked the window with the Kitty user
+variable hc_addr (OSC 1337 SetUserVar) before it attached. The NAS has no
+clipboard. Claude Code, Codex and OpenCode recognize a pasted image path
+as an attachment. For a station window with an image on the
+clipboard: read the image with wl-paste, write it on the NAS with ONE pinned
+ssh (into /tmp/hc-paste-<uid>/, 0700 dir, 0600 file), and paste the NAS path
+into the window as a bracketed paste. Anything else (not a station window, no
+image) passes ctrl+v through unchanged.
+
+Kitty binds Ctrl+V to this helper only in windows marked with hc_addr.
+The path is inserted without Enter. The window and hc address are rechecked
+after upload before insertion.
+"""
+import json
+import os
+import re
+import secrets
+import shlex
+import subprocess
+import sys
+import time
+
+EXT = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
+MAX_BYTES = 32 * 1024 * 1024
+ADDRESS = re.compile(r"[A-Za-z0-9_.-]{1,64}")
+# The same transport pins as domicile-terminal (keep them in step): the NAS's
+# Tailnet address and host identity, no agent or forwarding, no multiplexing.
+# No -tt here: stdin carries the image bytes.
+PINNED = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+          "-o", "Hostname=100.65.85.114", "-o", "HostKeyAlias=nas",
+          "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes",
+          "-o", "ControlMaster=no", "-o", "ControlPath=none",
+          "-o", "ConnectTimeout=10"]
+# Runs on the NAS; the file name is a separate Python argument.
+REMOTE_SCRIPT = '''import os, stat, sys
+name = sys.argv[1]
+folder = "/tmp/hc-paste-" + str(os.getuid())
+try:
+    os.mkdir(folder, 0o700)
+except FileExistsError:
+    pass
+directory = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+info = os.fstat(directory)
+if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+    raise SystemExit("unsafe clipboard staging directory")
+data = sys.stdin.buffer.read(32 * 1024 * 1024 + 1)
+if not data or len(data) > 32 * 1024 * 1024:
+    raise SystemExit("invalid clipboard image size")
+fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+with os.fdopen(fd, "wb") as output:
+    output.write(data)
+print(folder + "/" + name)
+'''
+
+
+def kitten(*args):
+    # Kitty's background launch grants control through this inherited socket.
+    # Keep it only for kitten children; SSH and clipboard tools do not need it.
+    endpoint = re.fullmatch(r"fd:(\d+)", os.environ.get("KITTY_LISTEN_ON", ""))
+    inherited = (int(endpoint[1]),) if endpoint else ()
+    return subprocess.run(["kitten", "@", *args], capture_output=True, text=True,
+                          timeout=10, pass_fds=inherited)
+
+
+def station_window(window):
+    """Identity of this Kitty window and its attached hc terminal."""
+    try:
+        result = kitten("ls", "--match", f"id:{window}")
+        if result.returncode:
+            return None
+        listing = json.loads(result.stdout or "[]")
+        for os_window in listing:
+            for tab in os_window.get("tabs", []):
+                for entry in tab.get("windows", []):
+                    if str(entry.get("id")) == window:
+                        address = (entry.get("user_vars") or {}).get("hc_addr")
+                        pid = entry.get("pid")
+                        if isinstance(address, str) and ADDRESS.fullmatch(address) and type(pid) is int:
+                            return address, pid
+                        return None
+    except (OSError, subprocess.SubprocessError, ValueError, AttributeError, TypeError):
+        return None
+    return None
+
+
+def image_type():
+    try:
+        types = subprocess.run(["wl-paste", "--list-types"], capture_output=True, text=True, timeout=5).stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return next((mime for mime in EXT if mime in types), None)
+
+
+def pass_through(window):
+    return kitten("send-key", "--match", f"id:{window}", "ctrl+v").returncode
+
+
+def upload(name, data):
+    """Write the bytes on the NAS; the remote path, or an error text."""
+    remote = "python3 -c " + shlex.quote(REMOTE_SCRIPT) + " " + shlex.quote(name)
+    try:
+        result = subprocess.run(PINNED + ["nas", remote], input=data, capture_output=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        return None, "timeout"
+    except OSError:
+        return None, "no ssh"
+    lines = result.stdout.decode("utf-8", errors="replace").splitlines()
+    path = lines[0].strip() if lines else ""
+    if result.returncode != 0 or not re.fullmatch(r"/tmp/hc-paste-[0-9]+/" + re.escape(name), path):
+        return None, str(result.returncode)
+    return path, None
+
+
+def valid_image(mime, data):
+    if mime == "image/png":
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    if mime == "image/jpeg":
+        return data.startswith(b"\xff\xd8\xff")
+    if mime == "image/gif":
+        return data.startswith((b"GIF87a", b"GIF89a"))
+    return mime == "image/webp" and data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+
+
+def main(argv=None):
+    args = sys.argv[1:] if argv is None else argv
+    if len(args) != 1 or not args[0].isdigit():
+        print("usage: hc-paste-image WINDOW_ID", file=sys.stderr)
+        return 2
+    window = args[0]
+    identity = station_window(window)
+    mime = image_type() if identity else None
+    if not identity or not mime:
+        return pass_through(window)
+    try:
+        image = subprocess.run(["wl-paste", "--type", mime], capture_output=True, timeout=10)
+        data = image.stdout if image.returncode == 0 else b""
+    except (OSError, subprocess.SubprocessError):
+        data = b""
+    if not data:
+        return pass_through(window)
+    if len(data) > MAX_BYTES:
+        print("hc-paste-image: clipboard image over 32 MiB, not sent", file=sys.stderr)
+        return 1
+    if not valid_image(mime, data):
+        print("hc-paste-image: clipboard does not contain a valid image signature", file=sys.stderr)
+        return 1
+    name = f"clipboard-{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(8)}.{EXT[mime]}"
+    assert re.fullmatch(r"[A-Za-z0-9._-]+", name)
+    path, error = upload(name, data)
+    if path is None:
+        print(f"hc-paste-image: upload to the NAS failed (rc {error})", file=sys.stderr)
+        return 1
+    if station_window(window) != identity:
+        print("hc-paste-image: target terminal changed during upload; image not pasted", file=sys.stderr)
+        return 1
+    return kitten("send-text", "--match", f"id:{window}", "--bracketed-paste", "auto", "--", path).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())

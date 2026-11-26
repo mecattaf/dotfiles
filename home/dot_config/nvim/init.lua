@@ -1,3 +1,19 @@
+-- Native :connect ssh:// copies the seat's config to nvim-remote. Both fleet
+-- machines already have their own Nix-rendered plugin paths: use the NAS's
+-- canonical config, while retaining upstream's separate nvim-remote data.
+if vim.env.NVIM_APPNAME == 'nvim-remote' and not vim.g.native_nvim_canonical_init then
+  vim.g.native_nvim_canonical_init = true
+  local copied = vim.fn.stdpath('config')
+  local canonical = (vim.env.XDG_CONFIG_HOME or (vim.env.HOME .. '/.config')) .. '/nvim'
+  assert(vim.fn.filereadable(canonical .. '/init.lua') == 1, 'NAS Neovim config is missing')
+  vim.opt.runtimepath:remove(copied)
+  vim.opt.runtimepath:remove(copied .. '/after')
+  vim.opt.runtimepath:prepend(canonical)
+  vim.opt.runtimepath:append(canonical .. '/after')
+  dofile(canonical .. '/init.lua')
+  return
+end
+
 local api = vim.api
 
 -- Prevent git from opening /dev/tty for credential prompts inside nvim

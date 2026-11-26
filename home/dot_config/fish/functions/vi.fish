@@ -1,10 +1,8 @@
-function vi --description 'Local native Neovim UI for the retained NAS directory editor'
-    if set -q DSH_EDITOR_VI; and test "$DSH_EDITOR_VI" = 1
-        if not set -q AGENCY_KITTY_COMMAND; or test -z "$AGENCY_KITTY_COMMAND"
-            printf 'vi: native NAS editor command is unavailable\n' >&2
-            return 127
+function vi --description 'Native local Neovim UI for NAS files and surviving NAS buffers'
+    if contains -- "$NVIM_REMOTE_ROLE" seat brain; or begin
+            not set -q NVIM_REMOTE_ROLE; and contains -- (hostname) nas client
         end
-        command $AGENCY_KITTY_COMMAND vi --directory (pwd -P) -- $argv
+        command nvim-remote --directory (pwd -P) -- $argv
     else
         command nvim $argv
     end

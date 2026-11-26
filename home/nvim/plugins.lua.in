@@ -323,6 +323,7 @@ require("lazy").setup({
   {
     "topaxi/pipeline.nvim",
     dir = dir('pipeline.nvim'),
+    dependencies = { { "MunifTanjim/nui.nvim", dir = dir('nui.nvim') } },
     keys = {
       { "<leader>ci", "<cmd>Pipeline<cr>", desc = "Open pipeline.nvim" },
     },
@@ -436,7 +437,7 @@ require("lazy").setup({
 
 }, {
   install = { missing = false }, -- never auto-install at startup
-  pkg = { enable = false },
+  pkg = { enabled = false },
   rocks = { enabled = false },   -- no luarocks network; image.nvim's magick rock comes from Nix
   change_detection = { enabled = false },
 })
@@ -450,7 +451,7 @@ if vim.uv.fs_stat("@lazyNixHelperPath@") then
     "plenary.nvim","telescope.nvim","bufferline.nvim","catppuccin","nvim-autopairs",
     "twilight.nvim","zen-mode.nvim","render-markdown.nvim","nvim-web-devicons",
     "diffview.nvim","neogit","octo.nvim","img-clip.nvim","image.nvim","neoscroll.nvim",
-    "lualine.nvim","pipeline.nvim","diagram.nvim","nvim-lspconfig",
+    "lualine.nvim","pipeline.nvim","nui.nvim","diagram.nvim","nvim-lspconfig",
     "filemention.nvim","blink.cmp","web-clipper.nvim",
   }
   local cfg = require("lazy.core.config").plugins

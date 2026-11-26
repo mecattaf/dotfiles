@@ -7,7 +7,10 @@ case "${1:-terminal}" in
     [[ $# == 0 ]] || shift
     # Kitty's own new-window/new-tab actions must also stay on NAS. An -e
     # child alone would leave those actions using the global local fish shell.
-    exec kitty --class domicile-terminal --title "NAS terminal" \
+    # --title fixes the OS title permanently. Let hc's running program name
+    # the window so Domicile can show the same chat title Kitty knows.
+    exec kitty --class domicile-terminal \
+      --override "allow_remote_control=yes" \
       --override "shell=$here/domicile-terminal" -e "$here/domicile-terminal" "$@"
     ;;
   rescue)

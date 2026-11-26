@@ -155,6 +155,37 @@ class RemoteCommand(unittest.TestCase):
         self.assertIn("hc-station is missing", result.stderr)
         self.assertEqual(len(self.records("fish")), 1)
 
+    def test_attach_does_not_create_or_fall_back_to_a_shell(self):
+        self.fake(self.home / ".local/bin/hc-station")
+        for address in ("t7", "writing", "nas/t7"):
+            result = self.run_remote(self.dt.ssh_argv(None, address=address)[-1])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(self.records("hc-station")[-1]["argv"], ["attach", address])
+        (self.home / ".local/bin/hc-station").unlink()
+        self.fake(self.bin / "fish")
+        result = self.run_remote(self.dt.ssh_argv(None, address="t7")[-1])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.records("fish"), [])
+
+    def test_attach_remote_failures_are_returned_without_new(self):
+        station = self.home / ".local/bin/hc-station"
+        station.write_text("#!/bin/sh\nexit 42\n")
+        station.chmod(0o755)
+        self.fake(self.bin / "fish")
+        result = self.run_remote(self.dt.ssh_argv(None, address="t7")[-1])
+        self.assertEqual(result.returncode, 42)
+        self.assertEqual(self.records("fish"), [])
+
+    def test_kitty_owns_multiplexing_but_host_checks_are_unchanged(self):
+        argv = self.dt.ssh_argv(None, kitty=True)
+        self.assertEqual(argv[:3], ["kitten", "ssh", "-tt"])
+        self.assertEqual(argv[2:-1], PINNED[1:14] + PINNED[18:])
+        self.assertIn("StrictHostKeyChecking=yes", argv)
+        self.assertIn("Hostname=100.65.85.114", argv)
+        self.assertIn("HostKeyAlias=nas", argv)
+        self.assertNotIn("ControlMaster=no", argv)
+        self.assertNotIn("ControlPath=none", argv)
+
     def test_kitty_version(self):
         kitty = self.bin / "kitty"
         path = os.environ.get("PATH", "")
@@ -172,7 +203,12 @@ class RemoteCommand(unittest.TestCase):
     def test_arguments(self):
         self.assertEqual(self.dt.parse_args([]).seat, "zenbook")
         self.assertTrue(self.dt.parse_args(["--plain", "--cwd", "/x"]).plain)
-        for bad in (["--cwd", "relative"], ["--seat", "Bad Seat"], ["--local", "--plain"]):
+        self.assertEqual(self.dt.parse_args(["--attach", "t7"]).attach, "t7")
+        for bad in (["--cwd", "relative"], ["--seat", "Bad Seat"], ["--local", "--plain"],
+                    ["--attach", "t7", "--cwd", "/tmp"], ["--plain", "--attach", "t7"],
+                    ["--local", "--attach", "t7"], ["--attach", "t7; touch PWNED"],
+                    ["--attach", "$(touch PWNED)"], ["--attach", "t7\nnew"],
+                    ["--attach", "a/b/c"], ["--attach=-t7"]):
             with self.assertRaises(SystemExit):
                 with open(os.devnull, "w") as quiet:
                     stderr, sys.stderr = sys.stderr, quiet
