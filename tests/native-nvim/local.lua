@@ -38,5 +38,25 @@ vim.cmd('normal! p')
 assert(#sent == before, 'cached put must not query the clipboard')
 assert(vim.api.nvim_get_current_line() == 'clipboard line')
 assert(vim.fn.filereadable(project .. '/NEVER') == 0)
-print('native file arguments, unsaved buffers and dd OSC52: passed')
+-- Exercise the real launcher entry and JSON boundary while reusing a mock
+-- native tunnel. No SSH command or UI switch is sent by this isolated test.
+local originals = { servers = vim.fn.serverlist, connect = vim.fn.sockconnect,
+  close = vim.fn.chanclose, rpc = vim.rpcrequest, command = vim.cmd.connect }
+local connected
+local tunnel = '/tmp/nvim-ssh.nas.ABCD'
+vim.fn.serverlist = function(opts) assert(opts.peer); return { tunnel } end
+vim.fn.sockconnect = function(kind, socket) assert(kind == 'pipe' and socket == tunnel); return 99 end
+vim.fn.chanclose = function(channel) assert(channel == 99) end
+vim.rpcrequest = function(channel, opts, method, code, args)
+  assert(channel == 99 and opts.timeout == 5000 and method == 'nvim_exec_lua')
+  assert(args[1].directory == project and args[1].files[1] == "quoted ' file.md")
+  return true
+end
+vim.cmd.connect = function(opts) connected = opts.args[1] end
+vim.env.NVIM_REMOTE_REQUEST = vim.json.encode({ directory = project, files = { "quoted ' file.md" }, commands = {} })
+remote.start()
+assert(connected == tunnel and vim.env.NVIM_REMOTE_REQUEST == nil)
+vim.fn.serverlist, vim.fn.sockconnect, vim.fn.chanclose = originals.servers, originals.connect, originals.close
+vim.rpcrequest, vim.cmd.connect = originals.rpc, originals.command
+print('native file arguments, unsaved buffers, dd OSC52 and launcher entry: passed')
 vim.cmd('qall!')
