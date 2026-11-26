@@ -37,6 +37,10 @@ elif name == "wl-paste":
 elif name == "ssh":
     if (here / "ssh-fail").exists():
         sys.exit(255)
+    if (here / "change-station").exists():
+        data = json.loads((here / "kitten-ls.json").read_text())
+        data[0]["tabs"][0]["windows"][0]["user_vars"]["hc_addr"] = "t8"
+        (here / "kitten-ls.json").write_text(json.dumps(data))
     print("/tmp/hc-paste-1000/" + shlex.split(sys.argv[-1])[-1])
 '''
 
@@ -54,7 +58,7 @@ class PasteImage(unittest.TestCase):
             path.chmod(0o755)
         self.window({"hc_addr": "t7"})
         (self.bin / "wl-types.txt").write_text("text/plain\nimage/png\n")
-        (self.bin / "image.bin").write_bytes(bytes(range(100)))
+        (self.bin / "image.bin").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(92)))
 
     def window(self, user_vars):
         listing = [{"id": 1, "tabs": [{"id": 1, "windows": [{"id": 7, "user_vars": user_vars}]}]}]
@@ -82,7 +86,7 @@ class PasteImage(unittest.TestCase):
         texts = self.sent("send-text")
         self.assertEqual(len(texts), 1)
         self.assertEqual(texts[0][:7], ["@", "send-text", "--match", "id:7", "--bracketed-paste", "auto", "--"])
-        self.assertRegex(texts[0][7], r"^/tmp/hc-paste-1000/clipboard-\d{8}-\d{6}-[0-9a-f]{4}\.png$")
+        self.assertRegex(texts[0][7], r"^/tmp/hc-paste-1000/clipboard-\d{8}-\d{6}-[0-9a-f]{16}\.png$")
         self.assertEqual(self.sent("send-key"), [])
 
     def test_not_a_station_passes_ctrl_v_through(self):
@@ -111,6 +115,20 @@ class PasteImage(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("upload to the NAS failed", result.stderr)
         self.assertEqual(self.sent("send-text"), [])
+
+    def test_a_changed_attachment_pastes_nothing(self):
+        (self.bin / "change-station").write_text("")
+        result = self.run_paste("7")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("changed", result.stderr)
+        self.assertEqual(self.sent("send-text"), [])
+
+    def test_a_mislabeled_image_is_not_uploaded(self):
+        (self.bin / "image.bin").write_bytes(b"not an image")
+        result = self.run_paste("7")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("image signature", result.stderr)
+        self.assertEqual(self.calls("ssh"), [])
 
     def test_bad_arguments(self):
         for args in ((), ("abc",), ("7", "8")):
