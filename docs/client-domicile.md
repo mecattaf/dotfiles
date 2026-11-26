@@ -31,6 +31,32 @@ NAS Kitty windows follow the running program's title, so the Imagine shell and
 stays `domicile-terminal`; window-to-session lookups use the native PID and
 Kitty's `hc_addr` user variable rather than matching a title.
 
+The terminal carrier is `kitten ssh`, with the existing pinned NAS host key,
+Tailnet destination and keepalives. On SSH failure (255), the same Kitty
+window retries its known hc address with a bounded backoff up to 10 seconds.
+This retains the NAS shell/harness process rather than launching another one.
+If the initial create was interrupted before its address was confirmed, the
+launcher stops: inspect `hc ls` on the NAS before restoring it.
+`domicile-terminal --attach t25` explicitly restores a known station and never
+creates one or falls back to a plain shell. Mod+Return still creates a new
+station. Explicit detach, normal program exit, and remote command errors do
+not reconnect. hc 0.1.22 reports core loss and intentional detach alike as
+success, so this retry covers SSH transport failure, not a restarted core.
+Saving/reopening the desktop arrangement remains a Domicile concern; simply
+replaying Mod+Return cannot restore a previous station's identity.
+
+Fish `vi` in that NAS shell opens a local native Neovim overlay for NAS files;
+see [native editor lifetime and recovery](kitty-native-editors.md). The local
+UI bypasses hc's terminal model. Clipboard image attachment in Codex/Claude
+uses [the seat-side image path](hc-paste-image.md).
+
+Web links keep Kitty's `open_url_with default`; the client declares Chrome for
+HTTP/HTTPS. The fleet also supplies `BROWSER=desktop-web` and a desktop opener
+that chooses Chrome for web addresses. A future Domicile-browser default must
+update those desktop policy entries together; changing Kitty alone would
+leave the other openers selecting Chrome. File hyperlinks have separate Kitty
+remote-file handling and should not be treated as web-browser routing.
+
 Imagine uses plain tree tiling by default; the scrolling layout was retracted
 on 2026-11-19 ("i retract the scrolling window mgmt logic. prefer good old tiling.").
 Meta+F cycles the nearest horizontal split and Meta+G the nearest vertical split

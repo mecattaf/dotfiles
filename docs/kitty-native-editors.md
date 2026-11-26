@@ -5,8 +5,9 @@
 The old Agency Kitty/dsh-editor implementation below is historical. Fish `vi`
 now starts a local Nvim 0.13 UI and uses native `:connect ssh://nas`; editor
 logic, files and unsaved buffers remain on the NAS, outside hc. From a NAS
-shell, Kitty's native `launch --type=overlay-main --wait-for-child-to-exit`
-opens that UI locally and blocks the shell until it detaches or exits. The
+shell, Kitty's native `launch --type=overlay-main` opens that UI locally and
+returns after acknowledging the launch, like gvim. The shell stays ready
+under the overlay. The
 NAS terminal must permit Kitty remote control; only the NAS window launcher
 opts in. No editor daemon, callback service, holder or `EDITOR` override is
 introduced.
@@ -16,7 +17,7 @@ which the SSH URI itself does not support, and finds a marked same-directory
 server using `serverlist({peer=true})`. Existing local native tunnels are
 reused; after a lost tunnel, a new native SSH opening uses the remote
 `:connect` command to relink to the retained server. Neovim owns persistence,
-SSH forwarding, discovery and tunnel cleanup. `:detach` returns to the shell;
+SSH forwarding, discovery and tunnel cleanup. `:detach` reveals the shell;
 `:qall` closes the NAS editor; plain `nvim` remains available for ordinary
 local editing and startup flags. `vi` accepts files, `+command` and `-c command`.
 
@@ -50,8 +51,8 @@ Desktop clipboard reads remain Kitty's existing prompted policy.
 The normal entry point is `vi file` in the NAS fish shell inside hc. The NAS
 launcher sends a Kitty remote-control request through that terminal; Kitty
 opens the local UI as an overlay over the originating window, even if another
-window gains focus. The NAS shell waits. `:detach` removes the overlay and
-returns to that shell, retaining the editor; another `vi` from the same NAS
+window gains focus. `:detach` removes the overlay and
+reveals that shell, retaining the editor; another `vi` from the same NAS
 directory selects that editor and its unsaved buffers. `:qall` ends it (and
 refuses modified buffers unless saved or explicitly discarded).
 
@@ -72,6 +73,15 @@ Swap can lag the most recent keystrokes; it is not autosave. Persistent undo
 remains enabled for edit history after normal saves. Neither reconstructs a
 running process's full window/plugin state after a NAS reboot.
 
+`vi` reports whether Kitty acknowledged creating the overlay, not the eventual
+editor exit status. Its launch acknowledgement has a 10-second timeout and is
+never retried automatically: an uncertain reply must not create duplicate
+overlays. Commands after `vi` can run while the editor is open. `EDITOR` and
+plain `nvim` keep their ordinary blocking behavior. Kitty's optional
+`--wait-for-child-to-exit` is deliberately unused: an exit reply lost during
+an hc viewer disconnect left the NAS launcher waiting for up to a day in an
+isolated test, including after the same station was reattached.
+
 Validation: `runtime-test -- python3 tests/native-nvim/test_launcher.py`, and
 `runtime-test -- <nvim-0.13> --headless -u NONE -l tests/native-nvim/local.lua
 <checkout>`. The latter captures OSC52 bytes instead of altering the clipboard.
@@ -89,9 +99,11 @@ and proves recovery without having saved the source file.
 The 26 November isolated integration receipts also use actual Kitty 0.50,
 OpenSSH and the pinned Nvim: severing the private SSH master with SIGKILL
 leaves the same dirty NAS editor PID, and a fresh SSH opening restores it.
-A private Kitty/hc/Xvfb test verifies the blocking overlay request, original
-window targeting across focus changes, quoted file arguments and child exit
-status. These use private homes and runtimes, never live user input.
+A private Kitty/hc/Xvfb test verifies the overlay request, original window
+targeting across focus changes, and quoted file arguments. The initial
+blocking variant also correctly returned child exit status, but its lost-reply
+behavior above disqualified it for reconnecting sessions. These use private
+homes and runtimes, never live user input.
 Full managed startup on the candidate client/NAS wrappers loads all 32 plugin
 specifications without error notifications; `nvim-remote` uses NAS plugin paths
 and OSC52. That check exposed and fixed pipeline.nvim's missing Nix-managed
