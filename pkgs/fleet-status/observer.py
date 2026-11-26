@@ -18,6 +18,8 @@ from pathlib import Path
 import re
 import secrets
 import signal
+import socket
+import stat
 import subprocess
 import threading
 import time
@@ -118,6 +120,24 @@ def command(argv, timeout=15, cap=2 * 1024 * 1024, as_json=True):
     if len(raw) > cap:
         raise RuntimeError("budget-truncated")
     return json.loads(raw) if as_json else raw.decode("utf-8", errors="replace")
+
+
+def socket_answers(path, timeout=2):
+    """True when something accepts a connection on that Unix socket."""
+    try:
+        if not stat.S_ISSOCK(os.stat(path).st_mode):
+            return False
+    except OSError:
+        return False
+    probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    probe.settimeout(timeout)
+    try:
+        probe.connect(path)
+        return True
+    except OSError:
+        return False
+    finally:
+        probe.close()
 
 
 def public_observation(subject, source, key, value, *, at=None, unit=None, scope=None, grade="measured", error=None, ttl=180):
@@ -369,6 +389,23 @@ class Observer:
                     rows.append(public_observation(bucket, "compute.quota-headers", key, value if measured_at and finite(value) else None, at=stamp(measured_at) if measured_at else None, unit="requests", scope="provider-reported", ttl=3600))
                 expire_at_reset(rows[-2:], budget.get("resets_at"))
         return rows
+
+    def hc(self):
+        # Counts only: no terminal name, cwd, argv or label crosses the
+        # boundary. A missing or stale socket means no core; asking anyway
+        # would autostart one (hcSocket is a test hook, the module never sets it).
+        path = self.config.get("hcSocket") or os.path.join(f"/run/user/{os.getuid()}", "herdr-core", "default.sock")
+        if not socket_answers(path):
+            raise RuntimeError("source-unavailable")
+        report = command(self.config["hcCommand"], timeout=10, cap=1024 * 1024)
+        if not isinstance(report, dict) or not isinstance(report.get("terminals"), list):
+            raise RuntimeError("source-failed")
+        # An address with a slash (nas/t7) is a terminal on another machine.
+        terminals = [row for row in report["terminals"] if isinstance(row, dict) and "/" not in str(row.get("address", ""))]
+        live = sum(1 for row in terminals if row.get("state") == "live")
+        finished = sum(1 for row in terminals if row.get("state") == "finished")
+        return [public_observation("host-nas", "runtime.containers", "runtime.runningCount", live, unit="count", scope="host-total", ttl=180),
+                public_observation("host-nas", "runtime.containers", "runtime.workloadCount", live + finished, unit="count", scope="host-total", ttl=180)]
 
     def antigravity_quota(self, slot, argv):
         # Official standalone /usage is handled by the CLI without a model
@@ -683,7 +720,7 @@ class Observer:
     def snapshot(self):
         observations = []
         coverage = {key: {"sourceId": key, "state": "disabled-by-policy" if key.startswith("optional.") or key in ["storage.smart", "host.temperatures"] else "not-configured", "lastAttemptAt": None, "lastSuccessAt": None, "errorCode": "not-instrumented"} for key in SOURCES}
-        memberships = {"hosts": ["fleet.snapshot", "host.pressure"], "metrics": ["host.pressure", "inference.gpu"], "seats": ["compute.subscriptions", "compute.quota-headers"], "cloudflareQuota": ["compute.quota-headers"], "vercelQuota": ["compute.quota-headers"], "tails": ["agent.sessions", "agent.spans", "compute.call-history", "compute.tokens", "compute.quota-headers"]}
+        memberships = {"hosts": ["fleet.snapshot", "host.pressure"], "metrics": ["host.pressure", "inference.gpu"], "seats": ["compute.subscriptions", "compute.quota-headers"], "cloudflareQuota": ["compute.quota-headers"], "vercelQuota": ["compute.quota-headers"], "tails": ["agent.sessions", "agent.spans", "compute.call-history", "compute.tokens", "compute.quota-headers"], "hc": ["runtime.containers"]}
         memberships.update({"antigravity" + str(slot): ["compute.subscriptions"] for slot in self.config.get("antigravityQuotaCommands", {})})
         acquired = {}
         for name, cache in self.cache.items():
@@ -770,6 +807,8 @@ class Observer:
             functions["cloudflareQuota"] = self.cloudflare_quota
         if self.config.get("vercelQuota"):
             functions["vercelQuota"] = self.vercel_quota
+        if self.config.get("hcCommand"):
+            functions["hc"] = self.hc
         if once:
             for name, fn in functions.items():
                 self.accept(name, self.acquire(name, fn))

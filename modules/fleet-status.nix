@@ -104,8 +104,13 @@ let
       value = [ "/etc/profiles/per-user/tom/bin/agy${if slot == 1 then "" else toString slot}" "--settings" ''{"useG1Credits":false}'' "--print" "/usage" "--print-timeout" "12s" ];
     }) [ 1 2 3 ]);
     laneMeter = "/home/tom/.local/state/seats/lane-usage.jsonl";
+    # hc (home/herdr-core.nix): live and finished terminal counts of the NAS
+    # core, through a clean environment. The observer runs this only when the
+    # core's default socket answers: a client call against a missing or stale
+    # socket would autostart a core carrying the observer's environment.
+    hcCommand = [ "${pkgs.coreutils}/bin/env" "-i" "HOME=/home/tom" "${pkgs.llm-agents.herdr-core}/bin/herdr-core" "ls" "--all" "--json" ];
     python = "${pkgs.python3}/bin/python3";
-    intervals = { hosts = 300; metrics = 60; seats = 600; tails = 10; cloudflareQuota = 3600; vercelQuota = 3600; antigravity1 = 1800; antigravity2 = 1800; antigravity3 = 1800; };
+    intervals = { hosts = 300; metrics = 60; seats = 600; tails = 10; cloudflareQuota = 3600; vercelQuota = 3600; antigravity1 = 1800; antigravity2 = 1800; antigravity3 = 1800; hc = 60; };
     cloudflareQuota = if config.age.secrets ? cloudflare-account-id && config.age.secrets ? cloudflare-api-token then {
       accountFile = config.age.secrets.cloudflare-account-id.path;
       tokenFile = config.age.secrets.cloudflare-api-token.path;
