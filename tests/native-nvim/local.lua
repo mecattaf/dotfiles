@@ -58,5 +58,19 @@ remote.start()
 assert(connected == tunnel and vim.env.NVIM_REMOTE_REQUEST == nil)
 vim.fn.serverlist, vim.fn.sockconnect, vim.fn.chanclose = originals.servers, originals.connect, originals.close
 vim.rpcrequest, vim.cmd.connect = originals.rpc, originals.command
+-- A changed internal command-vector seam must fail before any preflight.
+local ssh = require('vim.net._ssh')
+local old_ssh, old_exit, old_echo, old_system = ssh.ssh_cmd, vim.cmd.cquit, vim.api.nvim_echo, vim.system
+local rejected, message
+ssh.ssh_cmd = 'ssh'
+vim.fn.serverlist = function() return {} end
+vim.cmd.cquit = function() rejected = true end
+vim.api.nvim_echo = function(chunks) message = chunks[1][1] end
+vim.system = function() error('preflight ran before hook validation') end
+vim.env.NVIM_REMOTE_REQUEST = vim.json.encode({ directory = project, files = {}, commands = {} })
+remote.start()
+assert(rejected and message:find('SSH command hook changed', 1, true))
+ssh.ssh_cmd, vim.cmd.cquit, vim.api.nvim_echo, vim.system = old_ssh, old_exit, old_echo, old_system
+vim.fn.serverlist = originals.servers
 print('native file arguments, unsaved buffers, dd OSC52 and launcher entry: passed')
 vim.cmd('qall!')
