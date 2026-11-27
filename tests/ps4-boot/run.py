@@ -18,6 +18,18 @@ import subprocess
 import time
 
 
+# QEMU does not recursively clear every CPUID child when AVX512F is hidden.
+# Keep the CPU model internally consistent rather than leaving, for example,
+# AVX512IFMA set while its required foundation bit is clear.
+AVX512_FEATURES = (
+    "amx-avx512", "avx512-4fmaps", "avx512-4vnniw", "avx512-bf16", "avx512-fp16",
+    "avx512-vp2intersect", "avx512-vpopcntdq", "avx512bitalg", "avx512bw",
+    "avx512cd", "avx512dq", "avx512er", "avx512f", "avx512ifma", "avx512pf",
+    "avx512vbmi", "avx512vbmi2", "avx512vl", "avx512vnni",
+)
+CPU_MODEL = "host,-avx2," + ",".join("-" + name for name in AVX512_FEATURES)
+
+
 def entry(name, content=b"", mode=stat.S_IFREG | 0o644, inode=1):
     encoded = name.encode() + b"\0"
     fields = (inode, mode, 0, 0, 1, 0, len(content), 0, 0, 0, 0, len(encoded), 0)
@@ -82,7 +94,7 @@ def main(argv=None):
             "systemd.run_success_action=poweroff systemd.run_failure_action=poweroff",
             "systemd.show_status=1",
         ])
-        command = [str(qemu), "-machine", "q35,accel=kvm", "-cpu", "host,-avx2,-avx512f",
+        command = [str(qemu), "-machine", "q35,accel=kvm", "-cpu", CPU_MODEL,
                    "-m", "2048", "-smp", "2", "-nodefaults", "-nic", "none",
                    "-display", "none", "-monitor", "none", "-serial", "stdio", "-no-reboot",
                    "-kernel", str(kernel), "-initrd", str(appended), "-append", command_line,
@@ -113,6 +125,7 @@ def main(argv=None):
         passed = (not timed_out and not log_limit_hit and process.returncode == 0
                   and "PS4_VM_ROOT_CONTRACT_PASS" in serial
                   and "PS4_VM_FLEET_STARTUP_PASS" in serial
+                  and "CPU feature dependency check failure" not in serial
                   and f"PS4_VM_RELEASE={args.expected_release}" in serial
                   and base_identity == (image.stat().st_size, image.stat().st_mtime_ns))
         receipt = {

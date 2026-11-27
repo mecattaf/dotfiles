@@ -8,7 +8,8 @@ reaching basic.target, it starts multi-user.target and verifies SSH,
 NetworkManager, nftables, Tailscale and Home Manager. Tailscale must remain
 unenrolled (NeedsLogin); the VM has no NIC. It also executes the shipped
 runtime-test as user tom, checks failed units and records guest memory.
-The CPU hides AVX2/AVX512F. It proves no Liverpool dispatch, GPU allocation,
+The CPU hides AVX2 and every AVX512 feature, with a consistent CPUID dependency
+mask. A kernel CPU-feature dependency warning fails the proof. It proves no Liverpool dispatch, GPU allocation,
 Ethernet southbridge support, Orbis payload execution or physical recovery.
 
 The PS4 config has built-in generic XHCI, USB storage, Btrfs and 8250 serial.

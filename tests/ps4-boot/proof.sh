@@ -29,6 +29,7 @@ nix-store --query --requisites /run/current-system >/dev/null
 test "$(systemctl show --property=Result --value register-nix-paths.service)" = success
 test -d "/run/current-system/kernel-modules/lib/modules/$(uname -r)"
 ! grep -qw avx2 /proc/cpuinfo
+! grep -Eq '(^|[[:space:]])avx512' /proc/cpuinfo
 
 phase=multi-user-startup
 # The generated proof unit depends on basic.target, not multi-user.target.

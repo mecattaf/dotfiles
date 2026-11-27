@@ -12,6 +12,12 @@ evidence that the hardware booted, that 7 GiB of GPU backing is usable, or that
 Bonsai inference is implemented. No firmware update, PS4 initialization,
 internal-disk write, game/save deletion, or unattended reboot is part of prep.
 
+The [prepared-image receipt](ps4-dummy-validation.md) records the three built
+and VM-tested artifacts. Their exact store paths and full hashes are in
+[the machine-readable manifest](ps4-dummy-images.json). The base and universal
+images need at least a nominal 16 GB USB; the optional fleet-suite image
+needs a nominal 32 GB USB. Capacity is checked in bytes before any write.
+
 ## The storage decision
 
 | Device | Layout | What changes |
@@ -35,9 +41,11 @@ delivers NixOS plus Orbis fallback. [psX internal-storage record](https://github
    `pkgs/ps4-installer`. Record the dotfiles commit, platform source pins and
    exact USB image checksum in the installation receipt.
 2. Confirm the hardware gate from known records if available. The initial
-   psX kernel recipe targets **Baikal**; neither the word Slim nor a sales
-   region proves that southbridge. The final attended audit records the
-   actual CUH and firmware before a payload is chosen.
+   default psX kernel recipe targets **Baikal**; neither the word Slim nor a
+   sales region proves that southbridge. A separate universal-source image
+   and boot bundle are prepared for qualification of the Aeolia/Belize/Baikal
+   lineage. The final attended audit records the actual CUH and firmware
+   before selecting a matching candidate and payload.
 3. Build on **strix-coordinator**, after `df -h /nix` confirms at least 25 GB
    free. The NAS runs no compilation and no fallback build. Use the one
    staged branch prepared by the orchestrator; do not create another worktree.
@@ -45,7 +53,25 @@ delivers NixOS plus Orbis fallback. [psX internal-storage record](https://github
    ```sh
    fleet-exec strix-coordinator --cwd /tmp/ps4-dummy-build -- df -h /nix
    fleet-exec strix-coordinator --cwd /tmp/ps4-dummy-build -- \
-     nix build .#ps4-dummy-usb-image .#ps4-installer --no-link
+     nix build .#ps4-dummy-usb-image .#ps4-installer --no-link --print-out-paths
+   ```
+
+   This command rebuilds the staged source. To consume the already tested
+   artifacts, use the exact paths/hashes in the manifest instead. Their
+   production source is `b5305c8d4dc7d979da45b126aa8945d9c29fbe85`; an
+   independently rebuilt filesystem image has not been shown byte-identical.
+   The prepared writer is
+   `/nix/store/62xv4ag3acgllinh6xlvp5h922gzrf4j-ps4-usb/bin/ps4-usb`.
+   Builds with `--no-link` do not install it on `PATH`.
+
+   Prepared images and the writer are on **strix-coordinator**. If the USB is
+   attached to a different Nix fleet host, copy only the chosen artifact and
+   writer there first. For example, for the base image, run on that host:
+
+   ```sh
+   nix copy --from ssh-ng://strix-coordinator \
+     /nix/store/prsdfxxsfx3p041rzv2xnzwsxy127ysx-ps4-dummy-nixos.img \
+     /nix/store/62xv4ag3acgllinh6xlvp5h922gzrf4j-ps4-usb
    ```
 
 4. The image contains the NixOS closure and registration data, a real initial
@@ -67,14 +93,18 @@ delivers NixOS plus Orbis fallback. [psX internal-storage record](https://github
    disk, guessed `/dev/sdX`, or internal-disk fallback.
 
    ```sh
-   ps4-usb --image /nix/store/IMAGE/sd-image/ps4-dummy-nixos.img \
+   /nix/store/62xv4ag3acgllinh6xlvp5h922gzrf4j-ps4-usb/bin/ps4-usb \
+     --image /nix/store/IMAGE/sd-image/ps4-dummy-nixos.img \
      --device /dev/disk/by-id/usb-EXACT_DRIVE_ID \
      --expect-serial EXACT_SERIAL --expect-size-bytes EXACT_BYTE_COUNT
    ```
 
    The JSON plan verifies the complete image's structure/labels/hash and the
    USB's serial, capacity, whole-disk USB transport, mount/swap state and
-   holders. Inspect the plan and unmount only that selected USB's mounted
+   holders. **Compare the plan's image SHA256 with the selected prepared-image
+   manifest before writing**; the writer calculates the hash but does not
+   choose a trusted expected value for you. Inspect the plan and unmount only
+   that selected USB's mounted
    filesystems if necessary. The helper never unmounts anything automatically.
 
 7. At the attended write step, repeat the same arguments with `sudo`,
@@ -116,6 +146,11 @@ observed; do not reset the console or install a system update.
    different from PlayStation Network sign-in, which is not needed. Do not
    replace working DNS with an arbitrary public exploit host. [LAN setup](https://manuals.playstation.net/document/en/ps4/settings/nw_settings.html),
    [connection status](https://manuals.playstation.net/document/en/ps4/settings/nw_status.html).
+   The prepared first-boot SSH firewall admits LAN sources in **10.42.0.0/24**
+   and the device's own `tailscale0`. If the BE550 LAN differs, select a
+   reviewed prefix/configuration before writing, or establish the tailnet
+   through the attended local console. A DHCP lease alone does not establish
+   SSH reachability; keep the firewall enabled.
 5. Inventory the **existing** authorized homebrew/payload entrance, its exact
    version, and whether it survives an ordinary Orbis boot. Select the
    firmware-compatible entrance and the pinned Linux payload only after the
@@ -123,7 +158,9 @@ observed; do not reset the console or install a system update.
    loader's firmware table is not a demonstration of a working jailbreak
    entrance on every firmware. Do not run a random browser payload during
    this audit. The inspected AIO loader warns that direct WebKit loading can
-   crash its host process. [Pinned loader documentation](https://github.com/ps4-linux/ps4-linux-loader/blob/de22b91e58ecbb7151cb622047e2786f9a9b9965/README.md).
+   crash its host process. Establishing HEN through a browser and launching
+   the Linux ELF through HEN's native loader are distinct steps.
+   [Pinned loader documentation](https://github.com/ArabPixel/ps4-linux-loader/blob/de22b91e58ecbb7151cb622047e2786f9a9b9965/README.md).
 6. Check that the prepared USB's FAT partition is visible if the current
    payload entrance provides a file browser. **Do not choose Format as
    Extended Storage**: that is Sony game-storage formatting and destroys the
@@ -137,6 +174,48 @@ observed; do not reset the console or install a system update.
 Do not proceed to payload execution if the real console differs from the
 prepared kernel's southbridge recipe, firmware entrance, or networking plan.
 Resolve the specific mismatch by rebuilding/selecting the correct artifacts.
+
+## Select the pre-Linux entrance
+
+USB and Ethernet supply the Linux root and network; they do not independently
+execute a Linux payload on an ordinary Orbis boot. Record the exact firmware,
+HEN name/version, activation method and payload launcher before selecting a
+route. Prefer the console's already working compatible entrance. A factory
+console without that entrance needs a firmware-specific preparation step,
+selected after the final UI inventory; the image does not install one.
+
+The pinned [WebKitty support table](https://github.com/ArabPixel/WebKitty/blob/bb5b65b8b7935f91a61516f06dbddb9f07674cd6/README.md#supported-by-this-repository)
+declares browser chains for specific ranges, including PSFree/Lapse
+7.00–9.60, CSSFontFace/Lapse 7.00–11.02, Wobkot/Lapse 9.00–12.02 and newer
+Slopkit chains through 14.02. These are upstream support declarations, not
+our test results or permission to change firmware. A supported browser chain
+can make one NixOS USB sufficient; it can be served locally after choosing
+the exact chain. The older pOOBs4 route's separate exploit USB is a
+requirement of that method, not of every possible 9.00 route. A PPPwn route,
+if selected, needs a Linux Ethernet/PPPoE peer rather than ordinary router
+DHCP. Record the complete chosen entrance procedure in the private receipt.
+
+Match the payload's real format to its native launcher:
+
+- GoldHEN's native PayLoader LaunchPad uses an **ELF**, placed in
+  `/data/payloads/`, then launched through **Utilities > PayLoader > LaunchPad**.
+- Payload Guest uses a genuine **BIN**. Renaming an ELF to `.bin` does not
+  convert it. Both formats are built from the same pinned loader source.
+- Choose the selected kernel bundle's matching 128 MiB payload and FAT-root
+  set; keep the separately named 1024 MiB set for recovery/comparison.
+
+The pinned [Linux integration guide](https://github.com/DionKill/ps4-linux-tutorial/blob/da488ea554c6409c0baf29ed6ab512767d5b4730/docs/_includes/payloads.md#local-payloads-setup-goldhen-payloader)
+documents those launcher/format distinctions. Its [HEN section](https://github.com/DionKill/ps4-linux-tutorial/blob/da488ea554c6409c0baf29ed6ab512767d5b4730/docs/setup.md#hen)
+records a Linux incompatibility with GoldHEN 2.4b18.8. Current WebKitty offers
+later versions too; availability in its selector does not qualify our Linux
+loader. Keep the observed version and Linux result together rather than
+generalizing that old incompatibility to every HEN release.
+
+**Do not send an empty TCP probe to GoldHEN PayLoader port 9090.** The pinned
+[psX boot record](https://github.com/meerzulee/linux-psx/blob/886e35141787c26c2eb5df0558109d3ac35d38ad/docs/DIAGNOSTIX-0.15-BOOT.md)
+records a connection-only probe killing its PayLoader process. Avoid `nc -z`,
+HTTP probes or generic port scans against that listener. Use the native local
+launcher or the selected sender's complete verified payload transfer.
 
 ## First boot and trust establishment
 
@@ -153,7 +232,9 @@ enters the chosen NixOS system. This is not PC UEFI/GRUB installation.
    Router lease discovery must show the same wired device. Orbis settings
    do not supply Linux's NetworkManager configuration; the image has its own
    wired DHCP profile.
-2. At the local NixOS console, verify `hostname` is `ps4-dummy` and obtain
+2. The shared headless profile configures a local `tom` getty autologin and
+   passwordless wheel `sudo`; no password or private credential is shipped.
+   With the attended display and keyboard, verify `hostname` is `ps4-dummy` and obtain
    its newly generated host-key fingerprint:
 
    ```sh
@@ -184,6 +265,14 @@ set using the **same** candidate kernel/initramfs and firewall/module support.
 This isolates the low-VRAM memory-map change. Switching recovery must
 replace the complete four-file FAT-root set and recheck hashes; merely
 selecting a 1024 MiB ELF while `vram.txt` still says 128 changes nothing.
+First check the immutable boot bundle's complete `SHA256SUMS`, including its
+`recovery/gpu-1024MiB` entries, and retain the original active set and manifest.
+Generate a separate four-file active checksum list from that verified
+immutable recovery directory, then copy all four files and verify the USB
+against that list. The original full manifest still describes the original
+128 MiB root `vram.txt`; it must not be presented as a passing active-root
+check after the deliberate 1024 MiB switch. Reverse the operation with the
+complete original set and its hashes.
 The historical frozen reference kernel is a separate source/control artifact,
 not a replacement fleet boot set with a mismatched module tree.
 
@@ -198,8 +287,8 @@ limit, successful GPU virtual mappings and useful bandwidth are separate
 tests. Reading a large `MemTotal` or raising a ceiling does not demonstrate
 seven GiB of resident, correctly coherent GPU-accessible buffers.
 
-Keep the first successful boot headless. The optional fleet-suite
-specialisation makes the requested Kitty/Domicile/herdr-core packages
+Keep the first successful boot headless. Choosing the separate fleet-suite
+USB image makes the requested Kitty/Domicile/herdr-core packages
 available without starting a compositor or occupying the inference budget
 by default. Local sessions and their memory must be measured before combining
 them with Bonsai's full weights, FP16 cache and FP32 recurrent state. The
@@ -207,6 +296,10 @@ model/plugin runtime work is separate from this boot installer. The installed
 [`ps4-memory-probe`](ps4-memory-qualification.md) supplies the explicit query,
 one-MiB smoke and seven-GiB capacity procedure, with source-labelled results
 and no model or cache precision changes.
+
+The optional suite's manual local shell entry is `manganese`, which wraps
+the pinned Domicile engine. Its presence and CPU-side graphics-library load
+check do not qualify a PS4 display session. No desktop starts during inference.
 
 The image does **not** resize itself automatically. Its initial root is sized
 from the shipped closure plus 20% and 2 GiB of writable headroom; capture
@@ -217,6 +310,15 @@ Btrfs filesystem in a separately reviewed USB-only operation. No generic
 autoexpander is enabled against an unverified disk. Model files stay outside
 Nix store generations and arrive through the existing explicit Library/loan
 workflow when model runtime work is ready.
+
+Before the first ordinary fleet deployment, persist the console's selected
+`myPs4.kernelVariant` in `hosts/ps4-dummy/default.nix` (currently default
+`baikal`). The prepared universal image overrides that value only for its
+image derivation; it does not change `nixosConfigurations.ps4-dummy` or its
+deploy node. Likewise persist `myPs4.fleetSuite.enable = true` if the optional
+suite should remain installed after deployment. Review/build that selected
+host configuration and keep its modules paired with the external FAT kernel.
+Do not deploy the canonical Baikal default onto a universal-booted console.
 
 After the PS4 has a verified host key and tailnet identity, the fleet deploy
 path can copy a built closure to it with local PS4 builds disabled. Never
