@@ -71,14 +71,27 @@
 # a template named like a binary under ~/.config/herdr-core/templates/ (it
 # shadows that binary for every caller).
 let
+  cfg = config.programs.herdrCore;
   link = config.lib.rawDotfiles.link; # home/raw-dotfiles-guard.nix
 in
 {
+  options.programs.herdrCore = {
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = osConfig.myFleet.has "brain";
+      description = "Declare the fleet's clean-environment hc core unit; the client is always installed.";
+    };
+    autoStart = lib.mkOption {
+      type = lib.types.bool;
+      default = osConfig.myFleet.has "brain";
+      description = "Start the declared hc core at the user default target.";
+    };
+  };
   # Every configured host carries the client and the binary; only the brain
   # runs a declared core.
   config = lib.mkMerge [
     { home.packages = [ pkgs.llm-agents.herdr-core ]; }
-    (lib.mkIf (osConfig.myFleet.has "brain") {
+    (lib.mkIf cfg.enable {
       # RAW single-file symlink into the checkout, like Herdr v1's config.toml was:
       # ~/.config/herdr-core/ itself stays a real directory (templates/, and
       # hand-made files such as pulse-client.conf, live next to it).
@@ -131,7 +144,7 @@ in
         };
         # default.target, not graphical-session.target: under linger the core
         # comes up at boot with no login session.
-        Install.WantedBy = [ "default.target" ];
+        Install.WantedBy = lib.optional cfg.autoStart "default.target";
       };
     })
   ];

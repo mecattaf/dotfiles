@@ -1,0 +1,94 @@
+{
+  "sourceRevision": "b5305c8d4dc7d979da45b126aa8945d9c29fbe85",
+  "images": {
+    "base": {
+      "action": "plan",
+      "image": "/nix/store/prsdfxxsfx3p041rzv2xnzwsxy127ysx-ps4-dummy-nixos.img/sd-image/ps4-dummy-nixos.img",
+      "bytes": 9920577536,
+      "sha256": "5fe22e9775ca9b70e051fc99ea398c3e1e8d5254b4a83f587aff907024311137",
+      "partitions": [
+        {
+          "number": 1,
+          "type": 11,
+          "start": 8388608,
+          "bytes": 536870912
+        },
+        {
+          "number": 2,
+          "type": 131,
+          "start": 545259520,
+          "bytes": 9375318016
+        }
+      ],
+      "labels": [
+        "PS4BOOT",
+        "ps4-nixos"
+      ],
+      "internal_orbis": "untouched",
+      "grow_on_boot": false,
+      "package": "ps4-dummy-usb-image",
+      "minimumNominalUSBGB": 16
+    },
+    "fleet": {
+      "action": "plan",
+      "image": "/nix/store/yzzsl5g2mrk6d4mcw78kgcpzn13v09im-ps4-dummy-nixos.img/sd-image/ps4-dummy-nixos.img",
+      "bytes": 16488857600,
+      "sha256": "3f2c7bce339aac732fa9d477a2993ac5b11c76d7561ec5b45e1dcfb038e62a9a",
+      "partitions": [
+        {
+          "number": 1,
+          "type": 11,
+          "start": 8388608,
+          "bytes": 536870912
+        },
+        {
+          "number": 2,
+          "type": 131,
+          "start": 545259520,
+          "bytes": 15943598080
+        }
+      ],
+      "labels": [
+        "PS4BOOT",
+        "ps4-nixos"
+      ],
+      "internal_orbis": "untouched",
+      "grow_on_boot": false,
+      "package": "ps4-dummy-fleet-usb-image",
+      "minimumNominalUSBGB": 32
+    },
+    "universal": {
+      "action": "plan",
+      "image": "/nix/store/9q6ckci2rgxm8dlvqx7jy94yhcvmd3n8-ps4-dummy-nixos.img/sd-image/ps4-dummy-nixos.img",
+      "bytes": 9920577536,
+      "sha256": "03d7c1095b8cd2b81e23372e2f16e8a7a4fcbd6a57de2a38f2969c4b83c3e700",
+      "partitions": [
+        {
+          "number": 1,
+          "type": 11,
+          "start": 8388608,
+          "bytes": 536870912
+        },
+        {
+          "number": 2,
+          "type": 131,
+          "start": 545259520,
+          "bytes": 9375318016
+        }
+      ],
+      "labels": [
+        "PS4BOOT",
+        "ps4-nixos"
+      ],
+      "internal_orbis": "untouched",
+      "grow_on_boot": false,
+      "package": "ps4-dummy-universal-usb-image",
+      "minimumNominalUSBGB": 16
+    }
+  },
+  "validationScope": "Generic-PC USB-root and fleet startup; no physical PS4, GPU memory, Ethernet or Orbis payload qualification.",
+  "testSources": {
+    "runnerSha256": "51974b9a9683dc1ae56873bd28d3d0aa0a6dc45d7822273b2bd8667dc3868638",
+    "proofSha256": "6ad61410cecb65e95e3cb96e819c766e2f104271e78c873102899daa1b3bc22a"
+  }
+}

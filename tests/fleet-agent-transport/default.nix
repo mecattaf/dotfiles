@@ -33,6 +33,7 @@ let
     client
     coordinator
   ];
+  ps4 = self.nixosConfigurations.ps4-dummy.config;
   members = [ nas ] ++ consumers;
   flags = c: c.services.tailscale.extraSetFlags;
   hasHerdrWebUi =
@@ -50,6 +51,15 @@ let
     "strix-worker"
   ];
 in
+# The staged PS4 gets its own official identity without making it a mandatory
+# online peer of the existing fleet before attended enrollment.
+assert ps4.myFleetTransport.enable && ps4.services.tailscale.enable;
+assert builtins.elem "--hostname=ps4-dummy" (flags ps4);
+assert builtins.elem "--accept-routes=false" (flags ps4);
+assert builtins.elem "--accept-dns=false" (flags ps4);
+assert builtins.elem "--ssh=false" (flags ps4);
+assert builtins.elem "--exit-node=" (flags ps4);
+assert (import ../../modules/mesh-registry.nix).ps4-dummy.dormant;
 assert nas.myFleetTransport.enable;
 assert nas.services.tailscale.useRoutingFeatures == "server";
 assert builtins.elem "--advertise-exit-node" nas.services.tailscale.extraSetFlags;

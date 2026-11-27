@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "purpose": "PS4 NixOS external USB boot candidate, preserving internal Orbis",
+  "psx_repository": "https://github.com/meerzulee/linux-psx",
+  "psx_documentation_commit": "886e35141787c26c2eb5df0558109d3ac35d38ad",
+  "release_source_commit": "c874f68db9287adb8f2a7b5d2d083ea000b27be9",
+  "historical_native_source_commit": "c8495a51e0bad4851015cd5d34ee61b2fde87e44",
+  "upstream_linux_commit": "a2de78ee6ed8bf8cd99d177c74865a6e8c3cb6ea",
+  "upstream_linux_version": "7.2.11",
+  "reference_release": "7.2.11-psx-ps4-baikal-uvd-runtime-dev6",
+  "candidate_release": "7.2.11-psx-ps4-dummy3",
+  "corresponding_source_sha256": "2b712654d47e675a4c4f2d8379bfa2e5e5e4135fae3c1124426d1f9ee38ab535",
+  "reference_zip_sha256": "ff9d5fa620015706b1f98f1d12244df50b02390fe6bfe380331f7e5937a4639e",
+  "loader_repository": "https://github.com/ArabPixel/ps4-linux-loader",
+  "loader_commit": "de22b91e58ecbb7151cb622047e2786f9a9b9965",
+  "loader_archive_sha256": "9d547a40725f4360c877b14d7cf63c82f19cad11ec6463d8f89c6473b17e0f77",
+  "omarchy_psx_usb_guard_source_commit": "2c154e11febc1c0ea500c95eaedb791868322b3d",
+  "omarchy_psx_adaptation": "MIT USB ancestry/two-partition/FAT-label validation adapted to the NixOS Btrfs image; no Omarchy rootfs or desktop",
+  "firmware": "Extracted locally from the booting console by loader, never bundled or fetched by Nix",
+  "hardware_scope": "Source lineage has recorded Baikal B1 Slim evidence. This derivative needs physical qualification; no original-console support claim.",
+  "candidate_changes": [
+    "fleet-network.config enables netfilter/nftables/iptables compatibility and TUN",
+    "distinct local version to prevent mixing reference modules",
+    "disable compiler plugins and debug information for a bounded reproducible rebuild",
+    "fixed Nix build timestamp/user/host; firmware remains external",
+    "external-root command line globally disables libata devices",
+    "v2 kernels enable BTRFS_FS_POSIX_ACL after an actual USB-root VM exposed journald ACL failures; new module-release identities prevent v1/v2 mixing",
+    "v3 kernels add BPF_SYSCALL, CGROUP_BPF, BPF_JIT and BPF_UNPRIV_DEFAULT_OFF for actual NixOS DefaultIPAccounting and stock unit IPAddressDeny policies; nftables remains independent"
+  ],
+  "gpu": {
+    "physical_target": "Liverpool",
+    "kernel": "amdgpu CIK with GPUVM and compute queues; no KFD dependency",
+    "inference_compiler_target": "bonaire/gfx704",
+    "vram_candidate_mib": 128,
+    "ttm_pages_limit_candidate": 1900544,
+    "gtt_total_ceiling_mib": 7424,
+    "user_allocation_probe_mib": 7168,
+    "driver_and_other_bo_margin_mib": 256,
+    "memory_capacity_and_bandwidth_hardware_qualified": false
+  },
+  "orbis_internal_disk_written_by_preparation": false,
+  "candidate_hardware_boot_qualified": false
+}

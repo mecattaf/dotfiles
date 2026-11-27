@@ -14,11 +14,15 @@ let
   # do the recovery process"). strix-worker is not on the tailnet at all
   # ("worker's tailnet login: fine, and i was thinking let's not"); it is
   # reached over the house LAN.
-  hosts = [
+  supportedHosts = [
     "client"
     "nas"
     "strix-coordinator"
+    "ps4-dummy"
   ];
+  # A staged host is not yet a required online peer of the existing fleet.
+  # Include itself while building its first-boot enrollment policy.
+  hosts = lib.filter (name: config.myFleet.active name || name == host) supportedHosts;
   tailnetSuffix = "tail8dd1.ts.net";
   exitNode = "nas";
   # No host selects an exit node. The Zenbook's internet goes out through
@@ -120,15 +124,15 @@ in
 {
   options.myFleetTransport.enable = lib.mkOption {
     type = lib.types.bool;
-    default = builtins.elem host hosts;
-    description = "Official Tailscale fleet membership (client, nas, strix-coordinator); NAS exit and LAN routing. Enrollment and key expiry are managed in the admin console.";
+    default = builtins.elem host supportedHosts;
+    description = "Official Tailscale fleet membership (client, nas, strix-coordinator, ps4-dummy); NAS exit and LAN routing. Enrollment and key expiry are managed in the admin console.";
   };
 
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = builtins.elem host hosts && config.services.tailscale.enable;
-        message = "Fleet transport requires an enabled Tailscale daemon on one of the three tailnet hosts (client, nas, strix-coordinator); strix-worker stays off the tailnet (Tom, 2026-10-25).";
+        assertion = builtins.elem host supportedHosts && config.services.tailscale.enable;
+        message = "Fleet transport requires an enabled Tailscale daemon on a supported tailnet host (client, nas, strix-coordinator, ps4-dummy); strix-worker stays off the tailnet (Tom, 2026-10-25).";
       }
       {
         assertion = config.services.tailscale.authKeyFile == null;
