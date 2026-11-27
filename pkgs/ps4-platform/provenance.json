@@ -8,7 +8,7 @@
   "upstream_linux_commit": "a2de78ee6ed8bf8cd99d177c74865a6e8c3cb6ea",
   "upstream_linux_version": "7.2.11",
   "reference_release": "7.2.11-psx-ps4-baikal-uvd-runtime-dev6",
-  "candidate_release": "7.2.11-psx-ps4-dummy2",
+  "candidate_release": "7.2.11-psx-ps4-dummy3",
   "corresponding_source_sha256": "2b712654d47e675a4c4f2d8379bfa2e5e5e4135fae3c1124426d1f9ee38ab535",
   "reference_zip_sha256": "ff9d5fa620015706b1f98f1d12244df50b02390fe6bfe380331f7e5937a4639e",
   "loader_repository": "https://github.com/ArabPixel/ps4-linux-loader",
@@ -24,7 +24,8 @@
     "disable compiler plugins and debug information for a bounded reproducible rebuild",
     "fixed Nix build timestamp/user/host; firmware remains external",
     "external-root command line globally disables libata devices",
-    "v2 kernels enable BTRFS_FS_POSIX_ACL after an actual USB-root VM exposed journald ACL failures; new module-release identities prevent v1/v2 mixing"
+    "v2 kernels enable BTRFS_FS_POSIX_ACL after an actual USB-root VM exposed journald ACL failures; new module-release identities prevent v1/v2 mixing",
+    "v3 kernels add BPF_SYSCALL, CGROUP_BPF, BPF_JIT and BPF_UNPRIV_DEFAULT_OFF for actual NixOS DefaultIPAccounting and stock unit IPAddressDeny policies; nftables remains independent"
   ],
   "gpu": {
     "physical_target": "Liverpool",

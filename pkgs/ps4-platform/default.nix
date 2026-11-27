@@ -27,7 +27,7 @@
   kernelVariant ? "baikal",
 }:
 let
-  release = "7.2.11-psx-ps4-dummy2";
+  release = "7.2.11-psx-ps4-dummy3";
   referenceRelease = "7.2.11-psx-ps4-baikal-uvd-runtime-dev6";
   releaseBase = "https://github.com/meerzulee/linux-psx/releases/download/v7.2.11-psx-ps4-baikal-beta2";
   runtimeArchive = fetchurl {
@@ -107,7 +107,7 @@ let
       patchShebangs scripts
       cp .config .config.psx-reference
       scripts/kconfig/merge_config.sh -m .config ${./fleet-network.config}
-      scripts/config --set-str LOCALVERSION "-psx-ps4-dummy2"
+      scripts/config --set-str LOCALVERSION "-psx-ps4-dummy3"
       scripts/config --disable LOCALVERSION_AUTO
       scripts/config --disable GCC_PLUGINS
       scripts/config --disable DEBUG_INFO

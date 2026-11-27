@@ -61,7 +61,7 @@ replacement. [Separate target](https://github.com/meerzulee/linux-psx/blob/886e3
 
 | Attribute | Output |
 | --- | --- |
-| `kernel` / `modulesTree` | `bzImage`, resolved `config`, `System.map`, all matching `lib/modules/7.2.11-psx-ps4-dummy2/` modules and build checksums |
+| `kernel` / `modulesTree` | `bzImage`, resolved `config`, `System.map`, all matching `lib/modules/7.2.11-psx-ps4-dummy3/` modules and build checksums |
 | `referenceKernel` | Unchanged published beta2 kernel/config/modules for comparison, not the normal fleet kernel |
 | `loader` | `payloads/linux-128mb.{elf,bin}` and `payloads/linux-1024mb.{elf,bin}`, built from the pinned source |
 | `initramfs` | Self-contained static BusyBox `initramfs.cpio.gz`, with no store-path dependency |
@@ -80,14 +80,15 @@ A generic-PC test of the actual labelled USB root reached NixOS stage 2 and
 PID 1 systemd, exposing two real integration gaps: missing descriptor links
 such as `/dev/fd/63`, and missing Btrfs POSIX ACL support used by journald.
 The init now supplies NixOS's normal descriptor links and devpts permissions;
-the `dummy2`/`universal2` kernels explicitly enable
-`CONFIG_BTRFS_FS_POSIX_ACL=y`. Distinct v2 release names prevent the earlier
-no-ACL kernel being paired with newer modules. This test exercises root/init
+the v2 kernels explicitly enable `CONFIG_BTRFS_FS_POSIX_ACL=y`. The final
+`dummy3`/`universal3` kernels retain that fix and add the standard cgroup BPF
+capabilities described below. Distinct release names prevent older kernels
+being paired with newer modules. This test exercises root/init
 integration on a generic PC guest, not a PS4 GPU, southbridge or Orbis loader;
 the completed rerun receipt governs its final result.
 
 An explicit `kernelVariant="universal"` selects the separate
-`7.2.11-psx-ps4-dummy-universal2` build. This starts from the clean pinned
+`7.2.11-psx-ps4-dummy-universal3` build. This starts from the clean pinned
 upstream archive, applies the exact 176-patch `7.2-ps4` series from the pinned
 psX project, then adds psX's separate native MTS autoload/open adapter. It
 uses the general target's config, including built-in `sky2` for the older
@@ -102,6 +103,25 @@ or `CONFIG_NETFILTER_XT_MATCH_TCPUDP` symbol: `nft_counter.o` is part of
 `nf_tables-objs`, and `xt_tcpudp.o` is selected by `NETFILTER_XTABLES`.
 Legacy iptables filter/mangle/NAT tables require the separate legacy-table
 gate and are deliberately unused by the fleet's native nftables paths.
+
+The VM also reported that systemd's cgroup IP firewall/accounting was
+unsupported. This is a separate mechanism from the successfully started nft
+firewall. Evaluating this exact host gives
+`systemd.settings.Manager.DefaultIPAccounting=true`, inherited from the
+pinned NixOS module, and `wpa_supplicant.service` declares
+`IPAddressDeny=any`. The actual systemd 261 package used by this host also
+declares `IPAddressDeny=any` in its journald, udevd, logind, hostnamed and
+timedated service files. These are existing unit policies, not hypothetical
+future features.
+
+The shared fragment therefore enables exactly `BPF_SYSCALL`, `CGROUP_BPF`,
+`BPF_JIT` and `BPF_UNPRIV_DEFAULT_OFF`. The source Kconfig makes
+`CGROUP_BPF` depend on `BPF_SYSCALL` and select `SOCK_CGROUP_DATA`; the JIT
+depends on the existing x86 BPF JIT capability. The JIT permits native
+packet-policy execution on Jaguar. BPF tracing/events, BTF and JIT-always-on
+are not added. Both profile configure phases assert all 41 requested
+fragment settings after resolution. The fleet's unit policies remain in
+place rather than being weakened to hide the warning.
 
 With `boot.kernel.enable=false`, NixOS does not create its usual kernel module
 tree automatically. The host explicitly supplies `system.modulesTree` from
