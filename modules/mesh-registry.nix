@@ -48,6 +48,16 @@
     userKey = ""; # compute receives no operator private key
   };
 
+  # Staged PS4 Slim prototype. Read back its freshly generated host key on the
+  # attended first boot before removing dormant or adding a DHCP/IP alias.
+  # It receives the fleet's public login keys, never an operator private key.
+  ps4-dummy = {
+    dormant = true;
+    aliases = [ "ps4-dummy" ];
+    hostKey = "";
+    userKey = "";
+  };
+
   client = {
     aliases = [
       "client"

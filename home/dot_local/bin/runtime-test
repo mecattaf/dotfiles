@@ -3,16 +3,18 @@
 # a filesystem sandbox: the checkout, home, /tmp and network remain available.
 #
 # --allow-kvm adds only /dev/kvm for KVM guests. --allow-gpu adds only /dev/kfd
-# and one explicitly selected /dev/dri/renderD<number> character device. Both
-# require read-write access and leave the rest of /dev private. /run/user,
+# and one explicitly selected /dev/dri/renderD<number> character device.
+# --allow-render adds only that render node, for DRM without a KFD interface.
+# These modes require read-write access and leave the rest of /dev private. /run/user,
 # PID/IPC namespaces and every --unsetenv below stay unchanged. There is no
 # general device passthrough.
 set -euo pipefail
 usage() {
-  echo 'usage: runtime-test [--allow-kvm] [--allow-gpu /dev/dri/renderD<number>] [--] command [args...]'
+  echo 'usage: runtime-test [--allow-kvm] [--allow-gpu /dev/dri/renderD<number> | --allow-render /dev/dri/renderD<number>] [--] command [args...]'
   echo 'Private /run/user and PID/IPC namespaces; source files remain writable.'
   echo '--allow-kvm binds only /dev/kvm for KVM guests.'
   echo '--allow-gpu binds only /dev/kfd and the selected render node for GPU tests.'
+  echo '--allow-render binds only the selected render node for DRM tests, without /dev/kfd.'
 }
 if [ "$#" -eq 0 ]; then
   usage
@@ -20,20 +22,22 @@ if [ "$#" -eq 0 ]; then
 fi
 allow_kvm=0
 gpu_node=""
+gpu_mode=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help) usage; exit 0 ;;
     --allow-kvm) allow_kvm=1; shift ;;
-    --allow-gpu)
+    --allow-gpu|--allow-render)
       if [ "$#" -lt 2 ] || [[ ! "$2" =~ ^/dev/dri/renderD[0-9]+$ ]]; then
-        echo 'runtime-test: --allow-gpu requires /dev/dri/renderD<number>' >&2
+        echo "runtime-test: $1 requires /dev/dri/renderD<number>" >&2
         exit 2
       fi
       if [ -n "$gpu_node" ]; then
-        echo 'runtime-test: --allow-gpu may select only one render node' >&2
+        echo 'runtime-test: GPU modes may select only one render node; --allow-gpu and --allow-render cannot be combined' >&2
         exit 2
       fi
       gpu_node="$2"
+      gpu_mode="$1"
       shift 2
       ;;
     --) shift; break ;;
@@ -51,14 +55,21 @@ if [ "$allow_kvm" -eq 1 ]; then
   devices+=(--dev-bind /dev/kvm /dev/kvm)
 fi
 if [ -n "$gpu_node" ]; then
-  for device in /dev/kfd "$gpu_node"; do
+  requested_devices=("$gpu_node")
+  if [ "$gpu_mode" = --allow-gpu ]; then
+    requested_devices=(/dev/kfd "$gpu_node")
+  fi
+  for device in "${requested_devices[@]}"; do
     if [ ! -c "$device" ] || [ ! -r "$device" ] || [ ! -w "$device" ] \
       || [ "$(readlink -f -- "$device")" != "$device" ]; then
-      echo "runtime-test: --allow-gpu requires a read-write character device at $device (no symlinks)" >&2
+      echo "runtime-test: $gpu_mode requires a read-write character device at $device (no symlinks)" >&2
       exit 1
     fi
   done
-  devices+=(--dev-bind /dev/kfd /dev/kfd --dir /dev/dri --dev-bind "$gpu_node" "$gpu_node")
+  if [ "$gpu_mode" = --allow-gpu ]; then
+    devices+=(--dev-bind /dev/kfd /dev/kfd)
+  fi
+  devices+=(--dir /dev/dri --dev-bind "$gpu_node" "$gpu_node")
 fi
 command -v bwrap >/dev/null || { echo 'runtime-test: bubblewrap is required' >&2; exit 1; }
 

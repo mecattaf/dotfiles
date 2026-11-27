@@ -1,0 +1,89 @@
+#!/bin/sh
+# PS4 external-loader stage 1. The loader appends firmware extracted locally
+# from this console to this cpio. Never write or mount internal Orbis volumes.
+export PATH=/bin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+exec </dev/console >/dev/console 2>&1
+mkdir -p /dev/pts /run /newroot
+mount -t devpts devpts /dev/pts
+mount -t tmpfs -o mode=0755,size=128m tmpfs /run
+
+fail() {
+  echo "PS4 NixOS early boot stopped: $*"
+  echo "No internal partition has been mounted. Recovery shell on console."
+  # Keep the already-open console descriptors valid even after /dev moved.
+  exec setsid sh
+}
+
+root_spec=
+root_type=btrfs
+for argument in $(cat /proc/cmdline); do
+  case "$argument" in
+    root=*) root_spec=${argument#root=} ;;
+    rootfstype=*) root_type=${argument#rootfstype=} ;;
+    time=*) date -s "@${argument#time=}" >/dev/null 2>&1 || true ;;
+  esac
+done
+case "$root_spec" in
+  LABEL=*|UUID=*) ;;
+  *) fail "Expected explicit root=LABEL=... or root=UUID=..." ;;
+esac
+case "$root_type" in btrfs|ext4) ;; *) fail "Unsupported root filesystem: $root_type" ;; esac
+
+attempt=0
+root_device=
+while [ "$attempt" -lt 60 ]; do
+  mdev -s
+  root_device=$(findfs "$root_spec" 2>/dev/null) && [ -b "$root_device" ] && break
+  sleep 1
+  attempt=$((attempt + 1))
+done
+[ -b "$root_device" ] || fail "External Linux root did not appear within 60 seconds: $root_spec"
+# Adapted from Omarchy psX's partitioned-USB ancestry guard, at
+# 2c154e11febc1c0ea500c95eaedb791868322b3d. See LICENSE.omarchy-psx.
+# Labels alone cannot establish that a block device is the prepared USB.
+root_device=$(readlink -f "$root_device")
+root_name=${root_device##*/}
+root_sysfs=$(readlink -f "/sys/class/block/$root_name")
+case "$root_sysfs" in
+  */usb[0-9]*/*) ;;
+  *) fail "Selected root is not below a USB controller: $root_device" ;;
+esac
+[ "$(cat "/sys/class/block/$root_name/partition" 2>/dev/null)" = 2 ] ||
+  fail "Prepared USB root must be partition 2"
+disk_sysfs=${root_sysfs%/*}
+partition_count=0
+boot_name=
+for partition_file in "$disk_sysfs"/*/partition; do
+  [ -r "$partition_file" ] || continue
+  partition_count=$((partition_count + 1))
+  if [ "$(cat "$partition_file")" = 1 ]; then
+    boot_path=${partition_file%/partition}
+    boot_name=${boot_path##*/}
+  fi
+done
+[ "$partition_count" = 2 ] && [ -n "$boot_name" ] || fail "Expected exactly the prepared two-partition USB"
+boot_identity=$(blkid "/dev/$boot_name" 2>/dev/null)
+case "$boot_identity" in *' TYPE="vfat"'*) ;; *) fail "USB partition 1 is not FAT" ;; esac
+case "$boot_identity" in *' LABEL="PS4BOOT"'*) ;; *) fail "USB partition 1 is not PS4BOOT" ;; esac
+mount -t "$root_type" -o rw,noatime "$root_device" /newroot || fail "Cannot mount labelled Linux root"
+[ -x /newroot/sbin/init ] || fail "Root has no executable /sbin/init bridge"
+[ -e /newroot/etc/NIXOS ] || fail "USB root lacks its NixOS image marker"
+
+# Preserve only graphics firmware for the running Linux driver. The loader's
+# separate key/eap_hdd_key.bin stays in discarded initramfs, never on rootfs.
+mkdir -p /run/ps4-firmware
+if [ -d /lib/firmware/amdgpu ]; then
+  cp -a /lib/firmware/amdgpu /run/ps4-firmware/
+else
+  fail "Loader did not append this console's AMDGPU firmware"
+fi
+if [ -d /lib/firmware/edid ]; then cp -a /lib/firmware/edid /run/ps4-firmware/; fi
+mkdir -p /newroot/run /newroot/dev /newroot/proc /newroot/sys
+mount --move /run /newroot/run || fail "Cannot preserve runtime firmware"
+mount --move /dev /newroot/dev || fail "Cannot move device tree"
+mount --move /proc /newroot/proc || fail "Cannot move proc"
+mount --move /sys /newroot/sys || fail "Cannot move sysfs"
+exec switch_root /newroot /sbin/init

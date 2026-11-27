@@ -500,6 +500,11 @@
         # pin like the twins and keeps Home Manager, because it is the box Tom
         # sits at — Domicile, Kitty and Chrome are real here, nothing else is.
         client = mkHost { hostModule = ./hosts/client; };
+        # PS4 uses its external psX boot set and focused, credential-free home.
+        ps4-dummy = mkHost {
+          hostModule = ./hosts/ps4-dummy;
+          withHomeManager = false;
+        };
       };
 
       # deploy-rs owns HOW a selected generation reaches and activates on a node.
@@ -523,6 +528,7 @@
             [
               "client"
               "nas"
+              "ps4-dummy"
               "strix-coordinator"
               "strix-worker"
             ]
@@ -544,6 +550,12 @@
         let
           amdAi = inputs.nix-amd-ai.packages.${system};
           strixAi = inputs.nix-strix-halo.packages.${system};
+          ps4Platform = pkgs.callPackage ./pkgs/ps4-platform { };
+          ps4Image = self.nixosConfigurations.ps4-dummy.extendModules {
+            modules = [
+              (import ./pkgs/ps4-installer/image.nix { })
+            ];
+          };
         in
         {
           # Flake-level builds: the same derivations the hosts on the main
@@ -614,6 +626,27 @@
           };
           live-iso = strixAi.live-iso;
           nas-installer-iso = nasInstaller.config.system.build.isoImage;
+          # PS4 is not a PC UEFI target. These outputs share the pinned psX
+          # source, matched modules and external loader/initramfs contract.
+          ps4-mesa = self.nixosConfigurations.ps4-dummy.config.hardware.graphics.package;
+          ps4-kernel = ps4Platform.kernel;
+          ps4-universal-kernel = ps4Platform.universalKernel;
+          ps4-universal-boot-files = ps4Platform.universalBootFiles;
+          ps4-reference-kernel = ps4Platform.referenceKernel;
+          ps4-loader = ps4Platform.loader;
+          ps4-initramfs = ps4Platform.initramfs;
+          ps4-boot-files = self.nixosConfigurations.ps4-dummy.config.system.build.ps4BootFiles;
+          ps4-installer = pkgs.callPackage ./pkgs/ps4-installer { };
+          ps4-host-check = pkgs.callPackage ./pkgs/ps4-host-check { };
+          ps4-dummy-usb-image = ps4Image.config.system.build.sdImage;
+          ps4-dummy-universal-usb-image =
+            (ps4Image.extendModules {
+              modules = [ { myPs4.kernelVariant = "universal"; } ];
+            }).config.system.build.sdImage;
+          ps4-dummy-fleet-usb-image =
+            (ps4Image.extendModules {
+              modules = [ { myPs4.fleetSuite.enable = true; } ];
+            }).config.system.build.sdImage;
           # Fresh worker install while its SSD is the coordinator's inactive
           # secondary. The generated script never mounts over the live /mnt.
           strix-worker-disko-offline =
@@ -646,6 +679,8 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        ps4-installer = import ./tests/ps4-installer { inherit pkgs; };
+        ps4-host = import ./tests/ps4-host { inherit pkgs self; };
         audio-controls = pkgs.runCommand "audio-controls" { nativeBuildInputs = [ pkgs.python3 ]; } ''
           export PYTHONDONTWRITEBYTECODE=1
           export AUDIO_ROUTE_SCRIPT=${./home/dot_local/bin/audio-route}
@@ -2524,6 +2559,7 @@
             expectedHosts = [
               "client"
               "nas"
+              "ps4-dummy"
               "strix-coordinator"
               "strix-worker"
             ];
@@ -2857,11 +2893,16 @@
           # transition, which is exactly when a wedged box needs it.
           assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" strix.boot.kernelParams;
 
-          # Every host follows Linux 7.3, including the NAS's stable userspace.
-          # Compare major.minor so point releases pass but 7.30 cannot match.
-          assert builtins.all (
-            host: nixpkgs.lib.versions.majorMinor host.config.boot.kernelPackages.kernel.version == "7.3"
-          ) (builtins.attrValues self.nixosConfigurations);
+          # PC fleet hosts follow Linux 7.3, including NAS stable userspace.
+          # PS4 externally boots its pinned psX kernel, never this PC kernel.
+          assert builtins.all
+            (host: nixpkgs.lib.versions.majorMinor host.config.boot.kernelPackages.kernel.version == "7.3")
+            (
+              builtins.filter (host: host.config.boot.kernel.enable) (
+                builtins.attrValues self.nixosConfigurations
+              )
+            );
+          assert !self.nixosConfigurations.ps4-dummy.config.boot.kernel.enable;
 
           # `assert !{strix,worker}.services.npu-llm.enable` stood here
           # until 2026-08-31 (#270): with modules/npu-llm.nix deleted the
