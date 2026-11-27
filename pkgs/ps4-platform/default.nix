@@ -215,6 +215,8 @@ let
         mkdir -p root/licenses
         cp ${./LICENSE.omarchy-psx} root/licenses/omarchy-psx-MIT
         chmod 0755 root/init
+        # cpio --reproducible normalizes inode/device fields, not mtimes.
+        find root -depth -exec touch -h -d '@1795737600' {} +
         mkdir -p "$out"
         (cd root; find . -print0 | LC_ALL=C sort -z | cpio --null -o --format=newc --owner=0:0 --reproducible | gzip -n -9) > "$out/initramfs.cpio.gz"
       '';

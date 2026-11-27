@@ -113,8 +113,10 @@ bundle. This structure leaves room for both original consoles without
 changing the model-plugin API.
 
 There is also concrete later clock-work to inspect in that general series.
-Patch 0161 removes the older startup force-max SCLK driver; patch 0167 adds
-a Liverpool/Gladius SMU mailbox implementation with memory-Pstate and raw
+The [0161 removal](https://github.com/meerzulee/linux-psx/blob/886e35141787c26c2eb5df0558109d3ac35d38ad/platforms/ps4/patches/7.2-ps4/0161-drm-amdgpu-remove-liverpool_clk-SCLK-force-driver-re.patch)
+removes the older startup force-max SCLK driver; the
+[0167 SMU implementation](https://github.com/meerzulee/linux-psx/blob/886e35141787c26c2eb5df0558109d3ac35d38ad/platforms/ps4/patches/7.2-ps4/0167-drm-amdgpu-add-PS4-SMU-mailbox-driver.patch)
+adds a Liverpool/Gladius mailbox implementation with memory-Pstate and raw
 message interfaces. This exposes a possible measured-tuning path, not a
 proven speed improvement or an instruction to write registers during setup.
 The general config leaves `CONFIG_PS4_CPUFREQ` disabled despite having a

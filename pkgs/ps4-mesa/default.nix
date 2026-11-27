@@ -93,8 +93,9 @@ base.overrideAttrs (old: {
     mkdir -p "$out/share/doc/mesa-ps4"
     cp ${./sources.json} "$out/share/doc/mesa-ps4/sources.json"
     cp ${./patches}/* "$out/share/doc/mesa-ps4/"
-    cp docs/license.rst "$out/share/doc/mesa-ps4/upstream-license.rst"
-    cp -R licenses "$out/share/doc/mesa-ps4/licenses"
+    # Meson's configure hook enters build/ for all later phases.
+    cp ../docs/license.rst "$out/share/doc/mesa-ps4/upstream-license.rst"
+    cp -R ../licenses "$out/share/doc/mesa-ps4/licenses"
     test -f "$out/lib/libvulkan_radeon.so"
     test -e "$out/lib/dri/radeonsi_dri.so"
     test -e "$out/lib/libgbm.so.1"
