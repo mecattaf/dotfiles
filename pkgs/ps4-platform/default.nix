@@ -22,12 +22,12 @@
   kmod,
   yasm,
   rootLabel ? "ps4-nixos",
-  gpuBackingLimitMiB ? 7168,
+  gpuBackingLimitMiB ? 7424,
   vramMiB ? 128,
   kernelVariant ? "baikal",
 }:
 let
-  release = "7.2.11-psx-ps4-dummy1";
+  release = "7.2.11-psx-ps4-dummy2";
   referenceRelease = "7.2.11-psx-ps4-baikal-uvd-runtime-dev6";
   releaseBase = "https://github.com/meerzulee/linux-psx/releases/download/v7.2.11-psx-ps4-baikal-beta2";
   runtimeArchive = fetchurl {
@@ -107,7 +107,7 @@ let
       patchShebangs scripts
       cp .config .config.psx-reference
       scripts/kconfig/merge_config.sh -m .config ${./fleet-network.config}
-      scripts/config --set-str LOCALVERSION "-psx-ps4-dummy1"
+      scripts/config --set-str LOCALVERSION "-psx-ps4-dummy2"
       scripts/config --disable LOCALVERSION_AUTO
       scripts/config --disable GCC_PLUGINS
       scripts/config --disable DEBUG_INFO
@@ -115,13 +115,18 @@ let
       scripts/config --set-str SYSTEM_TRUSTED_KEYS ""
       scripts/config --set-str SYSTEM_REVOCATION_KEYS ""
       make ARCH=x86_64 CC=gcc HOSTCC=gcc olddefconfig
-      for option in X86_PS4 DRM_AMDGPU DRM_AMDGPU_CIK BTRFS_FS DEVTMPFS \
+      for option in X86_PS4 DRM_AMDGPU DRM_AMDGPU_CIK BTRFS_FS BTRFS_FS_POSIX_ACL DEVTMPFS \
         NETFILTER NF_CONNTRACK NF_TABLES NF_TABLES_INET NFT_CT TUN; do
         grep -qx "CONFIG_$option=y" .config || {
           echo "Required PS4/fleet kernel option did not resolve: $option" >&2
           exit 1
         }
       done
+      while IFS= read -r setting; do
+        case "$setting" in CONFIG_*=*) grep -Fqx "$setting" .config || {
+          echo "Required fleet setting did not resolve: $setting" >&2; exit 1;
+        } ;; esac
+      done < ${./fleet-network.config}
       grep -qx 'CONFIG_EXTRA_FIRMWARE=""' .config
       test "$(make -s ARCH=x86_64 kernelrelease)" = ${lib.escapeShellArg release}
       runHook postConfigure
@@ -178,19 +183,21 @@ let
     dontConfigure = true;
     buildPhase = ''
       runHook preBuild
-      make -C linux -j"$NIX_BUILD_CORES" payloads/linux-128mb.elf payloads/linux-1024mb.elf
+      make -C linux -j"$NIX_BUILD_CORES" \
+        payloads/linux-128mb.elf payloads/linux-1024mb.elf \
+        payloads/linux-128mb.bin payloads/linux-1024mb.bin
       runHook postBuild
     '';
     installPhase = ''
       mkdir -p "$out/payloads" "$out/share/doc/ps4-linux-loader"
-      cp linux/payloads/linux-128mb.elf linux/payloads/linux-1024mb.elf "$out/payloads/"
+      cp linux/payloads/*.{elf,bin} "$out/payloads/"
       cp README.md "$out/share/doc/ps4-linux-loader/"
       cp linux/ps4-kexec-common/LICENSE "$out/share/doc/ps4-linux-loader/kexec-LICENSE"
     '';
     dontStrip = true;
     dontPatchELF = true;
     meta = {
-      description = "Pinned PS4 loader, firmware-extracting kexec, 128/1024 MiB presets";
+      description = "Pinned PS4 ELF/BIN loader, firmware-extracting kexec, 128/1024 MiB presets";
       homepage = "https://github.com/ArabPixel/ps4-linux-loader";
       license = lib.licenses.bsd2;
       platforms = [ "x86_64-linux" ];
@@ -259,7 +266,7 @@ let
         printf '%s\n' ${lib.escapeShellArg commandLine} > "$out/bootargs.txt"
         test "$(wc -c < "$out/bootargs.txt")" -le 511
         printf '%s\n' ${toString vramMiB} > "$out/vram.txt"
-        cp ${loader}/payloads/*.elf "$out/payloads/"
+        cp ${loader}/payloads/*.{elf,bin} "$out/payloads/"
         # Recovery varies one platform variable, the fixed VRAM carveout. It
         # retains the current kernel/config/modules and normal firewall support.
         cp ${selectedKernel}/bzImage "$out/recovery/gpu-1024MiB/bzImage"
@@ -274,6 +281,11 @@ let
                 selected_profile = profile;
                 candidate_release = selectedKernel.kernelRelease;
                 hardware_scope = selectedKernel.hardwareScope;
+                gpu = (builtins.fromJSON (builtins.readFile ./provenance.json)).gpu // {
+                  vram_candidate_mib = vramMiB;
+                  ttm_pages_limit_candidate = gpuBackingLimitMiB * 256;
+                  gtt_total_ceiling_mib = gpuBackingLimitMiB;
+                };
                 candidate_source =
                   if profile == "baikal" then
                     {
@@ -316,8 +328,8 @@ assert lib.assertMsg (builtins.elem vramMiB [
   1024
 ]) "PS4 VRAM must be an explicit validated power-of-two candidate";
 assert lib.assertMsg (
-  gpuBackingLimitMiB > 0 && gpuBackingLimitMiB <= 7168
-) "PS4 backing limit exceeds the planned 7 GiB budget";
+  gpuBackingLimitMiB > 0 && gpuBackingLimitMiB <= 7424
+) "PS4 backing limit exceeds the planned 7.25 GiB total ceiling";
 {
   inherit
     kernel

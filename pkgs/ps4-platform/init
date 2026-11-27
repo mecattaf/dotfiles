@@ -5,9 +5,16 @@ export PATH=/bin
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
+# Match NixOS stage-1's descriptor paths before its Bash stage 2 executes
+# process substitutions such as /dev/fd/63. Moving /dev preserves these.
+ln -sfn /proc/self/fd /dev/fd
+ln -sfn /proc/self/fd/0 /dev/stdin
+ln -sfn /proc/self/fd/1 /dev/stdout
+ln -sfn /proc/self/fd/2 /dev/stderr
 exec </dev/console >/dev/console 2>&1
 mkdir -p /dev/pts /run /newroot
-mount -t devpts devpts /dev/pts
+# NixOS's tty group is GID 3. Match its early-filesystem PTY options.
+mount -t devpts -o nosuid,noexec,mode=0620,ptmxmode=0666,gid=3 devpts /dev/pts
 mount -t tmpfs -o mode=0755,size=128m tmpfs /run
 
 fail() {

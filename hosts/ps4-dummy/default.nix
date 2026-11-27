@@ -25,7 +25,7 @@ in
     };
     gpuBackingLimitMiB = lib.mkOption {
       type = lib.types.ints.positive;
-      default = 7168;
+      default = 7424;
       description = ''
         Requested TTM GPU-backing limit in MiB. The external PS4 loader's
         bootargs must set ttm.pages_limit to MiB * 256 (4 KiB pages) before
@@ -134,6 +134,7 @@ in
         jq
         libdrm
         (pkgs.callPackage ../../pkgs/ps4-host-check { })
+        (pkgs.callPackage ../../pkgs/ps4-memory-probe { })
       ];
       environment.etc."ps4/appliance.json".text = builtins.toJSON {
         host = "ps4-dummy";

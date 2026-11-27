@@ -3,6 +3,11 @@
 This is a bounded **generic-PC test**, not a PS4 emulator. It can exercise the
 actual candidate kernel, unchanged external initramfs logic, labelled USB
 root, real `/sbin/init`, NixOS stage 2, root ownership and Nix DB registration.
+It checks that the running kernel has matching modules in the image. After
+reaching basic.target, it starts multi-user.target and verifies SSH,
+NetworkManager, nftables, Tailscale and Home Manager. Tailscale must remain
+unenrolled (NeedsLogin); the VM has no NIC. It also executes the shipped
+runtime-test as user tom, checks failed units and records guest memory.
 The CPU hides AVX2/AVX512F. It proves no Liverpool dispatch, GPU allocation,
 Ethernet southbridge support, Orbis payload execution or physical recovery.
 
@@ -16,6 +21,9 @@ The test appends a **synthetic** `lib/firmware/amdgpu/ps4-vm-proof` script in
 a separate cpio member. There are no Sony firmware bytes or console keys.
 The unchanged initramfs copies this directory into `/run/ps4-firmware`, and
 systemd's `systemd.run=` facility executes the proof after normal stage 2.
+An explicit generated target avoids NixOS's /etc/default.target taking
+precedence over the generator's default-target symlink. The proof starts
+ordinary multi-user services without adding a permanent unit.
 It powers off the disposable guest after success or failure.
 
 Run on Strix, only after the actual image exists:

@@ -76,6 +76,9 @@ def main(argv=None):
             "root=LABEL=ps4-nixos rootfstype=btrfs rootwait rw",
             "console=ttyS0,115200n8 panic=1 libata.force=disable",
             "systemd.run=/run/ps4-firmware/amdgpu/ps4-vm-proof",
+            # NixOS has an explicit /etc/default.target; select the generated
+            # proof target rather than relying on its lower-priority symlink.
+            "systemd.unit=kernel-command-line.target",
             "systemd.run_success_action=poweroff systemd.run_failure_action=poweroff",
             "systemd.show_status=1",
         ])
@@ -109,10 +112,11 @@ def main(argv=None):
         serial = (output / "serial.log").read_text(errors="replace")
         passed = (not timed_out and not log_limit_hit and process.returncode == 0
                   and "PS4_VM_ROOT_CONTRACT_PASS" in serial
+                  and "PS4_VM_FLEET_STARTUP_PASS" in serial
                   and f"PS4_VM_RELEASE={args.expected_release}" in serial
                   and base_identity == (image.stat().st_size, image.stat().st_mtime_ns))
         receipt = {
-            "scope": "SYNTHETIC generic-PC USB-root/stage-2/ownership/Nix-DB only",
+            "scope": "SYNTHETIC generic-PC USB-root/stage-2/ownership/Nix-DB/fleet-startup only",
             "ps4_hardware_qualified": False, "passed": passed,
             "qemu": str(qemu), "kernel": str(kernel), "initramfs": str(initramfs),
             "image": str(image), "image_bytes": base_identity[0],

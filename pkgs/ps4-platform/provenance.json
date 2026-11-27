@@ -8,7 +8,7 @@
   "upstream_linux_commit": "a2de78ee6ed8bf8cd99d177c74865a6e8c3cb6ea",
   "upstream_linux_version": "7.2.11",
   "reference_release": "7.2.11-psx-ps4-baikal-uvd-runtime-dev6",
-  "candidate_release": "7.2.11-psx-ps4-dummy1",
+  "candidate_release": "7.2.11-psx-ps4-dummy2",
   "corresponding_source_sha256": "2b712654d47e675a4c4f2d8379bfa2e5e5e4135fae3c1124426d1f9ee38ab535",
   "reference_zip_sha256": "ff9d5fa620015706b1f98f1d12244df50b02390fe6bfe380331f7e5937a4639e",
   "loader_repository": "https://github.com/ArabPixel/ps4-linux-loader",
@@ -23,14 +23,18 @@
     "distinct local version to prevent mixing reference modules",
     "disable compiler plugins and debug information for a bounded reproducible rebuild",
     "fixed Nix build timestamp/user/host; firmware remains external",
-    "external-root command line globally disables libata devices"
+    "external-root command line globally disables libata devices",
+    "v2 kernels enable BTRFS_FS_POSIX_ACL after an actual USB-root VM exposed journald ACL failures; new module-release identities prevent v1/v2 mixing"
   ],
   "gpu": {
     "physical_target": "Liverpool",
     "kernel": "amdgpu CIK with GPUVM and compute queues; no KFD dependency",
     "inference_compiler_target": "bonaire/gfx704",
     "vram_candidate_mib": 128,
-    "ttm_pages_limit_candidate": 1835008,
+    "ttm_pages_limit_candidate": 1900544,
+    "gtt_total_ceiling_mib": 7424,
+    "user_allocation_probe_mib": 7168,
+    "driver_and_other_bo_margin_mib": 256,
     "memory_capacity_and_bandwidth_hardware_qualified": false
   },
   "orbis_internal_disk_written_by_preparation": false,

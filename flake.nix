@@ -638,6 +638,7 @@
           ps4-boot-files = self.nixosConfigurations.ps4-dummy.config.system.build.ps4BootFiles;
           ps4-installer = pkgs.callPackage ./pkgs/ps4-installer { };
           ps4-host-check = pkgs.callPackage ./pkgs/ps4-host-check { };
+          ps4-memory-probe = pkgs.callPackage ./pkgs/ps4-memory-probe { };
           ps4-dummy-usb-image = ps4Image.config.system.build.sdImage;
           ps4-dummy-universal-usb-image =
             (ps4Image.extendModules {

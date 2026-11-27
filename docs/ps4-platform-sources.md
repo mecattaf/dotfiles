@@ -61,9 +61,9 @@ replacement. [Separate target](https://github.com/meerzulee/linux-psx/blob/886e3
 
 | Attribute | Output |
 | --- | --- |
-| `kernel` / `modulesTree` | `bzImage`, resolved `config`, `System.map`, all matching `lib/modules/7.2.11-psx-ps4-dummy1/` modules and build checksums |
+| `kernel` / `modulesTree` | `bzImage`, resolved `config`, `System.map`, all matching `lib/modules/7.2.11-psx-ps4-dummy2/` modules and build checksums |
 | `referenceKernel` | Unchanged published beta2 kernel/config/modules for comparison, not the normal fleet kernel |
-| `loader` | `payloads/linux-128mb.elf` and `payloads/linux-1024mb.elf`, built from the pinned source |
+| `loader` | `payloads/linux-128mb.{elf,bin}` and `payloads/linux-1024mb.{elf,bin}`, built from the pinned source |
 | `initramfs` | Self-contained static BusyBox `initramfs.cpio.gz`, with no store-path dependency |
 | `bootFiles` | Exact paired FAT-root files, payloads, provenance and a separate 1024 MiB recovery set |
 | `universalKernel` / `universalBootFiles` | Separately built Aeolia/Belize/Baikal comparison candidate and its own paired boot files; not a relabelled Baikal artifact |
@@ -76,8 +76,18 @@ it cannot silently load modules from beta2. Compiler plugins and debug symbols
 are disabled for the bounded build; fixed build timestamps/identity are
 recorded. Those changes require their own physical boot qualification.
 
+A generic-PC test of the actual labelled USB root reached NixOS stage 2 and
+PID 1 systemd, exposing two real integration gaps: missing descriptor links
+such as `/dev/fd/63`, and missing Btrfs POSIX ACL support used by journald.
+The init now supplies NixOS's normal descriptor links and devpts permissions;
+the `dummy2`/`universal2` kernels explicitly enable
+`CONFIG_BTRFS_FS_POSIX_ACL=y`. Distinct v2 release names prevent the earlier
+no-ACL kernel being paired with newer modules. This test exercises root/init
+integration on a generic PC guest, not a PS4 GPU, southbridge or Orbis loader;
+the completed rerun receipt governs its final result.
+
 An explicit `kernelVariant="universal"` selects the separate
-`7.2.11-psx-ps4-dummy-universal1` build. This starts from the clean pinned
+`7.2.11-psx-ps4-dummy-universal2` build. This starts from the clean pinned
 upstream archive, applies the exact 176-patch `7.2-ps4` series from the pinned
 psX project, then adds psX's separate native MTS autoload/open adapter. It
 uses the general target's config, including built-in `sky2` for the older
@@ -145,13 +155,24 @@ firmware-load and repeat-boot checks remain required.
 
 ## Memory and compute settings
 
-The candidate uses `vram.txt=128` and `ttm.pages_limit=1835008`. The former
+The candidate uses `vram.txt=128` and `ttm.pages_limit=1900544`. The former
 changes the loader's fixed carveout from the one physical 8 GiB GDDR5 pool.
-The latter is a ceiling of 1,835,008 backing pages, or 7168 MiB at 4 KiB per
-page. It is not a 7 GiB reservation. The deployment aims to reclaim sufficient
+The latter is a total ceiling of 1,900,544 backing pages, or 7424 MiB at
+4 KiB per page. This leaves 256 MiB of manager-accounting margin above a
+7168 MiB user-buffer probe. It is not a 7.25 GiB reservation. The deployment aims to reclaim sufficient
 system pages for unchanged Bonsai's approximately 6.72 GiB 16K model/state/KV
 subtotal plus Linux and workspace; actual allocation and useful GPU bandwidth
 must be measured separately.
+
+The distinction matters: `amdgpu_gtt_mgr_new()` accounts the proposed resource
+before testing total manager usage against its size, and `ttm_tt_populate()`
+adds the requested backing pages before its global limit/shrink check. The
+ceiling includes driver and other buffer objects, so an exact 7 GiB total
+ceiling could reject a 7 GiB user buffer even when Bonsai's smaller real
+working set fits. The extra 256 MiB is an implementation margin, not a model
+precision change. A full allocation/touch test must first check actual
+`MemAvailable` and retain at least 256 MiB of operator headroom beyond the
+touched user allocation; the ceiling cannot promise physically free RAM.
 
 The default TTM backing limit is approximately half ordinary RAM. Raising
 that software limit does not prove a fast physical memory route, nor does a

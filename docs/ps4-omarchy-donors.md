@@ -36,8 +36,11 @@ nftables and TUN and retains the fleet firewall. Copying Omarchy's disabled
 firewall into the appliance would discard the requested fleet boundary.
 
 Likewise, Omarchy's 1024 MiB VRAM carveout is a historical desktop profile.
-This inference candidate uses 128 MiB and a 7168 MiB TTM backing-page ceiling,
+This inference candidate uses 128 MiB and a 7424 MiB total TTM backing-page ceiling,
 with the same new kernel at 1024 MiB available for comparison/recovery. The
+total ceiling leaves a 256 MiB accounting margin above a 7168 MiB user-buffer
+probe because driver/other buffers share that manager. It reserves no pages
+and cannot replace an actual `MemAvailable` preflight. The
 donor's dynamic-memory discussion supplies a methodology, not a ready
 runtime-resizing switch. Larger GPU allocations and native-like bandwidth
 remain actual PS4 qualification work. Do not add cache/model quantization to

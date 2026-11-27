@@ -65,6 +65,13 @@ def inspect(root=Path('/')):
     except ValueError:
         policy = None
     add('appliance-policy', isinstance(policy, dict) and policy.get('host') == 'ps4-dummy', {'policy': policy})
+    declared_mib = number(policy.get('gpuBackingLimitMiB')) if isinstance(policy, dict) else None
+    declared_pages = declared_mib * 1024**2 // PAGE_SIZE if declared_mib else None
+    add('declared-gpu-budget', None if declared_pages is None else
+        requested == declared_pages and page_limit is not None and page_limit >= declared_pages,
+        {'declaredMiB': declared_mib, 'declaredPages': declared_pages,
+         'requestedPages': requested, 'effectivePages': page_limit,
+         'note': 'The running external boot arguments must match the selected NixOS budget.'})
     expected_release = policy.get('kernelRelease') if isinstance(policy, dict) else None
     running_release = read(root / 'proc/sys/kernel/osrelease')
     module_directory = root / 'run/current-system/kernel-modules/lib/modules' / (running_release or 'unknown')

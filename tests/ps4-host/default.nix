@@ -12,7 +12,7 @@ assert !host.boot.kernel.enable && !host.boot.initrd.enable;
 assert !host.boot.loader.systemd-boot.enable && !host.boot.loader.grub.enable;
 assert host.nix.settings.max-jobs == 0 && host.nix.buildMachines == [ ];
 assert !host.zramSwap.enable && host.swapDevices == [ ];
-assert host.myPs4.gpuBackingLimitMiB == 7168;
+assert host.myPs4.gpuBackingLimitMiB == 7424;
 assert host.myFleet.roles == [ "compute" ] && !host.mySecrets.enable;
 assert !host.home-manager.users.tom.programs.herdrCore.enable;
 assert suite.home-manager.users.tom.programs.herdrCore.enable;

@@ -18,11 +18,11 @@ class HostChecks(unittest.TestCase):
         self.root = Path(self.temp.name)
         for name, data in {
             'proc/meminfo': 'MemTotal:       8000000 kB\nMemAvailable:   7400000 kB\n',
-            'proc/cmdline': 'root=LABEL=ps4-nixos ttm.pages_limit=1835008',
-            'sys/module/ttm/parameters/pages_limit': '1835008',
+            'proc/cmdline': 'root=LABEL=ps4-nixos ttm.pages_limit=1900544',
+            'sys/module/ttm/parameters/pages_limit': '1900544',
             'sys/class/drm/card0/device/mem_info_gtt_total': str(7 * 1024**3),
             'dev/dri/renderD128': '', 'dev/net/tun': '',
-            'etc/ps4/appliance.json': json.dumps({'host': 'ps4-dummy', 'kernelRelease': 'psx-fixture'}),
+            'etc/ps4/appliance.json': json.dumps({'host': 'ps4-dummy', 'kernelRelease': 'psx-fixture', 'gpuBackingLimitMiB': 7424}),
             'proc/sys/kernel/osrelease': 'psx-fixture',
         }.items():
             self.write(name, data)
@@ -69,6 +69,12 @@ class HostChecks(unittest.TestCase):
         result, status = self.checked()
         self.assertFalse(result['configurationReady'])
         self.assertEqual(status['kernel-module-pair'], 'fail')
+
+    def test_old_external_boot_budget_does_not_match_new_generation(self):
+        self.write('proc/cmdline', 'ttm.pages_limit=1835008')
+        result, status = self.checked()
+        self.assertFalse(result['configurationReady'])
+        self.assertEqual(status['declared-gpu-budget'], 'fail')
 
     def test_no_render_device_fails_even_with_sufficient_memory(self):
         (self.root / 'dev/dri/renderD128').unlink()

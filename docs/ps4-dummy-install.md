@@ -166,7 +166,7 @@ enters the chosen NixOS system. This is not PC UEFI/GRUB installation.
    private host key. Add the verified public key to the fleet registry in the
    normal review path. The private key remains on this PS4.
 3. Connect from the NAS using the existing fleet public login key. Run the
-   host readiness command documented by this branch, inspect the real
+   `ps4-host-check --json`, then inspect the real
    `/proc/cmdline`, kernel release, `MemTotal`, Ethernet route, firewall,
    module/firmware health and `/dev/dri/renderD*` permissions. No inference
    endpoint is exposed until an actual runtime is installed and qualified.
@@ -189,9 +189,11 @@ not a replacement fleet boot set with a mismatched module tree.
 
 ## Capacity, suite and later deployment
 
-The initial recipe requests a 128 MiB loader GPU reservation and a 7168 MiB
+The initial recipe requests a 128 MiB loader GPU reservation and a 7424 MiB
 TTM backing ceiling. That leaves most unified GDDR5 available to Linux and
-keeps the amdgpu render path enabled. The relevant loader memory map, TTM
+keeps the amdgpu render path enabled. The ceiling includes a 256 MiB margin
+for driver/other buffers above the 7168 MiB user-buffer qualification target;
+it reserves no pages. The relevant loader memory map, TTM
 limit, successful GPU virtual mappings and useful bandwidth are separate
 tests. Reading a large `MemTotal` or raising a ceiling does not demonstrate
 seven GiB of resident, correctly coherent GPU-accessible buffers.
@@ -201,7 +203,10 @@ specialisation makes the requested Kitty/Domicile/herdr-core packages
 available without starting a compositor or occupying the inference budget
 by default. Local sessions and their memory must be measured before combining
 them with Bonsai's full weights, FP16 cache and FP32 recurrent state. The
-model/plugin runtime work is separate from this boot installer.
+model/plugin runtime work is separate from this boot installer. The installed
+[`ps4-memory-probe`](ps4-memory-qualification.md) supplies the explicit query,
+one-MiB smoke and seven-GiB capacity procedure, with source-labelled results
+and no model or cache precision changes.
 
 The image does **not** resize itself automatically. Its initial root is sized
 from the shipped closure plus 20% and 2 GiB of writable headroom; capture

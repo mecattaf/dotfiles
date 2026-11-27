@@ -14,7 +14,7 @@
   gitMinimal,
 }:
 let
-  release = "7.2.11-psx-ps4-dummy-universal1";
+  release = "7.2.11-psx-ps4-dummy-universal2";
   psxInputs = fetchurl {
     url = "https://github.com/meerzulee/linux-psx/archive/886e35141787c26c2eb5df0558109d3ac35d38ad.tar.gz";
     sha256 = "4a2879c99507c9e7034f1b1239c887e6a23dda2c0f5dd98537932d7e2f1c17d2";
@@ -80,7 +80,7 @@ stdenv.mkDerivation {
     cp .psx-inputs/platforms/ps4/config/7.2-psx-ps4.config .config
     cp .config .config.psx-reference
     scripts/kconfig/merge_config.sh -m .config ${./fleet-network.config}
-    scripts/config --set-str LOCALVERSION "-psx-ps4-dummy-universal1"
+    scripts/config --set-str LOCALVERSION "-psx-ps4-dummy-universal2"
     scripts/config --disable LOCALVERSION_AUTO
     scripts/config --disable GCC_PLUGINS
     scripts/config --disable DEBUG_INFO
@@ -88,7 +88,7 @@ stdenv.mkDerivation {
     scripts/config --set-str SYSTEM_TRUSTED_KEYS ""
     scripts/config --set-str SYSTEM_REVOCATION_KEYS ""
     make ARCH=x86_64 CC=gcc HOSTCC=gcc olddefconfig
-    for option in X86_PS4 DRM_AMDGPU DRM_AMDGPU_CIK BTRFS_FS DEVTMPFS SKY2; do
+    for option in X86_PS4 DRM_AMDGPU DRM_AMDGPU_CIK BTRFS_FS BTRFS_FS_POSIX_ACL DEVTMPFS SKY2; do
       grep -qx "CONFIG_$option=y" .config || exit 1
     done
     grep -qx 'CONFIG_PS4_MTS=m' .config
