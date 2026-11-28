@@ -1,6 +1,7 @@
 { pkgs, configurations }:
-# factory-floor.service (home/factory-floor.nix): eval asserts on the real NAS
-# config, then the launcher against a fake checkout. docs/factory-floor.md.
+# factory-floor.service (home/factory-floor.nix, the agency repository's Home
+# Manager module): eval asserts on the real NAS config, then the launcher
+# against a fake checkout. docs/factory-floor.md.
 let
   inherit (pkgs) lib;
   nas = configurations.nas.config;
@@ -13,7 +14,8 @@ let
   heartbeat = services.scheduled-heartbeat;
   rendered = hm.xdg.configFile."systemd/user/factory-floor.service".source;
   environment = svc.Service.Environment;
-  launcher = lib.head svc.Service.ExecStart;
+  launcher = "${cfg.launcher}/bin/factory-floor-service";
+  execStart = lib.head (lib.toList svc.Service.ExecStart);
   herdrCore = configurations.nas.pkgs.llm-agents.herdr-core;
   # The installed heartbeat command (home/scheduled.nix) and the floor unit it
   # would wake.
@@ -58,18 +60,37 @@ assert builtins.elem "network-online.target" svc.Unit.After;
 assert svc.Unit.Wants == [ "hc-core.service" ];
 # Declared, not wanted by any target: started by hand on 2026-11-26.
 assert !cfg.autostart && !(svc ? Install);
-# Local-checkout mode: a store launcher runs the built entry of the checkout.
-assert cfg.package == null;
-assert cfg.checkout == "${home}/mecattaf/factory-floor";
-assert cfg.entry == "${home}/mecattaf/factory-floor/bin/agency-service";
+# Store mode: the unit runs the agency package's bin/agency-service from the
+# store, through the module's launcher; no checkout is built or needed.
+assert cfg.package != null;
+assert cfg.entry == "${cfg.package}/bin/agency-service";
 assert svc.Unit.ConditionPathExists == cfg.entry;
+assert !(lib.hasInfix "mecattaf/factory-floor" (builtins.toJSON svc));
 assert
   lib.hasPrefix builtins.storeDir launcher && lib.hasSuffix "/bin/factory-floor-service" launcher;
+# The profile: bundle-core first, then the three the live profile listed; and
+# the scheduled Source off, so the heartbeat's inbox is not consumed unasked.
+assert
+  cfg.bundles == [
+    "@agency/bundle-core"
+    "@factory-floor/bundle-base"
+    "@factory-floor/bundle-web"
+    "@factory-floor/bundle-chat"
+  ];
+assert
+  cfg.overlay == [
+    {
+      id = "source-scheduled";
+      disabled = true;
+    }
+  ];
+assert lib.hasPrefix "${launcher} --patch ${builtins.storeDir}/" execStart;
+assert cfg.hcPackage == herdrCore;
 # The environment the floor's defaults must equal (docs/factory-floor.md).
 assert
   environment == [
-    "FACTORY_FLOOR_CHECKOUT=${home}/mecattaf/factory-floor"
-    "FACTORY_FLOOR_ENTRY=${home}/mecattaf/factory-floor/bin/agency-service"
+    "FACTORY_FLOOR_CHECKOUT=${home}/agency/agency-agency/agency"
+    "FACTORY_FLOOR_ENTRY=${cfg.package}/bin/agency-service"
     "FACTORY_FLOOR_STATE_DIR=${home}/.agency/state/master/factory-floor"
     "FACTORY_FLOOR_WORK_DIR=${home}/.local/state/factory-floor"
     "FACTORY_FLOOR_CONFIG_DIR=${home}/.config/agency/factory-floor"
@@ -125,7 +146,7 @@ pkgs.runCommand "factory-floor" { } ''
   grep -qxF 'X-SwitchMethod=keep-old' "$unit"
   grep -qxF 'RestartPreventExitStatus=78' "$unit"
   grep -qxF 'ConditionPathExists=${cfg.entry}' "$unit"
-  grep -qxF 'ExecStart=${launcher}' "$unit"
+  grep -qxF 'ExecStart=${execStart}' "$unit"
   if grep -q '^\[Install\]' "$unit"; then
     echo "factory-floor.service has an [Install] section" >&2
     exit 1
@@ -146,7 +167,7 @@ pkgs.runCommand "factory-floor" { } ''
   EOF
   chmod +x "$fake/bin/agency-service"
   run() {
-    env -i ${lib.escapeShellArgs environment} PATH=/var/empty/bin "$@" ${launcher}
+    env -i ${lib.escapeShellArgs environment} PATH=/var/empty/bin FACTORY_FLOOR_WORK_DIR="$TMPDIR/work" "$@" ${launcher}
   }
   run FACTORY_FLOOR_CHECKOUT="$fake" FACTORY_FLOOR_ENTRY="$fake/bin/agency-service" > out
   cat out
@@ -155,6 +176,10 @@ pkgs.runCommand "factory-floor" { } ''
   grep -qxF 'HC_BIN=${lib.getExe' herdrCore "herdr-core"}' out
   grep -qxF 'PORT=3082' out
   grep -qxF 'ARGC=0' out
+  # The launcher writes the profile's bundle list from the store before every
+  # start, bundle-core first, as a private file.
+  grep -q '"@agency/bundle-core"' "$TMPDIR/work/profiles/floor/package.json"
+  test "$(stat -c %a "$TMPDIR/work/profiles/floor/package.json")" = 600
   # A relative entry is resolved against the checkout.
   run FACTORY_FLOOR_CHECKOUT="$fake" FACTORY_FLOOR_ENTRY=bin/agency-service > out-relative
   cmp out out-relative
