@@ -65,8 +65,9 @@
     # Manager module (home/factory-floor.nix). Pinned by rev like communications
     # and for the same reason no nixpkgs.follows: its pnpm-deps hash is fixed
     # against its own lock (nixpkgs f36469d, pnpm 11.25). The rev is the one
-    # place the floor's code is chosen; move it with `nix flake lock
-    # --override-input agency "git+https://github.com/agency-agency/agency?rev=<sha>"`.
+    # place the floor's code is chosen: to move it, edit the rev below, then
+    # `nix flake update agency` (an --override-input would leave this line
+    # naming the old rev).
     agency.url = "git+https://github.com/agency-agency/agency?rev=31f32c3c7c9594647dd9942655aced0cda4270cc";
 
     # Per-device hardware quirks. No nixpkgs.follows — it's just module files.
