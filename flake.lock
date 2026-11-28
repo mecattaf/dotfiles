@@ -5,16 +5,16 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1795831427,
-        "narHash": "sha256-VQpsnKoCsxZUVFOC+rN7dE7V69zOLSxJNkzmLAjI+Uk=",
+        "lastModified": 1795835167,
+        "narHash": "sha256-OxMG0pa5UJvWFvl7v1Lp3tLE3ifqlDC4Z1VVq+VA4Sg=",
         "ref": "refs/heads/main",
-        "rev": "31f32c3c7c9594647dd9942655aced0cda4270cc",
-        "revCount": 500,
+        "rev": "43e347ef7e577ed7692beba8f2272be689c78c80",
+        "revCount": 543,
         "type": "git",
         "url": "https://github.com/agency-agency/agency"
       },
       "original": {
-        "rev": "31f32c3c7c9594647dd9942655aced0cda4270cc",
+        "rev": "43e347ef7e577ed7692beba8f2272be689c78c80",
         "type": "git",
         "url": "https://github.com/agency-agency/agency"
       }
