@@ -68,7 +68,7 @@
     # place the floor's code is chosen: to move it, edit the rev below, then
     # `nix flake update agency` (an --override-input would leave this line
     # naming the old rev).
-    agency.url = "git+https://github.com/agency-agency/agency?rev=43e347ef7e577ed7692beba8f2272be689c78c80";
+    agency.url = "git+https://github.com/agency-agency/agency?rev=0c1631b9eb5fef823ae231e2eeeeabba2f06bee4";
 
     # Per-device hardware quirks. No nixpkgs.follows — it's just module files.
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";

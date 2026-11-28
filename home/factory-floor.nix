@@ -1,5 +1,4 @@
 {
-  config,
   inputs,
   lib,
   osConfig,
@@ -33,16 +32,13 @@
 # the module's defaults (false). X-SwitchMethod=keep-old: a switch never
 # restarts a running floor; restart it by hand.
 #
-# `checkout` and `documentation` repeat the module's own defaults of a later
-# revision of the agency repository (branch wp/N-live-switch, e84c667); the pinned revision
-# still names the old repository there. Drop both lines at the next pin.
+# `checkout` and `documentation` keep the module's defaults
+# (~/agency/agency-agency/agency and the agency repository's service README).
 {
   imports = [ inputs.agency.homeManagerModules.default ];
 
   config.services.factory-floor = {
     enable = lib.mkDefault (osConfig.myFleet.has "brain");
-    checkout = "${config.home.homeDirectory}/agency/agency-agency/agency";
-    documentation = [ "https://github.com/agency-agency/agency/blob/main/packages/service/README.md" ];
     bundles = [
       "@agency/bundle-core"
       "@factory-floor/bundle-base"
