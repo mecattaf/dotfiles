@@ -316,8 +316,10 @@ that generation still runs.
 2. Switch the NAS, attended. After the switch the timer runs, but
    `ConditionPathIsDirectory` skips every tick until `~/.agency` exists.
 3. Declare the floor unit (`home/factory-floor.nix`) and start it once
-   by hand. Its scheduled Source reads `<stateDir>/inbox/scheduled` only
-   when its host config says so.
+   by hand. Its scheduled Source reads the heartbeat's inbox
+   (`~/.agency/state/master/inbox/scheduled`) by default;
+   `home/factory-floor.nix` turns it off with an overlay until the flip
+   in `docs/factory-floor.md`.
 4. Place the master items, every one with `"enabled": false`. Each is
    `~/.agency/scheduled/<item>.jsonc`, item v1 (`scheduled schema`); an
    item written for an earlier layout is not v1, so rewrite a copy of it
